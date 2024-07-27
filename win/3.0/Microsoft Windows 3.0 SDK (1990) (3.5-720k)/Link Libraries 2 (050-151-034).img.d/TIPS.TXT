@@ -1,0 +1,818 @@
+                          TIPS.TXT
+                          ========
+
+The following set of notes is provided by Microsoft Product
+Support Services to help answer some of the most commonly
+asked questions by developers of Windows 3.0 applications.
+These notes are addressed to new Windows developers as well
+as to those moving Windows 2.x applications to Windows 3.0.
+
+Contents
+========
+
+1  User Interface
+    1.1  Communicating with Progman Manager via DDE
+    1.2  Making my application the Windows shell
+    1.3  Drag & Drop information
+    1.4  Controls
+          1.4.1  Using a fixed font
+          1.4.2  Listboxes
+                  Setting tabs in listboxes
+                  Multi-column listboxes
+                  Multi-selection listboxes
+                  Scroll bar in listboxes
+          1.4.3  Combo Boxes
+          1.4.4  Buttons
+          1.4.5  Edit Controls
+          1.4.6  Subclassing
+          1.4.7  Registering new window classes in a dll
+    1.5  General information about controls and dialog boxes
+    1.6  Private class dialog boxes - Hexcalc and how to
+          make it work
+    1.7  WinHelp
+    1.8  Limitations on system resources
+          1.8.1  Max number of windows allowed
+          1.8.2  Menus and their effect on system resources
+          1.8.3  Calculating free system resources
+    1.9  Metafiles -- SelectObject and DeleteObject
+    1.10 Font as a resource in an EXE
+
+2  Real/EMS/Standard Mode Issues
+    2.1  Large memory allocations in Standard vs Enhanced
+          Mode
+    2.2  WIN87EM.DLL and Win87EM.EXE
+
+3  Development environment and tools related topics
+    3.1  Getting your application ready for retail release
+    3.2  C Run time c5 vs c6
+          3.2.1  Int86 and int86x c-run time functions
+          3.2.2  Alt math library and multiple instances of
+                  your program
+          3.2.3  Huge segment subtraction did not work in C
+                  5.1; relink with C 6 libs.
+          3.2.4  Removing level 4 warning messages
+          3.2.5  Using constant expressions in c6
+          3.2.6  C6 Compiler options -  using -Ow switch
+    3.3  LINK 5.10
+    3.4  C 5.1's MAKE, C 6.0's NMAKE and NMK File
+          Maintenance Utilities
+    3.5  No MS Pascal support for Win 3 SDK
+    3.6  Programmers Work Bench (PWB)
+    3.7  RC compiler -v switch
+    3.8  CVW and Win 2.x applications
+    3.9  Help Compiler (HC) and Help Files
+    3.10 How much general protection is there under Windows
+          3.0
+
+==================
+1.  USER INTERFACE
+==================
+
+
+-----------------------------------------------
+1.1  Communicating with Progman Manager via DDE
+-----------------------------------------------
+
+This subject is covered in detail in Section 22.4.4 of the
+Windows SDK Guide to Programming. In order to start a
+conversation with the WM_DDE_INITIATE message, you will use
+"progman" for both the item and the topic. Beware that
+shells in future versions of Windows or replacement shells
+offered by ISVs might not provide this functionality.
+
+
+-----------------------------------------------
+1.2   Making Your Application the Windows Shell
+-----------------------------------------------
+
+It is very easy to make your application the Windows shell
+program instead of using Program Manager. You just need to
+make sure your application is loaded first and that you
+properly close down the system. Typically, a shell
+application should provide most of the same capabilities as
+the normal Windows shell (the ability to run applications,
+copy files, etc.).
+
+Future versions of Windows might rely on new services
+included their shells. The upward compatibility of your
+shell with future versions of Windows cannot be guaranteed.
+
+In order for Windows to load your application first, you
+need to change a setting in your SYSTEM.INI file. Look in
+the [boot] section of SYSTEM.INI for the setting
+"SHELL=PROGMAN.EXE". Replace this setting with
+"SHELL=<your application>.EXE".
+
+Your shell should correctly close down the system when it
+exits by prompting the user before closing all other
+applications. The user can then close or save any open
+documents. To close the system, your shell should do the
+following:
+
+1. When your application starts, find out whether it is the
+   first application running, and set a flag as follows:
+
+     bIsShell = (GetNumTasks() == 1); /* bIsShell is */
+                                      /* global BOOL */
+
+2. When your application is getting ready to exit, do the
+   following:
+
+      if(bIsShell) {
+
+          - do clean up routines -
+
+          ExitWindows(0, 0);
+      }
+
+   This should be done in the WM_CLOSE case for the main
+   application window. If ExitWindows returns false,
+   indicating the user canceled the operation, then the main
+   window should not be closed, and the application should
+   continue executing.
+
+   For more information on the ExitWindows function, and the
+   WM_QUERYENDSESSION and WM_ENDSESSION messages, see the
+   Reference, Volume 1.
+
+The ExitWindows function performs all of the normal
+procedures necessary for ending the Windows session. It
+sends all top-level windows the WM_QUERYENDSESSION message.
+Any application can cancel the shutdown procedure by
+returning zero. The applications are then sent the
+WM_ENDSESSION message to indicate whether the session is
+actually going to end and to allow the applications to
+perform any final cleanup.
+
+NOTE: The application calling ExitWindows does not receive
+      the WM_QUERYENDSESSION and WM_ENDSESSION messages.
+      If all applications agree to end the session,
+      ExitWindows will not return; it will exit immediately.
+      Therefore, the calling application should save any
+      open files before calling ExitWindows. Another method
+      is for the application to spawn another instance
+      of itself, passing the new instance a special command
+      line. The new instance would call ExitWindows. The
+      original instance would receive the WM_QUERYENDSESSION
+      and WM_ENDSESSION messages and respond appropriately.
+      This method is not particularly advantageous, however,
+      since saving open files is normally done at the time
+      of WM_QUERYENDSESSION.
+
+This procedure, although not previously documented, also
+works for Windows versions 1 and 2. Under these versions of
+Windows, ExitWindows was used for Stand Alone Environment
+applications. The syntax for ExitWindows for Windows
+versions 1 and 2 is defined as follows:
+
+  BOOL FAR PASCAL ExitWindows(LPSTR msg);
+
+The msg parameter should be 0 or NULL.  If you use Microsoft
+OnLine, refer to file KAMAKAZI.ARC in the SoftwareLibrary
+for an example of ending a Windows version 2.x application 
+as described above.
+
+This same procedure can be used to exit Windows even if your
+application isn't the shell, but this isn't recommended. To
+maintain a consistent user interface, you should use only
+the shell application to exit Windows.
+
+
+---------------------------
+1.3  Drag and Drop Messages
+---------------------------
+
+The Drag and Drop messages that Program Manager and File
+Manager use are for internal use of these programs and are
+not currently documented. The DRAG and DROP protocol for
+manipulating program icons within groups is being
+redesigned. Once the design effort is complete,
+documentation will be issued to explain how to use these
+messages in a compliant manner. Until then, however,
+Microsoft is not able to support the use of those messages.
+This, however, does not stop you from implementing your own
+series of messages.
+
+The only message of this type that we are currently
+documenting is WM_QUERYDRAGICON.
+
+-------------
+1.4  Controls
+-------------
+
+
+1.4.1  Using a Fixed Font
+-------------------------
+The easiest way to use a fixed-pitch font for your controls
+is with the SYSTEM_FIXED_FONT. This will allow you to use
+spaces to separate columns of information in list boxes in
+the 2.x and 3.0 versions of your application. The
+LBS_USETABSTOPS style is recommended for version 3.0
+applications.
+
+  hFixedFont = GetStockObject(SYSTEM_FIXED_FONT);
+  hOldFont   = SelectObject ( hDC, hFixedFont);
+
+To get a fixed font in a dialog box, you need to send the
+WM_SETFONT message during the initialization process to
+each control that will use the fixed font.
+
+  case WM_INITDIALOG:
+          SendDlgItemMessage(hDlg, ID_CONTROL, WM_SETFONT,
+                             hFixedFont, 0L);
+          break;
+
+
+1.4.2  List Boxes
+-----------------
+
+  Setting Tab Stops in List Boxes
+  -------------------------------
+
+To set tab stops in a list box, you must use the
+LBS_USETABSTOPS style when creating the list box.
+Initialize an array containing the desired tab stops and
+send the LB_SETTABSTOPS message to the window.
+
+The following message accepts dialog units as its tab stops:
+
+  SendMessage(..., LB_SETTABSTOPS, (LPSTR)Tabstopslist);
+
+A dialog unit is approximately equal to 1/4 the width of the
+system font. The value returned from GetDialogBaseUnits
+represents dialog base units before being scaled to actual
+dialog units.  The actual dialog unit in the x direction is
+1/4 of the width returned by GetDialogBaseUnits.
+
+For example, to set up two tabs for the list box, do the
+following:
+
+  int DlgBaseUnit;
+  int Tabs[2];
+     .
+     .
+     .
+
+  DlgBaseUnit = LOWORD (GetDialogBaseUnit ());
+
+  Tabs[0] = (DlgBaseUnit * UnitA) / 4;
+  Tabs[1] = (DlgBaseUnit * UnitB) / 4;
+
+  SendMessage (hWnd,LB_SETTABSTOPS,2,(LPSTR)Tabs);
+
+The tabs work the same way typewriter tabs do; once you have
+overrun a tab stop, a tab character will move you to the
+next tab stop.
+
+
+  Multicolumn List Boxes
+  ----------------------
+
+The multicolumn list box is designed for homogeneous data.
+For example, all the data might be "first names". These
+first names could logically fall into the same column or be
+in multiple columns. This feature was implemented in Windows
+3.0 so list boxes could be shorter vertically by splitting
+the column into two or three columns.
+
+To create a mutlicolumn list box, specify the
+LBS_MULTICOLUMN style when creating the list box and set the
+column width using the LB_SETCOLUMNWIDTH message.
+
+The management of the list box is automatic, including
+horizontal and vertical scrolling and distribution of the
+entries into columns.
+
+Multicolumn listboxes cannot have variable column widths.
+This feature may be provided in a future release.
+
+
+  Multiselection List Boxes
+  -------------------------
+
+Multiple-selection list boxes are toggled with the SHIFT+F8
+shortcut key.
+
+LBS_MULTIPLESEL changed between 2.x and 3.0.  The new
+LBS_EXTENDEDSEL style has a similar mouse interface to the
+Windows 2.x LBS_MULTIPLESEL style, but the keyboard
+interface is different.
+
+The best way to get functionality similar to that of the
+version 2.x LBS_MULTIPLESEL is to use the version 3.0
+LBS_EXTENDEDSEL style.
+
+The new style is similar, but not identical to the version
+2.x multiselection list-box style. With the mouse, the user
+can toggle multiple noncontiguous items on and off by
+holding down the CTRL key. The user can select a contiguous
+range of items by either clicking and dragging the mouse up
+or down, or by holding down a SHIFT key and using the UP
+ARROW or DOWN ARROW key, or by holding down SHIFT and
+clicking the first and last item in the desired range.
+
+The LBS_EXTENDEDSEL style is just a user interface
+variation of the LBS_MULTIPLESEL style. LBS_EXTENDEDSEL |
+LBS_MULTIPLESEL will end up as the LBS_EXTENDEDSEL style,
+but otherwise you can use same styles, messages, parameters,
+and functions as you would for LBS_MULTIPLESEL styled
+list boxes.
+
+This change was made to be in compliance with the IBM CUA
+(Common User Access) guidelines.
+
+The only way to have functionality exactly like Windows 2.x
+would be to define your own window class and handle all
+processing for the list box.
+
+  Scroll Bar in List Boxes
+  ------------------------
+
+If you specify the WS_(V/H)SCROLL style on a list box and if
+the items in a list box will fit in the display area, you
+will not get a scroll bar.  The scroll bar will
+automatically appear when the number of items exceeds what
+can be seen in the list box. If you initially create the
+list box without a WS_(V/H)SCROLL style, the application
+has complete control over the visibility of the scroll bar
+via the ShowScrollBar function.
+
+
+1.4.3  Combo Boxes
+------------------
+
+Non-owner-draw combo boxes do not support the expansion of
+tabs in strings, unlike list boxes with the LBS_USETABSTOPS
+style. Owner-draw combo boxes will allow you to use the
+TabbedTextOut function to expand tabs in strings.
+
+The owner-draw combo box styles CBS_SIMPLE and CBS_DROPDOWN,
+which contain a child edit control, do not support the use
+of the edit control. The contents of the edit control are
+overwritten, either from user input or from trying to
+display the selected list box item.
+
+The owner-draw combo box style CBS_DROPDOWNLIST will allow
+you to properly display the selected list-box item within
+the static area of the combo box that is used, instead of an
+edit control for the other two combo-box styles.  Please
+note that the alignment of the static area is different from
+the list box.  The left side of the rectangle, the
+DRAWITEMSTRUCT member rcItem.left, for a list
+box item is 0, but it is greater than 0 for the static area.
+The right sides of the above rectangles also differ, so to
+vertically align the static area with the list box, you will
+need to take these differences into account.  However, for
+Windows 3.0, you can take advantage of these differences,
+especially the left side of the rectangles, to detect the
+difference between the static area and the list-box items.
+Another difference between the static and list-box items is
+the DRAWITEMSTRUCT member hDC.
+
+
+1.4.4 Buttons
+-------------
+
+The Windows 2.x BS_USERBUTTON style is no longer documented
+and it is recommended that you use the Windows 3.0
+BS_OWNERDRAW style instead.  User button-specific messages
+are still generated, but some functionality available in
+Windows 2.x is not present in Windows 3.0.
+
+
+1.4.5  Edit Controls
+--------------------
+
+Multiline edit controls in a dialog box can not use ENTER to
+go to the next line; you must use CTRL+ENTER.  This is so
+the user can use ENTER as the default button.
+
+
+1.4.6  Subclassing
+------------------
+
+It is strongly recommended that you avoid abuse of
+subclassing of standard Windows controls. This includes
+relying on message order and other undocumented
+behavior of Windows standard controls.  You should take
+advantage of the owner-draw feature for list boxes, buttons,
+and menus instead of subclassing these standard controls.
+
+Note, however, that there is no reason for you to avoid
+subclassing the windows and controls that your application
+defines.
+
+
+1.4.7  Registering New Window Classes in a DLL
+----------------------------------------------
+
+To do a RegisterClass in a DLL, you must use the
+CS_GLOBALCLASS style. The window procedure also has to be in
+the DLL because the RegisterClass function will do a
+MakeProcInstance on the procedure.
+
+
+------------------------------
+1.5  Controls and Dialog Boxes
+------------------------------
+
+In your dialog boxes, make sure the static text controls
+that display filenames have the SS_NOPREFIX style.  Edit
+controls or combo boxes with edit controls that accept
+filenames from the user need to have the ES_OEMCONVERT
+style.
+
+Make sure your dialog boxes have a System menu so that they
+can be moved under keyboard control.  The styles you need to
+use are:
+
+  DS_MODALFRAME | WS_CAPTION | WS_SYSMENU
+
+The CGA driver is the lowest resolution screen supported by
+Windows. So you will need to check all windows and dialog
+boxes to make sure they fit on the display screen.
+
+Because Windows supports many display devices, some of which
+are high-resolution monochrome, and the CGA, which supports
+only two colors, make sure that the colors you use do not
+get mapped to black on black or white on white.
+
+Make sure that your application will work without the mouse
+and that the keyboard interface is correctly set up,
+especially in dialog boxes.
+
+Check all fonts used for spacing.
+
+A common problem is overlapping controls in dialog boxes.
+Make sure the rectangle specified for a given control does
+not overlap with another control's rectangle. Otherwise,
+text and borders may be clipped. Group boxes and the list
+box on drop-down combo boxes are exceptions to this rule.
+
+You can use the Setup program to easily change your Windows
+configuration so that you can test your application with
+different devices.
+
+Overlapping child windows, including controls in a dialog
+box, are not clipped automatically.  If you subclass and
+handle the WM_PAINT message, controls won't clip because
+controls use the parent window display contexts. You will
+need to either perform your own clipping or define child
+windows whose areas don't overlap. This has been true
+in all versions of Windows.
+
+
+----------------------------------------------------------
+1.6  Private Class Dialog Boxes - How to Make HexCalc Work
+----------------------------------------------------------
+
+The HexCalc program provided in Charles Petzold's
+"Programming Windows" book does not work correctly with
+Windows 3.0.  You need to add the DLGWINDOWEXTRA value to
+the WNDCLASS WndExtraBytes.  This is because Windows uses
+the extra bytes at the end of the window, so when it
+isn't allocated, wild writes will occur.  This same problem
+could occur with version 2.x, but it wasn't as serious.
+
+
+------------
+1.7  WinHelp
+------------
+
+
+If your application supports WinHelp, in the processing of
+the WM_DESTROY or WM_CLOSE message for your main window
+(hwndMain), you should call:
+
+  WinHelp(hwndMain, lpszHelpFileName , HELP_QUIT, 0);
+
+
+------------------------------------
+1.8  Limitations on System Resources
+------------------------------------
+
+
+1.8.1   Limitation on number of Windows in system
+
+There is a limit to the number of windows that can be
+created system-wide. Each window creates a window structure
+that is allocated out of USER's heap, a data segment, which
+is limited to 64K. This is the limitation. Since there are a
+number of items that effect the USER's heap, there is no way
+to determine how much space will be around at any given
+time.  You can use Heap Walker to check the size of USER's
+data segment.
+
+
+1.8.2   Menus and their effect on system resources
+
+Menus are stored in USER's heap and they have a large effect
+on system resources available. If an application loads a
+menu and doesn't associate it with a window, it must destroy
+the menu itself. (Menus used with the TrackPopupMenu
+function won't automatically be freed when the application
+exits.)
+
+
+1.8.3   Calculating Free System Resources
+
+The Free System Resources figure in Program Manager's About
+dialog box is calculated as follows:
+
+The calculation is the same for all modes (although not done
+for real mode).
+
+% free = min (% free of USER's heap, % free of GDI's heap)
+
+                           (Max heap size - heap used) 
+% free USER or GDI heap =  --------------------------- * 100
+                                  Max heap size
+
+The maximum heap size is 64K less the sum of the size of the 
+static variables and the stack.
+
+There is no external API defined to calculate these values.
+
+
+-----------------------------------------------
+1.9  Metafiles -- SelectObject and DeleteObject
+-----------------------------------------------
+
+SelectObject does not return a handle to the previous object
+when used in conjunction with a metafile device context.
+Because of this you should not try to select the old object
+into the device context when you are done with the current
+object.  Instead, you must explicitly select the desired
+object.  Trying to select the object using the handle
+returned by SelectObject will produce a fatal error.
+
+DeleteObject is now supported in metafiles.
+
+
+----------------------------------
+1.10  Font as a resource in an EXE
+----------------------------------
+
+Although not encouraged, fonts may be added to the resources
+of an application.  To access these fonts use the function
+AddFontResource.  Use the filename of the .EXE file as the
+parameter to this function.  This is in contrast to 2.x,
+where you could do a FindResource call using RT_FONTDIR,
+load the resource and then add the font resource using the
+handle returned from LoadResource.
+
+
+=====================================
+2       Real/EMS/Standard Mode Issues
+=====================================
+
+
+
+------------------------------------------------------------
+2.1  Large memory allocations in standard vs enhanced modes.
+------------------------------------------------------------
+
+In standard mode, the largest single GlobalAlloc you can do
+is for 1MB of memory. You can, however, make separate global
+allocations that total more than 1MB. In enhanced mode, you
+can allocate a single block larger than 1MB (restricted by
+available memory).
+
+
+-----------------------------------
+2.2  Win87EM.DLL and Win87EM.EXE
+-----------------------------------
+
+For Windows 3.0, Win87EM.EXE has become WIN87EM.DLL, so if
+your application is built with the 3.0 SDK, it will always
+use WIN87EM.DLL, which is shipped with the retail release.
+If you are using a marked 2.x application running under
+protected mode, and your application is requesting
+WIN87EM.EXE, WIN87EM.DLL is loaded instead.  If you are
+using a marked applicaiton running under real mode,
+WIN87EM.EXE will be loaded.
+
+
+========================================================
+3       Development environment and tools related topics
+========================================================
+
+
+
+---------------------------------------------------------
+3.1     Getting your application ready for retail release
+---------------------------------------------------------
+
+Below is a list of steps to take when moving your
+application from TESTING/DEBUGGING mode to
+RETAIL release.
+
+  Code File Changes
+  -----------------
+
+1. Remove the -Zi option, to remove CVW line information.
+   Change the make file compile line from something such as
+   the following:
+
+        cl -W3  -Od -Zpei -Gsw myapp.c
+
+   to:
+
+        cl -W3  -Os -Zpe  -Gsw myapp.c
+
+2. Remove the /co switch from the LINK line.
+
+3. Remove any debugging code, or flip any debugging
+   switches you may have in your application to OFF.
+
+-------------------------------------
+3.2     C Compiler Issues (C5 vs. C6)
+-------------------------------------
+
+
+3.2.1   Int86 and int86x c-run time functions
+---------------------------------------------
+
+The int86 and int86x C 5.1 c-runtine functions did not work
+in protect mode because they directly executed code off the
+stack. Just compile with the Windows 3.0 SDK versions of the
+C run-time libraries.
+
+
+3.2.2   Alt math library and multiple instances of your
+        program
+-------------------------------------------------------
+
+In C 5.1 the alternate math library created an extra data
+segment, therefore not allowing you to run more than one
+instance in Windows 3.0. To fix this, recompile with the new
+SDK libraries.
+
+Using the large-model libraries will create a second data
+segment by design and so you will not be able to start a
+second instance of the application.
+
+
+3.2.3     Huge segment subtraction
+----------------------------------
+
+Huge segment subtraction did not work with the
+version 2.x of the C run-time libraries.  Relink with the
+version 3.0 of the C run-time libraries.
+
+
+3.2.4   Removing warnings at level 4
+------------------------------------
+
+Warning level 4, -W4, can be used without having windows
+display a lot of extra warning messages by using the
+#define NOCOMM switch before the WINDOWS.H hearder file, so
+long as you are not using comm routines.
+
+
+3.2.5   Using constant expressions in C6
+----------------------------------------
+
+Due to ANSI C changes, promotion of constant values to LONG
+/ DWORD occur at different times.  Thus if you want to alloc
+64K, you should use:
+        GlobalAlloc( GHND, ( 64L * 1024L) );
+
+ instead of
+
+        GlobalAlloc( GHND, (DWORD)( 64 * 1024) );
+
+ which will not work.
+
+
+3.2.6   C6 Compiler options /Ow
+-------------------------------
+
+For C 6.0, we recommend the use of the safer Windows relaxed
+alias checking optimization option /Ow instead of the less
+safe option /Oa.
+
+
+---------------
+3.3   LINK 5.10
+---------------
+
+The C 6.0 linker, LINK version 5.10, requires the statement
+EXETYPE WINDOWS in all Windows application and dynamic link
+library .DEF files.  This is also true for the C5.1 linker.
+
+The /INC option for LINK 5.10 does not produce Symdeb or
+Wdeb386 debugger compatible .SYM files.  You must still
+generate symbolic information for these debuggers with the
+CL or MASM option /Zd, create a .MAP file as with the LINK
+option /MAP, and then run the MAPSYM utility to generate
+symbolic information appropriate for the above debuggers.
+
+
+----------------------------------------------------------
+3.4   C 5.1's MAKE, C 6.0's NMAKE and NMK File Maintenance
+Utilities:
+----------------------------------------------------------
+
+C 6.0's NMAKE, CL and C1 or C2 may run out of far heap
+memory in DOS. This could also occur using C 5.1's MAKE
+utility. As an alternative to NMAKE or MAKE, try the less
+memory consumptive C 6.0 program maintenance utility
+NMK.COM.
+
+
+------------------------------------------
+3.5     No MS PAscal support for Win 3 SDK
+------------------------------------------
+
+The Windows 3.0 SDK does not support the use of MS Pascal.
+The Windows 3.0 SDK does not contain include files or
+libraries for Pascal.  A future version of the Windows SDK
+may provide MS Pascal support. MS Pascal may be used with
+the Windows 2.x SDK, and Windows 2.x applications that are
+memory compatible with Windows 3.0 may be marked for use in
+Windows 3.0.
+
+
+------------------------------------
+3.6     Programmers Work Bench (PWB)
+------------------------------------
+
+a. The linker Release Options for Windows incorrectly
+   include the option /EXE (pack executable file).  This
+   option must be removed.  To save this change in a
+   section of TOOLS.INI, save your Initial Build Options
+   to a non-default name such as MySwitch, and on subsequent
+   PWB sessions, choose this saved Initial Build Option.
+   (PWB will always use the /EXE option for the default
+   Windows Retail Initial Build Options.)
+
+b. If you concatenate the C 6.0 text file TOOLS.PRE to your
+   TOOLS.INI file, be sure that the switches winlibs and
+   windlllibs are set to "explicit."  The default in
+   TOOLS.PRE is "none."
+
+
+-----------------------------
+3.7     RC compiler -v switch
+-----------------------------
+
+In order to get the additional information about resources,
+you will need to use the -v switch.  For more information on
+what this information is, please see Volume 2 of the
+Reference.
+
+
+-----------------------------------
+3.8    CVW and Win 2.x applications
+-----------------------------------
+
+You cannot use CVW to debug non-marked 2.x applications.
+You cannot use CVW in real mode.  You must use SYMDEB for
+real mode.
+
+
+-----------------------------------------
+3.9     Help Compiler (HC) and Help Files
+-----------------------------------------
+
+Your WYSIWYG word processor may have features that HC.EXE
+does not understand and may misinterpret.  For example, side
+by side paragraphs and a different indentation on the first
+line of a paragraph are not supported.
+
+The "keep together" paragraph style will result in help only
+displaying a single line paragraph without line breaks.
+This is usually not the desired effect since WinHelp will
+wrap the text automatically to fit the size of the window.
+
+Topics in a Help file must be seperated by hard page breaks.
+
+
+------------------------------------------------------------
+3.10  How much general protection is there under Windows 3.0
+------------------------------------------------------------
+
+The 286 and 386 chip can only detect wild reads and writes that 
+occur outside of their Local Descriptor Tables (LDT).  Windows uses 
+only one LDT across all applications.  Therefore, the general 
+protection (GP) provided by the 286 and 386 chips is limited 
+to the following:
+
+1. A GP fault occurs if you try to write to a code segment
+   or any other nonwriteable segment.
+
+2. A GP fault occurs if you read or write outside of a memory
+   block such as allocated by GlobalAlloc.
+
+3. A GP fault occurs if you read or write using an invalid
+   selector.
+
+4. A GP fault does NOT occur if you happen to write to
+   another application's data segment, since the other
+   application's data segment is referred to by the same 
+   Windows LDT. 
+
+Note, when you use the WDEB386 debugger and get a GP fault, the
+way to find out where you are in your code is to use the .VM
+command.
