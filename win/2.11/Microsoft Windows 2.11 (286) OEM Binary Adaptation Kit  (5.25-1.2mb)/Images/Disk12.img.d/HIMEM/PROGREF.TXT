@@ -1,0 +1,343 @@
+		High Memory Manager API Specifications:
+		=======================================
+
+DEFINITIONS:
+------------
+
+    Extended
+    Memory	-   Memory located above the 1 MB boundary which can be
+		    used to store program data.  Extended memory is
+		    available only on 80286 and 80386 machines.
+
+    High Memory -   The first 64K of Extended memory.  The High Memory
+		    Area is unique because CODE CAN BE EXECUTED IN IT.
+		    When the A20 Line (see below) is enabled, setting
+		    CS=FFFF and IP>=10 allows the computer to execute
+		    an extra (64K-16 bytes) of code stored in this area.
+
+    A20 Line	-   The 20th address line of a 80286 or 80386 CPU.
+		    Enabling the A20 line allows access to Extended memory
+		    (and by definition the High Memory Area also).
+
+    HMM 	-   High Memory Manager.  An installable DOS driver which
+		    implements the Microsoft API for using High memory.
+		    HMM Drivers can be customized to support differing
+		    hardware requirements while retaining the same API.
+
+    HIMEM.SYS	-   The High Memory Manager currently being distributed
+		    by Microsoft.  HIMEM is a HMM driver which works with
+		    MS-DOS Version 3.0 and higher.  It currently supports
+		    IBM PC/ATs, IBM PS/2s, and true compatibles.
+
+    Application -   A standard DOS program.  NOT a TSR or an Installable
+		    DOS Driver.
+
+
+DRIVER INSTALLATION:
+--------------------
+
+    An HMM driver such as HIMEM.SYS is installed by including a DEVICE
+statement in the CONFIG.SYS file.  It must be installed prior to any other
+devices or TSRs which use it.  Eventually, the HMM API will be supported
+by DOS itself and installation will be unnecessary.
+
+
+THE PROGRAMMING API:
+--------------------
+
+    The HMM API Functions are accessed via a Control Function.	The address
+of the HMM Control Function is determined via INT 2Fh.	First, a program should
+determine if the HMM driver is installed.  Next, it retrieves the address
+of the HMM's Control Function.	It can then use any of eleven available API
+functions.  The functions are divided into four groups:
+
+	1. Driver Information Functions (0)
+	2. HMA Management Functions (1-2)
+	3. A20 Management Functions (3-7)
+	4. Extended Memory Management Functions (8-10)
+
+
+DETERMINING IF AN HMM DRIVER IS INSTALLED:
+------------------------------------------
+
+    The recommended way of determining if a HMM driver is installed is to
+see if INT 2Fh, Function 16h is hooked.  This can be done by setting AH=16h
+and AL=00h and calling INT 2Fh.  If an HMM driver is available, 80h will
+be returned in AL.  This is the only method guarenteed to work with future
+versions of DOS.
+
+
+CALLING THE API FUNCTIONS:
+--------------------------
+
+    Use INT 2Fh with AH=16h and AL=10h to obtain the address of the HMM's
+control function.  The address is returned in ES:BX.  This function is called
+to access all of the HMM's API functions.  It should be called with AH set
+to the number of the API function requested.  The API function will put a
+return code in AX and possibly return other information in DX or ES:BX.
+
+
+API FUNCTION DESCRIPTIONS:
+--------------------------
+
+    There are currently eleven API functions available:
+
+	0)  Version
+	1)  RequestHMA
+	2)  ReleaseHMA
+	3)  GlobalEnableA20
+	4)  GlobalDisableA20
+	5)  TempEnableA20
+	6)  TempDisableA20
+	7)  QueryA20
+	8)  QueryExtMemory
+	9)  AllocExtMemory
+       10)  FreeExtMemory
+
+Each is described below.
+
+
+Function 0 - Version:
+---------------------
+
+    ARGS:   AH = 0
+    RETS:   AX = Version number of the HMM Driver
+
+    This function returns the version number of the currently installed HMM
+driver (ex. AX=0103h for version 1.03).
+
+
+Function 1 - RequestHMA:
+------------------------
+
+    ARGS:   AH = 1
+    RETS:   AX = 1 if the High Memory Area was assigned to the caller,
+		 0 if it is unavailable
+
+    This function checks to see if the High Memory Area is currently available.
+If it is, the function then checks to see if enough Extended memory is avail-
+able to satisfy the request and if it is, the function reserves the area for
+use by the caller.  The caller can then use INT 15h, Function 87h (Extended
+Memory Block Move) to store code up to 64k-16 bytes of code in the HMA.  Then,
+by enabling the A20 line and jumping to any offset greater than FFFF:10, the
+caller can execute the code in that area.
+
+    NOTE: The High Memory Area is reserved for the caller by hooking INT 15h,
+	  Function 88h (Extended Memory Available) so that it returns zero.
+	  Programs which wish to allocate Extended memory for themselves
+	  after the High Memory Area has been reserved must use the HMM
+	  interface to do so (see Functions 8, 9, and 10).
+
+
+Function 2 - ReleaseHMA:
+------------------------
+
+    ARGS:   AH = 2
+    RETS:   AX = 1 if successful, 0 otherwise
+
+    This function de-allocates the High Memory Area and returns it to the pool
+of available Extended memory.
+
+
+Function 3 - GlobalEnableA20:
+-----------------------------
+
+    ARGS:   AH = 3
+    RETS:   AX = 1 if the A20 line was Globally enabled, 0 otherwise
+
+    This function tries to Globally (as opposed to Temporarily) enable the
+A20 line.  If the A20 line is Globaly enabled successfully, it will remain
+enabled until a Global Disable is issued.  Any Temporary Disables which
+are issued while the A20 line is Globally enabled are ignored.	Applications
+and Operating Environments which use the High Memory Area should use
+GlobalEnableA20 to access Extended memory including the High Memory Area.
+Drivers and TSRs should use TempEnableA20 instead.
+
+    NOTE: Applications which use enable the A20 line should disable it before
+	  they terminate.
+
+
+Function 4 - GlobalDisableA20:
+------------------------------
+
+    ARGS:   AH = 4
+    RETS:   AX = 1 if the A20 line was Globally disabled, 0 otherwise
+
+    This function tries to Globally disable the A20 line.  The HMA area is not
+available when the A20 line is disabled.
+
+    NOTE: Calling GlobalDisableA20 will cancel any outstanding Temporary
+	  Enables.
+
+
+Function 5 - TempEnableA20:
+----------------------------
+
+    ARGS:   AH = 5
+    RETS:   AX = 1 if the A20 line is Temporarily enabled, 0 otherwise
+
+    This function temporarily enables the A20 line.  It does so by incrementing
+a "Temp Enables" counter and, if the counter is 1, trying to enable the A20
+line.  Drivers and TSRs should use TempEnableA20 to access Extended memory
+including the High Memory Area.  In addition, the A20 line should be turned
+off via TempDisableA20 before a driver or TSR releases control of the system.
+
+    NOTE: When TempEnableA20 returns AX=1 it does NOT mean that the A20 line
+	  has been definately turned on.  Use QueryA20 (Function 7) to
+	  determine the current physical status of the A20 line.
+
+	  Drivers and TSRs which enable the A20 line should call TempDisableA20
+	  before releasing control.
+
+
+Function 6 - TempDisableA20:
+----------------------------
+
+    ARGS:   AH = 6
+    RETS:   AX = 1 if the previous Temporary Enable was cancelled, 0 otherwise
+
+    This function cancels a previous Temporary Enable.	It does so by decre-
+menting a "Temp Enables" counter (if it is not already zero) and then, if it
+becomes zero, trying to disable the A20 line.
+
+
+Function 7 - QueryA20:
+----------------------
+
+    ARGS:   AH = 7
+    RETS:   AX = 1 if the A20 line is Enabled, 0 otherwise
+
+    This function checks to see if the A20 line is physically enabled.	It
+does this in a hardware independent manner by seeing if "memory wrap" occurs.
+If some data that should be in the High Memory Area is the same as the
+corresponding data in the first 64K of conventional memory, then the memory
+is "wrapping" and the A20 line is physically disabled.
+
+
+Function 8 - QueryExtMemory:
+----------------------------
+
+    ARGS:   AH = 8
+    RETS:   AX = Number of K of Available Extended Memory
+
+    This function should be called whenever an application wishes to allocate
+some Extended memory and yet INT 15h, Function 88h (Extended Memory Available)
+returns zero.  This situation will occur when the High Memory Area has been
+used.  This function returns the number of K of Extended memory which is
+currently unused.
+
+    NOTE: See the section "Allocating Extended Memory" below for more.
+
+
+Function 9 - AllocExtMemory:
+----------------------------
+
+    ARGS:   AH = 9
+	    DX = Amount of Extended Memory being requested in K
+    RETS:   AX = 1 if the block is allocated, 0 otherwise
+	    DX:BX = 24-bit segment physical address of the beginning of
+		    the memory block.
+
+    This function attempts to allocate a block of the given size out of the
+pool of remaining free Extended memory.  If a block is available, it is
+reserved for the caller and the 24-bit segment physical address of the
+beginning of the block is returned.  This address can be used by INT 15h,
+Function 87h (Extended Memory Block Move) when storing data in the buffer.
+
+    NOTE: See the section "Allocating Extended Memory" below for more.
+
+
+Function 10 - FreeExtMemory:
+----------------------------
+
+    ARGS:   AH = 10
+	    DX:BX = 24-bit segment physical address of the block being freed
+    RETS:   AX = 1 if the block is freed, 0 otherwise
+
+    This function attempts to free a block of Extended memory which was
+previously allocated using AllocExtMemory.  Applications which allocate
+Extended memory should free that memory before exiting.
+
+    NOTE: See the section "Allocating Extended Memory" below for more.
+
+    FOR HIMEM.SYS Version 1.0x -
+
+	  THIS FUNCTION IS CURRENTLY UNIMPLEMENTED.
+	  Microsoft will implement this capability in the future.
+	  Currently, this function returns zero.  PROGRAMS SHOULD
+	  STILL CALL IT HOWEVER.  This will insure compatibility
+	  with future versions.
+
+
+
+IMPLEMENTATION NOTES FOR HIMEM.SYS:
+-----------------------------------
+
+-   HIMEM.SYS currently supports true AT-compatibles, 386 machines, PS/2s,
+    AT&T 6300 Pluses and HP Vectras.
+
+-   If HIMEM finds that it can't properly control the A20 line or if there
+    is no Extended memory available when HIMEM.SYS is invoked, a stub version
+    of the driver is installed.  The stub version returns 0 for all functions
+    except Version (Function 0).  HIMEM.SYS displays the message "High Memory
+    Area Unavailable" when this situation occurs.
+
+-   If HIMEM finds that the A20 line is already enabled when it is invoked,
+    it will NOT change the A20 line's state.  The assumption is that whoever
+    enabled it knew what they were doing.  HIMEM.SYS displays the message "A20
+    Line Permanently Enabled" when this situation occurs.
+
+-   HMM Drivers such as HIMEM.SYS are incompatible with IBM's VDISK.SYS driver.
+    However, all HMM Drivers are compatible with Microsoft's RAMDRIVE.SYS.
+
+
+
+ALLOCATING EXTENDED MEMORY:
+---------------------------
+
+    The HMM API contains several functions which allow callers to allocate
+and (eventually) free part of Extended memory for data storage.  Here's a brief
+overview of how programs allocate Extended memory now and how they can continue
+to allocate it after the High Memory Area has been used.
+
+    The currently recommended method for allocating Extended memory is to use
+INT 15h, Function 88h (Extended Memory Available).  This will return the number
+of K of available Extended memory to the caller.  For example, if the system has
+2MB of memory installed in it, the caller will get back 1024 from INT 15h
+(1MB of conventional memory, 1MB of Extended).	If the caller wishes to reserve
+part of that memory for his own use - say 640K - he must chain his own INT 15h
+handler in front of the current one and have it return a smaller number - say
+384K - to whoever else asks.  The caller is then free to use the memory within
+the range he reserved - say 1MB+384K up to 2MB.
+
+    Some things to notice about this method:
+
+	1. INT 15h handlers can NEVER be unhooked reliably.
+
+	   There is no way a caller can prevent someone else from inserting
+	   another INT 15h hook after his handler, therefore a caller cannot
+	   remove his handler from the chain with risking a system crash.
+
+	2. Because of (1), Extended memory can NEVER be deallocated.
+
+	3. Because the INT 15h interrupt handlers must always remain in the
+	   system, only drivers and TSRs can reliably allocate Extended memory.
+
+	4. Extended memory is allocated in a top-down manner (e.g. Starting
+	     at 2MB and progressing down to the 1MB line).
+
+    Now, how does the High Memory Area fit into the picture?  Everything stays
+the same if nobody has used the High Memory Area.  However the first time
+the HMA is allocated to someone, INT 15h is hooked by the HMM Driver and it
+returns zero as the amount of Extended Memory available.  It must do this
+because the HMA resides at the bottom of Extended memory and, as was noticed
+in (4) above, Extended memory is allocated in a top-down fashion.  So, for
+example, even though the HMA takes up 64K of a 2MB machine, it causes INT 15h
+to say that the other 960K of Extended memory isn't available.
+
+    The HMM API provides a solution for this problem.  Whenever a caller is
+told by INT 15h that there isn't any Extended memory, it should use the HMM
+API functions QueryExtMemory (8), AllocExtMemory (9), and FreeExtMemory (10)
+to access Extended memory.  Once a caller has successfully allocated the
+memory block then INT 15h, Function 87h (Extended Memory Block Move) can be
+used to move data into it.

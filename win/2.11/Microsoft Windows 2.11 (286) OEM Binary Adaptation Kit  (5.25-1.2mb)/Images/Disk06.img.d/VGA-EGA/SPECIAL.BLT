@@ -1,0 +1,1861 @@
+	.xlist
+;----------------------------Module-Header------------------------------;
+; Module Name: SPECIAL.BLT
+;
+; Dispatcher for special cases of BLT's and supporting subroutines.
+;
+; Created: In Windows' distant past (c. 1983)
+;
+; Copyright (c) 1983 - 1987  Microsoft Corporation
+;
+; This file is part of a set that makes up the Windows BitBLT function
+; at driver-level.
+;-----------------------------------------------------------------------;
+	.list
+
+	.xlist
+;	Having include files embedded within include files is, strictly
+;	speaking, against house style.  However, it makes separation of
+;	device independent vs dependent code easier.
+
+	include	EGA.INC
+	include	EGAMEM.INC
+	.list
+
+	.xlist
+ifdef	PUBDEFS
+	public	check_device_special_cases
+ifdef	GEN_COLOR_BLT
+	public	cdsc_dest_is_device
+	public	cdsc_its_not_src_copy
+	public	cdsc_not_s_or_p
+	public	cdsc_its_1
+	public	cdsc_its_0
+	public	cdsc_its_patblt
+	public	cdsc_not_solid_nor_grey
+	public	cdsc_its_solid_color
+	public	cdsc_its_a_solid_color
+	public	cdsc_its_inverse_patblt
+	public	cdsc_its_dn
+	public	cdsc_its_dpx
+	public	cdsc_its_src_copy
+	public	cdsc_source_is_memory
+	public	cdsc_blt_not_special_cased
+endif	;GEN_COLOR_BLT
+ifdef	GEN_COLOR_BLT
+	public	blt_done_as_special_case
+	public	cdsc_exit
+endif	;GEN_COLOR_BLT
+ifdef	GEN_COLOR_BLT
+
+	public	ega_src_copy
+	public	ega_src_copy_40
+	public	ega_src_copy_50
+	public	ega_src_copy_60
+	public	ega_src_copy_80
+	public	ega_src_copy_90
+	public	ega_src_copy_100
+
+	public	ega_src_copy_partial_byte
+	public	ega_src_copy_part_10
+	public	ega_src_copy_part_20
+
+	public	ega_src_copy_calc_params
+	public	ega_src_copy_calc_10
+	public	ega_src_copy_calc_20
+	public	ega_src_copy_calc_30
+
+	public	ega_solid_pat
+	public	not_solid_color
+	public	ega_solid_pat_20
+	public	ega_solid_pat_30
+	public	ega_solid_pat_40
+	public	ega_solid_pat_50
+
+	public	do_wes_invert	
+	public	do_wes_dpx_solidpat
+	public	no_left_invert_edge
+	public	no_inner_invert_loop
+	public	no_last_invert_edge
+	public	do_wes_dpx_solid_pat_end
+
+	public	do_wes_patblt
+	public	no_left_pat_edge
+	public	no_inner_pat_loop
+	public	no_last_pat_edge
+
+	public	do_wes_mono_trick
+	public	no_left_edge
+	public	no_inner_loop
+	public	no_last_edge
+
+	public	calc_parms
+	public	crosses_byte_boundary
+	public	no_source
+	public	no_pattern
+ifdef	DEBUG
+	public	yext_is_zero
+	public	yext_not_zero
+endif
+
+	public	mono_to_color_blt
+	public	pmono_to_color_loop
+	public	pnext_byte
+	public	phase_zero
+	public	zmono_to_color_loop
+	public	phase_neg
+	public	nmono_to_color_loop
+	public	nnext_byte
+	public	leave_in_set_mode
+
+	public	edge_mono_to_color_blt
+	public	pfirst_pass
+	public	phase_is_negative1
+	public	nfirst_pass
+	public	end_pass_one
+	public	skip_first_pass
+	public	psecond_pass
+	public	phase_is_negative2
+	public	nsecond_pass
+	public	no_planes_left
+
+	public	pat_blt
+	public	set_next_plane
+	public	hit_next_byte
+	public	pat_blt_next_scan
+	public	pat_blt_loop
+
+	public	edge_pat_blt
+	public	enable_next_plane
+	public	over_scans
+
+	public	invert
+	public	invert_next_scan
+
+	public	edge_invert
+	public	edge_invert_next_scan
+endif	;GEN_COLOR_BLT
+endif	;PUBDEFS
+
+ifdef	THIS_IS_DOS_3_STUFF
+else
+	.286p
+endif
+
+ifdef	THIS_IS_DOS_3_STUFF
+	externA	ScreenSelector
+endif
+
+ifdef	GEN_COLOR_BLT
+	externA	SCREEN_W_BYTES
+endif
+	.list
+
+	page
+
+;----------------------------Private-Routine----------------------------;
+; check_device_special_cases
+;
+; Check for fast special cases of BLT.
+;
+;
+; Determine if the BLT is a special case which can be performed with
+; static code as opposed to code compiled on the stack, and, if so,
+; dispatch to the proper static code.
+;
+; The parameters needed for the BLT (phase alignment, directions of
+; movement, ...) have been computed and saved.  These parameters will
+; now be interpreted and a BLT created on the stack.
+;
+; If the raster op is source copy, both devices are the screen, and the
+; phase alignment is 0, then the copy can be performed by the static
+; code using the EGA's write mode 1.
+;
+; If the rasterop is P, Pn, DDx (0), DDxn (1), and the brush is	solid
+; or grey (for P and Pn), and the destination device is the screen,
+; then the operation can be performed by the static code using the EGA's
+; write mode 2 (write mode 0 for greys).
+;
+; Entry:
+;	SS:BP --> frame of BitBLT local variables
+;	EGA registers in default state
+; Returns:
+;	Carry set if BLT was performed with static code.
+; Error Returns:
+;	Carry clear if BLT was not a special case.
+; Registers Destroyed:
+;	AX,BX,CX,DX,SI,DI,DS,ES,flags
+; Registers Preserved:
+;	BP
+; Calls:
+;	ega_solid_pat
+;	do_wes_patblt
+;	do_wes_invert
+;	do_wes_dpx_solid_pat
+;	ega_src_copy
+;	do_wes_mono_trick
+; History:
+;      Jun     1987     	-by-	*** ******   [******]
+; Subroutinized it.
+;  Thu Mar 05, 1987 09:39:21a	-by-	****** *. *****   [*******]
+; totally re-wrote it.
+;  Sun 22-Feb-1987 16:29:09 -by-  **** ***** [*****]
+; wrote original in distant past.
+;-----------------------------------------------------------------------;
+
+;------------------------------Pseudo-Code------------------------------;
+; {
+; }
+;-----------------------------------------------------------------------;
+
+ifdef	GEN_COLOR_BLT
+ROP_P		equ	0F0h
+ROP_Pn		equ	 0Fh
+ROP_S		equ	0CCh
+ROP_DDx		equ	  0
+ROP_DDxn	equ	0FFh
+ROP_Dn		equ	055h
+ROP_DPx		equ	05Ah
+endif
+
+	assume	ds:nothing
+	assume	es:nothing
+
+check_device_special_cases	proc	near
+
+ifdef	GEN_COLOR_BLT
+	xor	cx,cx
+	mov	dh,gl_the_flags		;Keep the flags in DH for a while
+	test	dh,F0_DEST_IS_DEV	;Is the destination a device?
+	jnz	cdsc_dest_is_device
+	jmp	cdsc_blt_not_special_cased ;Not the device, cannot special case it
+
+cdsc_dest_is_device:
+	mov	di,gl_dest.next_scan	;Special case code expects this
+	mov	al,bptr (Rop[2])	;Get the raster op
+	cmp	al,ROP_S		;Is it src copy?
+	jnz	cdsc_its_not_src_copy
+	jmp	cdsc_its_src_copy	;  Yes, go check it out
+
+cdsc_its_not_src_copy:
+	cmp	al,ROP_P
+	jz	cdsc_its_patblt
+
+cdsc_not_s_or_p:
+	cmp	al,ROP_DDx
+	jz	cdsc_its_0
+	cmp	al,ROP_Pn
+	jz	cdsc_its_inverse_patblt
+	cmp	al,ROP_Dn
+	jz	cdsc_its_dn
+	cmp	al,ROP_DPx
+	jz	cdsc_its_dpx
+	cmp	al,ROP_DDxn
+	jz	cdsc_its_1
+	jmp	cdsc_blt_not_special_cased
+
+;	Its "1" (DDxn).
+cdsc_its_1:
+	mov	bl,0FFh
+	mov	cl_brush_accel,SOLID_BRUSH ;(no brush given for DDx or DDxn)
+	call	ega_solid_pat
+	jmp	short cdsc_exit
+
+cdsc_its_0:
+	xor	bl,bl
+	mov	cl_brush_accel,SOLID_BRUSH ;(no brush given for DDx or DDxn)
+	call	ega_solid_pat
+	jmp	short cdsc_exit
+
+cdsc_its_patblt:
+	mov	bl,cl_brush_accel	; color in lower bits, flags in upper
+	test	bl,SOLID_BRUSH
+	jnz	cdsc_its_a_solid_color
+
+	test	bl,GREY_SCALE
+	jz	cdsc_not_solid_nor_grey
+
+;	It's grey.
+	xor	bl,bl
+	mov	ds,seg_lpPBrush 	; set brush segment
+	call	ega_solid_pat
+	jmp	short cdsc_exit
+
+cdsc_not_solid_nor_grey:
+	call	do_wes_patblt
+	jmp	short cdsc_exit
+
+cdsc_its_solid_color:
+	not	bl
+cdsc_its_a_solid_color:
+	mov	cx,2			; color already in BL
+	call	ega_solid_pat
+	jmp	short cdsc_exit
+
+cdsc_its_inverse_patblt:
+	mov	bl,cl_brush_accel	; color in lower bits, flags in upper
+	test	bl,SOLID_BRUSH
+	jnz	cdsc_its_solid_color
+
+	test	bl,GREY_SCALE
+	jz	cdsc_blt_not_special_cased ; can't special case
+
+;	It's grey.
+	mov	bl,-1
+	mov	ds,seg_lpPBrush 	; set brush segment
+	call	ega_solid_pat
+	jmp	short cdsc_exit
+
+cdsc_its_dn:
+	call	do_wes_invert
+	jmp	short cdsc_exit
+
+cdsc_its_dpx:
+	mov	ah,cl_brush_accel	; color in lower bits, flags in upper
+	test	ah,SOLID_BRUSH
+	jz	cdsc_blt_not_special_cased ; can't special case
+
+	call	do_wes_dpx_solidpat	; solid color => can special case
+	jmp	short cdsc_exit
+
+
+; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+;	This is a source copy.	The phase must be zero to special case the
+;	source copy, and both devices must be the screen.
+;
+;
+;	errnz	   F0_SRC_IS_DEV - 00001000b
+;	errnz	 F0_SRC_IS_COLOR - 00000100b
+;
+;its_src_copy:
+;	and	dh,F0_SRC_IS_DEV + F0_SRC_IS_COLOR
+;	shiftr	dh,2
+;	cmp	gl_phase_h,1		; Gives CF if horizontal phase = zero
+;	rcl	dh,1
+; Now we have the needed flags in the lower 3 bits of DH
+;					; Src=EGA  Src=Color  Phase0
+;
+;	dw	do_wes_mono_trick	;    0	      0		0
+;	dw	blt_not_a_special_case	;    0	      0		1
+;	dw	blt_not_a_special_case	;    0	      1		0
+;	dw	blt_not_a_special_case	;    0	      1		1
+;	dw	do_wes_mono_trick	;    1	      0		0
+;	dw	blt_not_a_special_case	;    1	      0		1
+;	dw	blt_not_a_special_case	;    1	      1		0
+;	dw	ega_src_copy		;    1	      1		1
+; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ;
+
+
+cdsc_its_src_copy:
+	test	dh,F0_SRC_IS_DEV
+	jz	cdsc_source_is_memory
+
+	cmp	gl_phase_h,0		; is horizontal phase zero?
+	jnz	cdsc_blt_not_special_cased ;  No, can't condense source copy
+
+	call	ega_src_copy		;  yes, go do it
+	jmp	short cdsc_exit
+
+
+cdsc_source_is_memory:
+	test	dh,F0_SRC_IS_COLOR	;mono-mem to color-EGA conversion?
+	jnz	cdsc_blt_not_special_cased ;color to color, cannot special case it
+	test	gl_src.dev_flags,SPANS_SEG ;Does the BLT span a segment?
+	jnz	cdsc_blt_not_special_cased ;Yes, cannot special case it
+
+	call	do_wes_mono_trick
+	jmp	short cdsc_exit
+
+
+cdsc_blt_not_special_cased:
+endif	;GEN_COLOR_BLT
+	clc
+	ret
+
+ifdef	GEN_COLOR_BLT
+blt_done_as_special_case:
+cdsc_exit:
+	stc
+	ret
+endif	;GEN_COLOR_BLT
+
+check_device_special_cases	endp
+
+
+ifdef	GEN_COLOR_BLT
+;----------------------------Private-Routine----------------------------;
+; ega_src_copy
+;
+; EGA special case for source copy.
+;
+; The following routine is invoked instead of generating code for a
+; source copy with no phase alignement.  The actual time involved in
+; executing the screen to screen source copy as static code as compared
+; to compiled code is a win for small blts and is about the same for
+; the entire screen.
+;
+; Entry:
+;	DI = gl_src.Incr = gl_dest.Incr (same device)
+; Returns:
+;	Nothing
+; Registers Destroyed:
+;	AX,CX,DX,SI,DI,DS,ES,flags
+; Registers Preserved:
+;	BX,BP
+; Calls:
+;	ega_src_copy_calc_params
+;	ega_src_copy_partial_byte
+; History:
+;  Sun 22-Feb-1987 16:29:09 -by-  **** ***** [*****]
+; wrote it for Windows in distant past
+;-----------------------------------------------------------------------;
+
+;------------------------------Pseudo-Code------------------------------;
+; {
+; }
+;-----------------------------------------------------------------------;
+
+	assume	ds:nothing
+	assume	es:nothing
+
+ega_src_copy	proc near
+
+	call	ega_src_copy_calc_params
+
+ega_src_copy_40:
+	xor	cx,cx			;Process first byte
+	mov	ch,bptr gl_start_mask[1]
+	jcxz	ega_src_copy_50		;No first byte
+	call	ega_src_copy_partial_byte ;Process first byte
+
+
+ega_src_copy_50:
+	mov	cx,gl_inner_loop_count 	;Set count for innerloop
+	jcxz	ega_src_copy_80		;No innerloop or last byte
+
+
+;	Set up the EGA and the shadow registers.  The DataRotate register
+;	has already been set up.  The Mode register, MapMask, and BitMask
+;	registers need to be setup.
+
+
+	mov	dl,SEQ_DATA		;Enable write to all planes
+	mov	al,MM_ALL
+	out	dx,al
+
+	mov	dl,GRAF_ADDR
+	mov	ax,0000h+GRAF_BIT_MASK
+	out16	dx,ax
+
+ega_src_copy_60:
+	rep	movsb			;All that to move some bytes!
+	cmp	gl_mask_p,cx		;Only an innerloop?
+	jne	ega_src_copy_80		;  No
+	add	si,bx			;--> next source
+	add	di,bx			;--> next destination
+	mov	cx,gl_inner_loop_count 	;Set count for innerloop
+	dec	yExt			;Any more scans to process?
+	jnz	ega_src_copy_60		;  Yes
+	jmp	short ega_src_copy_100	;  No
+
+ega_src_copy_80:
+	mov	ch,bptr gl_last_mask[1]	;Handle last byte (with no innerloop)
+	jcxz	ega_src_copy_90
+	call	ega_src_copy_partial_byte
+
+ega_src_copy_90:
+	add	si,bx			;--> next source
+	add	di,bx			;--> next destination
+	dec	yExt			;Any more scans to process?
+	jnz	ega_src_copy_40		;  No
+
+ega_src_copy_100:
+
+ifdef	DEBUG
+	xor	bx,bx
+endif
+	ret
+
+ega_src_copy	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; ega_src_copy_partial_byte
+;
+; Handle a partial byte of a source copy.
+;
+; Entry:
+;	DX = rGraphics	(EGA_BASE + GRAF_ADDR)
+;	CH = bit mask
+;	DS:SI --> source bits byte to partially copy
+;	ES:DI --> destination of bits
+; Returns:
+;	DX = rGraphics
+;	DS:SI --> byte after one copied
+;	ES:DI --> byte after one copied
+; Registers Destroyed:
+;	AX,CX,flags
+; Registers Preserved:
+;	BX,BP
+; Calls:
+;	Nothing
+; History:
+;  Sun 22-Feb-1987 16:29:09 -by-  **** ***** [*****]
+; wrote it for Windows in distant past
+;-----------------------------------------------------------------------;
+
+;------------------------------Pseudo-Code------------------------------;
+; {
+; }
+;-----------------------------------------------------------------------;
+
+	assume	ds:nothing
+	assume	es:nothing
+
+ega_src_copy_partial_byte	proc	near
+
+	mov	ah,ch			;Set the BitMask
+	mov	al,GRAF_BIT_MASK
+	out16	dx,ax
+	mov	cx,0400h+SEQ_MAP_MASK	;Set loop counter
+	jmp	short ega_src_copy_part_20
+
+ega_src_copy_part_10:
+	mov	al,[si] 		;Copy this byte
+	xchg	al,es:[di]		;xchg to load EGA's latches first
+
+ega_src_copy_part_20:
+	mov	ax,cx			;Enable write to next plane
+	mov	dl,SEQ_ADDR
+	out16	dx,ax
+
+	mov	dl,GRAF_ADDR		;Enable read from next plane
+	shr	ah,1
+	mov	al,GRAF_READ_MAP
+	out16	dx,ax
+	shr	ch,1
+	jnz	ega_src_copy_part_10
+	lodsb				;Move final plane and update pointers
+	mov	ah,es:[di]
+	stosb
+	ret
+
+ega_src_copy_partial_byte	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; ega_src_copy_calc_params
+;
+; This was the beginning of ega_src_copy (EGA to EGA only).  I've
+; subroutinized it so that it can be used for mono-mem to color-EGA
+; source copy also.
+;
+; Entry:
+;	DI = scan increment (gl_dest.nextscan)
+; Returns:
+;	BX = scan bias
+;	DX = GRAF_ADDR
+;	DS:SI = source
+;	ES:DI = dest
+;	SS:BP --> BitBLT local variable frame
+;	direction flag set/cleared as appropriate for this blt.
+; Registers Destroyed:
+;	AX,CX,flags
+; Registers Preserved:
+;	BP
+; Alters:
+; Calls:
+;	Nothing
+; History:
+;  Thu Mar 05, 1987 09:39:21a	-by-	****** *. *****   [*******]
+; Subroutinized some of Walts code with minor changes.
+;-----------------------------------------------------------------------;
+
+	assume	ds:nothing
+	assume	es:nothing
+
+ega_src_copy_calc_params	proc	near
+
+;	Anytime the source and the destination are the same device,
+;	the destination and the source increments will be the same.
+;	Instead of pushing and popping the source and destination
+;	pointers and adding in the gl_dest.Incr and gl_src.Incr, the bias
+;	needed for adjusting the pointer at the end of a scan line
+;	will be computed and used:
+;
+;		+X +Y	  subtract gl_inner_loop_count+2      50 - 30 =  20
+;		+X -Y	  subtract gl_inner_loop_count+2     -50 - 30 = -80
+;		-X +Y	  add	   gl_inner_loop_count+2      50 + 30 =  80
+;		-X -Y	  add	   gl_inner_loop_count+2     -50 + 30 = -20
+;
+
+	mov	bx,gl_inner_loop_count 	; Compute number of bytes to copy
+	mov	cx,bx
+	xor	dx,dx
+	inc	bx			; first byte always there
+	mov	al,bptr gl_last_mask[1]
+	cmp	al,1			;If bits effected in last byte
+	cmc				;  adjust scanline increment
+	adc	bx,dx			; add 1 to BX if gl_last_mask[1] = 0
+	cmp	gl_step_direction,STEPRIGHT ;Stepping right? (+X)
+	jz	ega_src_copy_calc_10	;  Yes
+	std				;  No, will be decrementing (-X)
+	neg	bx			;  Negate byte count for -X
+
+ega_src_copy_calc_10:
+	mov	di,gl_src.next_scan
+	sub	di,bx			;Adjust scan increment
+	mov	bx,di			;Save scan bias
+
+	or	al,al			;Last byte already 0?
+	jz	ega_src_copy_calc_20	;  Yes
+	inc	al			;If last byte mask is 0FFh, combine
+	jnz	ega_src_copy_calc_20	;  it with innerloop
+	mov	bptr gl_last_mask[1],al	;  and flag it as such
+	inc	cx
+
+ega_src_copy_calc_20:
+	mov	ah,bptr gl_start_mask[1];If start byte mask is 0FFh, combine
+	inc	ah			;  it with innerloop
+	jnz	ega_src_copy_calc_30	;  and flag it as such
+	mov	bptr gl_start_mask[1],ah
+	inc	cx
+
+ega_src_copy_calc_30:
+	mov	gl_inner_loop_count,cx 	;Set real innerloop count
+	mov	gl_mask_p,ax		;Save "Only Inner Loop" flag
+	lds	si,gl_src.lp_bits	;--> source
+	les	di,gl_dest.lp_bits	;--> destination
+	mov	dx,EGA_BASE + GRAF_ADDR
+	ret
+
+ega_src_copy_calc_params	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; ega_solid_pat
+;
+; EGA special case for solid color pattern copy.
+;
+; The following routine is invoked instead of generating code for a
+; pattern copy.  The actual time involved in executing the pattern
+; copy as static code as compared to compiled code is a win.
+;
+; This code can only be used if the pattern is a solid color or a grey,
+; and the operation is to the screen.  In this case, the three bits of
+; color stored in the accelerator byte of the brush will be used, or the
+; bits of the grey brush.
+;
+; The logic operations which will invoke this routine are:
+;
+;	P
+;	Pn
+;	DDx
+;	DDxn
+;
+; Entry:
+;	BL = color to write or xor value for a grey pattern
+;	CX = Mode register value (sort of)
+;	DS = brush segment if grey scale
+;	SS:BP = BitBLT local variable frame
+; Returns:
+;	Nothing
+; Registers Destroyed:
+;	AX,BX,CX,DX,SI,DI,DS,ES,flags
+; Registers Preserved:
+;	BP
+; Calls:
+;	None
+; History:
+;  Sun 22-Feb-1987 16:29:09 -by-  **** ***** [*****]
+; wrote it for Windows in distant past.
+;-----------------------------------------------------------------------;
+
+;------------------------------Pseudo-Code------------------------------;
+; {
+; }
+;-----------------------------------------------------------------------;
+
+
+	assume	ds:nothing
+	assume	es:nothing
+
+ega_solid_pat	proc near
+
+;	Instead of pushing and popping the destination pointer and adding in
+;	the gl_dest.Incr, the bias needed for adjusting the pointer at the
+;	end of a scan line will be computed and used.
+;
+;	Since this is a pattern copy, the gl_dest.Incr will be positive.
+
+;	mov	si,di			;Get destination increment
+;	sub	si,1			;Adjust for first byte
+	lea	si,-1[di]
+	sub	si,gl_inner_loop_count 	;Compute number of bytes to copy
+
+;	Put color in Set/Reset if it is a solid color.
+
+	mov	dx,EGA_BASE + GRAF_ADDR
+	jcxz	not_solid_color
+	mov	ax,MM_ALL * 256 + GRAF_ENAB_SR
+	out	dx,ax
+	mov	ah,bl
+	mov	al,GRAF_SET_RESET
+	out	dx,ax
+not_solid_color:
+	mov	al,GRAF_BIT_MASK	;Leave graphics controller pointing
+	out	dx,al			;  to the bitmask register, which
+	inc	dx			;  is where cursor leaves it too
+
+; Set up for the loop.
+
+	les	di,gl_dest.lp_bits	;--> destination
+	mov	gl_phase_h,bl		;Save color to write or grey XOR mask
+
+ega_solid_pat_20:
+	mov	al,gl_phase_h		;Get the color to write
+	test	cl_brush_accel,SOLID_BRUSH ;Grey scale brush?
+	jnz	ega_solid_pat_30	;  No, a solid color
+	mov	bl,gl_pat_row		;Get scan of brush
+	inc	bl			;  and update brush pointer
+	mov	gl_pat_row,bl
+	dec	bl
+	and	bx,00000111b
+	add	bx,off_lpPBrush
+	xor	al,bptr ds:[bx] 	;Invert if needed
+
+ega_solid_pat_30:
+	mov	bl,al
+	mov	al,bptr gl_start_mask[1];Set bitmask for first byte
+	out	dx,al
+	mov	al,bl
+	xchg	al,es:[di]		;xchg to load EGA's latches first
+	inc	di			;PAT_COPY step +X always!
+
+	mov	cx,gl_inner_loop_count 	;Set count for innerloop
+	jcxz	ega_solid_pat_40	;No innerloop or last byte
+	mov	al,0FFh 		;Inner loop alters all bits
+	out	dx,al
+	mov	al,bl
+	rep	stosb
+
+ega_solid_pat_40:
+	mov	al,bptr gl_last_mask[1]	;Last byte?
+	or	al,al
+	jz	ega_solid_pat_50	;No last byte
+	out	dx,al
+	xchg	bl,es:[di]
+
+ega_solid_pat_50:
+	add	di,si			;--> next destination
+	dec	yExt			;Any more scans to process?
+	jnz	ega_solid_pat_20	;  Yes
+
+ifdef	DEBUG
+	xor	bx,bx
+endif
+
+	ret
+
+ega_solid_pat	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; do_wes_invert
+; do_wes_dpx_solidpat
+;
+; 
+; Entry:
+;	SS:BP --> BitBLT local variable frame
+;	AH = color of solid-pat.
+; Returns:
+;	Nothing
+; Registers Destroyed:
+;	AX,BX,CX,DX,SI,DI,DS,ES,flags
+; Registers Preserved:
+;	BP
+; Calls:
+;	calc_parms
+;	edge_invert
+;	invert
+; History:
+;  Tue Mar 03, 1987 05:40:33a	-by-	****** *. *****   [*******]
+; wrote it.
+;-----------------------------------------------------------------------;
+
+;------------------------------Pseudo-Code------------------------------;
+; {
+; }
+;-----------------------------------------------------------------------;
+
+
+	assume	ds:nothing
+	assume	es:nothing
+
+do_wes_invert		proc	near
+
+	mov	ah,0Fh			; black
+
+
+do_wes_dpx_solidpat:
+
+;	Setup SET_RESET.
+
+	mov	dx,EGA_BASE + GRAF_ADDR
+	mov	al,GRAF_SET_RESET
+	out16	dx,ax
+	mov	ax,0F00h + GRAF_ENAB_SR	; enable all planes
+	out16	dx,ax
+
+;	Go to XOR mode.
+
+	mov	ax,GRAF_DATA_ROT + 256 * DR_XOR
+	out16	dx,ax
+
+	call	calc_parms
+	mov	ah,byte ptr gl_start_mask[0]
+	or	ah,ah
+	jz	no_left_invert_edge
+	pushem	di
+	call	edge_invert
+	popem	di
+	inc	di
+
+no_left_invert_edge:
+	mov	bx,gl_inner_loop_count
+	or	bx,bx
+	jz	no_inner_invert_loop
+	mov	cx,yExt
+	pushem	di
+	call	invert
+	popem	di
+	add	di,gl_inner_loop_count
+
+no_inner_invert_loop:
+	mov	ah,byte ptr gl_last_mask[0]
+	or	ah,ah
+	jz	no_last_invert_edge
+	mov	cx,yExt
+	call	edge_invert
+
+no_last_invert_edge:
+	ret
+
+do_wes_dpx_solid_pat_end:
+do_wes_invert		endp
+
+
+;----------------------------Private-Routine----------------------------;
+; do_wes_patblt
+;
+;
+; Entry:
+;	SS:BP --> BitBLT local variable frame
+; Returns:
+;	Nothing
+; Registers Destroyed:
+;	AX,BX,CX,DX,SI,DI,DS,ES,flags
+; Registers Preserved:
+;	BP
+; Calls:
+;	calc_parms
+;	edge_pat_blt
+;	pat_blt
+; History:
+;  Tue Mar 03, 1987 00:45:29a	-by-	****** *. *****   [*******]
+; Wrote it!
+;-----------------------------------------------------------------------;
+
+;------------------------------Pseudo-Code------------------------------;
+; {
+; }
+;-----------------------------------------------------------------------;
+
+	assume	ds:nothing
+	assume	es:nothing
+
+do_wes_patblt	proc	near
+
+	call	calc_parms
+
+	mov	ah,byte ptr gl_start_mask[0]
+	or	ah,ah
+	jz	no_left_pat_edge
+	pushem	si,bx
+	call	edge_pat_blt		; preserves DI
+	popem	si,bx
+	inc	di
+
+no_left_pat_edge:
+	mov	dx,gl_inner_loop_count
+	or	dx,dx
+	jz	no_inner_pat_loop
+	mov	cx,yExt
+	pushem	di,si,bx
+	call	pat_blt
+	popem	di,si,bx
+	add	di,gl_inner_loop_count
+
+no_inner_pat_loop:
+	mov	ah,byte ptr gl_last_mask[0]
+	or	ah,ah
+	jz	no_last_pat_edge
+	mov	cx,yExt
+	call	edge_pat_blt
+
+no_last_pat_edge:
+	ret
+
+do_wes_patblt	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; do_wes_mono_trick
+;
+;
+; Entry:
+;	SS:BP --> BitBLT local variable frame
+; Returns:
+;	Nothing
+; Registers Preserved:
+;	BP
+; Registers Destroyed:
+;	AX,BX,CX,DX,SI,DI,DS,ES,flags
+; Calls:
+;	calc_parms
+;	edge_mono_to_color_blt
+;	mono_to_color_blt
+; History:
+;  Wed Mar 11, 1987 09:07:37a	-by-	****** *. *****	  [*******]
+; Wrote it!
+;-----------------------------------------------------------------------;
+
+;------------------------------Pseudo-Code------------------------------;
+; {
+; }
+;-----------------------------------------------------------------------;
+
+	assume	ds:nothing
+	assume	es:nothing
+
+do_wes_mono_trick	proc near
+
+ifdef THIS_IS_DOS_3_STUFF
+else
+; We need to use the image color, but cl_both_colors in the pat color.
+; At this point no one else needs the pat color, so we can change
+; cl_both_colors.
+
+	lds	si,lpPBrush		; ddc_oem_brush
+if FIREWALLS
+	cmp	wptr ds:[si][-ddc_oem_brush],DC_IDENT
+	jz	its_a_dc
+	public	not_my_ddc
+not_my_ddc:
+	int	3
+its_a_dc:
+endif
+	mov	ah,[si][ddc_image_color_ours      - ddc_oem_brush].SPECIAL
+	mov	al,[si][ddc_image_back_color_ours - ddc_oem_brush].SPECIAL
+	and	ax,MM_ALL shl 8 + MM_ALL
+	mov	cl_both_colors,ax
+
+endif
+	call	calc_parms
+
+ifdef	TEFTI
+	timer_begin
+endif
+
+	push	dx
+	mov	ah,byte ptr gl_start_mask[0]
+	or	ah,ah
+	jz	no_left_edge
+	pushem	di,si,dx
+	mov	al,gl_phase_h
+	mov	bx,cl_both_colors
+;-	mov	cx,yExt
+	call	edge_mono_to_color_blt
+	popem	di,si,dx
+	inc	di
+	inc	si
+
+no_left_edge:
+	mov	bx,dx
+	mov	dx,gl_inner_loop_count
+	mov	cx,di			; compute and save the right-hand edge
+	add	cx,dx
+	push	cx
+	or	dx,dx
+	jz	no_inner_loop
+	sub	bx,dx
+	mov	cx,yExt
+	mov	al,gl_phase_h
+	cbw
+	push	bp
+	mov	bp,cl_both_colors
+	xchg	bp,ax
+	call	mono_to_color_blt
+	pop	bp
+
+no_inner_loop:
+	pop	di
+	pop	dx
+	mov	ah,byte ptr gl_last_mask[0]
+	or	ah,ah
+	jz	no_last_edge
+
+	mov	cx,gl_inner_loop_count
+	mov	si,gl_end_fl		; src_right_edge (reuse stk variable)
+	mov	cx,yExt
+	mov	bx,cl_both_colors
+	mov	al,gl_phase_h
+	call	edge_mono_to_color_blt
+
+no_last_edge:
+ifdef	TEFTI
+	timer_end
+endif
+	ret
+
+do_wes_mono_trick	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; calc_parms
+;
+; To avoid conditional jumps we will use some sick optimizations.
+; Remember this:
+;	adc	ax,-1		; DEC AX if carry clear
+;	sbb	ax,0		; DEC AX if carry set
+;	sbb	ax,-1		; INC AX if carry clear
+;	adc	ax,0		; INC AX if carry set
+;
+; Entry:
+;	SS:BP --> BitBLT local frame
+; Returns:
+; 	DS:SI set to upper left	of bitmap or pattern
+; 	ES:DI set to upper left
+; 	DX = src bitmap width  (if present)
+; 	CX = yExt
+; 	BX = offset into pattern (if pat present)
+;	sets dest_right_edge
+;	sets gl_start_mask[0]
+;	sets gl_last_mask[0]
+;	sets gl_inner_loop_count
+; Registers Destroyed:
+;	AX,flags
+; Registers Preserved:
+;	BP
+; Alters:
+;
+; Calls:
+;	None
+; History:
+;  Wed Mar 11, 1987 09:07:37a	-by-	****** *. *****	  [*******]
+; Wrote it!
+;-----------------------------------------------------------------------;
+
+	.errnz	SIZE_PATTERN - 8		; any power of 2 will work
+
+	assume	ds:nothing
+	assume	es:nothing
+
+calc_parms	proc	near
+
+;	The destination.
+
+	mov	di,ScreenSelector
+	mov	es,di
+
+;	Left edge.
+
+	mov	di,DestxOrg		; in pixels
+	mov	bx,di
+	mov	cl,7
+	and	cx,di			; save lower 3 bits
+	mov	gl_phase_h,cl
+	shiftr	di,3			; convert to bytes
+					; DI set for left edge
+	mov	al,0FFh
+	shr	al,cl
+	mov	byte ptr gl_start_mask[0],al
+
+;	Right edge.
+
+	add	bx,xExt			; right edge in pixels
+	mov	cl,7
+	and	cl,bl			; save lower 3 bits
+	shiftr	bx,3			; convert to bytes
+	mov	gl_start_fl,bx		; dest_right_edge (reuse stk variable)
+	mov	al,0FFh
+	shr	al,cl
+	not	al
+
+;	Check if the BLT does not cross any byte boundaries.
+
+	sub	bx,di			; make BX # bytes including left edge
+	jnz	crosses_byte_boundary
+	and	byte ptr gl_start_mask[0],al
+	xor	al,al
+
+;	There are 2 cases where we get zero for gl_inner_loop_count:
+;	When the start and end bytes are adjacent and when they are
+;	the same byte.  In the latter case we get -1 for
+;	gl_inner_loop_count so INC BX now so it will be zero.
+
+	inc	bx
+crosses_byte_boundary:
+
+	cmp	al,0FFh
+	sbb	al,-1			; AL=FF -> AL=0 (put in innerloop)
+	mov	byte ptr gl_last_mask[0],al
+
+;	Inner loop  --  combine edge bytes into inner loop if they are
+;	full bytes.
+
+	mov	gl_end_fl,bx		; src_right_edge (reuse stk variable)
+	mov	al,byte ptr gl_start_mask[0]
+	cmp	al,0FFh
+
+;	If gl_start_mask = FF the carry is clear, otherwise carry is set.
+;	We want to DEC BX if carry set because we have already included
+;	the left edge byte in BX, but we shouldn't have included it if
+;	it's only a partial byte.
+
+	sbb	bx,0
+	cmp	al,0FFh
+
+;	If gl_start_mask = FF the carry is clear, otherwise carry is set.
+;	We want to INC AL (zero it) if it is FF (carry clear) because we
+;	will do this edge as part of the innerloop.
+
+	sbb	al,-1
+	mov	byte ptr gl_start_mask[0],al
+
+	mov	gl_inner_loop_count,bx
+	mov	ax,SCREEN_W_BYTES
+	mul	DestyOrg
+	add	di,ax
+
+;	The source.
+
+	test	gl_the_flags,F0_SRC_PRESENT
+	jz	no_source
+	lds	si,lpSrcDev			;Get pointer to source device
+	push	word ptr [si].bmWidthBytes	; #bytes per scan line
+	lds	si,[si].bmBits			; the bits themselves
+
+;	Left edge.
+
+	mov	bx,SrcxOrg
+	mov	dl,7
+	and	dl,bl			; get lower 3 bits ( Src Mod 8 )
+	sub	gl_phase_h,dl		; phase def'd as Mod8[gl_dest]-
+	shiftr	bx,3			;   		 Mod8[gl_src]
+	add	si,bx			; SI set for left edge
+	pop	cx
+	mov	ax,cx
+	mul	SrcyOrg
+	add	si,ax
+	add	gl_end_fl,si		; src_right_edge (reuse stack variable)
+	mov	dx,cx
+	jmp	short	no_pattern
+no_source:
+	test	gl_the_flags,F0_PAT_PRESENT ; assuming P or S but not both
+	jz	no_pattern
+	mov	ds,seg_lpPBrush
+	mov	si,off_lpPBrush
+	mov	bx,DestyOrg
+	and	bx,SIZE_PATTERN - 1
+no_pattern:
+	mov	cx,yExt
+
+ifdef	THIS_IS_DOS_3_STUFF
+   ifdef	DEBUG
+	or	cx,cx
+	jnz	yext_not_zero
+yext_is_zero:
+	int	3
+yext_not_zero:
+   endif
+else
+   ifdef DEBUG
+    if FIREWALLS
+	or	cx,cx
+	jnz	yExt_not_zero
+yExt_is_zero:
+	ReportError	msg_YExtIsZero
+yExt_not_zero:
+    endif
+   endif
+endif
+	ret
+calc_parms	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; mono_to_color_blt
+;
+; This does phase-0, byte-aligned, mem-mono to ega-color blt.
+;
+; The Problem: copy to the ega a bitmap where "0"s in the bitmap mean
+; color1 and "1"s in the bitmap mean color2, where color1 and color2
+; are arbitrary colors.
+;
+; The solution:
+;
+;			plane0	plane1	plane2	plane3
+;
+; color1		1	1	0	0
+; color2		1	0	1	0
+; SetResetEnable	1	0	0	1
+; SetReset		0	x	x	0
+; latches		1	1	0	0	(=color1)
+;
+; Now with datarot = XOR we get
+;
+;  when databit=0	1	1	0	0	(=color1)
+;  when databit=1	1	0	1	0	(=color2)
+;
+;
+; Entry:
+;	BP = phase ( -7 to 7)	(high byte ignored)
+;	AL = background color ( "1" bits in mono-bitmap )
+;	AH = foreground color
+;	BX = SI wrap
+;	DS:SI = Mono Bitmap first byte
+;	ES:DI = First EGA Byte
+;	CX = Number of scan lines
+;	DX = bytes per scan line
+;	GRAF_DATA_ROT = DR_SET
+;	All Planes Enabled
+; Returns:
+;	Nothing
+; Registers Destroyed:
+;	AX,BX,CX,DX,SI,DI,BP,flags
+; Registers Preserved:
+;	DS,ES
+; Alters:
+;	GRAF_SET_RESET
+;	GRAF_ENAB_SR
+;	GRAF_BIT_MASK
+; Calls:
+;	None
+; History:
+;  Tue Mar 03, 1987 00:45:29a	-by-	****** *. *****   [*******]
+; Wrote it!
+;-----------------------------------------------------------------------;
+
+	assume	ds:nothing
+	assume	es:nothing
+
+mono_to_color_blt	proc	near
+
+	push	bp			; phase
+	push	dx			; bytes per scan line
+	push	bx			; wrap for SI
+	mov	bx,ax			; colors
+
+;	First we put the foreground color into the latches.  We do this
+;	by putting this color into SET_RESET, writing it, then reading it.
+;	The memory location we will use is the first byte where we will blt.
+
+	mov	dx,EGA_BASE + GRAF_ADDR
+	mov	al,GRAF_SET_RESET
+	out16	dx,ax
+	mov	ax,0F00h + GRAF_ENAB_SR
+	out16	dx,ax
+
+;	Set bit mask = FF.
+	mov	ax,0FF00h + GRAF_BIT_MASK
+	out16	dx,ax
+
+;	Fill the latches.
+	mov	es:[di],al		; color in SetReset is written, not AL
+	mov	al,es:[di]		; read to fill latches
+
+;	Go to XOR mode.
+	mov	ax,GRAF_DATA_ROT + 256 * DR_XOR
+	out16	dx,ax
+
+;	Now setup SET_RESET.
+
+	mov	ax,bx			; restore colors
+	xor	ah,al			; gives 0 where colors match
+	mov	al,GRAF_SET_RESET
+	out16	dx,ax
+	not	ah
+	mov	al,GRAF_ENAB_SR
+	out16	dx,ax			; enable Set/Reset where colors match
+
+	pop	bp			; wrap for SI
+	pop	dx			; bytes per scan
+	mov	bx,SCREEN_W_BYTES
+	sub	bx,dx			; BX = wrap
+
+	mov	ax,cx			; loop count
+	pop	cx			; phase
+	or	cl,cl
+	js	phase_neg
+	jz	phase_zero
+	dec	si
+;*	dec	bp
+pmono_to_color_loop:
+	pushem	ax,dx
+pnext_byte:
+	lodsw
+	dec	si
+	xchg	al,ah
+	shr	ax,cl
+;+	shl	ax,cl
+	stosb
+	dec	dx
+	jnz	pnext_byte
+	popem	ax,dx
+	add	di,bx
+	add	si,bp
+	dec	ax
+	jnz	pmono_to_color_loop
+	jmp	short	leave_in_set_mode
+
+phase_zero:
+zmono_to_color_loop:
+	mov	cx,dx
+	shr	cx,1
+	rep	movsw
+	rcl	cx,1
+	rep	movsb
+	add	di,bx
+	add	si,bp
+	dec	ax
+	jnz	zmono_to_color_loop
+	jmp	short	leave_in_set_mode
+
+phase_neg:
+	neg	cl			; make CX = abs phase
+nmono_to_color_loop:
+	pushem	ax,dx
+nnext_byte:
+	lodsw
+	dec	si
+	rol	ax,cl
+;+	shr	ax,cl
+	stosb
+	dec	dx
+	jnz	nnext_byte
+	popem	ax,dx
+	add	di,bx
+	add	si,bp
+	dec	ax
+	jnz	nmono_to_color_loop
+
+leave_in_set_mode:
+	mov	dx,EGA_BASE + GRAF_ADDR
+	mov	ax,GRAF_DATA_ROT + 256 * DR_SET
+	out16	dx,ax
+
+	ret
+
+mono_to_color_blt	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; edge_mono_to_color_blt
+;
+; This problem here is the same as in mono_to_color_blt, except it
+; is complicated by the need to preserve what is already in EGA memory
+; for part of the byte which we are writing.
+;
+; We will set the BIT MASK to preserve these bytes.  We will then read
+; the data from memory, and write it to the EGA using an XCHG so the
+; latches are filled before the write -- so the appropriate EGA bits
+; are preserved.
+;
+; The method for writing the data involves two passes.	The first pass
+; writes the data to some of the planes, the second pass writes NOT the
+; data to the other planes.  Depending on the two colors involved we
+; may be able to skip one of the two passes.
+;
+; Define BkColor = the color corresponding to "1" bits in the data.
+; Define TextColor = the color corresponding to "0" bits in the data.
+;
+; We will use the Set/Reset register to take care of the planes where
+; the colors match.  These planes will be ignored in the rest of this
+; comment block.
+;
+; The first pass writes "1"s where the data is "1".  Therefore, the
+; condition for doing the first pass is that the BkColor has a "1"
+; somewhere (ignoring those planes taken care of by Set/Reset).
+; The second pass does whatever planes remain.	We can skip this pass
+; if no planes remain.	To maximize to likelihood of this we make sure
+; that all "Set/Reset" planes are enabled on the first pass (if the
+; first pass occurs).
+;
+; Entry:
+;	AH = bitmask
+;	AL = phase (-7 to +7)
+;	BH = foreground color
+;	BL = background color
+;	DX = src bitmap width in bytes
+;	DS:SI = Mono Bitmap first byte
+;	ES:DI = First EGA Byte
+;	CX = Number of scan lines
+;	DATA_ROT = DR_SET
+; Returns:
+;	Nothing
+; Registers Destroyed:
+;	AX,BX,CX,DX,SI,DI,flags
+; Registers Preserved:
+;	BP,DS,ES
+; Alters:
+;	GRAF_SET_RESET
+;	GRAF_BIT_MASK
+;	GRAF_ENAB_SR
+; Calls:
+;	None
+; History:
+;  Tue Mar 03, 1987 05:40:33a	-by-	****** *. *****   [*******]
+; Wrote it!
+;-----------------------------------------------------------------------;
+
+	assume	ds:nothing
+	assume	es:nothing
+
+edge_mono_to_color_blt	proc	near
+
+	push	bp
+	push	ax		; AL = phase
+	mov	bp,dx
+
+;	Set bit mask.
+
+	mov	dx,EGA_BASE + GRAF_ADDR
+	mov	al,GRAF_BIT_MASK
+	out16	dx,ax
+
+;	Put foreground color in Set/Reset and enable planes where colors
+;	match.
+
+	mov	ah,bh
+	mov	al,GRAF_SET_RESET
+	out16	dx,ax
+	xor	ah,bl
+	not	ah			; gives 1 where colors match
+	mov	al,GRAF_ENAB_SR
+	out16	dx,ax
+	mov	dx,EGA_BASE + SEQ_DATA	; The rest of the OUTs are here.
+	mov	al,ah
+	not	ah			; Gives 1 where colors mismatch.
+
+;	The following AND leaves 1 bits in AH for the planes which
+;	CANNOT be done on the second pass.  So if this is zero we can
+;	skip the first pass.
+
+	and	ah,bl			; BL = BkColor = color where data is 1
+	or	ah,bl			; planes to enable
+	mov	bx,cx			; we're done with the colors in BX
+	pop	cx			; phase
+	jz	skip_first_pass
+
+	or	al,ah			; Include "Set/Reset" planes.
+	out	dx,al			; Enable planes for first pass.
+
+	pushem	cx,si,di,ax,bx
+	or	cl,cl
+	js	phase_is_negative1
+	dec	si
+pfirst_pass:
+;*	mov	ax,[si]
+	mov	al,[si]
+	mov	ah,[si+1]
+
+	ror	ax,cl
+	xchg	ah,es:[di]
+	add	si,bp
+	add	di,SCREEN_W_BYTES
+	dec	bx
+	jnz	pfirst_pass
+	jmp	short	end_pass_one
+phase_is_negative1:
+	neg	cl			; make CL = abs phase
+nfirst_pass:
+	mov	ax,[si]
+	rol	ax,cl
+	xchg	al,es:[di]
+	add	si,bp
+	add	di,SCREEN_W_BYTES
+	dec	bx
+	jnz	nfirst_pass
+end_pass_one:
+	popem	cx,si,di,ax,bx
+
+skip_first_pass:
+
+;	Enable the other planes.
+
+	not	ah
+	and	ah,MM_ALL
+	jz	no_planes_left
+	mov	al,ah
+	out	dx,al
+
+	or	cl,cl
+	js	phase_is_negative2
+	dec	si
+psecond_pass:
+;*	mov	ax,[si]
+	mov	al,[si]
+	mov	ah,[si+1]
+
+	not	ax
+	ror	ax,cl
+	xchg	ah,es:[di]
+	add	si,bp
+	add	di,SCREEN_W_BYTES
+	dec	bx
+	jnz	psecond_pass
+	jmp	short	no_planes_left
+
+phase_is_negative2:
+	neg	cl			; make CL = abs phase
+nsecond_pass:
+	mov	ax,[si]
+	not	ax
+	rol	ax,cl
+	xchg	al,es:[di]
+	add	si,bp
+	add	di,SCREEN_W_BYTES
+	dec	bx
+	jnz	nsecond_pass
+
+no_planes_left:
+	mov	al,MM_ALL
+	out	dx,al
+	pop	bp
+	ret
+
+edge_mono_to_color_blt	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; pat_blt
+;			XOR mode with data = FF for Pn?
+;
+; This BLTs an arbitrary 8x8 bit pattern (3 or 4 planes deep) to EGA.
+;
+; The method is simple.  Load the latches with the pattern for a
+; particular scan line, then REP STOS this with the BIT MASK = 0
+; so that only the latches get written.	 Before putting the pattern
+; for the next scan line into the latches we will do all other scan
+; lines with the same pattern.
+;
+; Entry:
+;	DS:SI = pattern bytes
+;	ES:DI = First EGA Byte
+;	CX = Number of scan lines (yExt)
+;	BX = offset into pattern
+;	DX = bytes per scan line (scan_len)
+;	GRAF_DATA_ROT = DR_SET
+;	BIT_MASK = FF
+; Returns:
+;	Nothing
+; Registers Destroyed:
+;	AX,BX,CX,DX,SI,DI,flags
+; Registers Preserved:
+;	BP,DS,ES
+; Alters:
+;	GRAF_BIT_MASK	(leaves it 00)
+; Calls:
+;	None
+; History:
+;  Tue Mar 03, 1987 00:45:29a	-by-	****** *. *****   [*******]
+; Wrote it!
+;-----------------------------------------------------------------------;
+
+	.errnz	SIZE_PATTERN - 8	; actually any power of 2 is okay.
+
+	assume	ds:nothing
+	assume	es:nothing
+
+pat_blt	proc	near
+
+	push	bp
+	push	dx			; scan_len
+	push	cx			; yExt
+
+if NUMBER_PLANES eq 4
+	mov	ah,11h			; left nibble gives carry to end loop
+else
+	mov	ah,21h
+endif
+
+;	Set BP = min(yExt, scans/pattern).
+
+	sub	cx,SIZE_PATTERN		; SIZE_PATTERN = 8 = yExt of pattern
+	sbb	bp,bp
+	and	bp,cx
+	add	bp,SIZE_PATTERN
+
+	mov	dx,EGA_BASE + SEQ_DATA
+set_next_plane:
+	push	bx
+	push	di
+
+;	Enable next plane.
+
+	mov	al,MM_ALL
+	and	al,ah
+	out	dx,al
+
+	mov	cx,bp
+hit_next_byte:
+	mov	al,[si+bx]		; Next pattern byte
+	inc	bx
+	and	bx,SIZE_PATTERN - 1
+	mov	es:[di],al
+	add	di,SCREEN_W_BYTES
+	loop	hit_next_byte
+	add	si,SIZE_PATTERN
+	pop	di
+	pop	bx
+	shl	ah,1
+	jnc	set_next_plane
+
+;	Set bit mask = 00.
+
+	mov	dx,EGA_BASE + GRAF_ADDR
+	mov	ax,0000h + GRAF_BIT_MASK
+	out16	dx,ax
+
+; 	Enable all planes.
+
+	mov	al,MM_ALL
+	mov	dx,EGA_BASE + SEQ_DATA
+	out	dx,al
+
+	mov	cx,bp			; MIN(yExt,SIZE_PATTERN)
+	pop	bp			; yExt
+	pop	ax			; scan_len
+	mov	si,SCREEN_W_BYTES
+	sub	si,ax			; SI = next_scan
+        mov     bx,(SIZE_PATTERN - 1) * SCAN_BYTES
+	add	bx,si			; BX = 7 * SCREEN_W_BYTES + next_scan
+
+pat_blt_next_scan:
+	push	cx
+	mov	si,di			; save SI
+	mov	dx,bp			; save yExt
+	mov	cl,es:[di]		; load latches
+
+pat_blt_loop:
+	mov	cx,ax			; AX = scan_len
+	rep	stosb
+	add	di,bx			; BX = 7 * SCREEN_W_BYTES + next_scan
+	sub	bp,SIZE_PATTERN
+	jg	pat_blt_loop
+
+	mov	bp,dx
+	dec	bp
+	mov	di,si
+	add	di,SCREEN_W_BYTES
+	pop	cx
+	loop	pat_blt_next_scan
+
+	pop	bp
+	ret
+
+pat_blt	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; edge_pat_blt
+;
+; Entry:
+;	AH = bitmask
+;	DS:SI = pattern bytes
+;	ES:DI = First EGA Byte
+;	CX = Number of scan lines (yExt)
+;	BX = offset into pattern
+;	DATA_ROT = DR_SET
+; Returns:
+;	Nothing
+; Registers Destroyed:
+;	AX,CX,DX,SI,flags
+; Registers Preserved:
+;	BX,DI,BP,DS,ES
+; Alters:
+;	GRAF_BIT_MASK	(leaves it FF)
+; Calls:
+;	None
+; History:
+;  Tue Mar 03, 1987 05:40:33a	-by-	****** *. *****   [*******]
+; Wrote it!
+;-----------------------------------------------------------------------;
+
+	assume	ds:nothing
+	assume	es:nothing
+
+edge_pat_blt	proc	near
+
+	push	bp
+
+;	Set bit mask.
+
+	mov	dx,EGA_BASE + GRAF_ADDR
+	mov	al,GRAF_BIT_MASK
+	out16	dx,ax
+
+if NUMBER_PLANES eq 4
+	mov	ah,11h			; left nibble gives carry to end loop
+else
+	mov	ah,21h
+endif
+
+	mov	dx,EGA_BASE + SEQ_DATA
+	sub	si,SIZE_PATTERN
+	mov	bp,cx
+
+enable_next_plane:
+	push	bx
+	push	di
+	mov	cx,bp			; yExt
+	mov	al,MM_ALL
+	and	al,ah
+	out	dx,al
+	add	si,SIZE_PATTERN
+
+over_scans:
+	mov	al,[bx+si]		; pattern fetch
+	inc	bx
+	and	bx,SIZE_PATTERN - 1	; 7
+	.errnz	SIZE_PATTERN - 8	; any power of 2 works
+	xchg	es:[di],al
+	add	di,SCREEN_W_BYTES
+	loop	over_scans
+
+	pop	di
+	pop	bx
+	shl	ah,1
+	jnc	enable_next_plane
+
+;	Restore bitmask to default.
+
+	mov	dx,EGA_BASE + GRAF_ADDR
+	mov	ax,0FF00h + GRAF_BIT_MASK
+	out16	dx,ax
+
+	pop	bp
+	ret
+
+edge_pat_blt	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; invert
+;
+; Inverts pixels in a rectangle on the display, by simply writing the
+; memory to itself, letting the EGA hardware perform the XORing.
+;
+; Entry:
+;	ES:DI = First EGA Byte
+;	CX = Number of scan lines (yExt)
+;	BX = scan line length in bytes
+;	DATA_ROT = DR_XOR
+;	GRAF_SET_RESET = color to xor DEST with
+;	GRAF_SR_ENAB = MM_ALL
+; Returns:
+;	Nothing
+; Registers Destroyed:
+;	AX,CX,DX,SI,DI,DS,flags
+; Registers Preserved:
+;	BX,BP,ES
+; Alters:
+;	GRAF_BIT_MASK	(leaves it FF)
+; Calls:
+;	None
+; History:
+;  Tue Mar 03, 1987 05:40:33a	-by-	****** *. *****   [*******]
+; Wrote it!
+;-----------------------------------------------------------------------;
+
+	assume	ds:nothing
+	assume	es:nothing
+
+invert	proc	near
+
+;	Set bit mask.
+
+	mov	dx,EGA_BASE + GRAF_ADDR
+	mov	ax,0FF00h + GRAF_BIT_MASK
+	out16	dx,ax
+
+	mov	dx,SCREEN_W_BYTES
+	sub	dx,bx
+
+	mov	si,es			; prepare to use movsb
+	mov	ds,si
+
+invert_next_scan:
+	mov	si,di
+	mov	ax,cx			; save CX
+	mov	cx,bx			; scan len in bytes
+	rep	movsb
+	add	di,dx
+	mov	cx,ax			; restore CX
+	loop	invert_next_scan
+
+	ret
+
+invert	endp
+
+
+;----------------------------Private-Routine----------------------------;
+; edge_invert
+;
+; Inverts one byte on each scan line vertically according to the mask
+; in AH.
+;
+; Entry:
+;	AH = bitmask
+;	ES:DI = First EGA Byte
+;	CX = Number of scan lines (yExt)
+;	DATA_ROT = DR_XOR
+;	GRAF_SET_RESET = color to xor DEST with
+;	GRAF_ENAB_SR = MM_ALL
+; Returns:
+;	Nothing
+; Registers Destroyed:
+;	AL,CX,DX,DI,flags
+; Registers Preserved:
+;	AH,BX,SI,BP,DS,ES
+; Alters:
+;	GRAF_BIT_MASK
+; Calls:
+;	None
+; History:
+;  Tue Mar 03, 1987 05:40:33a	-by-	****** *. *****   [*******]
+; Wrote it!
+;-----------------------------------------------------------------------;
+
+	assume	ds:nothing
+	assume	es:nothing
+
+edge_invert	proc	near
+
+;	Set bit mask.
+
+	mov	dx,EGA_BASE + GRAF_ADDR
+	mov	al,GRAF_BIT_MASK
+	out16	dx,ax
+
+edge_invert_next_scan:
+	xchg	es:[di],al
+	add	di,SCREEN_W_BYTES
+	loop	edge_invert_next_scan
+
+	ret
+
+edge_invert	endp
+
+endif	;GEN_COLOR_BLT
