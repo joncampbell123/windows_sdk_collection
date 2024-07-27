@@ -1,0 +1,298 @@
+	.xlist
+;----------------------------Module-Header------------------------------;
+; Module Name: DEVDATA.BLT
+;
+; Device-specific code templates for compiling BLTs.
+;
+; Created: In Windows' distant past (c. 1983)
+;
+; Copyright (c) 1983 - 1987  Microsoft Corporation
+;
+; This file is part of a set that makes up the Windows BitBLT function
+; at driver-level.
+;-----------------------------------------------------------------------;
+	.list
+
+	.xlist
+ifdef	PUBDEFS
+ifdef	GEN_COLOR_BLT
+	public	cps
+	public	rot_and_xor
+endif
+endif
+	.list
+
+ifdef	GEN_COLOR_BLT
+	page
+
+;	EGA Color Plane Setup Code
+;
+;	The EGA Color Plane Setup Code is used when the EGA is involved
+;	in the BLT, and the BLT isn't from the EGA to a monochrome bitmap.
+;
+;	The template will be copied, and any required fixups will be
+;	performed.  The very first instruction will be generated on
+;	the fly instead of being copied and fixed-up.
+;
+;
+;	It assumes:
+;
+;		BL = MapMask value
+;
+;
+;	The following registers are available to the color plane selection
+;	logic (as implemented herein):
+;
+;		AX,BX,CX,DX,flags
+;
+;
+;	Exit:	BL = MapMask value incase huge bitmap is also involved
+; ??? why incase huge bitmap involved???!!!
+
+;odd	macro
+;if	$ AND 1
+;else
+;	nop
+;endif
+;	endm
+
+	even
+cps:
+	mov	al,MM_ALL		;Set Map Mask
+	and	al,bl			;Isolate the plane
+	mov	dx,EGA_BASE + SEQ_DATA
+	out	dx,al
+	shr	al,1			;Map plane into ReadMask
+
+if	NUMBER_PLANES eq 4
+	cmp	al,100b 		;Set Carry if not C3 (plane 3)
+	adc	al,-1			;Sub 1 only if C3
+endif
+	mov	ah,al
+	mov	al,GRAF_READ_MAP
+	mov	dl,GRAF_ADDR
+	out16	dx,ax
+
+LENGTH_CPS	=	$ - cps		;Length of the code
+endif	;GEN_COLOR_BLT
+
+	page
+
+;	Pattern Fetch Code
+;
+;	The pattern fetch code will be created on the fly since
+;	most of the instructions need fixups.
+;
+;	This template is really just a comment to indicate what
+;	the generated code should look like.
+;
+;	Entry:	None
+;
+;	Exit:	DH = pattern
+;
+;	Uses:	AX,BX,CX,DH,flags
+;
+;
+;	The following registers are available to the pattern fetch
+;	logic (as implemented herein):
+;
+;		AX,BX,CX,DX,flags
+;
+;
+;	For monochrome brushes:
+;
+;	    mov     ax,1234h		;Load segment of the brush
+;	    mov     bx,1234h		;Load offset of the brush
+;	    mov     cx,ds		;Save DS
+;	    mov     ds,ax		;DS:BX --> brush
+;	    mov     dh,7[bx]		;Get next brush byte
+;	    mov     al,ss:[1234h]	;Get brush index
+;	    add     al,gl_direction	;Add displacement to next byte (+1/-1)
+;	    and     al,00000111b	;Keep it in range
+;	    mov     ss:[1234h],al	;Store displacement to next byte
+;	    mov     ds,cx		;Restore DS
+;
+;
+ifdef	GEN_COLOR_BLT
+;	For color brushes:
+;
+;	    mov     ax,1234h		;Load segment of the brush
+;	    mov     bx,1234h		;Load offset of the brush
+;	    mov     cx,ds		;Save DS
+;	    mov     ds,ax		;DS:BX --> brush
+;	    mov     dh,7[bx]		;Get next brush byte
+;	    mov     al,ss:[1234h]	;Get brush index
+;	    add     al,SIZE Pattern	;Add displacement to next plane's bits
+;	    and     al,00011111b	;Keep it within the brush
+;	    mov     ss:[1234h],al	;Store displacement to next plane's bits
+;	    mov     ds,cx		;Restore DS
+endif
+;
+;
+;	For both templates, SS:[1234] is the address of the 7 in the
+;	"mov dh,7[bx]" instruction.  This is the index to this scan's
+;	bit pattern in the brush.  This value will range from 0 to
+;	(SIZE pattern)-1 for monochrome devices, and from 0 to
+;	((NumberPlanes)*(SIZE pattern))-1 for color devices.
+;
+ifdef	GEN_COLOR_BLT
+;	For three plane color brushes, SS:[1234] must also be fixed up
+;	when the next scan line is selected, else it would index into
+;	the monochrome portion of the brush (e.g. 1,9,17,25, where 25
+;	is not part of the color brush).  For four plane color brushes,
+;	the AND mask takes care of the wrapping automatically.
+	page
+
+;	Color ==> Mono Fetch Code
+;
+;	The color ==> mono fetch code is generated when the source
+;	is a color bitmap and the destination is monochrome.  If the
+;	source is the screen and the destination is monochrome, the
+;	EGA's color compare register will be used instead of this code.
+;
+;	The code maps 1 bits to the background color that was passed
+;	in, and 0 bits to the foreground color.  It does it by XORing
+;	each byte with the background color for that plane (00 or FF),
+;	and then ORing the results.  The result of the ORs is then
+;	complemented, giving 1's wherever the background color was
+;	found, and 0's wherever the background color wasn't found.
+;
+;	This template is really just a comment to indicate what
+;	the generated code should look like.
+;
+;	The following registers are available to the source fetch
+;	logic (as implemented herein):
+;
+;	    AH,AL,DS
+;
+;
+;	Exit:	AL  =  source byte
+;		SI --> next source byte
+;
+;
+;	For bitmaps:
+;
+;	    mov     al,plane_w[si]	;Get C1 byte of source
+;	    mov     ah,2*plane_w[si]	;Get C2 byte of source
+;	    xor     ax,C1BkColor+(C2BkColor*256) ;XOR with plane's color
+;	    or	    ah,al		;OR the result
+;	if NUMBER_PLANES eq 4
+;	    mov	    al,3*plane_w[si]	;Get C3 byte of source
+;	    xor	    al,C3BkColor
+;	    or	    ah,al
+;	endif
+;	    lodsb			;Get C0 source
+;	    xor     al,C0BkColor 	;XOR with C0BkColor
+;	    or	    al,ah		;OR with previous result
+;	    not     al			;NOT to give 1's where background
+;
+;
+;	    where NextPlane is defined to be:
+;
+;		a)  bmWidthPlane for bitmaps <64K
+;		b)  bmWidthBytes for bitmaps >64K
+	page
+
+;	Mono ==> Color Fetch Code
+;
+;	The mono ==> color fetch code is generated when the source
+;	is a monochrome bitmap and the destination is color.
+;
+;	When going from mono to color, 1 bits are considered to be
+;	the background color, and 0 bits are considered to be the
+;	foreground color.
+;
+;	For each plane:
+;
+;	  If the foreground=background=1, then 1 can be used in
+;	  place of the source.
+;
+;	  If the foreground=background=0, then 0 can be used in
+;	  place of the source.
+;
+;	  If the foreground=0 and background=1, then the source
+;	  can be used as is.
+;
+;	  If the foreground=1 and background=0, then the source
+;	  must be complemented before using.
+;
+;
+;	A table will be created for processing the monochrome
+;	bitmap for each plane of the destination.  The table
+;	should look like:
+;
+;	     BackGnd   ForeGnd	  Result    AND  XOR
+;		1	  1	    1	     00   FF
+;		0	  0	    0	     00   00
+;		1	  0	    S	     FF   00
+;		0	  1	not S	     FF   FF
+;
+;	From this, it can be seen that the XOR mask is the same as the
+;	foreground color.  The AND mask is the XOR of the foreground
+;	and the background color.
+;
+;	It can also be seen that if the background color is white and the
+;	foreground (text) color is black, then the conversion needn't be
+;	generated (it just gives the source).
+;
+;	The template for rotating the AND and XOR table for the plane
+;	select code is also shown.  It just does a three word rotate
+;	on the AND and XOR masks on the stack.	It is performed at the
+;	end of a scan in anticipation of the next color for that scan.
+;
+;
+;	    lodsb			    ;Get next byte of source
+;	    and     al,byte ptr ss:[1234h]  ;Process against current AND
+;	    xor     al,byte ptr ss:[1234h]  ;  and XOR masks
+
+if NUMBER_PLANES eq 3
+rot_and_xor:
+;	lea	bp,ColorMungeTBl	    ;--> AND/XOR masks
+	mov	ax,word ptr [bp][4]	    ;Rotate next color's AND and
+	xchg	ax,word ptr [bp][2]	    ;  XOR mask into place
+	xchg	ax,word ptr [bp][0]
+	mov	word ptr [bp][4],ax
+else
+rot_and_xor:
+;	lea	bp,ColorMungeTBl	    ;--> AND/XOR masks
+	mov	ax,word ptr [bp][6]	    ;Rotate next color's AND and
+	xchg	ax,word ptr [bp][4]	    ;  XOR mask into place
+	xchg	ax,word ptr [bp][2]	    ;  XOR mask into place
+	xchg	ax,word ptr [bp][0]
+	mov	word ptr [bp][6],ax
+endif
+
+LEN_ROT_AND_XOR	equ	$-rot_and_xor
+	page
+
+;	Plane Looping Logic
+;
+;	The plane looping logic is copied into any color destination
+;	BLT.  It shifts the plane selection mask to the next plane,
+;	and if it is still valid, jumps to the start of the blt code.
+;
+;	The plane selection mask will generate a carry when shifted
+;	after the last plane has been processed for the current scan.
+;
+;	Two different jumps could be generated depending on the
+;	displacement of the jump.
+;
+;	This template is really just a comment to indicate what
+;	the generated code should look like.
+;
+;	Entry:	BL = plane select mask
+;
+;	Exit:	BL = plane select mask
+;
+;	Uses:	BL,flags
+;
+;	    shl     bl,1		;Set next scanline?
+;	    jc	    $+5 		;  Yes
+;	    jmp     StartOfLoop 	;  No, still have some planes left
+;
+;		or
+;
+;	    shl     bl,1		;Set next scanline?
+;	    jnc     StartOfLoop 	;  No overflow yet
+
+endif	;GEN_COLOR_BLT
