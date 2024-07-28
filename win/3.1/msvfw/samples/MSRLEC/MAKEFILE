@@ -1,0 +1,221 @@
+#===========================================================================;
+#
+#   MSRLEC - Microsoft RLE Compressor Sample 
+#
+#############################################################################
+#
+#   THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY
+#   KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+#   IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR
+#   PURPOSE.
+#
+#   Copyright (c) 1992, 1993  Microsoft Corporation.  All Rights Reserved.
+#
+#############################################################################
+#
+#   to make a NON-DEBUG build, type the following line:
+#       nmake DEBUG=NO
+#   just typing 'nmake' will build a DEBUG build
+#
+#   You can also set the environment variable DEBUG to NO
+#
+#===========================================================================;
+
+TARGETNAME  = msrlec
+TARGETBASE  = msrlec
+TARGETEXT   = drv
+TARGETTYPE  = WINDLL            # WINAPP[ST], WINDLL
+TARGETMODEL = SMALL            # SMALL, MEDIUM
+TARGETAPI   = -DWIN31           # -DWIN30, -DWIN31, -DWIN4
+
+TARGETWARN  = -W3
+
+
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+#
+#   Goals and objects
+#
+#
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+
+GOALS   = $(TARGETNAME).$(TARGETEXT)
+
+OBJ1    = drvprocr.obj rlea.obj
+OBJ2    = df.obj $(TARGETNAME).obj playrle.obj
+OBJS	= $(OBJ1) $(OBJ2)
+
+
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+#
+#   Platform dependence
+#
+#
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+
+WIN16       = 1
+TARGETOPTZ  = -Ox -G2sw $(TARGETWARN)
+
+!if ("$(TARGETMODEL)" != "SMALL") && ("$(TARGETMODEL)" != "MEDIUM")
+!error Invalid TARGETMODEL environment variable: specify SMALL or MEDIUM!
+!endif
+
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+#
+#   Default executable and flag declarations
+#
+#
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+
+CVARS       = -DWIN16 -DSTRICT $(TARGETAPI)
+
+CC          = cl
+CFLAGS      = -c -Zp $(TARGETOPTZ)
+
+RC          = rc
+RFLAGS      =
+
+LN          = link
+LFLAGS      = /NOPACKC/NOD/NOE/MAP/AL:16/ONERROR:NOEXE
+
+LB          = lib
+LBFLAGS     =
+
+CRFLAGS     =
+
+
+!if "$(DEBUG)" != "NO"
+CVARS       = $(CVARS) -DDEBUG
+CFLAGS      = $(CFLAGS) -Zid
+LFLAGS      = $(LFLAGS) /CO/LI
+!endif
+
+
+
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+#
+#   Standard library stuff
+#
+#   CONLFLAGS and WINLFLAGS:
+#
+#
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+
+WINLIBSBASE = libw commdlg shell mmsystem
+
+!if "$(TARGETMODEL)" == "SMALL"
+WINLIBSST   = slibcew.lib $(WINLIBSBASE)
+WINLIBSMT   =
+WINLIBSDLL  = sdllcew.lib $(WINLIBSBASE)
+!endif
+
+!if "$(TARGETMODEL)" == "MEDIUM"
+WINLIBSST   = mlibcew.lib $(WINLIBSBASE)
+WINLIBSMT   =
+WINLIBSDLL  = mdllcew.lib $(WINLIBSBASE)
+!endif
+
+
+#
+#
+#
+#
+
+!if ("$(TARGETTYPE)" == "WINAPPST") || ("$(TARGETTYPE)" == "WINAPP") 
+!if "$(TARGETMODEL)" == "SMALL"
+CFLAGS      = $(CFLAGS) -AS
+!endif
+!if "$(TARGETMODEL)" == "MEDIUM"
+CFLAGS      = $(CFLAGS) -AM
+!endif
+CVARS       = $(CVARS)
+WINLIBS     = $(WINLIBSST)
+!endif
+
+!if "$(TARGETTYPE)" == "WINDLL"
+!if "$(TARGETMODEL)" == "SMALL"
+CFLAGS      = $(CFLAGS) -Asnw
+!endif
+!if "$(TARGETMODEL)" == "MEDIUM"
+CFLAGS      = $(CFLAGS) -Alnw
+!endif
+CVARS       = $(CVARS) -D_DLL -D_WINDLL
+WINLIBS     = $(WINLIBSDLL)
+!endif
+TARGETDEF   = $(TARGETBASE)
+TARGETLIBS  = $(WINLIBS)
+
+ASM  = masm -Mx -Zi -t
+
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+#
+#   Build rules
+#
+#
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+
+goal: $(GOALS)
+        @echo ***** Finished building $(TARGETNAME).$(TARGETEXT) *****
+
+
+$(TARGETNAME).$(TARGETEXT): $(OBJS) $(TARGETBASE).res $(TARGETBASE).def
+    $(LN) @<<
+$(LFLAGS) $(WINLFLAGS)+
+$(OBJS),
+$(@R).$(TARGETEXT),
+$(@R).map,
+$(TARGETLIBS),
+$(TARGETBASE).def
+<<
+        mapsym $(@R).map
+        $(RC) -t -31 $(TARGETBASE).res $(@R).$(TARGETEXT)
+
+$(TARGETBASE).res: $(TARGETBASE).rc $(TARGETBASE).h
+        $(RC) -r $(RFLAGS) $(CVARS) -Fo $@ $(TARGETBASE).rc
+
+
+#
+#
+#
+#
+$(TARGETNAME).obj: $$(@B).c $(TARGETBASE).h 
+        $(CC) @<<
+$(CFLAGS) $(CVARS) -NT _TEXT -Fo$@ $(@B).c
+<<
+
+drvprocr.obj: $$(@B).c 
+        $(CC) @<<
+$(CFLAGS) $(CVARS) -NT _TEXT -Fo$@ $(@B).c
+<<
+
+playrle.obj: $$(@B).c 
+        $(CC) @<<
+$(CFLAGS) $(CVARS) -NT _TEXT -Fo$@ $(@B).c
+<<
+
+df.obj: $$(@B).asm
+	$(ASM) -DSEGNAME=_TEXT $(@B),$(@);
+
+rlea.obj: $$(@B).asm
+	$(ASM) -DSEGNAME=_TEXT $(@B),$(@);
+
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+#
+#   Misc rules
+#
+#
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -;
+
+clean:
+        @echo y >y.zyz
+        @del *.obj <y.zyz >nul
+        @del *.res <y.zyz >nul
+        @del *.sym <y.zyz >nul
+        @del *.map <y.zyz >nul
+        @del *.pdb <y.zyz >nul
+        @del *.drv <y.zyz >nul
+        @del y.zyz
+        @echo ***** Finished cleaning $(TARGETNAME) *****
+
+copy:
+	copy $(TARGETNAME).$(TARGETEXT) ..\..\bin
+	copy $(TARGETNAME).sym ..\..\bin

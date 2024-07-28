@@ -1,0 +1,9 @@
+CAPTURE.FRM
+CAPWNDX.VBX
+MCIWNDX.VBX
+ProjWinSize=346,416,248,142
+ProjWinShow=2
+IconForm="Form1"
+Title="VBCapTst"
+ExeName="VBCAPTST.EXE"
+

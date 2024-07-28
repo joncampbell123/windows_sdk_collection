@@ -1,0 +1,9 @@
+CHILD.FRM
+MCIWNDX.VBX
+VBMCITST.BAS
+VBMCITST.FRM
+ProjWinSize=341,536,248,215
+ProjWinShow=2
+IconForm="mdiSample"
+Title="VBMCITST"
+ExeName="VBMCITST.EXE"

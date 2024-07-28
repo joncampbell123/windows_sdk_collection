@@ -1,0 +1,142 @@
+
+#############################################################################
+#
+#   THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY
+#   KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+#   IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR
+#   PURPOSE.
+#
+#   Copyright (c) 1992, 1993  Microsoft Corporation.  All Rights Reserved.
+#
+#   IMAADPCM.ACM -- Audio Compression Manager CODEC for IMA/DVI ADPCM
+#
+#   to make a NON-DEBUG build, type the following line:
+#       nmake DEBUG=NO
+#   just typing 'nmake' will build a DEBUG build
+#
+#   You can also set the environment variable DEBUG to NO
+#
+
+#
+#   Makefile for MSACM on Win 16
+#
+#
+NAME    = imaadpcm
+EXT     = acm
+
+GOALS   = $(NAME).$(EXT) $(NAME).sym
+
+# add -Fc if you want to see assembler that is generated: 
+OPTZ    = -GD -DWINVER=0x030A -Alnw -G2s -Oxwt      # -Fc
+
+DEFZ    = -DWIN16 -DWIN31 -DSTRICT
+
+OBJ1    = init.obj codec.obj
+OBJ2    = $(NAME).obj debug.obj
+OBJS    = $(OBJ1) $(OBJ2)
+LIBS    = libw mmsystem mdllcew
+
+!IF "$(DEBUG)" == "NO"
+
+DEF     = $(DEFZ)
+CCOPT   =
+ASOPT   =
+RCOPT   =
+LNOPT   =
+
+!ELSE
+
+DEF     = -DDEBUG $(DEFZ)
+CCOPT   = -Zid
+ASOPT   = -Zi
+RCOPT   =
+LNOPT   = /CO/LI
+
+!ENDIF
+
+!IF "$(MASM6)" == "TRUE"
+# masm 6.x
+AS  = ml -DMASM6 -I. /Zm /c $(DEF) -Cx $(ASOPT)
+!ELSE
+AS  = masm $(DEF) -Mx $(ASOPT)
+!ENDIF
+
+CC  = cl $(DEF) -c $(OPTZ) -W3 -Zpe $(CCOPT)
+RC  = rc $(DEF) -v $(RCOPT)
+LN  = link /NOPACKC/NOE/NOD/A:16/MAP/ONERROR:NOEXE $(LNOPT)
+
+.asm.obj:
+        $(AS) $* ;
+
+.c.obj:
+        $(CC) $*.c
+
+#
+#   RULES
+#
+
+all: $(GOALS)
+
+
+$(NAME).$(EXT) $(NAME).map: $(OBJS) $(NAME).res codec.def
+        $(LN) @<<
+$(OBJ1)+
+$(OBJ2),
+$(NAME).$(EXT),
+$(NAME).map,
+$(LIBS),
+codec.def
+<<
+        $(RC) -t -31 $(NAME).res $(NAME).$(EXT)
+
+$(NAME).sym:    $$(@R).map
+        -mapsym $*.map
+
+$(NAME).res: codec.rc codec.h codec.ico
+        $(RC) -r -z -Fo$@ codec.rc
+
+
+#
+#   SEGMENTATION
+#
+SEGC = $(CC) -NT TSEG $*.c
+
+!IF "$(MASM6)" == "TRUE"
+# masm 6.x
+SEGA = $(AS) -DSEGNAME=TSEG -Ta $*.asm
+!ELSE
+# masm 5.x
+SEGA = $(AS) -DSEGNAME=TSEG $* ;
+!ENDIF
+
+init.obj        : ; $(SEGC:TSEG=INIT_TEXT)
+codec.obj       : ; $(SEGC:TSEG=_TEXT)
+debug.obj       : ; $(SEGC:TSEG=_TEXT)
+$(NAME).obj     : ; $(SEGC:TSEG=CODEC_TEXT)
+
+#
+#   DEPENDENCIES
+#
+
+init.obj: init.c codec.h debug.h
+
+codec.obj: codec.c codec.h debug.h $(NAME).h
+
+debug.obj: debug.c debug.h
+
+$(NAME).obj: $(NAME).c $(NAME).h codec.h debug.h
+
+#
+#   Misc.
+#
+clean:
+        -@del $(NAME).$(EXT)
+        -@del *.pdb
+        -@del *.res
+        -@del *.obj
+        -@del *.map
+        -@del *.sym
+
+copy:
+	copy $(NAME).$(EXT) ..\..\bin
+	copy $(NAME).sym ..\..\bin
