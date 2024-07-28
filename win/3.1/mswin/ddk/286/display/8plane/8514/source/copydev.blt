@@ -1,0 +1,105 @@
+	.xlist
+;----------------------------Module-Header------------------------------;
+; Module Name: COPYDEV.BLT
+;
+; Subroutine to copy physical device information to local frame.
+;
+; Created: In Windows' distant past (c. 1983)
+;
+; Copyright (c) 1983 - 1987  Microsoft Corporation
+;
+; This file is part of a set that makes up the Windows BitBLT function
+; at driver-level.
+;-----------------------------------------------------------------------;
+	.list
+
+
+;----------------------------Private-Routine----------------------------;
+; copy_device
+;
+; Copy device information to frame.
+;
+; Entry:
+;	DS:SI --> device
+; 	ES:DI --> frame DEV structure
+;	BH     =  gl_the_flags, accumulated so far
+; Returns:
+;	BH     =  gl_the_flags, accumulated so far
+;	Carry clear if no error
+; Error Returns:
+;	Carry set if error (bad color format)
+; Registers Preserved:
+;	BX,CX,DS,ES,BP
+; Registers Destroyed:
+;	AX,DX,SI,DI,flags
+; Calls:
+;	None
+; History:
+;  Sun 22-Feb-1987 16:29:09 -by-  Walt Moore [waltm]
+; Created.
+;-----------------------------------------------------------------------;
+
+;------------------------------Pseudo-Code------------------------------;
+; {
+; }
+;-----------------------------------------------------------------------;
+
+
+copy_dev	proc near
+
+	lodsw				;Get type
+	errnz	bmType			;Must be the 1st word
+	cmp	ax, 2000h		;Set 'CY' if the device
+	cmc
+	rcl	bh,1			;Move in type
+	errnz	F0_SRC_IS_DEV-00001000b
+	errnz	F0_DEST_IS_DEV-0000010b
+
+	movsw				;Width in bits
+	errnz	bmWidth-bmType-2
+	errnz	width_bits
+
+	movsw				;Height in scans
+	errnz	bmHeight-bmWidth-2
+	errnz	height-width_bits-2
+
+	movsw				;Width in bytes
+	errnz	bmWidthBytes-bmHeight-2
+	errnz	width_b-height-2
+
+	lodsw				;Get Planes/pixels
+	sub	ax,0101H		;Monochrome?
+	neg	ax			;set carry if in color
+	rcl	bh,1			;Rotate in color flag
+	errnz	bmPlanes-bmWidthBytes-2
+	errnz	bmBitsPixel-bmPlanes-1
+	movsw				;lpBits
+	movsw
+	errnz	bmBits-bmBitsPixel-1
+	errnz	lp_bits-width_b-2
+	movsw				;Width of a plane if small color bitmap
+	errnz	bmWidthPlanes-bmBits-4
+	errnz	plane_w-lp_bits-4
+
+	add	si,6			;-->segment index
+	movsw				;Segment index if huge bitmap
+	errnz	bmSegmentIndex-bmWidthPlanes-8
+	errnz	seg_index-plane_w-2
+
+	movsw				;Number of scans in a segment
+	errnz	bmScanSegment-bmSegmentIndex-2
+	errnz	scans_seg-seg_index-2
+
+	movsw				;Number of unused bytes if huge bitmap
+	errnz	bmFillBytes-bmScanSegment-2
+	errnz	fill_bytes-scans_seg-2
+
+	mov	al,bh			;Set IS_COLOR and IS_DEVICE
+	and	al,IS_DEVICE		;  flags in the Device Flags
+	stosb
+	errnz	dev_flags-fill_bytes-2
+copy_dev_done:
+	clc
+	ret
+
+copy_dev	endp

@@ -1,0 +1,358 @@
+
+subttl	Compile - Phase Alignment
+page
+
+	assumes ds,code
+
+
+;	Generate the phase alignment if any.
+;
+;	It is assumed that AL contains the source byte
+;
+;	Currently:
+;
+;	    DS = CS
+;	    DH = phase alignment
+;
+
+
+cblt_3240:
+	xor	cx,cx			;Might have garbage in it
+	or	dh,dh			;Any phase alignment?
+	jz	cblt_3280		;  No, so skip alignment
+	mov	cl,dh			;Get horizontal phase for rotating
+	mov	ax,I_ROL_AL_1		;Assume rotate left n times
+	cmp	cl,5			;4 or less rotates?
+	jc	cblt_3260		;  Yes
+	neg	cl			;  No, compute ROR count
+	add	cl,8
+	mov	ah,HIGH I_ROR_AL_1
+	errnz	<(LOW I_ROL_AL_1)-(LOW I_ROR_AL_1)>
+
+cblt_3260:
+	rep	stosw			;Stuff the phase alignment rotates
+					;  then the phase alignment code
+	mov	si,codeOFFSET phase_align
+	mov	cl,(PHASE_ALIGN_LEN SHR 1)
+	rep	movsw
+if	PHASE_ALIGN_LEN AND 1
+	movsb
+endif
+
+cblt_3280:
+	dec	firstFetch		;Generate another fetch?
+	jz	cblt_4000		;  No
+
+;	A second fetch needs to be stuffed.  Copy the one just created.
+
+	mov	si,di			;Get start of fetch logic
+	xchg	si,StartFL		;Set new start, get old
+	mov	cx,di			;Compute how long fetch is
+	sub	cx,si			;  and move the bytes
+	mov	ax,es
+	mov	ds,ax
+	rep	movsb
+	mov	ax,cs			;Must leave ds = cs
+	mov	ds,ax
+
+
+
+subttl	Compile - ROP Generation
+page
+
+;	Create the logic action code
+;
+;	The given ROP will be converted into the actual code that
+;	performs the ROP.
+
+
+
+SRC_IN_AL 	equ	00000001b	;Source field is in AL		(0)
+DEST_IN_AH	equ	00000010b	;Destination field is in AH	(1)
+PUSH_POP_FLAG	equ	00000100b	;Next push/pop is a pop 	(1)
+
+
+ifndef	StaticROPs
+
+cblt_4000:
+	xor	dh,dh			;Set initial flags for this code
+
+
+;	If the ROP happens to be a source copy, then the entire ROP
+;	generation can be skipped since the source is already in AL
+;	and no operations will be performed on it.
+
+
+	mov	cx,OFF_Rop		;Get the raster op
+	cmp	cx,sourceCopy		;If the raster op is SourceCopy,
+	jnz	cblt_4020		;  (isn't SourceCopy)
+	jmp	cblt_4260		;  skip the code generation
+
+
+
+;	The ROP isn't a source copy.  A little preprocessing will be done.
+;
+;	For the source:
+;
+;	    If more than one copy of the source is needed, the source
+;	    in AL will be saved in DL.
+;
+;	    If only one copy of the source is needed, and it isn't
+;	    the first operand, the source will be saved in DL.
+;
+;	    If only one copy of the source is needed and it is the
+;	    first operand, it is already in AL from the fetch logic,
+;	    so nothing need be done.
+;
+;
+;	For the destination:
+;
+;	    If only one copy of the destination is needed, it will
+;	    be fetched from memory when required.
+;
+;	    If more than one copy of the destination is required,
+;	    it will be loaded into AH and used from there.
+
+
+
+cblt_4020:
+	shr	cx,1			;Raster op must be pre-rotated
+	shr	cx,1			;  twice for entry into create loop
+	mov	si,operands		;Get the operand string
+	errnz	LogOp1-00C0h		;  (this is assumed)
+	mov	dl,nLogOps		;Get number of operators
+
+	cmp	nOps.OpSrc,1		;How many sources are needed?
+	jc	cblt_4060		;  None needed
+	jne	cblt_4040		;  At least two needed
+	mov	ax,si			;  Only one, is it the first operand?
+	and	al,11b
+	cmp	al,OpSrc
+	jz	cblt_4060		;Source is first operand
+
+cblt_4040:
+	mov	ax,I_MOV_DL_AL		;Save source in a register
+	stosw
+
+cblt_4060:
+	cmp	nOps.OpDest,2		;Destination used more than once?
+	jc	cblt_4080		;  No, leave it in memory
+	mov	al,I_ES_OVERRIDE 	;  Yes, load destination into a reg
+	stosb
+	mov	ax,I_MOV_AH_DEST
+	stosw
+	or	dh,DEST_IN_AH		;Show that the destination is in AH
+
+
+
+;	This is the start of the actual ROP generator.	This code is
+;	entered either for the very first operand or after a "push".
+;	The next operand will be loaded into AL.
+;
+;	If this is the first time, then it is possible for the first
+;	operand to be a "PUSH" if an invalid raster op was given.  If
+;	this is the case and real PUSHES are being performed, then abort
+;	since the raster op isn't one of the published ones and there is
+;	no guarantee that a POP will be performed.
+;
+;	If we are here because a "PUSH" was just performed, then the next
+;	operand cannot be a POP since none of the strings were generated
+;	with sequential push/pops.
+;
+;	Currently:
+;
+;		SI = parse string
+;		     D1:D0 = next operand
+;		CX = ROP
+;		     D3:D2 = next operator
+;		DL = # operators left
+;		DH = flags: SRC_IN_AL, DEST_IN_AH, PUSH_POP_FLAG
+
+
+cblt_4080:
+	mov	ax,si			;Mask next operand
+	and	ax,11b
+;	jnz	cblt_4100		;Is not a push, it's ok
+;	jmp	cblt_6280		;is a push, ABORT
+
+cblt_4100:
+	dec	ax			;Is operand a source?
+	jnz	cblt_4120		;  No, must be destination or pattern
+	test	dh,SRC_IN_AL		;  Yes, is source in AL now?
+	jz	cblt_4240		;    Yes, do nothing
+	and	dh,NOT SRC_IN_AL	;    No, show source is in AL
+	mov	ax,I_MOV_AL_DL		;      and move source into AL
+	jmp	short cblt_4220		;
+
+cblt_4120:
+	dec	ax			;Is operand the destination?
+	mov	ax,I_MOV_AL_DH		;  (assume operand is pattern)
+	jnz	cblt_4200		;This is P, load pattern into AL
+	mov	ax,I_MOV_AL_AH		;Assume destination is in AH
+	test	dh,DEST_IN_AH		;Is destination in AH?
+	jnz	cblt_4200		;  Yes, load it into AL
+	mov	al,I_ES_OVERRIDE 	;  No, load destination from memory
+	stosb
+	mov	ax,I_MOV_AL_DEST
+	jmp	short cblt_4200
+
+
+
+;	This is the loop portion of the ROP generation.  The current
+;	operand is in AL.  Get the next operator and apply it to AL
+;	if unary (NOT) or against AL and the next operand if binary
+;	(AND, OR, XOR).
+;
+;	If the next operand is a push or pop, then extra work will
+;	be required.
+
+
+cblt_4140:
+	shr	cx,1			;Get next operator
+	shr	cx,1
+	mov	bx,cx
+	and	bx,000Ch
+	mov	ax,I_NOT_AL		;Assume operator is "NOT"
+	jz	cblt_4200		;Operator is a NOT
+
+	ror	si,1			;Binary operator.  Get next operand
+	ror	si,1
+	mov	ax,si
+	and	ax,11b			;Mask operand and test for pop/push
+	jnz	cblt_4160		;It is source, pattern, or destination
+
+
+;	The operator is binary and a push or pop is required.
+;
+;	OpTbl was layed out so that pops could use the normal operand
+;	code.  OpSpec is 00b, and the binary operators ending with
+;	00b are applied against the pushed value".
+;
+;	If this is a push, more work needs to be done.	The code to
+;	push the current result will be generated.  The next operand
+;	will be set, and the current binary operator restored.	The
+;	initialize code will then be entered to load AL with a new
+;	value.
+
+
+	xor	dh,PUSH_POP_FLAG	;Toggle the push/pop flag
+	test	dh,PUSH_POP_FLAG	;Is this a pop?
+	jz	cblt_4160		;  Yes
+	mov	ax,I_MOV_BL_AL		;  No, perform a "PUSH"
+	stosw
+	shl	cx,1			;Restore this operator
+	shl	cx,1
+	ror	si,1			;Rotate in next operand
+	ror	si,1
+
+
+;	Bias the operator count since loading another value into
+;	AL via cblt_4080 will decrement this counter (if this wasn't
+;	done, then the count would be one less than it should be,
+;	thus dropping the very last operator).
+
+
+	inc	dl			;Bias operator count
+	jmp	cblt_4080		;Get new operand
+
+
+
+;	Normal binary operation.  If the destination is the current
+;	operand and it isn't in AH, generate the code to do the
+;	operation with ES:[DI], else generate the code to do the
+;	operation with AH.
+
+
+cblt_4160:
+	or	bx,ax			;Generate operation table index/2
+	cmp	ax,OpDest		;Is operand the destination?
+	jnz	cblt_4180		;  No, table pointer is valid
+	test	dh,DEST_IN_AH		;  Yes, Is it in a register (AL)
+	jnz	cblt_4180		;    Yes, table pointer is valid
+	mov	al,I_ES_OVERRIDE 	;    No, work from memory
+	stosb
+	shr	bx,1			;Make pointer point to memory operation
+	shr	bx,1
+
+cblt_4180:
+	add	bx,bx			;Table entries are words
+	mov	ax,[bx].OpTbl		;Get the correct instruction from table
+
+cblt_4200:
+	or	dh,SRC_IN_AL		;Show source is no longer in AL
+
+cblt_4220:
+	stosw				;Save the current instruction
+
+cblt_4240:
+	dec	dl			;More operators?
+	jnl	cblt_4140		;  Yes, continue processing
+
+cblt_4260:
+	mov	endFL,di		;Save end of fetch/logic operation
+	test	dh,DEST_IN_AH		;Is destination in AH?
+	jnz	cblt_4280		;  Yes, don't load it into AH
+
+
+else
+
+
+;	Copy the ROP template into the BLT
+
+cblt_4000:
+	mov	ax,operands		;Get back rop data
+	mov	bl,ah			;Get count of number of bits to move
+	and	bx,HIGH ROPLength
+	shr	bx,1
+	shr	bx,1
+	mov	cl,bptr ROPTable+256[bx];Get length into cx
+	xor	ch,ch			;
+	errnz	ROPLength-0001110000000000b
+
+	mov	bx,ax			;Get offset of the template
+	and	bx,ROPOffset
+	jz	cblt_4020		;Source copy
+	lea	si,ROPTable[bx] 	;--> the template
+	rep	movsb			;Move the template
+
+cblt_4020:
+	mov	bx,ax			;Keep rop around
+	or	ah,ah			;Generate a negate?
+	jns	cblt_4040		; No
+	mov	ax,I_NOT_AL
+	stosw
+
+cblt_4040:
+	mov	endFL,di		;Save end of fetch/logic operation
+
+
+endif
+
+
+
+subttl	Compile - Mask And Save
+page
+
+;	Generate code to mask and save the result.  If the destination
+;	isn't in a register, it will be loaded from ES:[DI] first.  The
+;	mask operation will then be performed, and the result stored.
+
+
+	mov	al,I_ES_OVERRIDE 	;Load destination in AH
+	stosb
+	mov	ax,I_MOV_AH_DEST
+	stosw
+
+cblt_4280:
+	mov	si,codeOFFSET masked_store ;Move rest of masked store template
+	movsw
+	movsw
+	movsw
+	errnz	MASKED_STORE_LEN-6	;Must be six bytes long
+	mov	ax,startMask		;Stuff start mask into
+	xchg	ah,al			;  the template
+	mov	es:MASKED_STORE_MASK[di],ax
+	mov	endFLS,di		;Save end of fetch/logic/store operation
+
+	assumes ds,nothing
+

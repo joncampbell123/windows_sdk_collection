@@ -1,0 +1,159 @@
+'=========================================================================
+'
+' automation script 
+'     For use with DCT-SHELL (calls HctScriptBegin(), HctScriptEnd()).
+'     Runs APPPATH + TESTAPP + ".exe " + DATAFILE
+'     Script waits for TESTAPP to complete before continuing.
+' Creator : 
+' Date    : 
+'
+' Notes:
+'     This script uses 1 definable symbol:
+'     CTSHELL - if defined, the script callse HctScriptBegin() and 
+'               HctScriptEnd()
+'     These symbols are defined (enabled) from the command line via the 
+'        /d switch.  
+'     EX: wattdrvr script.wtd /run /d CTSHELL
+'
+'     MFDLL.DLL (magic fingers) SelectMenuItem subroutine does not
+'        work with win30.  
+'
+'=========================================================================
+
+'$include: 'mfdll.inc'
+'$include: 'wtdutil.inc'
+'$include: 'auto.inc'
+'$IFDEF CTSHELL
+   '$include: 'hct.inc'
+'$ENDIF
+
+CONST TESTAPP  = "Powerpnt"                         ' name of app W/O EXTENSION!
+CONST APPPATH  = "Powerpnt\"                        ' where TESTAPP is located
+CONST WINTITLE = "Microsoft PowerPoint"             ' window title
+
+'My routines
+DECLARE FUNCTION GetIndex LIB "PPINDEX.DLL" (Flag AS INTEGER) AS INTEGER
+DECLARE FUNCTION bInitScript AS INTEGER
+DECLARE SUB StartScript
+DECLARE SUB EndScript
+
+
+'==========================================================================
+
+FUNCTION bInitScript AS INTEGER
+   startScript
+   szExeName$ = APPPATH + TESTAPP + ".EXE"
+   IF EXISTS (szExeName$) = 0 THEN
+      bInitScript = FALSE
+      print szExeName$ + " does not exist."
+      Pause ("Could Not Initialize " + WINTITLE)
+      print ("Script aborting.")
+   ELSE 
+      bInitScript = TRUE
+   END IF
+END FUNCTION
+
+'=========================================================================
+
+SUB startScript
+   ViewPort OFF
+   ViewPort CLEAR
+   print "Start Of " + WINTITLE + " Test"
+END SUB
+
+'=========================================================================
+
+SUB endScript
+    print "End Of " + WINTITLE + " Test"
+END SUB
+
+'==========================================================================
+' MAIN
+'==========================================================================
+
+DIM document AS STRING
+DIM macroname AS STRING
+DIM keySequence AS STRING
+DIM TextBuffer AS STRING
+
+'$IFDEF CTSHELL
+    HctScriptBegin  TESTAPP
+'$ENDIF
+
+IF (bInitScript () = TRUE) THEN
+    'Get the optional parameters passed from the shell.
+    document$ = command$
+    
+    'Start the application with the specified .PPT file
+    RUN APPPATH + TESTAPP + ".exe " + APPPATH + document$, NOWAIT
+    
+    Wait 5
+    'Clear "You'll need to reformat" dialog
+    if (ButtonExists("OK")) THEN
+      ClickButton("OK")
+    END IF
+
+    'Select printer setup. 
+    SelectMenuItem "File"
+    Wait 1    
+    SelectMenuItem "Printer Setup"
+    Wait 3
+    
+    'Get the index of the current default printer for slides
+    nIndex=GetIndex(1)
+
+    'Build the string to send via sendkeys
+    Index$ = TrimStr$(nIndex)
+    SendKeys "{home}{down " + Index$ + "}"
+    
+    ' Now do the same thing for notes and handouts.  Call GetIndex again because DISPLAY isn't a
+    ' valid option for these
+    nIndex=GetIndex(0)
+
+    print nIndex    
+    Index$ = TrimStr$(nIndex)
+    SendKeys "%n{home}{down "+ Index$ + "}{enter}"
+    
+    ' Wait a second, then tell it to reformat
+    Wait 1
+    
+    if(ButtonExists("OK")) THEN
+        ClickButton("OK")
+    END IF
+
+    ' Print the document!        
+    SelectMenuItem "File"
+    SelectMenuItem "Print..."
+    SendKeys "{enter}"
+
+    WAIT 5
+    'Loop until printing is finished for this document.
+    'Put a wait command in so we don't take such a performance hit
+    WHILE(ButtonExists("Cancel"))
+        Wait 5
+    WEND
+
+    WAIT 2
+    'We may get a warning that objects are outside the printable region--hit OK
+    IF (ButtonExists("OK")) THEN
+        ClickButton("OK")
+        WAIT 5
+    END IF
+    
+    'Exit application
+    SelectMenuItem "File"
+    SelectMenuItem "Exit"
+
+    'Don't save changes to document
+    Wait 2
+    If(ButtonExists("No")) THEN
+        ClickButton "No"
+    END IF
+   
+    endScript
+
+    '$IFDEF CTSHELL
+        HctScriptEnd (RS_PASSED)   
+    '$ENDIF
+ENDIF
+

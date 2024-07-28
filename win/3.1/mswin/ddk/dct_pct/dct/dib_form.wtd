@@ -1,0 +1,144 @@
+'-------------------------------------------------------------------------
+'
+' DIB_FORM.WTD automation script
+'    FileFormatTest: saves DIB files in different file formats.
+' 
+'-------------------------------------------------------------------------
+'$DEFINE DIB_FORM
+
+CONST LOG         = "dib_form.log"        ' assume current dir
+'CONST SCRIPT      = "dib_stre"
+CONST TESTFILE    = "testfile.dct"        ' filename for file format test
+
+DECLARE FUNCTION DeCode$ (szKeyString$)
+DECLARE SUB FileFormatTest (szDIBFile$)
+DECLARE SUB FileSaveAs (szFileFormatKeys$) 
+
+'$include: 'mfdll.inc'
+'$include: 'wtdutil.inc'
+'$include: 'dib.inc'
+'$IFDEF CTSHELL
+   '$include: 'hct.inc'
+'$ENDIF
+
+'-------------------------------------------------------------------------
+
+SUB FileSaveAs (szFileFormatKeys$) 
+   ' Saves current file in specified DIB format.
+   ' Returns name of current file
+
+   SendKeys "%fs"          ' SelectMenuItem "File" SelectMenuItem "Save As"
+
+   SendKeys       "%n" + TESTFILE
+   ClickButton    "File Type..."
+   SendKeys       szFileFormatKeys$    ' select file format
+   Print "  Saving in file format : " + szFileFormatKeys$
+
+   ClickButton    "OK"           ' save file in new format
+   IF (ButtonExists ("Yes")) THEN 
+      ClickButton "Yes"          ' overwrite existing file
+   END IF
+   SendKeys    "^{F4}"           ' close source file
+END SUB
+
+'-------------------------------------------------------------------------
+
+FUNCTION DeCode$ (szKeyString$)
+   ' Takes sendkeys code for file formats and translates to 
+   '   text.  "%g%1" --> "RGB 1bpp"
+
+   DIM szKeyCode AS STRING, szTranslation AS STRING
+
+   szKeyCode = Mid$ (szKeyString$, 2, 1)    ' extract first hotkey
+
+   IF (szKeyCode = "g") THEN
+      szTranslation = "RGB "
+   ELSEIF (szKeyCode = "l") THEN
+      szTranslation = "RLE 4bpp"
+   ELSEIF (szKeyCode = "e") THEN
+      szTranslation = "RLE 8bpp"
+   ELSEIF (szKeyCode = "p") THEN
+      szTranslation = "PM "
+   ELSE
+      szTranslation = "Invalid keycode!"
+   ENDIF
+
+      ' Get nBpp if saving in RGB or PM format
+   IF (szKeyCode = "g" OR szKeyCode = "p") THEN
+      IF (Mid$ (szKeyString, 4, 1) = "2") THEN     
+         szKeyCode = "24"   
+      ELSE
+         szKeyCode = Mid$ (szKeyString, 4, 1)   
+      ENDIF
+      szTranslation = szTranslation + szKeyCode + "bpp"
+   ENDIF
+
+   DeCode$ = szTranslation
+END FUNCTION
+
+'-------------------------------------------------------------------------
+
+SUB FileFormatTest (szDIBFile$)
+   ' Save/Load current DIB file in each format available.
+
+   DIM aDibFormat$ (10) 
+   DIM lRet AS LONG
+   
+   MAXFORMAT = 10                ' file formats + 1 (zero based arrays)                                    
+   
+   aDibFormat$ (0) = "%g%1"           ' select RGB 1bpp  format
+   aDibFormat$ (1) = "%g%4"           ' select RGB 4bpp  format
+   aDibFormat$ (2) = "%g%8"           ' select RGB 8bpp  format
+   aDibFormat$ (3) = "%l"             ' select RLE 4bpp  format
+   aDibFormat$ (4) = "%e"             ' select RLE 8bpp  format
+   aDibFormat$ (5) = "%p%1"           ' select PM  1bpp  format
+   aDibFormat$ (6) = "%p%4"           ' select PM  4bpp  format
+   aDibFormat$ (7) = "%p%8"           ' select PM  8bpp  format
+   aDibFormat$ (8) = "%g%2"           ' select RGB 24bpp format
+   aDibFormat$ (9) = "%p%2"           ' select PM  24bpp format
+
+   FOR nFileFormat% = 0 TO MAXFORMAT - 1
+      FileSaveAs (aDibFormat$ (nFileFormat%))
+
+         ' open the file saved in FileSaveAs
+      SendKeys    "%fo"             ' "File"  "Open"
+      SendKeys    "%n" + TESTFILE
+      Print    "  Opening file format   : " + DeCode$ (aDibFormat$ (nFileFormat%))
+
+         ' wait for file to be loaded...
+      hDibView% = GetActiveWindow ()
+      ClickButton "OK"              ' open new format file
+      WHILE hDibView% = GetActiveWindow ()
+         'wait for new window, could be error dlg...
+      WEND
+
+         ' check for error msg from DIBVIEW
+      IF (DIbError% (DeCode$ (aDibFormat$ (nFileFormat%))) = TRUE) THEN
+         SendKeys "^{F4}"           ' close errant file
+         EXIT FOR       ' exit for loop - don't play with this file anymore
+      ELSE
+         lRet = SendMessage (hWndDibview, 10000, 1, nFileFormat%)
+      ENDIF
+
+         ' close test file and reload original
+      SendKeys    "^{F4}"           ' close new format file
+      ShowDibFile szDibFile$        ' reload source file for next format
+
+      IF (DIbError% (DeCode$ (aDibFormat$ (nFileFormat%))) = TRUE) THEN
+         SendKeys    "^{F4}"           ' close errant file
+         EXIT FOR       ' exit for loop - don't play with this file anymore
+      ENDIF
+   NEXT nFileFormat%
+   SendKeys    "^{F4}"           ' close file
+END SUB
+
+'-------------------------------------------------------------------------
+'MAIN
+'-------------------------------------------------------------------------
+
+StartScript FILE_FORMAT
+
+InitApp FILE_FORMAT
+DIBTest FILE_FORMAT
+
+EndScript FILE_FORMAT

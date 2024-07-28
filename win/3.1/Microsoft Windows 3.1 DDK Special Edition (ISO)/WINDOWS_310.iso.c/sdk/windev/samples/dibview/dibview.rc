@@ -1,0 +1,352 @@
+#include <windows.h>
+#include "dibview.h"
+#include "file.h"
+#include "palette.h"
+#include "options.h"
+#include "print.h"
+#include "dlgs.h"
+
+MyIcon ICON dibview.ico
+
+SelectCur CURSOR select.cur
+
+DragCursor CURSOR dibdrag.cur
+
+
+STRINGTABLE
+BEGIN
+        // Strings used in FILE.C.
+
+   IDS_PROGNAME,            "DibView"
+   IDS_WINBMP,              "Windows Bitmap"
+   IDS_PMBMP,               "PM Bitmap"
+   IDS_OPENDLG,             "Open a Bitmap"
+   IDS_SAVEDLG,             "Save Bitmap"
+   IDS_FILEOPEN,            "FILEOPEN"
+   IDS_FILESAVE,            "FILESAVE"
+   IDS_RGB,                 "RGB"
+   IDS_PM,                  "PM"
+   IDS_RLE4,                "RLE4"
+   IDS_RLE8,                "RLE8"
+
+
+        // Help strings.  Used in OPTIONS.C.
+
+   IDS_HELP_NORMALWINDOW    "Use default bitmap dimensions"
+   IDS_HELP_STRETCHWINDOW   "Stretch bitmap to fill window"
+   IDS_HELP_USEDIBS,        "Display using Device Independent Bitmaps"
+   IDS_HELP_USEDDBS,        "Display using Device Dependent Bitmaps"
+   IDS_HELP_USESETDIBITS,   "Display using SetDIBits()"
+   IDS_HELP_BESTFIT,        "Best proportional fit for print page"
+   IDS_HELP_STRETCH,        "Stretch to fill entire page"
+   IDS_HELP_SCALE,          "Scale X/Y stretching independently"
+   IDS_HELP_XAXIS,          "X Scaling factor"
+   IDS_HELP_YAXIS,          "Y Scaling factor"
+   IDS_HELP_NOBANDING,      "Don't band DIB to printer"
+   IDS_HELP_USEBANDING,     "Band DIB to printer"
+   IDS_HELP_NO31APIS,       "Use 3.0 Escapes"
+   IDS_HELP_USE31APIS,      "Use 3.1 Print APIs"
+
+
+        // Error message used in OPTIONS.C.
+
+   IDS_ERRXYSCALE,          "X/Y scaling must be integers!"
+
+
+        // Window titles -- IDS_PASTE for windows that are Edit.Paste'ed,
+        //  and IDS_CAPTURE for windows that are Capture.*'d.  Used in
+        //  FRAME.C.
+
+   IDS_PASTE,               "Paste"
+   IDS_CAPTURE,             "Capture%d"
+
+
+        // Error messages for ERROR.C.
+
+   IDS_PRN_NONE,            "No error while printing."
+   IDS_PRN_NODIB,           "No DIB passed to DIBPrint()."
+   IDS_PRN_NODC,            "Couldn't get a printer DC."
+   IDS_PRN_CANTBAND,        "Driver Bug!  NEXTBAND not implemented."
+   IDS_PRN_BANDINFO,        "Error during BANDINFO."
+   IDS_PRN_SETDIBITSTODEV,  "Error during SetDIBitsToDevice()."
+   IDS_PRN_STRETCHDIBITS,   "Error during StretchDIBits()." 
+   IDS_PRN_STARTDOC,        "Error during STARTDOC."
+   IDS_PRN_SETABORTPROC,    "Error during SETABORTPROC."
+   IDS_PRN_STARTPAGE,       "Error during StartPage()."
+   IDS_PRN_NEWFRAME,        "Error during NEWFRAME."
+   IDS_PRN_ENDDOC,          "Error during ENDOC."
+   IDS_PRN_NEXTBAND,        "Error during NEXTBAND."
+   IDS_PRN_NOFNSTARTDOC,    "Couldn't find StartDoc() in GDI."
+   IDS_PRN_NOFNSETABORTPROC,"Couldn't find SetAbortProc() in GDI."
+   IDS_PRN_NOFNSTARTPAGE,   "Couldn't find StartPage() in GDI."
+   IDS_PRN_NOFNENDPAGE,     "Couldn't find EndPage() in GDI."
+   IDS_PRN_NOFNENDDOC,      "Couldn't find EndDoc() in GDI."
+
+
+        // PALETTEENTRY flags field decoded to one of the following.
+        //  Used in PALETTE.C.  Don't mess with the formatting stuff
+        //  of IDS_PAL_DISPRGB unless you also mess with the wsprintf()
+        //  in HighlightSquare()!
+
+   IDS_PAL_RGB,             "RGB"        
+   IDS_PAL_RESERVED,        "PC_RESERVED"
+   IDS_PAL_EXPLICIT,        "PCEXPLICIT"
+   IDS_PAL_ERROR,           "Error"
+   IDS_PAL_NOCOLLAPSE,      "PC_NOCOLLAPSE"
+   IDS_PAL_NOPAL,           "No palette"
+   IDS_PAL_DISPRGB,         "RGB (%3d, %3d, %3d) Entry %3d of %3d F = %s"
+END
+
+
+
+//--------------------------------------------------------------------------
+// Main Menu (for MDI Frame Window)
+//--------------------------------------------------------------------------
+
+TestMenu MENU
+BEGIN
+    POPUP      "&File"
+    BEGIN
+        MENUITEM "&Open...",                    IDM_OPEN
+        MENUITEM "&Save As...",                 IDM_SAVE
+        MENUITEM "&Print",                      IDM_PRINT
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit",                       IDM_EXIT
+        MENUITEM SEPARATOR
+        MENUITEM "&About DibView...",           IDM_ABOUT
+    END
+
+    POPUP      "&Edit"
+    BEGIN
+        MENUITEM "&Copy",                       IDM_COPY
+        MENUITEM "&Paste",                      IDM_PASTE
+    END
+
+    POPUP      "&Palette"
+    BEGIN
+      MENUITEM    "&DIB's",                     IDM_PALDIB
+      MENUITEM    "&System's",                  IDM_PALSYS
+      MENUITEM    "&Animate",                   IDM_PALANIMATE
+      MENUITEM    "&Restore",                   IDM_PALRESTORE
+    END
+
+    MENUITEM   "&Options!",                     IDM_OPTIONS, GRAYED
+
+    POPUP   "&Capture"
+    BEGIN
+      MENUITEM    "&Window",                    IDM_CAPTWINDOW
+      MENUITEM    "&Client Area",               IDM_CAPTCLIENT
+      MENUITEM    "&Desktop",                   IDM_CAPTFULLSCREEN
+      MENUITEM    SEPARATOR
+      MENUITEM    "&Hide Window on Capture",    IDM_CAPTUREHIDE, CHECKED
+    END
+
+    POPUP      "&Window",                       GRAYED
+    BEGIN
+      MENUITEM    "&Tile",                      IDM_WINDOWTILE
+      MENUITEM    "&Cascade", 	                IDM_WINDOWCASCADE
+      MENUITEM    "Arrange &Icons"              IDM_WINDOWICONS
+      MENUITEM    "Close &All",	                IDM_WINDOWCLOSEALL
+    END
+END
+
+
+
+//--------------------------------------------------------------------------
+// Square Size Menu (for Palette Window)
+//--------------------------------------------------------------------------
+
+PalMenu MENU
+BEGIN
+    POPUP      "&Square Size"
+    BEGIN
+      MENUITEM "&Tiny",                IDM_PAL_TINY
+      MENUITEM "&Small",               IDM_PAL_SMALL
+      MENUITEM "&Medium",              IDM_PAL_MEDIUM
+      MENUITEM "&Large"                IDM_PAL_LARGE
+    END
+END
+
+
+AboutDlg DIALOG LOADONCALL MOVEABLE DISCARDABLE 31, 51, 146, 77
+STYLE DS_MODALFRAME | WS_SYSMENU | WS_VISIBLE | WS_POPUP | DS_LOCALEDIT
+CAPTION "DibView"
+FONT 8, "Helv"
+BEGIN
+           CONTROL "Microsoft Windows 3.1", -1, "static", SS_CENTER | WS_CHILD, 0, 5, 144, 8
+	   CONTROL "DibView v1.0", -1, "static", SS_CENTER | WS_CHILD, 0, 14, 144, 8
+	   CONTROL "Copyright © 1989-1991 Microsoft Corp.", -1, "static", SS_CENTER | WS_CHILD, 5, 47, 132, 9
+	   CONTROL "Ok", IDOK, "button", BS_DEFPUSHBUTTON | WS_GROUP | WS_TABSTOP | WS_CHILD, 53, 59, 32, 14
+           CONTROL "MyIcon", -1, "static", SS_ICON | WS_CHILD, 2, 5, 0, 0
+END
+
+
+//---------------------------------------------------------------------------
+// FileOpen.dlg :  File Open and Save As dialog descriptions
+//
+// Copyright (c) Microsoft Corporation, 1990-
+//---------------------------------------------------------------------------
+
+FILEOPEN DIALOG LOADONCALL MOVEABLE DISCARDABLE
+36, 24,  264, 134
+CAPTION "Open"
+STYLE WS_CAPTION | WS_SYSMENU | DS_MODALFRAME
+FONT 8, "Helv"
+BEGIN
+    LTEXT "File &Name:", stc3,   6,   6,  76,  10
+    CONTROL "", edt1, "edit", ES_LEFT | ES_AUTOHSCROLL | WS_BORDER |
+            WS_TABSTOP | WS_CHILD | ES_OEMCONVERT | ES_LOWERCASE,
+            6,    16,  90,  12
+    CONTROL "", lst1, "listbox",
+            LBS_SORT | LBS_HASSTRINGS | LBS_NOTIFY
+            | WS_VSCROLL | WS_CHILD | WS_BORDER | WS_TABSTOP
+            | LBS_OWNERDRAWFIXED,
+            12,   28,  84,  68
+
+    LTEXT "&Directories:", -1, 110,   6,  92,   9
+    LTEXT "",            stc1, 110,  16,  92,   9
+    CONTROL "", lst2, "listbox", 
+            LBS_SORT | LBS_HASSTRINGS | LBS_NOTIFY
+            | WS_VSCROLL | WS_CHILD | WS_BORDER | WS_TABSTOP
+            | LBS_OWNERDRAWFIXED,
+            110,  28,  92,  68
+
+    LTEXT "List Files of &Type:", stc2, 6,  102,  90,   9
+    CONTROL "", cmb1, "combobox", CBS_DROPDOWNLIST | CBS_AUTOHSCROLL |
+            WS_BORDER | WS_VSCROLL | WS_TABSTOP | WS_CHILD,
+            6,  112,  90,  36
+
+    LTEXT "Dri&ves:", stc4,      110, 102,  92,  9
+    CONTROL "", cmb2, "combobox", 
+            CBS_SORT | CBS_HASSTRINGS | CBS_OWNERDRAWFIXED | CBS_DROPDOWNLIST 
+            | WS_CHILD | CBS_AUTOHSCROLL | WS_BORDER | WS_VSCROLL 
+            | WS_TABSTOP,
+            110, 112,  92, 68 
+
+    DEFPUSHBUTTON "OK", IDOK,       208,  6, 50, 14, WS_GROUP
+    PUSHBUTTON "Cancel", IDCANCEL,  208, 24, 50, 14, WS_GROUP
+
+    PUSHBUTTON "&Help", psh15,      208, 46, 50, 14, WS_GROUP
+    CHECKBOX "&Read Only", chx1,    208, 68, 50, 12,
+                        BS_AUTOCHECKBOX | WS_TABSTOP | WS_GROUP
+
+    PUSHBUTTON "D&ib Info ...", IDD_INFO, 208, 95, 50, 14, WS_GROUP
+
+END
+
+
+
+INFO DIALOG 130, 103, 157, 107
+STYLE DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+CAPTION "Dib Information"
+FONT 8, "Helv"
+BEGIN
+    RTEXT           "Name:",                  -1, 10, 10, 50, 8
+    RTEXT           "Format:",                -1, 11, 23, 50, 8
+    RTEXT           "Width:",                 -1, 10, 36, 50, 8
+    RTEXT           "Height:",                -1, 10, 49, 50, 8
+    RTEXT           "Colors:",                -1, 10, 62, 50, 8
+    RTEXT           "Compression:", IDD_COMPHEAD, 10, 75, 50, 8
+    LTEXT           "",             IDD_NAME,     68, 10, 85, 8
+    LTEXT           "",             IDD_FORMAT,   68, 23, 85, 8
+    LTEXT           "",             IDD_WIDTH,    68, 36, 85, 8
+    LTEXT           "",             IDD_HEIGHT,   68, 49, 85, 8
+    LTEXT           "",             IDD_COLORS,   68, 62, 85, 8
+    LTEXT           "",             IDD_COMPRESS, 68, 75, 85, 8
+    PUSHBUTTON      "OK",                   IDOK, 56, 90, 40, 14
+END
+
+
+
+//---------------------------------------------------------------------------
+// PrintDlg : Dialog box put up while printing.
+//---------------------------------------------------------------------------
+
+PrintDLG DIALOG 20, 32, 158, 64
+CAPTION "Printing"
+STYLE WS_DLGFRAME | WS_CAPTION | WS_SYSMENU | WS_POPUP | WS_VISIBLE
+BEGIN
+    CTEXT "Printing",               -1,       0, 10, 158,  8
+    CTEXT "  0% Done",      IDD_PRNPCT,       0, 25  158,  8
+    DEFPUSHBUTTON "Cancel",   IDCANCEL,      55, 40,  48, 14
+END
+
+
+//---------------------------------------------------------------------------
+// FileOpen.dlg :  File Open and Save As dialog descriptions
+//
+// Copyright (c) Microsoft Corporation, 1990-
+//---------------------------------------------------------------------------
+
+FILESAVE DIALOG LOADONCALL MOVEABLE DISCARDABLE
+36, 24,  264, 134
+CAPTION "Open"
+STYLE WS_CAPTION | WS_SYSMENU | WS_POPUP | DS_MODALFRAME
+FONT 8, "Helv"
+BEGIN
+    LTEXT "File &Name:", stc3,   6,   6,  76,  10
+    CONTROL "", edt1, "edit", ES_LEFT | ES_AUTOHSCROLL | WS_BORDER |
+            WS_TABSTOP | WS_CHILD | ES_OEMCONVERT | ES_LOWERCASE,
+            6,    16,  90,  12
+    CONTROL "", lst1, "listbox",
+            LBS_SORT | LBS_HASSTRINGS | LBS_NOTIFY
+            | WS_VSCROLL | WS_CHILD | WS_BORDER | WS_TABSTOP
+            | LBS_OWNERDRAWFIXED,
+            12,   28,  84,  68
+
+    LTEXT "&Directories:", -1, 110,   6,  92,   9
+    LTEXT "",            stc1, 110,  16,  92,   9
+    CONTROL "", lst2, "listbox", 
+            LBS_SORT | LBS_HASSTRINGS | LBS_NOTIFY
+            | WS_VSCROLL | WS_CHILD | WS_BORDER | WS_TABSTOP
+            | LBS_OWNERDRAWFIXED,
+            110,  28,  92,  68
+
+    LTEXT "List Files of &Type:", stc2, 6,  102,  90,   9
+    CONTROL "", cmb1, "combobox", CBS_DROPDOWNLIST | CBS_AUTOHSCROLL |
+            WS_BORDER | WS_VSCROLL | WS_TABSTOP | WS_CHILD,
+            6,  112,  90,  36
+
+    LTEXT "Dri&ves:", stc4,      110, 102,  92,  9
+    CONTROL "", cmb2, "combobox", 
+            CBS_SORT | CBS_HASSTRINGS | CBS_OWNERDRAWFIXED | CBS_DROPDOWNLIST 
+            | WS_CHILD | CBS_AUTOHSCROLL | WS_BORDER | WS_VSCROLL 
+            | WS_TABSTOP,
+            110, 112,  92, 68 
+
+    DEFPUSHBUTTON "OK", IDOK,       208,  6, 50, 14, WS_GROUP
+    PUSHBUTTON "Cancel", IDCANCEL,  208, 24, 50, 14, WS_GROUP
+
+    PUSHBUTTON "&Help", psh15,      208, 46, 50, 14, WS_GROUP
+    CHECKBOX "&Read Only", chx1,    208, 68, 50, 12,
+                        BS_AUTOCHECKBOX | WS_TABSTOP | WS_GROUP
+
+    PUSHBUTTON      "F&ile Type...", IDD_FILETYPE, 208, 94, 50, 14
+    GROUPBOX        "&File Type:", IDD_FILETYPEGROUP, 6, 141, 98, 42, WS_GROUP
+    CONTROL         "R&GB", IDD_RGB, "Button", BS_AUTORADIOBUTTON | WS_TABSTOP,
+                    19, 152, 39, 10
+    CONTROL         "R&LE4", IDD_RLE4, "Button", BS_AUTORADIOBUTTON,
+                    63, 152, 39, 10
+    CONTROL         "RL&E8", IDD_RLE8, "Button", BS_AUTORADIOBUTTON,
+                    19, 167, 39, 10
+    CONTROL         "&PM", IDD_PM, "Button", BS_AUTORADIOBUTTON, 63,
+                    168, 39, 10
+    GROUPBOX        "&Bits Per Pixel:", IDD_BPP, 122, 141, 86, 42, WS_GROUP
+    CONTROL         "&1", IDD_1, "Button", BS_AUTORADIOBUTTON | WS_TABSTOP, 138,
+                    152, 24, 10
+    CONTROL         "&4", IDD_4, "Button", BS_AUTORADIOBUTTON, 173,
+                    152, 24, 10
+    CONTROL         "&8", IDD_8, "Button", BS_AUTORADIOBUTTON, 138,
+                    167, 24, 10
+    CONTROL         "&24", IDD_24, "Button", BS_AUTORADIOBUTTON,
+                    173, 167, 24, 10
+END
+
+
+
+//---------------------------------------------------------------------------
+// Options dialog.
+//---------------------------------------------------------------------------
+
+
+#include "OPTIONS.DLG"

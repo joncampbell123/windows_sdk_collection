@@ -1,0 +1,1007 @@
+
+
+
+subttl	Raster Operation Definitions
+page
+
+
+;	Raster Op Definitions
+;
+;
+;	The include file COMMENT.BLT contains a good description
+;	of the encoding of the raster operations.  It should be
+;	read before examining the definitions that follow.
+;
+;	The sixteen-bit number indicating which raster Op is to be
+;	performed is encoded in the following manner:
+
+
+epsOff	=	0000000000000011b	;Offset within parse string
+epsIndx =	0000000000011100b	;Parse string index
+LogPar	=	0000000000100000b	;(1 indicates implied NOT as Logop6)
+LogOp1	=	0000000011000000b	;Logical Operation #1
+LogOp2	=	0000001100000000b	;Logical Operation #2
+LogOp3	=	0000110000000000b	;Logical Operation #3
+LogOp4	=	0011000000000000b	;Logical Operation #4
+LogOp5	=	1100000000000000b	;Logical Operation #5
+
+
+;	The parity bit is used to encode an optional sixth logical operation
+;	which will always be a "NOT".  In most cases this is used to get an
+;	even number of "NOT"s so that reduction can take place (two sequential
+;	trailing "NOT"s cancel each other out and thus are eliminated).
+
+
+
+;	Each LogOp (Logical Operation) is encoded as follows:
+
+LogNOT	=	00b			;NOT result
+LogXOR	=	01b			;XOR result with next operand
+LogOR	=	10b			;OR  result with next operand
+LogAND	=	11b			;AND result with next operand
+
+
+
+;	The parse string is a string which contains the operands for
+;	the logical operation sequences (source, destination, pattern).
+;	The logic opcodes are applied to the current result and the next
+;	element of the given string (unless the LogOp is a NOT which only
+;	affects the result).
+;
+;	The string is encoded as eight two-bit numbers indicating which
+;	operand is to be used
+
+opDefs		struc
+  OpSpec	db	?		  ;Special Operand as noted below
+  OpSrc 	db	?		  ;Operand is source field
+  OpDest	db	?		  ;Operand is destination field
+  OpPat 	db	?		  ;Operand is pattern field
+opDefs		ends
+
+
+
+;	The special operand is used for a few rops that would not fit into
+;	an RPN format.	On the first occurance of an OpSpec, the current result
+;	is "PUSHED", and the next operand is loaded.  On the second occurance
+;	of the OpSpec, the given logic operation is performed between the
+;	current result and the "PUSHED" value.
+;
+;	**NOTE**  Since there can be no guarantee that the client will call
+;	the BLT routine with one of the 256 published raster ops, it is
+;	possible that a value might be "PUSHED" and then never "POPPED".
+;	If these "PUSHES" are made to the stack, then care must be made to
+;	remove the "PUSHED" value.
+;
+;	In any case, since the raster op was not one of the published
+;	"magic numbers", the BLT can be aborted or the result can be
+;	computed to the extent possible.  The only restriction is that it
+;	must not crash the system (i.e. don't leave extra stuff on the stack).
+;
+;		Simply: Compute garbage, but don't crash!
+
+
+
+
+;	Define the parse strings to be allocated later.
+;
+;	An example parse string for the pattern "SDPSDPSD" would be
+;	"0110110110110110b"
+
+
+parseStr0	=	07AAAh		;src,pat,dest,dest,dest,dest,dest,dest
+parseStr1	=	079E7h		;src,pat,dest,src,pat,dest,src,pat
+parseStr2	=	06DB6h		;src,dest,pat,src,dest,pat,src,dest
+parseStr3	=	0AAAAh		;dest,dest,dest,dest,dest,dest,dest,dest
+parseStr4	=	0AAAAh		;dest,dest,dest,dest,dest,dest,dest,dest
+parseStr5	=	04725h		;src,spec,src,pat,spec,dest,src,src
+parseStr6	=	04739h		;src,spec,src,pat,spec,pat,dest,src
+parseStr7	=	04639h		;src,spec,src,dest,spec,pat,dest,src
+
+
+
+;	The following equates are for certain special functions that are
+;	derived from the very first string (index of SpecParseStrIndex).
+;
+;	These strings will have their innerloops special cased for
+;	speed enhancements (i.e MOVSx and STOSx for pattern copys and
+;	white/black fill, and MOVSx for source copy if possible)
+
+patCopy 	equ	0021h		;P    - dest = Pattern
+NOTpatCopy	equ	0001h		;Pn   - dest = NOT Pattern
+FillBlack	equ	0042h		;DDx  - dest = 0 (black)
+FillWhite	equ	0062h		;DDxn - dest = 1
+sourceCopy	equ	0020h		;S    - dest = source
+
+
+	errnz	logXOR-01b		;These must hold true for above equates
+	errnz	logOp1-0000000011000000b
+	errnz	logPar-0000000000100000b
+	errnz	parseStr0-7AAAh 	;  plus the string must be SPDD
+
+
+SpecParseStrIndx equ	0		;Special cased strings index
+
+
+if2
+%out	Static Raster Operations
+endif
+
+
+
+;	The raster operation table consists of a word for each of
+;	the first 128 raster operations (00 through 7F).  The second
+;	half of the raster operations (FF through 80) are the inverse
+;	of the first half.
+;
+;	The table is encoded as follows:
+;
+;	    N S P LLL OOOOOOOOOO
+;	    | | |  |	  |
+;	    | | |  |	  |_____  Offset of code from ROPTable.
+;	    | | |  |
+;	    | | |  |____________  Length index
+;	    | | |
+;	    | | |_______________  Pattern is present
+;	    | |
+;	    | |_________________  Source is present
+;	    |
+;	    |___________________  Generate trailing NOT
+;
+;
+;	To map the ROPS 80h through FFh to 00h through 7Fh, take the
+;	1's complement of the ROP, and invert 'N' above.
+;
+;
+;	Notes:
+;
+;	    1)	An offset of 0 is reserved for source copy.  This
+;		was done to reduce the number of LLLs to 8, so that
+;		the above encoding could fit into a 16-bit integer.
+;
+;
+;	    2)	LLL only allows a maximum of 8 different template sizes!
+;		Actual length is at ROPTable+256+LLL.
+;
+;
+;
+;
+;	ROP is the macro that generates the equates which will be
+;	stored into the ROPTable as specified above.
+;
+;	Usage:
+;
+;	    ROPDEF	Pattern,Number
+;
+;	Where
+;
+;	    Pattern	Is the RPN definition of the raster operation.
+;			It is used as the label of the first byte of
+;			the template.  It also is used to determine
+;			is there is a (S)ource, (P)attern, and if the
+;			final result is to be (n)egated.
+;
+;	    Number	is the boolean result of the raster operation
+;			based on a P=F0, S=CC, and D=AA.  These labels
+;			and indexes can be found in the file COMMENT.BLT
+;
+;			Since there are many equivelent boolean expresions,
+;			some of the rops will not match the label given.
+;			The label is for reference only.  The final result
+;			is what counts.
+
+
+
+ROPOffset	equ	0000001111111111b
+ROPLength	equ	0001110000000000b
+SourcePresent	equ	0010000000000000b
+PatternPresent	equ	0100000000000000b
+NegateNeeded	equ	1000000000000000b
+
+
+;	Define the eight template length indexes
+
+ROPLen2  	equ	0
+ROPLen3  	equ	1
+ROPLen4  	equ	2
+ROPLen5  	equ	3
+ROPLen7  	equ	4
+ROPLen9  	equ	5
+ROPLen11 	equ	6
+ROPLen13 	equ	7
+
+
+
+ROPDEF macro lbl,ne,whocares
+if1
+ifdef Debug
+public lbl
+endif
+ROP&ne=(offset lbl)-(offset ROPTable)	;;Start with offset
+irpc x,lbl
+ROP&ne = ROP&ne AND (NOT NegateNeeded)
+ifidn <n>,<&&x>
+ROP&ne = ROP&ne OR NegateNeeded 	;;Show negate needed
+endif
+ifidn <P>,<&&x>
+ROP&ne = ROP&ne OR PatternPresent	;;Show pattern present
+endif
+ifidn <S>,<&&x>
+ROP&ne = ROP&ne OR SourcePresent	;;Show source needed
+endif
+endm
+ROPDEF1 ROP&ne,%((offset $)-(offset lbl))
+endif
+endm
+
+
+ROPDEF1 macro lbl,len
+if len					;;Skip 0
+lbl = lbl OR (ROPLen&len SHL 10)	;;Set size index
+endif
+endm
+
+
+
+	public	ROPTable
+ROPTable	label	word
+
+	errn$	ROPTable			;Must be at offset 0
+Sn:
+	ROPDEF	Sn,0033,0008
+
+
+	errn$	ROPTable			;Must be at offset 0
+
+	dw	ROP0000,ROP0001,ROP0002,ROP0003
+	dw	ROP0004,ROP0005,ROP0006,ROP0007
+	dw	ROP0008,ROP0009,ROP000A,ROP000B
+	dw	ROP000C,ROP000D,ROP000E,ROP000F
+	dw	ROP0010,ROP0011,ROP0012,ROP0013
+	dw	ROP0014,ROP0015,ROP0016,ROP0017
+	dw	ROP0018,ROP0019,ROP001A,ROP001B
+	dw	ROP001C,ROP001D,ROP001E,ROP001F
+	dw	ROP0020,ROP0021,ROP0022,ROP0023
+	dw	ROP0024,ROP0025,ROP0026,ROP0027
+	dw	ROP0028,ROP0029,ROP002A,ROP002B
+	dw	ROP002C,ROP002D,ROP002E,ROP002F
+	dw	ROP0030,ROP0031,ROP0032,ROP0033
+	dw	ROP0034,ROP0035,ROP0036,ROP0037
+	dw	ROP0038,ROP0039,ROP003A,ROP003B
+	dw	ROP003C,ROP003D,ROP003E,ROP003F
+	dw	ROP0040,ROP0041,ROP0042,ROP0043
+	dw	ROP0044,ROP0045,ROP0046,ROP0047
+	dw	ROP0048,ROP0049,ROP004A,ROP004B
+	dw	ROP004C,ROP004D,ROP004E,ROP004F
+	dw	ROP0050,ROP0051,ROP0052,ROP0053
+	dw	ROP0054,ROP0055,ROP0056,ROP0057
+	dw	ROP0058,ROP0059,ROP005A,ROP005B
+	dw	ROP005C,ROP005D,ROP005E,ROP005F
+	dw	ROP0060,ROP0061,ROP0062,ROP0063
+	dw	ROP0064,ROP0065,ROP0066,ROP0067
+	dw	ROP0068,ROP0069,ROP006A,ROP006B
+	dw	ROP006C,ROP006D,ROP006E,ROP006F
+	dw	ROP0070,ROP0071,ROP0072,ROP0073
+	dw	ROP0074,ROP0075,ROP0076,ROP0077
+	dw	ROP0078,ROP0079,ROP007A,ROP007B
+	dw	ROP007C,ROP007D,ROP007E,ROP007F
+
+
+
+	errn$	ROPTable,-256			;Must be 256 bytes afterwards
+	db	2,3,4,5,7,9,11,13
+
+
+
+
+
+;	The actual raster operation templates follow.
+;
+;	Entry:	AL     =  Source byte
+;		DH     =  Pattern Bytes
+;		ES:DI --> Destination byte
+;
+;	Exit:	AL     =  Result
+;		DH     =  Pattern Bytes
+;		ES:DI --> Destination byte
+;		AH	  IS possibly the destination byte
+;
+;	Uses:	AL,AH,DH,DL
+
+
+;-----------------------------------------------------------------
+; In Wes' World:
+;	The actual raster operation templates follow.
+;
+;	Entry:	AX     =  Source word
+;		DX     =  Pattern Word
+;		ES:DI --> Destination word
+;
+;	Exit:	AX     =  Result
+;		DX     =  Pattern Word
+;		ES:DI --> Destination word
+;		BP,BX??	  IS possibly the destination word
+;
+;	Uses:	AL,AH,DH,DL
+;-----------------------------------------------------------------
+
+
+DDx:
+	xor	al,al
+	ROPDEF	DDx,0000,0042
+
+
+DPna:
+Pn:
+	mov	al,dh
+	ROPDEF	Pn,000F,0001
+	not	al
+PDSanon:
+	and	al,es:[di]
+	ROPDEF	DPna,000A,0329
+PSnon:
+	not	al
+DPSona:
+PSon:
+	or	al,dh
+	ROPDEF	PDSanon,0008,0F08
+	ROPDEF	PSon,0003,00AA
+	ROPDEF	PSnon,000C,0324
+PDSnaon:
+	not	al
+PDSaon:
+	and	al,es:[di]
+	ROPDEF	DPSona,0002,0C89
+	or	al,dh
+	ROPDEF	PDSnaon,000D,0B25
+	ROPDEF	PDSaon,0007,02C5
+
+
+DPon:
+	mov	al,dh
+PDSonon:
+	or	al,es:[di]
+	ROPDEF	DPon,0005,00A9
+DPSnoon:
+	not	al
+DPSoon:
+	or	al,dh
+	ROPDEF	PDSonon,000E,08A5
+DSon:
+PDSona:
+	or	al,es:[di]
+	ROPDEF	DPSnoon,0004,0C88
+	ROPDEF	DPSoon,0001,0289
+	ROPDEF	DSon,0011,00A6
+	not	al
+	and	al,dh
+	ROPDEF	PDSona,0010,0C85
+
+
+SDPxnon:
+	mov	ah,es:[di]
+	xor	ah,dh
+	not	ah
+	or	al,ah
+	ROPDEF	SDPxnon,0012,0868
+
+
+SSPxDSxaxn:
+	mov	dl,al
+SPxDSxa:
+	mov	ah,dh
+	xor	ah,al
+	xor	al,es:[di]
+	and	al,ah
+	ROPDEF	SPxDSxa,0024,0D55
+	xor	al,dl
+	ROPDEF	SSPxDSxaxn,0017,1D54
+
+
+PSDPSanaxx:
+SDPSanaxn:
+	mov	dl,al
+	and	al,dh
+DSna:
+	not	al
+	and	al,es:[di]
+	ROPDEF	DSna,0022,0326
+	xor	al,dl
+	ROPDEF	SDPSanaxn,0019,1CC8
+	xor	al,dh
+	ROPDEF	PSDPSanaxx,0016,5CCA
+
+
+PDSPanaxn:
+DPSana:
+	and	al,dh
+PDSnaxn:
+	not	al
+	and	al,es:[di]
+	ROPDEF	DPSana,002A,0CC9
+	xor	al,dh
+	ROPDEF	PDSnaxn,002D,060A
+	ROPDEF	PDSPanaxn,0025,1CC5
+
+
+
+
+DPSaon:
+PDSPaox:
+	and	al,dh
+PDSox:
+	or	al,es:[di]
+	ROPDEF	DPSaon,0015,02C9
+	xor	al,dh
+	ROPDEF	PDSox,001E,01A5
+	ROPDEF	PDSPaox,001A,06C5
+
+
+SDPSxaxn:
+	mov	dl,al
+DPSxa:
+	xor	al,dh
+	and	al,es:[di]
+	ROPDEF	DPSxa,0028,0369
+	xor	al,dl
+	ROPDEF	SDPSxaxn,001B,0768
+
+
+DSPDxaxn:
+	mov	ah,es:[di]
+	mov	dl,ah
+	xor	dl,dh
+	and	al,dl
+	xor	al,ah
+	ROPDEF	DSPDxaxn,001D,0766
+
+
+DPSnaa:
+PSna:
+	not	al
+DPSaan:
+	and	al,dh
+	ROPDEF	PSna,0030,032A
+	and	al,es:[di]
+	ROPDEF	DPSnaa,0020,0F09
+	ROPDEF	DPSaan,007F,03C9
+
+
+PSDnaon:
+	mov	ah,es:[di]
+	not	ah
+	and	al,ah
+	or	al,dh
+	ROPDEF	PSDnaon,000B,0B2A
+
+
+SPDnaon:
+	mov	ah,es:[di]
+	not	ah
+	and	ah,dh
+	or	al,ah
+	ROPDEF	SPDnaon,0023,0B24
+
+
+PDSPxaxn:
+	xor	al,dh
+	and	al,es:[di]
+	xor	al,dh
+	ROPDEF	PDSPxaxn,0027,1868
+
+
+SDPSaox:
+PSDPSaoxxn:
+	mov	dl,al
+	and	al,dh
+	or	al,es:[di]
+	xor	al,dl
+	ROPDEF	SDPSaox,0026,06C8
+	xor	al,dh
+	ROPDEF	PSDPSaoxxn,0029,16CA
+
+
+SSPxPDxaxn:
+	mov	dl,al
+SPxPDxa:
+	mov	ah,es:[di]
+	xor	ah,dh
+	xor	al,dh
+	and	al,ah
+	ROPDEF	SPxPDxa,0018,0D59
+	xor	al,dl
+	ROPDEF	SSPxPDxaxn,002B,1D58
+
+
+DSPDSoaxxn:
+SPDSoax:
+	mov	dl,al
+PDSoan:
+	mov	ah,es:[di]
+	or	al,ah
+	and	al,dh
+	ROPDEF	PDSoan,001F,0385
+	xor	al,dl
+	ROPDEF	SPDSoax,002C,0784
+	xor	al,ah
+	ROPDEF	DSPDSoaxxn,0079,1786
+
+
+
+
+PSDPxox:
+SDPxon:
+	mov	ah,es:[di]
+	xor	ah,dh
+	or	al,ah
+	ROPDEF	SDPxon,0021,0248
+	xor	al,dh
+	ROPDEF	PSDPxox,002E,064A
+
+
+PSDnoan:
+	mov	ah,es:[di]
+	not	ah
+	or	al,ah
+PSan:
+	and	al,dh
+	ROPDEF	PSan,003F,00EA
+	ROPDEF	PSDnoan,002F,0E2A
+
+
+SDPnaon:
+	mov	ah,dh
+	not	ah
+	and	ah,es:[di]
+	or	al,ah
+	ROPDEF	SDPnaon,0031,0B28
+
+
+SDPaon:
+PSDPaox:
+	mov	ah,es:[di]
+	and	ah,dh
+	or	al,ah
+	ROPDEF	SDPaon,0013,02C8
+	xor	al,dh
+	ROPDEF	PSDPaox,001C,06CA
+
+
+
+SDPSoox:
+	mov	dl,al
+	or	al,dh
+	or	al,es:[di]
+	xor	al,dl
+	ROPDEF	SDPSoox,0032,0688
+
+
+SPDSaox:
+	mov	dl,al
+	and	al,es:[di]
+	or	al,dh
+	xor	al,dl
+	ROPDEF	SPDSaox,0034,06C4
+
+
+DPSDxaxn:
+	mov	ah,es:[di]
+	xor	al,ah
+	and	al,dh
+	xor	al,ah
+	ROPDEF	DPSDxaxn,0035,1864
+
+
+SDPox:
+	mov	ah,es:[di]
+	or	ah,dh
+	xor	al,ah
+	ROPDEF	SDPox,0036,01A8
+
+
+PSDPoax:
+SDPoan:
+	mov	ah,es:[di]
+	or	ah,dh
+	and	al,ah
+	ROPDEF	SDPoan,0037,0388
+PSx:
+	xor	al,dh
+	ROPDEF	PSx,003C,004A
+	ROPDEF	PSDPoax,0038,078A
+
+
+SPDnox:
+	mov	ah,es:[di]
+	not	ah
+	or	ah,dh
+	xor	al,ah
+	ROPDEF	SPDnox,0039,0604
+
+
+SPDSxox:
+	mov	dl,al
+PDSxon:
+	xor	al,es:[di]
+	or	al,dh
+	ROPDEF	PDSxon,0009,0245
+	xor	al,dl
+	ROPDEF	SPDSxox,003A,0644
+
+
+SPDnoan:
+	mov	ah,es:[di]
+	not	ah
+	or	ah,dh
+	and	al,ah
+	ROPDEF	SPDnoan,003B,0E24
+
+
+SPDSonox:
+	mov	dl,al
+	or	al,es:[di]
+	not	al
+	or	al,dh
+	xor	al,dl
+	ROPDEF	SPDSonox,003D,18A4
+
+
+DPSxnan:
+	xor	al,dh
+SPDSnaox:
+	mov	dl,al			;(wasted for DPSxnan)
+	not	al
+	and	al,es:[di]
+	ROPDEF	DPSxnan,007D,0C69
+	or	al,dh
+	xor	al,dl
+	ROPDEF	SPDSnaox,003E,1B24
+
+
+SPDSanaxn:
+	mov	dl,al
+PDSana:
+DSan:
+	and	al,es:[di]
+	ROPDEF	DSan,0077,00E6
+	not	al
+	and	al,dh
+	ROPDEF	PDSana,0070,0CC5
+	xor	al,dl
+	ROPDEF	SPDSanaxn,0043,1CC4
+
+
+PSDPxaxn:
+SDPxa:
+	mov	ah,es:[di]
+	xor	ah,dh
+	and	al,ah
+	ROPDEF	SDPxa,0048,0368
+	xor	al,dh
+	ROPDEF	PSDPxaxn,0047,076A
+
+
+DSPDaox:
+PDSPDaoxxn:
+	mov	ah,es:[di]
+	mov	dl,ah
+	and	dl,dh
+	or	al,dl
+	xor	al,ah
+	ROPDEF	DSPDaox,0046,06C6
+	xor	al,dh
+	ROPDEF	PDSPDaoxxn,0049,16C5
+
+DPSDoax:
+	mov	ah,es:[di]
+	or	al,ah
+	and	al,dh
+	xor	al,ah
+	ROPDEF	DPSDoax,004A,0789
+
+
+DPSanon:
+	and	al,dh
+PDSnox:
+DSnon:
+	not	al
+	or	al,es:[di]
+	ROPDEF	DPSanon,0040,0F0A
+	ROPDEF	DSnon,0044,0328
+	xor	al,dh
+	ROPDEF	PDSnox,004B,0605
+
+
+SDPana:
+	mov	ah,es:[di]
+	and	ah,dh
+	not	ah
+	and	al,ah
+	ROPDEF	SDPana,004C,0CC8
+
+
+SSPxDSxoxn:
+	mov	dl,al
+SPxDSxo:
+	mov	ah,al
+	xor	ah,dh
+	xor	al,es:[di]
+	or	al,ah
+	ROPDEF	SPxDSxo,007E,0955
+	xor	al,dl
+	ROPDEF	SSPxDSxoxn,004D,1954
+
+
+PDSPxox:
+DPSxon:
+	xor	al,dh
+	or	al,es:[di]
+	ROPDEF	DPSxon,0041,0249
+	xor	al,dh
+	ROPDEF	PDSPxox,004E,0645
+
+
+PDna:
+Dn:
+	mov	al,es:[di]
+	ROPDEF	Dn,0055,0009
+	not	al
+	and	al,dh
+	ROPDEF	PDna,0050,0325
+
+
+DPSDaox:
+	mov	ah,es:[di]
+	and	al,ah
+	or	al,dh
+	xor	al,ah
+	ROPDEF	DPSDaox,0052,06C9
+
+
+SPDSxaxn:
+	mov	dl,al
+PDSxa:
+	xor	al,es:[di]
+	and	al,dh
+	ROPDEF	PDSxa,0060,0365
+	xor	al,dl
+	ROPDEF	SPDSxaxn,0053,0764
+
+
+DPx:
+	mov	al,dh
+PDSxnon:
+	xor	al,es:[di]
+	ROPDEF	DPx,005A,0049
+DPSnoan:
+	not	al
+PDSPoax:
+DPSoan:
+	or	al,dh
+	ROPDEF	PDSxnon,0006,0865
+PDSax:
+	and	al,es:[di]
+	ROPDEF	DPSnoan,005D,0E29
+	ROPDEF	DPSoan,0057,0389
+	xor	al,dh
+	ROPDEF	PDSPoax,0058,0785
+	ROPDEF	PDSax,0078,01E5
+
+
+DPSnox:
+	not	al
+DPSox:
+	or	al,dh
+PDSxnan:
+	xor	al,es:[di]
+	ROPDEF	DPSox,0056,01A9
+	ROPDEF	DPSnox,0059,0609
+	not	al
+	and	al,dh
+	ROPDEF	PDSxnan,006F,0C65
+
+
+DPSDonox:
+	mov	ah,es:[di]
+	or	al,ah
+	not	al
+	or	al,dh
+	xor	al,ah
+	ROPDEF	DPSDonox,005B,18A9
+
+
+DPSDxox:
+	mov	ah,es:[di]
+	xor	al,ah
+	or	al,dh
+	xor	al,ah
+	ROPDEF	DPSDxox,005C,0649
+
+
+DSPnaon:
+PDSPnaox:
+	mov	ah,dh
+	not	ah
+	and	al,ah
+	or	al,es:[di]
+	ROPDEF	DSPnaon,0051,0B26
+	xor	al,dh
+	ROPDEF	PDSPnaox,005E,1B29
+
+
+DPan:
+	mov	al,dh
+	and	al,es:[di]
+	ROPDEF	DPan,005F,00E9
+
+
+DSPDSaoxxn:
+	mov	dl,al
+	mov	ah,es:[di]
+	and	al,ah
+	or	al,dh
+	xor	al,dl
+	xor	al,ah
+	ROPDEF	DSPDSaoxxn,0061,16C6
+
+
+SDPnox:
+	mov	ah,dh
+	not	ah
+	or	ah,es:[di]
+	xor	al,ah
+	ROPDEF	SDPnox,0063,0608
+
+
+DPSnaxn:
+	not	al
+DPSax:
+	and	al,dh
+DSx:
+PDSxxn:
+	xor	al,es:[di]
+	ROPDEF	DSx,0066,0046
+	ROPDEF	DPSax,006A,01E9
+	ROPDEF	DPSnaxn,0065,0606
+	xor	al,dh
+	ROPDEF	PDSxxn,0069,0145
+
+
+SDPSonox:
+PSDPSonoxxn:
+	mov	dl,al
+DPSonon:
+	or	al,dh
+	not	al
+	or	al,es:[di]
+	ROPDEF	DPSonon,0054,08A9
+	xor	al,dl
+	ROPDEF	SDPSonox,0067,18A8
+	xor	al,dh
+	ROPDEF	PSDPSonoxxn,0068,58A6
+
+
+SDPSoax:
+PSDPSoaxxn:
+	mov	dl,al
+	or	al,dh
+	and	al,es:[di]
+	xor	al,dl
+	ROPDEF	SDPSoax,0064,0788
+	xor	al,dh
+	ROPDEF	PSDPSoaxxn,006B,178A
+
+
+SDPax:
+	mov	ah,es:[di]
+	and	ah,dh
+	xor	al,ah
+	ROPDEF	SDPax,006C,01E8
+
+
+DSPDoax:
+PDSPDoaxxn:
+	mov	ah,es:[di]
+	mov	dl,ah
+	or	ah,dh
+	and	al,ah
+	xor	al,dl
+	ROPDEF	DSPDoax,0062,0786
+	xor	al,dh
+	ROPDEF	PDSPDoaxxn,006D,1785
+
+
+SDPSnoax:
+	mov	dl,al
+	not	al
+	or	al,dh
+	and	al,es:[di]
+	xor	al,dl
+	ROPDEF	SDPSnoax,006E,1E28
+
+
+SSDxPDxaxn:
+	mov	dl,al
+SDxPDxa:
+	mov	ah,es:[di]
+	xor	al,ah
+	xor	ah,dh
+	and	al,ah
+	ROPDEF	SDxPDxa,0042,0D5D
+	xor	al,dl
+	ROPDEF	SSDxPDxaxn,0071,1D5C
+
+
+SDPSxox:
+	mov	dl,al
+	xor	al,dh
+	or	al,es:[di]
+	xor	al,dl
+	ROPDEF	SDPSxox,0072,0648
+
+
+SDPnoan:
+	mov	ah,dh
+	not	ah
+	or	ah,es:[di]
+	and	al,ah
+	ROPDEF	SDPnoan,0073,0E28
+
+
+DSPDxox:
+	mov	ah,es:[di]
+	mov	dl,ah
+	xor	ah,dh
+	or	al,ah
+	xor	al,dl
+	ROPDEF	DSPDxox,0074,0646
+
+
+SDPSnaox:
+	mov	dl,al
+DPSnaon:
+	not	al
+	and	al,dh
+	or	al,es:[di]
+	ROPDEF	DPSnaon,0045,0B29
+	xor	al,dl
+	ROPDEF	SDPSnaox,0076,1B28
+
+
+DSPnoan:
+PDSPnoax:
+	mov	ah,dh
+	not	ah
+	or	al,ah
+	and	al,es:[di]
+	ROPDEF	DSPnoan,0075,0E26
+DPSxnon:
+	xor	al,dh
+	ROPDEF	PDSPnoax,007A,1E29
+PDSnoan:
+SPDSnoax:
+	mov	dl,al			;(wasted for DPSxnon)
+	not	al
+	or	al,es:[di]
+	ROPDEF	DPSxnon,0014,0869
+	and	al,dh
+	ROPDEF	PDSnoan,004F,0E25
+	xor	al,dl
+	ROPDEF	SPDSnoax,007C,1E24
+
+SDPxnan:
+	mov	ah,es:[di]
+	xor	ah,dh
+	not	ah
+	and	al,ah
+	ROPDEF	SDPxnan,007B,0C68
+
+
+
+foobar macro y
+if2
+%out size of the table is y
+endif
+endm
+
+foobar %(offset $)-(offset ROPTable)-256-8
+

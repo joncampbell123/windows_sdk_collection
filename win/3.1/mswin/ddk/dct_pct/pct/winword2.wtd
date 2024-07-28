@@ -1,0 +1,127 @@
+'=========================================================================
+'
+' automation script 
+'     For use with DCT-SHELL (calls HctScriptBegin(), HctScriptEnd()).
+'     Runs APPPATH + TESTAPP + ".exe " + DATAFILE
+'     Script waits for TESTAPP to complete before continuing.
+' Creator : 
+' Date    : 
+'
+' Notes:
+'     This script uses 1 definable symbol:
+'     CTSHELL - if defined, the script callse HctScriptBegin() and 
+'               HctScriptEnd()
+'     These symbols are defined (enabled) from the command line via the 
+'        /d switch.  
+'     EX: wattdrvr script.wtd /run /d CTSHELL
+'
+'     MFDLL.DLL (magic fingers) SelectMenuItem subroutine does not
+'        work with win30.  
+'
+'=========================================================================
+
+'$include: 'mfdll.inc'
+'$include: 'wtdutil.inc'
+'$IFDEF CTSHELL
+   '$include: 'hct.inc'
+'$ENDIF
+
+CONST TESTAPP  = "Winword"                          ' name of app W/O EXTENSION!
+CONST APPPATH  = "Winword\"                         ' where TESTAPP is located
+CONST WINTITLE = "Microsoft Word"                   ' window title
+
+DECLARE FUNCTION bInitScript AS INTEGER
+DECLARE SUB StartScript
+DECLARE SUB EndScript
+
+'==========================================================================
+
+FUNCTION bInitScript AS INTEGER
+   startScript
+   szExeName$ = APPPATH + TESTAPP + ".EXE"
+   IF EXISTS (szExeName$) = 0 THEN
+      bInitScript = FALSE
+      print szExeName$ + " does not exist."
+      Pause ("Could Not Initialize " + WINTITLE)
+      print ("Script aborting.")
+   ELSE 
+      bInitScript = TRUE
+   END IF
+END FUNCTION
+
+'=========================================================================
+
+SUB startScript
+   ViewPort OFF
+   ViewPort CLEAR
+   print "Start Of " + WINTITLE + " Test"
+END SUB
+
+'=========================================================================
+
+SUB endScript
+    print "End Of " + WINTITLE + " Test"
+END SUB
+
+'==========================================================================
+' MAIN
+'==========================================================================
+
+DIM document AS STRING
+DIM macroname AS STRING
+DIM keySequence AS STRING
+
+'$IFDEF CTSHELL
+    HctScriptBegin  TESTAPP
+'$ENDIF
+
+IF (bInitScript () = TRUE) THEN
+    'Get the optional parameters passed from the shell.
+    document$ = command$
+    macroname$ = testmode$
+    
+    'Start the application with the specified .DOT file
+    chdir "WinWord"
+    RUN TESTAPP + ".exe " + document$, NOWAIT
+
+    'We need to be using full menus--See if Macro menu item exists.  If not,
+    'activate the full menus
+    if (MenuItemExists("Macro") = 0) THEN
+        SelectMenuItem "View"
+        SelectMenuItem "Full Menus"
+    END IF
+    
+    SelectMenuItem "Macro"
+    SelectMenuItem "Run"
+    
+    'Set the current text to the macro$ parameter
+    SendKeys macroname$ + "{enter}"
+
+    'Loop until printing is finished for this document.
+    'Put a wait command in so we don't take such a performance hit
+    'by polling the cursor.
+    WHILE IsCursor(MFC_WAIT)
+        Wait 1
+    WEND
+    
+    'Exit application
+    SelectMenuItem "File"
+    SelectMenuItem "Exit"
+
+    WAIT 1
+    'Don't save changes to either document or macro sheet
+    IF(ButtonExists("No")) THEN
+        ClickButton "No"
+    END IF
+
+    WAIT 1
+    IF(ButtonExists("No")) THEN
+        ClickButton "No"
+    END IF
+    
+    endScript
+
+    '$IFDEF CTSHELL
+        HctScriptEnd (RS_PASSED)   
+    '$ENDIF
+ENDIF

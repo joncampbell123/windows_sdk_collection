@@ -1,0 +1,708 @@
+	page	70,132
+;
+	title	lasport - DP-TEK/LaserPort support routines
+;/**[f******************************************************************
+; * lasport.a -
+; *
+; * Copyright (C) 1988-1990 Aldus Corporation, Microsoft Corporation.
+; * Copyright (C) 1989,1990 Hewlett-Packard Company.
+; * All rights reserved.  Company confidential.
+; *
+; **f]*****************************************************************/
+
+; 30 nov 89	peterbe	Removed unnecessary int 2f checks in lp_enbl,
+;			lp_disable.
+; 17 nov 89	peterbe	This is a new version from johndr at Intel.
+;			Changed extension of new ".inc" files to ".I"
+;  2-24-89	jimmat	Split out from dump.a to eliminate some unnecessary
+;		    segment loading
+
+;***********************************************************************
+;
+;   Note: the lp_enbl and lp_disable routines are in the standard code
+;	  segment (_TEXT), while the remaining routines are in the
+;	  grxdmp (_DUMP) segment.  The lp_enbl and lp_disable routines
+;	  were moved to _TEXT to eliminate loading the _DUMP segment
+;	  just to determine if the LaserPort card is installed.  The
+;	  other routines remain in _DUMP since they are only used in
+;	  conjunction with the dump.a/dump.c code.
+;
+;***********************************************************************
+
+	.xlist
+?win=1	;compile with windows epilog/prolog
+?plm=1	;using the pascal calling sequence
+
+	include cmacros.inc
+	include gdidefs.inc
+	include device.i
+        include int31.i
+        include ve_stack.i
+	.list
+extrn   GlobalDosAlloc:FAR
+extrn   GlobalDosFree:FAR
+;**************************EQUATES**************************************
+        device_only             equ 0
+        device_and_bmap         equ 0FFFFH
+
+sBegin	DATA
+        VeCallStruc Real_Mode_Call_Struc <> ; call structur for INT31H
+        sel_ve_stack      DW  ?
+        sel_ve_device     DW  ?
+        sel_ve_string     DW  ?
+sEnd	DATA
+
+;***********************************************************************
+;		       _ T E X T   S E G M E N T
+;***********************************************************************
+
+sBegin	code
+	assumes CS,code
+	assumes DS,data
+
+;
+; LaserPort/Intel 09/29/88
+;   The following  routines were all modified to utilize interupt 2Fh
+;   The verify routine no longer looks for a string to verify that
+;   LaserPort is installed.  It rather executes an interupt 2fh
+;   and looks at the returned status, per DOS.
+;
+;  LaserPort
+;    Enable Function - Returns TRUE if LaserPort installed
+;  
+SUBTTL lp_enbl
+
+cProc lp_enbl,<FAR,PUBLIC>
+cBegin
+
+;  Before issuing interupt, verify that LaserPort software
+;    is installed
+	mov	ax,0cd00h
+	int	2Fh
+	cmp	al,0ffh
+	jne	lpe_false
+
+;  LaserPort software installed at Interupt 67
+;    enable for application
+        mov	ax,0cd0fh              ;2601h
+        mov	bl,01h
+	int	2Fh
+lpe_TF:
+	or   	al,al
+        mov     ax,TRUE
+	jz	lpe_exit
+lpe_false:
+        mov	ax,FALSE
+lpe_exit:
+cEnd
+
+SUBTTL lp_disable
+
+;  LaserPort
+;    Disable Function
+;
+cProc lp_disable,<FAR,PUBLIC>
+cBegin
+;;	mov     ax,     1686H    ;Detect presnce of INT 31H services
+;;	int     2Fh
+;;	test    AX, AX
+;;	jnz     @f              ; If not Zero then we are in real mode.
+;;	mov     dx, ds
+;;	mov     es, dx
+;;	mov     di, OFFSET VeCallStruc
+;;	pushf
+;;	pop     AX
+;;	mov     es:[di].RealMode_Flags, AX
+;;	mov     es:[di].RealMode_AX, 0cd0fH ;       
+;;	mov     es:[di].RealMode_BX, 02H ; 
+;;	mov     es:[di].RealMode_SS, 0     ; need no stack
+;;	mov     es:[di].RealMode_SP, 0     ;
+;;	mov     ax, 0300H  
+;;	mov     bx, 012FH
+;;	mov     cx, 0
+;;	int     31H
+;;	mov     al, VeCallStruc.RealMode_AL
+;;	jmp     lpd_TF
+;;
+;;@@:
+        mov	ax,0cd0fh         ;2602h
+        mov	bl,02
+	int	2Fh
+lpd_TF:
+	or   	al,al
+        mov     ax,TRUE
+	jz	lpd_exit
+        mov	ax,FALSE
+lpd_exit:
+cEnd
+
+sEnd	code
+
+;***********************************************************************
+;		       _ D U M P   S E G M E N T
+;***********************************************************************
+
+createSeg _DUMP,grxdmp,byte,public,CODE
+
+sBegin	grxdmp
+	assumes CS, grxdmp
+	assumes DS, data
+
+SUBTTL lp_ff
+
+
+;  LaserPort 
+;    Ejects Pages
+;
+cProc lp_ff,<FAR,PUBLIC>
+	parmD	lpDevice
+cBegin
+        les     bx,LpDevice
+        mov     ax,es:epOptions[bx]
+	and     ax,OPTIONS_DPTEKCARD
+	jz	lp_ff_exit
+;  Check to see if we are in 386 or 286 protected mode.
+        mov     ax,     1686H    ;Detect presnce of INT 31H services
+        int     2Fh
+        test    AX, AX
+        jnz     @f              ; If not Zero then we are in real mode.
+;
+        call    make_dos_Stack
+        jc      lp_ff_exit
+        mov     si, LLPDVE_OFF
+        mov     ax, device_only
+        call    make_dos_DEVICE
+        jc      rel_stack
+        mov     bl, 05
+        call    simulate_int2f
+        call    release_dos_device
+rel_stack:
+        call    release_dos_stack 
+        jmp     lp_ff_exit
+
+        mov     ax,0cd0fh              ;2605h
+        mov	bl,05
+	int	2Fh
+lp_ff_exit:
+cEnd
+
+SUBTTL lp_Reset
+
+;-----------------------------------------------------------------------------;
+;                                                                             ;
+;   Procedure Name:   lp_reset.                                               ;
+;           Author:   John Driscoll.                                          ;
+;             Date:   11/06/89                                                ;
+;      Description:   This function is called to initialize Visual Edge. It   ;
+;                     It will also cause a page to be ejected if there are    ;
+;                     marks on the page.  This is the result of some apps     ;
+;                     using the HPPCL reset command to eject a page.          ;
+;                                                                             ;
+;                     void lp_reset(LpDevice)                                   ;
+;                     {                                                       ;
+;                       if (visual edge not enabled) {                        ;
+;                          return();                                          ;
+;                       }                                                     ;
+;                       else {                                                ;
+;                       if (int 31H services available) {                     ;
+;                          if (make_dos_stack()) {                            ;
+;                          {                                                  ;
+;                             if (make_dos_device(DEVICE_ONLY)) {              ;
+;                                simulate_int2f(06);                          ;
+;                                release_dos_device();                        ;
+;                             }                                               ;
+;                             relase_dos_stack;                               ;
+;                          }                                                  ;
+;                       }                                                     ;
+;                       else {                                                ;
+;                         int_2FH(6)                                          ;
+;                       }                                                     ;
+;                       return();                                             ;
+;                     } \\ end: lp_reset                                      ;
+;                                                                             ;
+;                                                                             ;
+;                                                                             ;
+;     Parms Passed:   LpDevice                                                    ;
+;   Results/Status                                                            ;
+;         Returned:   carry set = failure                                     ;
+;                                                                             ;
+;                                                                             ;
+;            Calls:   INT 2FH with AX = 1686 (detect int31H serives           ;
+;                     make_dos_stack
+;                     make_dos_device (device only)
+;                     simulate_int2f
+;                     release_dos_device
+;                     release_dos_stack           
+;                                                                             ;
+;        Registers                                                            ;
+;         Modified:   AX, BX, DX, DI, SI, ES                                      ;
+;                                                                             ;
+;          Globals                                                            ;
+;        Modified/                                                            ;
+;       Referenced:  LpDevice                                                 ;
+;                                                                             ;
+;-----------------------------------------------------------------------------;
+
+;  LaserPort
+;     Initializes LaserPort
+;
+cProc lp_Reset,<FAR,PUBLIC>
+	parmD	lpDevice
+cBegin
+        les     bx,LpDevice
+        mov     ax,es:epOptions[bx]
+	and     ax,OPTIONS_DPTEKCARD
+	jz	lp_rst_exit
+;  Check to see if we are in 386 or 286 protected mode.
+        mov     ax,     1686H    ;Detect presnce of INT 31H services
+        int     2Fh
+        test    ax, ax
+        jnz     @f              ; If not Zero then we are in real mode.
+        call    make_dos_Stack
+        jc      lp_rst_exit     ; can't make stack so exit.
+        mov     si, LLPDVE_OFF
+        mov     ax, device_only ; Only need device struc and not bitmap
+        call    make_dos_DEVICE
+        jc      lpr_rel_stack   ; if failure release dos stack.
+        mov     bx, 06
+        call    simulate_int2f
+        call    release_dos_device
+lpr_rel_stack:
+        call    release_dos_stack
+        jmp     lp_rst_exit
+
+@@:
+        mov     ax,0cd0fh        ;2606h
+        mov	bl,06
+	int	2Fh
+lp_rst_exit:
+cEnd
+
+
+SUBTTL lp_DeviceData
+
+;   lp_DeviceData(lpDevice, astring, numbytes)
+;  LaserPort
+;     Sends DeviceData escape to LaserPort
+;     Returns TRUE if LaserPort executed function
+; 
+cProc lp_DeviceData,<FAR,PUBLIC>
+	parmD	lpDevice
+	parmD   astring
+	parmW	numbytes
+cBegin
+        les     bx,LpDevice
+        mov     ax,es:epOptions[bx]
+	and     ax,OPTIONS_DPTEKCARD
+	jz	lp_dd_exitf
+;  Check to see if we are in 386 or 286 protected mode.
+        mov     ax,     1686H    ;Detect presnce of INT 31H services
+        int     2Fh
+        test    ax, ax
+        jnz     @f              ; If not Zero then we are in real mode.
+IFDEF   debug
+%out    debug for lp_device
+        int     3H
+ENDIF
+        call    make_dos_Stack
+        jc      lp_dd_exitf
+        mov     ax, device_only
+        mov     si, LPDVE_OFF    ; si offset from BP on stack to lpdevice 
+        call    make_dos_DEVICE
+        jc      lpdd_rel_stack
+        call    make_DOS_String
+        jc      lpdd_rel_device        ; if failure release stack and device
+        mov     bx, 03
+        call    simulate_int2f
+        call    release_dos_string
+lpdd_rel_device:                        ; get here to release stack and string
+        call    release_dos_device
+lpdd_rel_stack:                         ; get here to only release stack
+        call    release_dos_stack
+        jmp     lp_dd_TF
+;
+; we get here if not in protected mode.
+ @@:
+	mov	ax,0cd0fh                ;2603h
+	mov	bl,03
+	int	2Fh
+lp_dd_TF:
+ 	cmp	al,88h			;88 means not for me
+ 	mov     ax,TRUE
+ 	jne	lp_dd_exit		; send to printer if 88h
+lp_dd_exitf:
+        mov	ax,FALSE
+lp_dd_exit:
+cEnd
+SUBTTL DumpLaserPort
+
+; ========================================================================
+; DumpLaserPort()
+;
+;	The parameters for a dump have been set up previously.
+;       BP + LPDEVICE points = llpdevice (pointer to device structure)
+; ========================================================================
+cProc DumpLaserPort, <NEAR, PUBLIC>
+
+cBegin DumpLaserPort
+;
+;  Check to see if we are in 386 or 286 protected mode.
+        mov     ax, 1686H       ;Detect presnce of INT 31H services
+        int     2Fh
+        test    ax, ax
+        jnz     @f              ; If not Zero then we are in real mode.
+        mov     ax, device_only
+        call    make_dos_Stack
+        jc      exit_DumpLaserPort
+        mov     si, LLPDVE_OFF
+        mov     ax, device_and_bmap
+        call    make_dos_Device
+        jc     dlp_rel_stack
+        mov     bx, 04H
+        call    simulate_int2f
+        call    release_dos_device
+dlp_rel_stack:
+        call    release_dos_stack
+        jmp     exit_DumpLaserPort
+
+@@:                                     ; here if we are in real mode
+	mov	ax,0cd0fh		; load the parameters
+	mov	bl,04h	
+	int	2fh
+exit_DumpLaserPort:
+cEnd DumpLaserPort
+
+SUBTTL make_dos_Stack
+
+;-----------------------------------------------------------------------------;
+;                                                                             ;
+;   Procedure Name:   make_dos_stack.                                         ;
+;           Author:   John Driscoll.                                          ;
+;             Date:   09/06/89                                                ;
+;      Description:   This procedure sets up an area of DOS memory for a real ;
+;                     mode stack.  The stack is exceptionaly large and can    ;
+;                     probably be reduced if neccesary.                       ;
+;     Parms Passed:   None                                                    ;
+;   Results/Status                                                            ;
+;         Returned:   carry set = failure                                     ;
+;                                                                             ;
+;                                                                             ;
+;            Calls:   INT 31H with AX = 100H (Allocate Dos Memory.            ;
+;                                                                             ;
+;        Registers                                                            ;
+;         Modified:   AX, BX, DX, DI, SI, ES                                      ;
+;                                                                             ;
+;          Globals                                                            ;
+;        Modified/                                                            ;
+;       Referenced:   VeCallStruc.RealMode_SS = segment of stack              ;
+;                     VeCallStruc.RealMode_SP = Stack Pointer                 ;
+;                     VeCallStruc.RealMode_BP = Base Pointer                  ;
+;-----------------------------------------------------------------------------;
+make_dos_Stack  proc    
+        sub     ax, ax
+        push    ax
+        mov     ax, 1024               ; bx = bytes for Stack
+        push    ax
+        call    GlobalDosAlloc
+        cmp     ax, 0                  ; null pointer = failure
+        jnz     @f
+        stc
+        jmp     exit_make_dos_stack
+@@:
+;
+; DX = real mode (dos) segment of allocated memory.
+; AX = protected mode selectory of allocated memory.
+;
+        mov     sel_ve_stack, ax       ; save selector so we can release it
+        mov     si, 100H               ; es:si = top of stack -24 bytes. This
+                                       ; is too much and should be adjusted.
+        mov     di, offset VeCallStruc ; 
+        mov     [di].RealMode_SS, DX   ; DX is segment value of stack.
+        mov     [di].RealMode_BP, si   ; so di and RealMode_BP have same offset in stack
+        mov     [di].RealMode_SP, si   ; Set SP to bottom of stack
+exit_make_dos_stack:
+        ret
+make_dos_Stack  endp    
+SUBTTL make_dos_device
+
+;-----------------------------------------------------------------------------;
+;                                                                             ;
+;   Procedure Name:   make_dos_device.                                         ;
+;           Author:   John Driscoll.                                          ;
+;             Date:   09/06/89                                                ;
+;      Description:   This procedure sets up an area of DOS memory to copy    ;
+;                     the area specifified by llpdevice to dos memory and     ;
+;                     and puts a real mode (dos) pointer on the stack at the  ;
+;                     correct offset from the real mode BP.                   ;
+;                                                                             ;
+;     Parms Passed:   SI = offset from BP to for lpdevice.                   ;
+;   Results/Status                                                            ;
+;         Returned:   AX =     success                                        ;
+;                     AX =     failure           .                            ;
+;                                                                             ;
+;                                                                             ;
+;            Calls:   INT 31H with AX = 101 led by this procedure.            ;
+;                                                                             ;
+;        Registers                                                            ;
+;         Modified:   AX, BX, CX ,DX, DI, SI, ES                                      ;
+;                                                                             ;
+;          Globals                                                            ;
+;        Modified/                                                            ;
+;       Referenced:   vved_call_struw                                         ;
+;                                                                             ;
+;-----------------------------------------------------------------------------;
+
+make_dos_DEVICE proc    
+;
+; get pointer to device structure
+; BP+SI is offset on stack of lpdevice
+;
+        les     di, [bp+SI]      ; get pointer to DEVICE struture.
+        cmp     ax, device_only
+        jnz     @f
+;
+; We only need access to the data in the device structure and there is not
+; a bit map attached.
+;
+        mov     ax, size DEVICE               ; size of DEVICE strucutre +
+        jmp     make_device_only
+;
+; We need both the data in the device structure and the attached bit map.
+;
+@@:
+        mov     dx, 0
+        mov     ax, es:[di].epBmpHdr.bmWidthBytes
+        mul     es:[di].epBmpHdr.bmHeight ; Number Bytes per line * height
+        jo      exit_make_dos_DEVICE      ; If buffer is bigger than 64K exit
+        add     ax, size DEVICE
+        jo      exit_make_dos_DEVICE
+
+make_device_only:
+        push    ax                      ; later to be popped to CX
+        mov     bx, ax
+        sub     ax, ax
+        push    ax
+        push    bx
+        call    GlobalDosAlloc
+        cmp     ax, 0
+        jnz     @f
+        stc
+        jmp     exit_make_dos_device
+@@:
+        mov     sel_ve_device, AX       ; keep selector so we can release
+;
+; copy segmet:offset to bit map onto stack
+;
+        mov     bx, sel_ve_stack
+        mov     es, bx
+        mov     di, VeCallStruc.RealMode_BP
+        add     di, si                  ; SI = offset from BP for device Param.
+        mov     es:[di+2], DX 
+        mov     word ptr es:[di], 0 
+;
+; copy bit map to Dos memory
+;
+        pop     cx                      ; top of stack had length of string
+        push    ds
+        lds     si, [bp+si]             ; ds:si ->protected mode bitmap
+        mov     es, AX                  ; es = selector to bit map.
+        mov     di, 0                   ; es:di -> real mode bitmap
+        cld                             ; set direction flag
+        shr     cx, 1                   ; set to number of words
+        jnc     @f                      ; Jump if only words to move
+        movsb                           ; move one byte
+@@:
+        rep     movsw
+        clc
+        pop     ds
+
+exit_make_dos_Device:
+        ret
+
+make_dos_DEVICE ENDP
+
+SUBTTL Release protected Memory procedures
+
+release_dos_DEVICE      PROC
+        mov     ax, sel_ve_device          ; free real bitmap selector
+        push    ax
+        call    GlobalDosFree
+        ret
+release_dos_DEVICE      ENDP
+
+release_dos_stack       PROC
+        mov     ax, sel_ve_stack          ; free real bitmap selector
+        push    ax
+        call    GlobalDosFree
+        ret
+release_dos_stack       ENDP
+
+SUBTTL  release_dos_string      
+
+release_dos_string      PROC
+        mov     ax, sel_ve_string          ; free real bitmap selector
+        push    ax
+        call    GlobalDosFree
+        ret
+release_dos_string      ENDP
+
+SUBTTL make_dos_string
+
+;-----------------------------------------------------------------------------;
+;                                                                             ;
+;   Procedure Name:   make_dos_String.                                        ;
+;           Author:   John Driscoll.                                          ;
+;             Date:   09/06/89                                                ;
+;      Description:   This procedure does three tasks:                        ;
+;                       1. Sets up an area of DOS memory to copy the data     ;
+;                       pointed to by string.                                 ;
+;                                                                             ;
+;                       2. Places the real mode segment:offset to the string  ;
+;                       on the stack at the proper offset from BP             ;                                   ;
+;                                                                             ;
+;                       3. Copies the number of bytes pointe to be astring    ;
+;                       to the memory pointed to be segment offset on the     ;
+;                       on real mode stack.
+;                     It also places the real mode pointer to the dos copy of ;
+;                     the string at an identical offset from the real mode BP ;
+;                     to the protected mode BP                                ;
+;     Parms Passed:   BP+ STRING_PTR is address of pointer to string on stack.;
+;                     BP +SL is address of length of string on stack.         ;
+;   Results/Status                                                            ;
+;         Returned:   AX =     success                                        ;
+;                     AX =     failure           .                            ;
+;                                                                             ;
+;                                                                             ;
+;            Calls:   GlobalDosAllocate                                       ;
+;                                                                             ;
+;        Registers                                                            ;
+;         Modified:   AX, BX, CX ,DX, DI, SI, ES                              ;
+;                                                                            ;
+;          Globals                                                            ;
+;        Modified/                                                            ;
+;       Referenced:   VeCallStruc                                             ;                                                
+;-----------------------------------------------------------------------------;
+
+make_dos_String PROC   
+;
+; Calculate number of bytes in bit map and device header
+;
+IFDEF   debug
+%out    debug at simulate int2f        
+        int     3H
+ENDIF
+        les     di, [bp+STRING_PTR]      ; get pointer to string.
+        mov     cx, [bp+SL]              ; get size of string
+        sub     ax, ax
+        push    ax                      ; we are not getting more than 64K
+        push    cx                      ; and put it on stack as parameter
+        call    GlobalDosAlloc          ; Pascal type procedure         
+        cmp     ax, 0
+        jnz     @f
+        stc
+        jmp     exit_make_dos_string
+@@:
+;
+; AX = selector to DOS memory.
+; DX = segment  to DOS memory.
+;
+        mov     sel_ve_string, ax       ; keep selector so we can release
+;
+; copy segmet:offset to string  onto stack
+;
+        mov     bx, sel_ve_stack
+        mov     es, bx 
+        mov     di, VeCallStruc.RealMode_BP
+;
+; ES:DI = points to real mode stack SS:BP
+;
+        mov     word ptr es:[di+STRING_PTR], 0  ; real stack bp+0AH = sector
+        mov     es:[di+STRING_PTR+2],dx         ; real stack bp+08H = offset
+        mov     ax, [bp+SL]                     ; get number of bytes in string
+        mov     es:[di+SL], AX                  ; real stack bp+06 = count
+;
+; Set up destination for string move
+;
+        mov     ax, sel_ve_string
+        mov     es, ax                  ; selector to real mode (dos) string
+        mov     di, 0                   
+;
+; ES:DI -> real mode string mem allocated by GlobalDosAlloc
+;          offset is always 0
+;
+        push    ds
+;
+; Set up source for string move
+;
+        lds     si, [bp+STRING_PTR]    
+;
+; DS:SI ->protected mode string from stack
+;
+        cld                             ; set direction flag
+        mov     cx, [bp+SL]              ; get size of string
+        shr     cx, 1                   ; set to number of words
+;
+; CX = count of bytes to move
+; DS:SI = selector offset to string pointer on protected mode stack
+; ES:DI = selector:offset to Dos memory allocated for string
+; carry set if CX was odd
+        jnc     @f                      ; Jump if only words to move
+        movsb                           ; move one byte
+@@:
+        rep     movsw
+        clc
+        pop     ds
+exit_make_dos_string:
+        ret
+make_dos_String ENDP
+
+SUBTTL simulate_int2f
+
+;-----------------------------------------------------------------------------;
+;                                                                             ;
+;   Procedure Name:   simulate_int2f.                                                       ;
+;           Author:   John Driscoll.                                                       ;
+;             Date:   09/06/89                                                ;
+;      Description:   Uses INT 31 service 101H to simulate an Visual Edge     ;
+;                     INT 2F interrupt
+;                                                                             ;
+;     Parms Passed:   BX = value to put in RealMode_BX                       ;
+;                     uses global variable VeCallStruc_ptr to access     ;
+;                     real mode register structure.
+;                                                                             ;
+;   Results/Status                                                            ;
+;         Returned:   carry set = failure.                                    ;
+;                                                                             ;
+;            Calls:   INT 31H with AX = 101 led by this procedure.            ;
+;                                                                             ;
+;        Registers                                                            ;
+;         Modified:   AX, DI, BL, CX, ES                                      ;
+;                                                                             ;
+;          Globals                                                            ;
+;        Modified/                                                            ;
+;       Referenced:   VeCallStruc.RealMode_AX                                 ;
+;                     VeCallStruc.RealMode_BX                                 ;
+;                     VeCallStruc.RealMode_Flags
+;                                                                             ;
+;-----------------------------------------------------------------------------;
+simulate_int2f  PROC
+        mov     ax, ds
+        mov     es, ax
+IFDEF   debug
+%out    debug at simulate int2f        
+        int     3H
+ENDIF
+        mov     di, OFFSET VeCallStruc
+        mov     es:[di].RealMode_AX, 0CD0fH
+        mov     es:[di].RealMode_BX, bx
+        pushf
+        pop     ax
+        mov     es:[di].RealMode_Flags, ax
+        mov     ax, 0300H  
+        mov     bx,002FH		; was 12FH
+        mov     cx, 0
+        int     31H
+        ret
+simulate_int2f  ENDP
+sEnd	grxdmp
+end

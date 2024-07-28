@@ -1,0 +1,63 @@
+
+subttl	ROP Preprocessing
+page
+
+
+
+;	Get the encoded raster operation, and map the raster op if needed
+;
+;	To map the ROPS 80h through FFh to 00h through 7Fh, take the
+;	1's complement of the ROP, and invert the "negate needed" flag.
+
+
+	cld				;Let's make no assumptions about this!
+	xor	ax,ax			;Assume not 80h : FFh
+	mov	bx,SEG_Rop
+	or	bh,bh			;Outside the legal range?
+	jnz	complain		;  Yes, ignore it
+	or	bl,bl			;Is this in the second half (80-FF)?
+	jns	parse_10 		;  No, rop index is correct
+	not	bl			;  Yes, want the inverse
+	mov	ah,HIGH NegateNeeded	;Want to invert the not flag
+	errnz	<LOW NegateNeeded>
+
+parse_10:
+	add	bx,bx			;Turn into a word index
+	xor	ax,ROPTable[bx] 	;Get ROP, maybe toggle negate flag
+	mov	operands,ax		;Save the encoded raster operation
+
+	mov	bl,ah			;Set the_flags for source and pattern
+	and	bl,HIGH (SourcePresent+PatternPresent)
+	ror	bl,1
+
+	errnz	<SourcePresent- 0010000000000000b>
+	errnz	<PatternPresent-0100000000000000b>
+	errnz	     F0_SRC_PRESENT-00010000b
+	errnz	     F0_PAT_PRESENT-00100000b
+
+	jmp	short parse_end
+
+
+
+
+
+
+
+;	complain - complain that something is wrong
+;
+;	An error is returned to the caller without BLTing anything.
+;
+;	Entry:	None
+;
+;	Exit:	AX = 0 (error flag)
+;
+;	Uses:	None
+
+complain:
+	xor	ax,ax			;Set the error code
+	jmp	exit_fail
+
+
+
+parse_end:
+

@@ -1,0 +1,425 @@
+
+subttl	Phase Processing (X)
+page
+
+;	Now the real work comes along:  In which direction will the
+;	copy be done?  Refer to the 10 possible types of overlap that
+;	can occur (10 cases, 4 resulting types of action required).
+;
+;	If there is no source bitmap involved in this particular BLT,
+;	then the path followed must allow for this.  This is done by
+;	setting both the destination and source parameters equal.
+
+
+setup_300:
+	mov	dx,xExt 		;Get X extent
+	dec	dx			;Make X extent inclusive
+
+	mov	bx,DestxOrg		;Get destination X origin
+	mov	di,bx
+	and	bx,00000111b		;Get offset of destination within byte
+					;   and set up BX for a base register!
+
+
+;	If there is no source, then just use the pointer to the destination
+;	bitmap and load the same parameters, which will cause the "equality"
+;	path to be followed in the set-up code.  This path is the favored
+;	path for the case of no source bitmap.
+
+
+	mov	ax,di			;Assume no source needed
+	test	the_flags,F0_SRC_PRESENT;Is a source needed?
+	jz	setup_310		;  No, just use destination parameters
+	mov	ax,SrcxOrg		;  Yes, get source origin X
+	mov	firstFetch,2		;  Assume two initial fetches (if no
+					;    source, then it will be set = 1
+					;    later)
+setup_310:
+	mov	si,ax
+	and	ax,00000111b		;Get offset of source within byte
+
+	cmp	si,di			;Which direction will we be moving?
+	jl	setup_340		;Move from right to left
+
+
+
+
+;	The starting X of the source rectangle is >= the starting X of
+;	the destination rectangle, therefore we will be moving bytes
+;	starting from the left and stepping right.
+;
+;	Alternatively, this is the path taken if there is no source
+;	bitmap for the current BLT.
+;
+;	Rectangle cases: 3,4,5,6,8
+
+;--setup_320:
+	sub	al,bl			;Compute horiz. phase  (source-dest)
+	mov	stepDirection,STEPRIGHT ;Set direction of move
+	mov	ch,cs:[bx].bitmask_tbl1	;Get starting byte mask
+	ja	setup_330		;Scan line case 2, everything is
+					;  already set for this case.
+
+
+
+;	Scan line cases 1 and 3:
+;
+;	The correct first byte fetch needs to be set for the beginning
+;	of the outer loop, and the phase must be made into a positive
+;	number.
+;
+;	This is the path that will be followed if there is no source bitmap
+;	for the current BLT.
+
+	mov	firstFetch,1		;Set one initial fetch
+
+
+
+
+;	We now have the correct phase and the correct first character fetch
+;	routine set.  Save the phase and ...
+;
+;	currently:   AL = phase
+;		     BL = dest start mod 8
+;		     CH = first byte mask
+;		     DX = inclusive X bit count
+;		     SI = source X start (if there is a source)
+;		     DI = destination X start
+;
+
+setup_330:
+	add	al,8			;Phase must be positive
+	and	al,00000111b
+
+
+
+;	To calculate the last byte mask, the inclusive count can be
+;	added to the start X MOD 8 value, and the result taken MOD 8.
+;	This is attractive since this is what is needed later for
+;	calculating the inclusive byte count, so save the result
+;	of the addition for later.
+
+	add	bx,dx			;Add inclusive extent to dest MOD 8
+	mov	dx,bx			;Save for innerloop count !!!
+	and	bx,00000111b		;Set up bx for a base reg
+	mov	cl,cs:[bx].bitmask_tbl2	;Get last byte mask
+
+	mov	bl,al			;Compute offset into phase mask table
+	add	bx,bx
+	mov	bx,cs:[bx].phase_tbl1	;Get the phase mask
+
+
+;	Currently:
+;		AL = phase
+;		BX = phase mask
+;		CL = last byte mask
+;		CH = first byte mask
+;		DX = inclusive bit count + dest start MOD 8
+;		SI = source X start (if there is a source)
+;		DI = destination starting X
+
+	jmp	short setup_400		;Finish here
+
+
+
+
+
+
+;	The starting X of the source rectangle is < the X of the destination
+;	rectangle, therefore we will be moving bytes starting from the right
+;	and stepping left.
+;
+;	This code should never be reached if there is no source bitmap
+;	for the current BLT.
+;
+;	Rectangle cases: 1,2,7
+
+setup_340:
+	mov	stepDirection,ah	;Set direction of move
+	errnz	STEPLEFT
+	mov	cl,cs:[bx].bitmask_tbl1	;Get last byte mask
+	add	ax,dx			;Find end of the source
+
+
+;	To calculate the first byte mask, the inclusive count is
+;	added to the start MOD 8 value, and the result taken MOD 8.
+;	This is attractive since this is what is needed later for
+;	calculating the inclusive byte count, so save the result
+;	of the addition for later.
+
+	add	bx,dx			;Find end of the destination
+	add	di,dx			;Will need to update dest start address
+	add	si,dx			;  and source's too
+	mov	dx,bx			;Save inclusive bit count + start MOD 8
+	and	ax,00000111b		;Get source offset within byte
+	and	bx,00000111b		;Get dest   offset within byte
+	mov	ch,cs:[bx].bitmask_tbl2	;Get start byte mask
+	sub	al,bl			;Compute horiz. phase  (source-dest)
+	jb	setup_350		;Scan line case 5, everything is
+					;  already set for this case.
+
+
+
+;	Scan line cases 4 and 6:
+;
+;	The correct first byte fetch needs to be set for the beginning
+;	of the outer loop
+
+	mov	firstFetch,1		;Set initial fetch routine
+
+
+setup_350:
+	add	al,8			;Ensure phase positive
+	and	al,00000111b
+
+
+
+
+;	We now have the correct phase and the correct first character fetch
+;	routine set.  Generate the phase mask and save it.
+;
+;	currently:   AL = phase
+;		     CH = first byte mask
+;		     CL = last byte mask
+;		     DX = inclusive bit count + start MOD 8
+
+	mov	ah,cl			;Save last mask
+	mov	cl,al			;Create the phase mask
+	mov	bx,00FFh		;  by shifting this
+	shl	bx,cl			;  according to the phase
+	mov	cl,ah			;Restore last mask
+;	jmp	setup_400		;Go compute # of bytes to BLT
+	errn$	setup_400
+
+
+
+
+; The different processing for the different X directions has been
+; completed, and the processing which is the same regardless of
+; the X direction is about to begin.
+;
+; The phase mask, the first/last byte masks, the X byte offsets,
+; and the number of innerloop bytes must be calculated.
+;
+;
+; Nasty stuff coming up here!  We now have to determine how
+; many bits will be BLTed and how they are aligned within the bytes.
+; This is how it's done (or how I'm going to do it):
+;
+; The number of bits (inclusive number that is) is added to the
+; start MOD 8 value ( the left side of the rectangle, minimum X
+; value), then the result is divided by 8. Then:
+;
+;
+;    1)	If the result is 0, then only one destination byte is being
+;	BLTed.	In this case, the start & ending masks will be ANDed
+;	together, the innerloop count (# of full bytes to BLT) will
+;	be zeroed, and the lastMask set to all 0's (don't alter any
+;	bits in last byte which will be the byte following the first
+;	(and only) byte).
+;
+;		|      x x x x x|		|
+;		|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
+;		 0 1 2 3 4 5 6 7
+;
+;		start MOD 8 = 3,  extent-1 = 4
+;		3+7 DIV 8 = 0, only altering one byte
+;
+;
+;
+;    2)	If the result is 1, then only two bytes will be BLTed.
+;	In this case, the start and ending masks are valid, and
+;	all that needs to be done is set the innerloop count to 0.
+;	(it is true that the last byte could have all bits affected
+;	the same as if the innerloop count was set to 1 and the
+;	last byte mask was set to 0, but I don't think there would be
+;	much time saved special casing this).
+;
+;		|  x x x x x x x|x x x x x x x|
+;		|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
+;		 0 1 2 3 4 5 6 7
+;
+;		start MOD 8 = 1,  extent-1 = 14
+;		3+14 DIV 8 = 1.  There is a first and last
+;		byte but no innerloop count
+;
+;
+;
+;    3)	If the result is >1, then there is some number of entire
+;	bytes to be BLted by the innerloop.  In this case the
+;	number of innerloop bytes will be the result - 1.
+;
+;		|	       x|x x x x x x x x|x
+;		|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
+;		 0 1 2 3 4 5 6 7
+;
+;		start MOD 8 = 7,  extent-1 = 9
+;		7+9  DIV 8 = 2.  There is a first and last
+;		byte and an innerloop count of 1 (result - 1)
+;
+;	Currently:	AL = horizontal phase
+;			BX = horizontal phase mask
+;			CH = first byte mask
+;			CL = last byte mask
+;			DX = left side X MOD 8 + inclusive X count
+;			SI = source start X
+;			DI = dest   start X
+
+
+setup_400:
+	mov	phaseH,al		;Save horizontal phase
+	mov	maskP,bx		;Save phase mask
+	shr	dx,1			;/8 to get full byte count
+	shr	dx,1
+	shr	dx,1
+	jnz	setup_410		;Result is >0, check it out
+
+
+;	There will only be one byte affected.  Therefore the two byte masks
+;	must be combined, the last byte mask cleared, and the innerloop
+;	count set to zero.
+
+	and	ch,cl			;Combine the two masks
+	xor	cl,cl			;Clear out the last byte mask
+	inc	dx			;Now just fall through to set
+	errn$	setup_410		;  the innerloop count to 0!
+
+
+setup_410:
+	dec	dx			;Dec count (might become 0 just like
+	mov	innerLoopCnt,dx 	;  we want), and save it
+	mov	bl,ch
+	mov	ch,cl			;Compute last byte mask
+	not	cl			;  and save it
+	mov	lastmask,cx
+	mov	bh,bl			;Compute start byte mask
+	not	bl			;  and save it
+	mov	startMask,bx
+
+
+
+;	There may or may not be a source bitmap for the following address
+;	computation.  If there is no source, then the vertical setup code
+;	will be entered with both the source and destination Y's set to the
+;	destination Y and the address calculation skipped.  If there is a
+;	source, then the address calculation will be performed and the
+;	vertical setup code entered with both the source and destination Y's.
+
+	shiftr	di,3			;Compute byte offset of destination
+					;  and add to current destination
+					;  offset
+	add	wptr Dest.lpBits[0],di
+
+	mov	dx,DestyOrg		;Get destination Y origin
+	mov	ax,dx			;Assume no source
+	mov	cl,the_flags
+	test	cl,F0_SRC_PRESENT		;Is a source needed?
+	jz	setup_500		;  No, skip source set-up
+
+	shiftr	si,3			;Compute byte offset of source
+					;  and add to current source offset
+	add	wptr Src.lpBits[0],si
+	mov	ax,SrcyOrg		;Get source Y origin
+
+
+
+subttl	Phase Processing (Y)
+page
+
+;	The horizontal parameters have been calculated.  Now the vertical
+;	parameters must be calculated.
+;
+;	Currently:
+;		DX = destination Y origin
+;		AX = source Y origin (destination origin if no source)
+;		CL = the_flags
+
+setup_500:
+	mov	bx,yExt 		;Get the Y extent of the BLT
+	dec	bx			;Make it inclusive
+
+
+
+;	The BLT will be Y+ if the top of the source is below or equal
+;	to the top of the destination (cases: 1,4,5,7,8).  The BLT
+;	will be Y- if the top of the source is above the top of the
+;	destination (cases: 2,3,6)
+;
+;
+;		  !...................!
+;		  !D		      !
+;	      ____!		..x   !
+;	     |S   !		  :   !     Start at top of S walking down
+;	     |	  !		      !
+;	     |	  !...................!
+;	     |			  :
+;	     |____________________:
+;
+;
+;	      __________________
+;	     |S 		|
+;	     |	  .....................     Start at bottom of S walking up
+;	     |	  !D		      !
+;	     |	  !		:     !
+;	     |____!	      ..x     !
+;		  !		      !
+;		  !....................
+
+
+	mov	ch,INCREASE		;Set Y direction for top to bottom
+	cmp	ax,dx			;Which direction do we move?
+	jge	setup_520		;Step down screen (cases: 1,4,5,7,8)
+
+
+;	Direction will be from bottom of the screen up (Y-)
+;
+;	This code will not be executed if there is no source since
+;	both Y's were set to the destination Y.
+
+
+	add	dx,bx			;Find bottom scan line index for
+	add	ax,bx			;  destination and source
+	mov	ch,DECREASE		;Set pattern increment
+
+setup_520:
+	mov	patRow,dl		;Set pattern row and increment
+	mov	direction,ch
+	sar	ch,1			;Map FF==>FF, 01==>00
+	errnz	DECREASE-0FFFFh
+	errnz	INCREASE-00001h
+
+
+
+;	The Y direction has been computed.  Compute the rest of the
+;	Y parameters.  These include the actual starting address,
+;	the scan line and plane increment values, and whether or not
+;	the extents will cross a 64K boundary.
+;
+;	Currently:
+;		DX = Y of starting destination scan
+;		AX = Y of starting source scan
+;		CH = BLT direction
+;		       00 = increasing BLT, Y+
+;		       FF = decreasing BLT, Y-
+;		CL = the_flags
+;		BX = inclusive Y extent
+
+
+setup_540:
+	test	cl,F0_SRC_PRESENT		;Is a source needed?
+	mov	cl,ch			;  (Want cx = +/- 1)
+	jz	setup_560		;  No, skip source set-up
+	push	dx			;Save destination Y
+	push	bp			;Mustn't trash frame pointer
+	lea	bp,Src			;--> source data structure
+	call	compute_y		;Process as needed
+	pop	bp
+	pop	dx			;Restore destination Y
+
+setup_560:
+	push	bp			;Mustn't trash frame pointer
+	mov	ax,dx			;Put destination Y in ax
+	lea	bp,Dest 		;--> destination data structure
+	call	compute_y
+	pop	bp			;Restore frame pointer
+

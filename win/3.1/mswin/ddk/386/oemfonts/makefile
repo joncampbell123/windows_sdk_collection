@@ -1,0 +1,29 @@
+# sample make file for building grabber fonts for Windows/386
+
+# comment this definition out with a "#", if building a non-debugging version
+Debug=-DDEBUG
+
+all: ega40woa.fon ega80woa.fon cga40woa.fon cga80woa.fon hercwoa.fon
+
+fonts.obj:  fonts.asm cmacros.inc
+	masm5 -p -w2 -Mx $(Debug) -I..\include -I..\grabbers fonts;
+
+cga40woa.fon: CGA16.FNT fonts.obj cga40.def cga40.rc
+	link4 fonts.obj,cga40woa.fon/align:16,NUL,/NOD,cga40.def
+	rc cga40.rc cga40woa.fon
+
+cga80woa.fon: CGA08.FNT fonts.obj cga80.def cga80.rc
+	link4 fonts.obj,cga80woa.fon/align:16,NUL,/NOD,cga80.def
+	rc cga80.rc cga80woa.fon
+
+ega40woa.fon: EGA24.FNT fonts.obj ega40.def ega40.rc
+	link4 fonts.obj,ega40woa.fon/align:16,NUL,/NOD,ega40.def
+	rc ega40.rc ega40woa.fon
+
+ega80woa.fon: EGA12.FNT fonts.obj ega80.def ega80.rc
+	link4 fonts.obj,ega80woa.fon/align:16,NUL,/NOD,ega80.def
+	rc ega80.rc ega80woa.fon
+
+hercwoa.fon: herc.FNT fonts.obj herc.def herc.rc
+	link4 fonts.obj,hercwoa.fon/align:16,NUL,/NOD,herc.def
+	rc herc.rc hercwoa.fon

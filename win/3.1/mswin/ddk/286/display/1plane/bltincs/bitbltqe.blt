@@ -1,0 +1,180 @@
+;	jmpCXnz   - near jump if CX-1 <> 0
+;
+;	jmpCXnz will skip the following near jump if CX-1 is zero.
+;	CX will be left updated by this code.
+;
+;	jmpCxnz is used by both the inner loop code and the outer
+;	loop code if a loop instruction cannot be used.
+
+
+jmpCXnz:
+	dec	cx			;Decrement counter
+	jz	$+5
+;	jmp	near label
+	db	I_JMPnear		;JMP opcode
+
+jmpCXnzLen	equ	$-jmpCXnz	;Length of procedure
+
+
+
+;	phaseAlign - phase alignment code
+;
+;	The following code is the template that performs the phase
+;	alignment masking.  The source has already been aligned to
+;	the destination.
+;
+;	A copy of the aligned source is made.  The phase mask is then
+;	applied to the source and the copy.  The previously unused
+;	bits are ORed into the used bits of the current source, and
+;	the unused bits of the current source then become the unused
+;	bits for the next source.
+;
+;
+;	It assumes:
+;
+;		bp  =  phase alignment mask
+;		al  =  current byte to mask
+;		bh  =  old unused bits
+
+phaseAlign:
+	mov	ah,al			;Make a copy of aligned source
+	and	ax,bp			;Masked used, unused bits
+	or	al,bh			;Mask in old unused bits
+	mov	bh,ah			;Save new unused bits
+
+phaseAlignLen	equ	$-phaseAlign	;Length of procedure
+
+
+
+;	MaskedStore is a templete for storing the first and last bytes
+;	of a BLT.  The unaltered bits are saved and the altered bits
+;	set in the byte, then the byte is stored.
+;
+;
+;	It assumes:
+;
+;		al  =  The byte to be BLTed to the destination bitmap.
+;		       All logic operations have been performed on this
+;		       byte.
+;
+;		ah  =  The destination byte.
+;
+;	The AND immediate will be fixed up.
+
+
+maskedStore:
+	and	ax,0FFFFH		;Mask altered/unaltered bits
+	or	al,ah			;Combine the bits
+	stosb				;And store the result
+
+maskedStoreLen	equ	$-maskedStore	;Length of the template
+maskedStoreMask equ	-5		;Offset to where mask goes
+page
+
+;	Pattern Fetch Code
+;
+;	The pattern fetch code will be created on the fly since
+;	most of the instructions need fixups.
+;
+;	This template is really just a comment to indicate what
+;	the generated code should look like.
+;
+;	Entry:	None
+;
+;	Exit:	dh = pattern
+;
+;	Uses:	ax,bx,cx,dh,flags
+;
+;
+;	The following registers are available to the pattern fetch
+;	logic (as implemented herein):
+;
+;		ax,bx,cx,dx,flags
+;
+;
+;	For monochrome brushes:
+;
+;	    mov     ax,1234h		;Load segment of the brush
+;	    mov     bx,1234h		;Load offset of the brush
+;	    mov     cx,ds		;Save DS
+;	    mov     ds,ax		;ds:bx --> brush
+;	    mov     dh,7[bx]		;Get next brush byte
+;	    mov     al,cs:[1234h]	;Get brush index
+;	    add     al,direction	;Add displacement to next byte (+1/-1)
+;	    and     al,00000111B	;Keep it in range
+;	    mov     cs:[1234h],al	;Store displacement to next byte
+;	    mov     ds,cx		;Restore ds
+;
+;
+;	For color brushes:
+;
+;	    mov     ax,1234h		;Load segment of the brush
+;	    mov     bx,1234h		;Load offset of the brush
+;	    mov     cx,ds		;Save DS
+;	    mov     ds,ax		;ds:bx --> brush
+;	    mov     dh,7[bx]		;Get next brush byte
+;	    mov     al,cs:[1234h]	;Get brush index
+;	    add     al,SIZE Pattern	;Add displacement to next plane's bits
+;	    and     al,00011111B	;Keep it within the brush
+;	    mov     cs:[1234h],al	;Store displacement to next plane's bits
+;	    mov     ds,cx		;Restore ds
+;
+;
+;	For both templates, cs:[1234] is the address of the 7 in the
+;	"mov dh,7[bx]" instruction.  This is the index to this scan's
+;	bit pattern in the brush.  This value will range from 0 to
+;	(SIZE pattern)-1 for monochrome devices, and from 0 to
+;	((NumberPlanes)*(SIZE pattern))-1 for color devices.
+;
+;	For color brushes, cs:[1234] must also be fixed up when the next
+;	scan line is selected, else it would index into the monochrome
+;	portion of the brush (e.g. 1,9,17,25, where 25 is not part of the
+;	color brush).
+page
+
+;	The following two bit mask tables are used for fetching
+;	the first and last byte used-bits bitmask.
+
+
+	public bitmaskTBL1
+bitmaskTBL1	label	byte
+	db	11111111B		;Masks for leftmost byte
+	db	01111111B
+	db	00111111B
+	db	00011111B
+	db	00001111B
+	db	00000111B
+	db	00000011B
+	db	00000001B
+
+
+	public	bitmaskTBL2
+bitmaskTBL2	label	byte
+	db	10000000B		;Masks for rightmost byte
+	db	11000000B
+	db	11100000B
+	db	11110000B
+	db	11111000B
+	db	11111100B
+	db	11111110B
+	db	11111111B
+
+
+
+;	PhaseTBL1 is used for loading the "used" bits and "saved" bits
+;	bitmasks for cases 1,2,3 where the step direction is left to
+;	right.	If it weren't for the case of zero, this could be done
+;	with a simple rotate of 00FF.	For cases 4,5,6, a simple rotate
+;	can create the mask needed.
+
+	public	phaseTBL1
+phaseTBL1	label	word
+	db	11111111B,00000000B		;Used bits, saved bits
+	db	00000001B,11111110B
+	db	00000011B,11111100B
+	db	00000111B,11111000B
+	db	00001111B,11110000B
+	db	00011111B,11100000B
+	db	00111111B,11000000B
+	db	01111111B,10000000B
+

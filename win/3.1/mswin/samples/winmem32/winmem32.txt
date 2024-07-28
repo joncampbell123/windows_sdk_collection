@@ -1,0 +1,593 @@
+;-----------------------------------------------------------------------------
+;
+;   SAMPLE code for WINMEM32 DLL
+;
+;-----------------------------------------------------------------------------
+
+.386p
+
+memS    equ     1
+
+        .xlist
+
+        include    cmacros.inc
+;
+; NOTE that we CANNOT use the normal CMACROS segment macros:
+;
+;       CreateSeg
+;       sBegin
+;       sEnd
+;
+; because since we are .386p the default segment type is USE32. Our segments
+; need to be USE16 so we have to declare our segements manually so that the
+; USE16 segment attribute is included.
+;
+        include    windows.inc
+
+        .list
+;
+; These equates would normally be in an app specific include file
+;
+error_bad_file    EQU   08001h
+error_wrong_mode  EQU   08002h
+
+;-----------------------------------------------------------------------------
+;
+; External WINMEM32 Procedures
+;
+externFP        GetWinMem32Version
+externFP        Global32Alloc
+externFP        Global32Realloc
+externFP        Global32Free
+externFP        Global16PointerAlloc
+externFP        Global16PointerFree
+externFP        Global32CodeAlias
+externFP        Global32CodeAliasFree
+
+;-----------------------------------------------------------------------------
+;
+; External Windows Procedures
+;
+externFP        OpenFile
+externFP        GetWinFlags
+externFP        _llseek
+externFP        _lread
+externFP        _lclose
+externFP        OemToAnsi
+
+;
+; MANUAL VERSION OF: createSeg _HELPERCODE,hcode,word,public,CODE
+;
+; NOTE that this segment MUST NOT BE DISCARDABLE, it should be fixed.
+;      This is because the segment is called by USE32 code.
+;
+_HELPERCODE segment word public 'CODE' use16
+_HELPERCODE ends
+
+;
+; MANUAL VERSION of the automatic data segment declaration
+;
+_DATA segment word public 'DATA' use16
+_DATA ends
+
+_DATA segment use16
+
+globalD         AddrOEMToANSI,0         ; Address of OEMToANSI helper function
+globalD         AddrDOSGetFreeSpace,0   ; Address of DOS Get disk Free space
+                                        ;    helper function
+globalD         U32RetVal,0             ; Return code from USE32 call
+
+globalD         U16StackAlias,0         ; Alias for the stack
+
+globalD         EntryStackSave,0        ; stack ptr save location
+
+;
+; This FWORD forms the entry point for the USE32 code
+;
+U32EntryPt      LABEL FWORD
+globalD         U32EntOff,00010000h     ; Entry assumed at offset 64K
+globalW         U32CodeSel,0            ; CODE alias for the BIG object
+
+globalW         U32DataSel,0            ; DATA selector for the BIG object
+
+_DATA ends
+
+_HELPERCODE segment use16
+        assume  cs:_HELPERCODE
+
+;*****************************************************************************
+;
+; SetupCallUSE32
+;
+;       SetupCallUSE32(fName)
+;
+;       Setup and call into USE32 code
+;
+; ASSUMPTIONS:
+;       The USE32 Image is a 0 ORGed 32 bit code image with NO HEADER.
+;       The first 64k of the image (offsets 00000000-0000FFFFh) is reserved
+;         for the stack. We put the stack here so that the required stack
+;         switching (USE32<->USE16) is simply a matter of changing SS.
+;
+;       The entry point of the USE32 code is assumed to be right after the
+;         stack at offset 00010000h in the image. We enter with DS, FS, GS
+;         and SS set to the FLAT data segment, and CS set to the flat code
+;         segment. It is the responsibility of the USE32 entry point to set
+;         ES AND PRESERVE IT FOR US.
+;
+;       When this code wishes to call the two provided USE16 helper routines,
+;         it looks up the call addresses in the AddrOEMToANSI and
+;         AddrDOSGetFreeSpace variables in the _DATA segment.
+;         This "loader" code actually needs to pass the selector for the
+;         _DATA segment to the USE32 code so that it can access the data
+;         segment, or it needs to copy the call addresses into the USE32
+;         code/data segment. This detail of the implementation is NOT
+;         included in this code.
+;
+; ENTRY:
+;       FName - DWORD pointer to file name of USE32 image to load
+;
+; EXIT:
+;       AX != 0 If an error occurs
+;           AX = error code
+;       Else
+;           AX = 0 and U32RetVal contains the return code from the
+;                   USE32 code.
+; USES:
+;       C Standard
+;
+;*****************************************************************************
+cProc  StartupCallUSE32,<FAR,PUBLIC>,<si,di>
+
+        ParmD   fName
+
+        LocalD  fSize                   ; Size of file
+        LocalD  U16RdAlias              ; Alias for reading image
+        LocalD  FileOff                 ; Current file offset for read
+        LocalW  fHand                   ; File handle
+        LocalV  OpnBuf,<SIZE OPENSTRUC> ; Open file struct for openfile call
+
+cBegin
+    assume  ds:_DATA
+    assume  es:nothing
+    assume  ss:_DATA
+    ;
+    ; First check if we are running in enhanced mode
+    ;
+    ; NOTE THAT SINCE WE DO NOT KNOW AS YET WHAT MODE WE ARE IN WE NEED
+    ;   TO AVOID USING 386 SPECIFIC INSTRUCTIONS
+    ;
+        cCall   GetWinFlags
+
+        and     ax,WF_PMODE + WF_ENHANCED
+        cmp     ax,WF_PMODE + WF_ENHANCED
+        je      short OKtoLoad                  ; MUST BE SHORT
+        mov     ax,error_wrong_mode
+        jmp     Done1
+
+    ;
+    ; We now know we are in the proper mode and that 386 instructions
+    ;   are now OK.
+    ;
+OKtoLoad:
+    ;
+    ; Set up the addresses for the USE32 code to call the helper routines
+    ;
+        mov     ax,cs
+        mov     word ptr [AddrOEMToANSI+2],ax
+        mov     word ptr [AddrOEMToANSI],offset _HELPERCODE:U32OEMtoANSI
+        mov     word ptr [AddrDOSGetFreeSpace+2],ax
+        mov     word ptr [AddrDOSGetFreeSpace],offset _HELPERCODE:U32GetDskFree
+    ;
+    ; Open the file
+    ;
+        lea     bx,OpnBuf
+        regptr  ssbx,ss,bx
+        cCall   OpenFile,<fName,ssbx,OF_READ>
+        cmp     ax,-1                   ; Did we find it?
+        je      Done1FlErr              ; No, file error
+        mov     fHand,ax                ; Save file handle
+    ;
+    ; Get file size
+    ;
+        cCall   _llseek,<fHand,0,0,2>
+        shl     edx,16
+        mov     dx,ax
+        inc     edx
+        jz      Done1FlErr              ; seek failed, file error
+        dec     edx
+        mov     fSize,edx
+        cmp     edx,10000h              ; Image is at least 64k?
+        jbe     Done1FlErr              ; No, size is too small, file error
+    ;
+    ; Move file pointer back to start of file for read
+    ;
+        cCall   _llseek,<fHand,0,0,0>
+    ;
+    ; Allocate big USE32 object
+    ;
+        mov     si,dataOffset U32DataSel
+        regptr  Selpt,ds,si
+        cCall   Global32Alloc,<fSize,Selpt,fSize,0>
+        or      ax,ax                   ; Worked?
+        jnz     FcloseEr                ; No, return WINMEM32 error code
+    ;
+    ; Allocate USE16 stack alias for first 64K of object
+    ;
+        mov     si,dataOffset U16StackAlias
+        regptr  Alipt,ds,si
+        mov     ecx,00010000h           ; 64K
+        cCall   Global16PointerAlloc,<[U32DataSel],0,0,Alipt,ecx,0>
+        or      ax,ax                   ; Worked?
+        jnz     AliasErrF3              ; No, return WINMEM32 error code
+    ;
+    ; Allocate USE32 code alias
+    ;
+        mov     si,dataOffset U32CodeSel
+        regptr  Alipt,ds,si
+        cCall   Global32CodeAlias,<[U32DataSel],Alipt,0>
+        or      ax,ax                   ; Worked?
+        jnz     AliasErrF2              ; No, return WINMEM32 error code
+    ;
+    ; Now read in the image. We will do this in 32K hunks.
+    ;
+        mov     FileOff,0               ; Starting at file offset 0
+ReadLp:
+        mov     ecx,00008000h           ; 32k
+        cmp     ecx,fSize
+        jbe     short Read32k
+        mov     ecx,fSize
+Read32k:
+    ;
+    ; Make a USE16 alias for this region of the object
+    ;
+        push    ecx
+        lea     si,U16RdAlias
+        regptr  Alipt,ss,si
+        cCall   Global16PointerAlloc,<[U32DataSel],FileOff,Alipt,ecx,0>
+        pop     ecx
+        or      ax,ax
+        jnz     short AliasErrF1
+        push    ecx
+        cCall   _lread,<fHand,U16RdAlias,cx>
+        push    ax
+        cCall   Global16PointerFree,<[U32DataSel],U16RdAlias,0>
+        pop     ax
+        pop     ecx
+        inc     ax
+        jz      short FlRdErr
+        dec     ax
+        cmp     ax,cx
+        jne     short FlRdErr
+        add     FileOff,ecx
+        sub     fSize,ecx
+        ja      short ReadLp
+
+;
+    ; We are now ready to set up and call into the USE32 code
+    ;
+    ;   Save the current stack so we can switch to the USE32 stack
+    ;
+    ;   NOTE CAREFULLY THAT THIS MAKES THIS ROUTINE NON-REENTRANT
+    ;   SINCE IT SAVES THE CURRENT SS:SP IN A STATIC MEMORY LOCATION.
+    ;
+        mov     word ptr [EntryStackSave],sp
+        mov     word ptr [EntryStackSave+2],ss
+        mov     ax,[U32DataSel]
+        push    ds
+        pop     es
+    assume es:_DATA
+    ;
+    ; Set up all the segs, and call into USE32
+    ;
+    ; NOTE that we just leave the file open across the call.
+    ;
+        mov     ds,ax
+    assume ds:nothing
+        mov     fs,ax
+        mov     gs,ax
+        mov     ss,ax
+    assume ss:nothing
+        mov     esp,0000FFFCh
+        call    [U32EntryPt]
+    ;
+    ; Recover DS and stack.
+    ;
+        mov     bx,es
+        mov     ds,bx
+    assume ds:_DATA
+        mov     ss,word ptr [EntryStackSave+2]
+    assume ss:_DATA
+        mov     sp,word ptr [EntryStackSave]
+    ;
+    ; Set success return and clean up.
+    ;
+        mov     [U32RetVal],eax
+        xor     ax,ax                   ; Return success
+        jmp     short AliasErrF1
+
+FlRdErr:
+        mov     ax,error_bad_file
+AliasErrF1:
+    ;
+    ; Free USE32 code alias
+    ;
+        push    ax                      ; Save error code
+        cCall   Global32CodeAliasFree,<[U32DataSel],[U32CodeSel],0>
+        pop     ax
+AliasErrF2:
+    ;
+    ; Free USE16 stack alias
+    ;
+        push    ax                      ; Save error code
+        cCall   Global16PointerFree,<[U32DataSel],[U16StackAlias],0>
+        pop     ax
+AliasErrF3:
+    ;
+    ; Free the object
+    ;
+        push    ax                      ; Save error code
+        cCall   Global32Free,<[U32DataSel],0>
+        pop     ax
+FcloseEr:
+    ;
+    ; Close the file
+    ;
+        push    ax                      ; Save error code
+        cCall   _lclose,<fHand>
+        pop     ax
+        jmp     short Done1
+
+Done1FlErr:
+        mov     ax,error_bad_file
+Done1:
+cEnd
+
+;*****************************************************************************
+;
+; U32OEMtoANSI - Call OemToANSI from USE32 segment
+;
+;    Assumes PASCAL calling convention
+;
+; ENTRY:
+;       U32OEMtoANSI(lpOemStr,lpAnsiStr)
+;
+;       NOTE that these pointer arguments are NOT really LPSTRs. They
+;       are near pointers into the USE32 data object (implied segment
+;       is U32DataSel)
+;
+; EXIT:
+;       EAX is return code
+;
+; USES:
+;       32 bit C Standard
+;
+;
+;*****************************************************************************
+PUBLIC U32OEMtoANSI
+
+U32OEMtoANSI proc far
+    assume  ds:nothing
+    assume  es:nothing
+    assume  ss:nothing
+    ;
+    ; First switch to the USE16 stack
+    ;
+        mov     cx,ds           ; Save entry DS in cx till we get the 
+stack switched
+        mov     ax,SEG _DATA
+        mov     ds,ax
+    assume ds:_DATA
+        mov     ss,word ptr [U16StackAlias+2]
+        push    ecx             ; Entry DS, as DWORD to keep stack aligned
+        push    ebp
+        mov     bp,sp
+    ;
+    ; Frame now looks like this:
+    ;
+    ;   dword ptr [bp + 20]  -->  First arg to OEMToANSI  lpOemStr 
+(actually a 32 bit near pointer)
+    ;   dword ptr [bp + 16]  -->  Second arg to OEMToANSI lpAnsiStr 
+(actually a 32 bit near pointer)
+    ;   dword ptr [bp + 12]  -->  Return CS
+    ;   dword ptr [bp + 8]   -->  Return EIP
+    ;   dword ptr [bp + 4]   -->  Entry DS pushed as DWORD
+    ;   dword ptr [bp + 0]   -->  Entry EBP
+    ;
+lpOemStr        equ     dword ptr [bp+20]
+lpAnsiStr       equ     dword ptr [bp+16]
+
+        sub     sp,8            ; Need two LPSTRs for the aliases
+
+AlsOemStr       equ     dword ptr [bp-4]        ; Alias for lpOemStr
+AlsAnsiStr      equ     dword ptr [bp-8]        ; Alias for lpAnsiStr
+
+        push    esi
+        push    edi
+        push    ebx
+        push    es              ; Preserve "flat" ES, FS, GS
+        push    fs
+        push    gs
+    ;
+    ; There is a ?, how BIG is lpOemStr? Need to know this to set the
+    ;   size of the alias(s). What we will do is "cheat". We will set
+    ;   the size to 64k (or size to end of USE32 object, whichever is
+    ;   smaller). NOTE that this assumes that the string is <= 64K which
+    ;   is a reasonable assumption since we can't alias something larger
+    ;   than that anyway.
+    ;
+        lsl     eax,dword ptr [U32DataSel]  ; Get limit of USE32 object
+        inc     eax             ; Limit -> size
+        mov     edx,eax
+        sub     eax,lpOemStr    ; Number of bytes to end of USE32 object
+        jc      SkipCall        ; Bad string ptr
+        sub     edx,lpAnsiStr   ; Number of bytes to end of USE32 object
+        jc      short SkipCall  ; Bad string ptr
+        cmp     eax,edx
+        jbe     short UseSrcLim
+        mov     eax,edx         ; lpAnsiStr is closer to end of object
+UseSrcLim:
+        mov     ecx,00010000h   ; 64k
+        cmp     ecx,eax
+        jbe     short Use64k
+        mov     ecx,eax         ; Limited by size to end of object
+Use64k:
+    ;
+    ; Create Alias for lpOemStr
+    ;
+        push    ecx
+        lea     bx,AlsOemStr
+        regptr  AlsPt,ss,bx
+
+        cCall   Global16PointerAlloc,<[U32DataSel],lpOemStr,AlsPt,ecx,0>
+
+        pop     ecx
+        or      ax,ax
+        jnz     short SkipCall
+    ;
+    ; Create Alias for lpAnsiStr
+    ;
+        lea     bx,AlsAnsiStr
+
+        cCall   Global16PointerAlloc,<[U32DataSel],lpAnsiStr,AlsPt,ecx,0>
+
+        or      ax,ax
+        jnz     short FreeOemAls
+    ;
+    ; Call OemToAnsi
+    ;
+        cCall   OemToAnsi,<AlsOemStr,AlsAnsiStr>
+    ;
+    ; Free the aliases
+    ;
+        push    ax              ; Save RET code
+
+        cCall   Global16PointerFree,<[U32DataSel],AlsAnsiStr,0>
+
+        pop     ax              ; Restore RET code
+FreeOemAls:
+        push    ax              ; Save RET code
+
+        cCall   Global16PointerFree,<[U32DataSel],AlsOemStr,0>
+
+        pop     ax              ; Restore RET code
+SkipCall:
+        pop     gs
+        pop     fs
+        pop     es
+        pop     ebx
+        pop     edi
+        pop     esi
+        add     sp,8
+        pop     ebp
+        pop     ecx             ; Entry DS in CX
+    ;
+    ; Sign extend the return to make it 32 bit
+    ;
+        movsx   eax,ax
+    ;
+    ; Switch back to the USE32 stack MAKING SURE TO SET HIGH 16 BITS OF ESP.
+    ;
+        mov     ss,[U32DataSel]
+        movzx   esp,sp
+        mov     ds,cx
+    assume  ds:nothing
+        db      66h             ; USE32 override on far ret so it 
+returns to EIP
+        ret     (2 * 4)
+
+U32OEMtoANSI endp
+
+;*****************************************************************************
+;
+; U32GetDskFree - Issue DOS call to get disk free space
+;
+;    Assumes PASCAL calling convention
+;
+; ENTRY:
+;       U32GetDskFree(drvnum)
+;
+; EXIT:
+;       EAX = Disk free space in bytes
+;       EAX == 0FFFFFFFFh if error
+;
+; USES:
+;       32 bit C Standard
+;
+;
+;*****************************************************************************
+PUBLIC U32GetDskFree
+
+U32GetDskFree proc far
+    assume  ds:nothing
+    assume  es:nothing
+    assume  ss:nothing
+    ;
+    ; First switch to the USE16 stack
+    ;
+        mov     cx,ds           ; Save entry DS in cx till we get the 
+stack switched
+        mov     ax,SEG _DATA
+        mov     ds,ax
+    assume ds:_DATA
+        mov     ss,word ptr [U16StackAlias+2]
+        push    ecx             ; Entry DS, as DWORD to keep stack aligned
+        push    ebp
+        mov     bp,sp
+    ;
+    ; Frame now looks like this:
+    ;
+    ;   dword ptr [bp + 16]  -->  Drive # argument (0 = default, A = 1 ...)
+    ;   dword ptr [bp + 12]  -->  Return CS
+    ;   dword ptr [bp + 8]   -->  Return EIP
+    ;   dword ptr [bp + 4]   -->  Entry DS pushed as DWORD
+    ;   dword ptr [bp + 0]   -->  Entry EBP
+    ;
+ArgDrv          equ     dword ptr [bp+16]
+
+        push    esi
+        push    edi
+        push    ebx
+        push    es              ; Preserve "flat" ES, FS, GS
+        push    fs
+        push    gs
+
+        mov     edx,ArgDrv      ; Drive # to DL
+        mov     ah,36h
+        int     21h             ; Make DOS call
+
+movsx   eax,ax          ; Sign extend AX for error
+        cmp     ax,0FFFFh       ; Error?
+        je      short BadDrv    ; Yes, return 0FFFFFFFFh
+        movzx   eax,ax          ; Convert sectors/cluster to 32 bit
+        movzx   ebx,bx          ; Convert Available clusters to 32 bit
+        movzx   ecx,cx          ; Convert bytes/sector to 32 bit
+        mul     ecx             ; EAX = sectors/cluster * bytes/sector =
+                                ;       bytes/cluster
+        mul     ebx             ; EAX = bytes/cluster * Available clusters =
+                                ;       free bytes
+BadDrv:
+        pop     gs
+        pop     fs
+        pop     es
+        pop     ebx
+        pop     edi
+        pop     esi
+        pop     ebp
+        pop     ecx             ; Entry DS in CX
+    ;
+    ; Switch back to the USE32 stack MAKING SURE TO SET HIGH 16 BITS OF ESP.
+    ;
+        mov     ss,[U32DataSel]
+        movzx   esp,sp
+        mov     ds,cx
+    assume  ds:nothing
+        db      66h             ; USE32 override on far ret so it 
+returns to EIP
+        ret     (1 * 4)
+
+U32GetDskFree endp
+
+_HELPERCODE ends
+
+        end

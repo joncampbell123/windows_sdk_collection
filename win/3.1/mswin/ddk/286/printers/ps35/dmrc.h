@@ -1,0 +1,87 @@
+#define BINARY                   31
+#define COPIES                   22
+#define EDITFIELD                20
+#define HANDSHAKE_HARDWARE       801
+#define ID_SCALE                 430
+#define IDAPLTALK                26
+#define IDHELP                	34
+#define IDFONTS                  32
+#define IDOPTIONS                28
+#define IDABOUT                29
+#define HANDSHAKE_SOFTWARE   800
+//  #define HEADER_NO		 521
+#define HEADER_YES	     520
+#define OP_ERROR_PRINTER     700
+#define OP_ERROR_FILE        701
+//  #define OP_ERROR             532
+#define OP_FILE              900
+#define OP_FILELABEL	     901
+#define OP_ADVANCED          533
+#define OP_HANDSHAKE         531
+#define OP_HEADER            530
+#define DEFAULT_MARGINS		510
+#define ZERO_MARGINS		511
+#define TILE_MARGINS		512
+#define DUPLEX_WNDFRAME		540
+#define DUPLEX_NONE		541
+#define DUPLEX_LONGEDGE		542
+#define DUPLEX_SHORTEDGE	543
+#define JOBTIMEOUT               23
+#define LANDSCAPE                11
+#define OP_HEADER_FILE           601
+#define OP_HEADER_PRINTER        600
+#define PORTRAIT                 10
+#define PRINTERLIST              21
+#define SIZELIST                 24
+#define SOURCELIST               25
+#define USE_COLOR                27
+#define USE_EPS                  29
+#define TO_PRINTER               30
+#define TO_EPS	                 31
+#define FILE_TEXT                32
+#define FILE_EDIT                33
+#define ADD_PRINTER              35
+#define IDICON			36
+#define NODOWNLOAD		37
+#define IDDLFORMATLABEL 	38
+
+#define PRINTER_LIST	100
+#define ID_EDIT		101
+#define STATUS_MSG	102
+#define INSTALL		103
+
+#define IDFREQUENCY     40
+#define IDFREQUENCYTEXT 41
+#define IDANGLE         42
+#define IDANGLETEXT     43
+#define IDNEGIMAGE      44
+#define IDRESOLUTION     45
+#define IDCONFORMING    46
+#define IDDEFAULT       47
+#define IDPERPAGE       48
+#define IDDLFORMAT      49
+#define IDMIRROR        50
+#define IDCOLORTOBLACK  51
+#define IDCOMPRESS      52
+#define IDERRHANDLER    53
+
+#define IDDOWNLOAD      100
+
+#define IDD_UNIT_OFFSET 200
+#define IDD_TENTHMM     200
+#define IDD_HUNDREDTHINCH  201
+#define IDD_MINWIDTH    202
+#define IDD_MAXWIDTH    203
+#define IDD_MINLENGTH   204
+#define IDD_MAXLENGTH   205
+#define IDD_PAPERWIDTH  206
+#define IDD_PAPERLENGTH 207
+
+#define FONTSUBSTITUTION     1000
+#define PRINTERVM            1001
+#define SUBSTITUTE           1002
+#define IDSUGGEST            1003
+#define LBTRUETYPE           1004
+#define LBDEVICE             1005
+#define SUBICON              1006
+#define IDSUBSTATUS          1007

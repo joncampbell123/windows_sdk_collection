@@ -1,0 +1,202 @@
+subttl	Looping Logic - Scan Line Update
+page
+
+;	Generate the next scanline code.  The next scan line code must
+;	handle monochrome bitmaps, the device, huge bitmaps, the presence
+;	or absence of a source.
+;
+;	Also color bitmaps, and mono <==> color interactions.
+;
+;	<	add si,Src.NextScan   > ;Normal source scan line update
+;	<	Huge Bitmap Update    > ;>64K source update code
+;		add di,Dest.NextScan	;Normal destination scan line update
+;	<	Huge Bitmap Update    > ;>64K destination update code
+;
+;
+;	All updates will at least consist of the add IndexReg,PlaneW.
+
+
+cblt_6300:
+	mov	ch,direction		;Load this for YUpdate code
+	test	bh,F0_SRC_PRESENT		;Is there a source?
+	jz	cblt_6340		;  No, skip source processing
+	mov	dx,I_ADD_SI_WORD_I 	;add si,increment
+	mov	bx,((HIGH I_MOV_SI_AX)*256)+(HIGH I_LEA_AX_SI_DISP16)
+	mov	cl,HIGH I_MOV_AX_DS
+	push	bp
+	lea	bp,Src
+	call	y_update 		;Generate the Y scan line update code
+	pop	bp			;Restore frame pointer
+
+cblt_6340:
+	mov	dx,I_ADD_DI_WORD_I 	;add reg,increment
+	mov	bx,((HIGH I_MOV_DI_AX)*256)+(HIGH I_LEA_AX_DI_DISP16)
+	mov	cl,HIGH I_MOV_AX_ES
+	push	bp
+	lea	bp,Dest 		;--> destination data
+	call	y_update 		;Generate the Y scan line update code
+	pop	bp			;Restore frame pointer
+
+
+
+;	Compile the scan line loop.  The code simply jumps to the start
+;	of the outer loop if more scans exist to be processed.
+
+
+cblt_6380:
+	mov	ax,OFF_BLTaddr		;Compute relative offset of
+	sub	ax,di			;  start of loop
+	cmp	ax,-125 		;Can this be a short label?
+	jc	cblt_6400		;  No, must make it a near jmp
+	sub	al,2			;Bias offset by length of LOOP inst.
+	mov	ah,al
+	mov	al,I_LOOP
+	stosw				;Set the loop instruction
+	jmp	short cblt_6420
+
+cblt_6400:
+	mov	si,codeOFFSET jmp_cx_nz	;Move in the dec CX jnz code
+	movsw
+	movsw
+	errnz	JMP_CX_NZ_LEN-4		;Must be four bytes long
+	sub	ax,6			;Adjust jump bias
+	stosw				;  and store it into jump
+
+cblt_6420:
+	mov	al,I_RET_FAR		;Stuff the far return instruction
+	stosb
+
+
+
+subttl	Invocation and Exit
+page
+
+;	If the debug flag has been set, save the size of the created BLT
+;	so it may be returned to the caller.
+
+cblt_7000:
+ifdef	debug
+	sub	di,OFF_BLTaddr		;Compute the length
+	push	di			;  and save it
+endif
+
+
+
+;	The BLT has been created on the stack.	Set up the initial registers,
+;	set the direction flag as needed, and execute the BLT.
+
+
+	test	the_flags,F0_SRC_PRESENT	;Is there a source?
+	jz	cblt_7020		;  No, don't load its pointer
+	lds	si,Src.lpBits		;--> source device's first byte
+
+cblt_7020:
+	les	di,Dest.lpBits		;--> destination device's first byte
+	mov	cx,yExt 		;Get count of lines to BLT
+	cld				;Assume this is the direction
+	cmp	stepDirection,STEPRIGHT ;Stepping to the right?
+	jz	cblt_7040		;  Yes
+	std
+
+cblt_7040:
+ifdef	GenColorBLT
+	mov	bl,PLANE_1		;Set initial plane select logic
+endif
+
+	push	bp			;MUST SAVE THIS
+	public	call_stack
+call_stack:
+ifdef	TEFTI
+	timer_begin
+endif
+
+	call	BLTaddr 		;Call the FAR process
+ifdef	TEFTI
+	timer_end
+endif
+	pop	bp
+
+
+cblt_7060:
+ifdef	debug
+	pop	bx			;Get length of created BLT code
+endif
+
+	add	sp,maxBLTsize		;Return BLT space
+
+;	jmp	exit			;Hey, we're done!
+	errn$	exit
+
+
+
+
+
+;	EXIT- Exit BitBLT
+;
+;	Well, the BLT has been processed.  Restore the stack to its
+;	original status, restore the saved user registers, show no
+;	error, and return to the caller.
+;
+;	Entry:	None
+;
+;	Exit:	ax = 1
+;
+;	Uses:	All
+
+	public	bitblt_exit
+bitblt_exit:
+exit:
+ifdef	TEFTI_WHOLE
+	timer_end
+endif
+
+ifdef	GenColorBLT
+;	restore ega registers to the default state
+
+	mov	dx,EGA_BASE + SEQ_DATA
+	mov	al,MM_C0+MM_C1+MM_C2+MM_C3
+	out	dx,al
+
+	mov	dl,GRAF_ADDR
+	mov	ax,0FF00h + GRAF_BIT_MASK
+	out	dx,ax
+
+	mov	ax,DR_SET shl 8 + GRAF_DATA_ROT
+	out	dx,ax
+
+	mov	ax,GRAF_ENAB_SR
+	out	dx,ax
+
+	mov	ax,ScreenSelector
+	mov	ds,ax
+	assumes ds,EGAMem
+	mov	ax,M_DATA_READ shl 8 + GRAF_MODE
+	mov	shadowed_mode,ah
+	out	dx,ax
+endif
+
+	mov	ax,1			;Clear out error register (good exit)
+;	jmp	exit_fail
+	errn$	exit_fail
+
+
+
+
+;	exit_fail - exit because of failure
+;
+;	The BLT is exited.
+;
+;	Entry:	ax = error code (0 if error)
+
+
+exit_fail:
+
+	cld				;Leave direction cleared since
+
+ifdef	EXCLUSION
+	call	unexclude		;Remove any exclusion area
+endif
+
+stack_ov:
+cEnd
+

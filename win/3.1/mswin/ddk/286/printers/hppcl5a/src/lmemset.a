@@ -1,0 +1,117 @@
+;/**[f******************************************************************
+; * lmemset.a - 
+; *
+; * Copyright (C) 1988, 1989 Aldus Corporation.  All rights reserved.
+; * Copyright (C) 1989-1990 Microsoft Corporation.
+; * Copyright (C) 1989,1990, 1991 Hewlett-Packard Company.
+; * Company confidential.
+; *
+; **f]*****************************************************************/
+
+; History
+; 17 aug 89	peterbe		tabs=8
+
+		title	lmemset - byte storer
+		page	60,132
+
+; abstract
+;
+; this module contains a c-language callable routine for initializing a block
+; of bytes.
+
+		.xlist
+?win=1		;compile with windows epilog/prolog
+?plm=1		;we're playing the pascal calling sequence game
+
+		include	cmacros.inc
+		.list
+
+externA __AHINCR
+
+sBegin	CODE
+assumes	CS, CODE
+
+cProc	lmemset,<FAR,PUBLIC>,<di>
+	parmD	dst
+	parmB	val
+	parmW	cnt
+
+cBegin
+	les	di,dst			;get destination address
+	mov	dx,es			;return destination as
+	mov	ax,di			; value of the function
+	mov	al,val			;get value
+	mov	cx,cnt			;get count
+	jcxz	$1			;out of here if zero
+	cld				;say "store'em forward"
+	mov	ah, al
+	test	di, 1
+	jz	@F
+	stosb
+	dec	cx
+@@:
+	shr	cx, 1
+	rep	stosw			; and move'em like crazy
+	rol	cx, 1
+	rep	stosb
+$1:
+cEnd
+
+;
+;   hmemset()
+;
+;   memset for huge bitmap.  If < 64k, uses ordinary memset.  If > 64k,
+;   assumes offset part is 0.
+;
+;
+
+cProc	hmemset, <FAR, PUBLIC>, <di>
+
+	parmD	dst
+	parmB	val
+	parmD	cnt
+
+cBegin
+
+	les	di, dst 			; get pointer
+	mov	al, val 			; bytes to store
+	mov	ah, al
+	mov	dx, word ptr cnt[2]		; how many full 64k segs?
+	or	dx, dx
+	jz	hms_small			; if none, ordinary little one
+
+full_seg_loop:
+	mov	cx, 8000h			; words in seg
+	rep	stosw				; store'em
+	dec	dx				; any more?
+	jz	last_seg			; check before updating selector
+
+	mov	bx, es
+	add	bx, __AHINCR			; next selector
+	mov	es, bx
+	jmp	short full_seg_loop
+
+last_seg:
+	mov	cx, word ptr cnt[0]		; count of bytes in last seg
+	jcxz	hms_exit			; if zero skip
+
+	mov	bx, es
+	add	bx, __AHINCR			; point to it
+	mov	es, bx
+	shr	cx, 1				; count of words
+	rep	stosw				; store it
+	rol	cx, 1
+	rep	stosb				; deal with last byte
+	jmp	short hms_exit
+
+hms_small:					; ordinary, use normal lmemset
+	mov	ax, word ptr cnt[0]
+	cCall	lmemset, <dst,val,ax>
+
+hms_exit:
+
+cEnd
+
+sEnd
+
+end

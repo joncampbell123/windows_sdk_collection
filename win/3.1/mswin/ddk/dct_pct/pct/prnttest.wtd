@@ -1,0 +1,205 @@
+'=========================================================================
+'
+' automation script 
+'     For use with DCT-SHELL (calls HctScriptBegin(), HctScriptEnd()).
+'     Runs APPPATH + TESTAPP + ".exe " + DATAFILE
+'     Script waits for TESTAPP to complete before continuing.
+' Creator : 
+' Date    : 
+'
+' Notes:
+'     This script uses 1 definable symbol:
+'     CTSHELL - if defined, the script callse HctScriptBegin() and 
+'               HctScriptEnd()
+'     These symbols are defined (enabled) from the command line via the 
+'        /d switch.  
+'     EX: wattdrvr script.wtd /run /d CTSHELL
+'
+'     MFDLL.DLL (magic fingers) SelectMenuItem subroutine does not
+'        work with win30.  
+'
+'=========================================================================
+
+'$include: 'mfdll.inc'
+'$include: 'wtdutil.inc'
+'$IFDEF CTSHELL
+   '$include: 'hct.inc'
+'$ENDIF
+
+CONST TESTAPP  = "Prnttest"                        ' name of app W/O EXTENSION!
+CONST APPPATH  = ".\"                              ' where TESTAPP is located
+CONST WINTITLE = "Windows Printer Test Application"  ' window title
+
+DECLARE FUNCTION bInitScript AS INTEGER
+DECLARE SUB StartScript
+DECLARE SUB EndScript
+
+' Custom Subfunctions
+DECLARE SUB HeaderSet(bValue%)
+DECLARE SUB HeaderItemSet(Text$, bValue%)
+DECLARE SUB TestsSet(bValue%)
+DECLARE SUB TestsItemSet(Text$, bValue%)
+DECLARE SUB SetGDIEscapes(bValue%)
+DECLARE SUB FontsSet(bTTValue%,bDeviceValue%,bGDIValue%)
+
+'==========================================================================
+
+FUNCTION bInitScript AS INTEGER
+   startScript
+   szExeName$ = APPPATH + TESTAPP + ".EXE"
+   IF EXISTS (szExeName$) = 0 THEN
+      bInitScript = FALSE
+      print szExeName$ + " does not exist."
+      Pause ("Could Not Initialize " + WINTITLE)
+      print ("Script aborting.")
+   ELSE 
+      bInitScript = TRUE
+   END IF
+END FUNCTION
+
+'=========================================================================
+
+SUB startScript
+   ViewPort OFF
+   ViewPort CLEAR
+   print "Start Of " + WINTITLE + " Test"
+END SUB
+
+'=========================================================================
+
+SUB endScript
+   print "End Of " + WINTITLE + " Test"
+END SUB
+
+'==========================================================================
+' MAIN
+'==========================================================================
+
+DIM document AS STRING
+
+'$IFDEF CTSHELL
+   HctScriptBegin  TESTAPP
+'$ENDIF
+IF (bInitScript () = TRUE) THEN
+    ' script will wait until this statement completes execution
+   
+    document$ = command$
+    RUN APPPATH + TESTAPP + ".exe " + APPPATH + document$, NOWAIT
+
+    ' Abort if no printers are in the list to test
+    SelectListBox("List of Profiles to Test")
+    IF (GetListBoxCount() = 0) THEN
+        PAUSE "No Printers Selected to Test"
+        TestResult=RS_NOT_RUN
+    ELSE
+        'Set device fonts only
+        FontsSet FALSE,TRUE,FALSE
+    
+        IF command$ = "ResetDC" THEN
+            ' Use 3.1 GDI calls, test just printable region & char widths
+            SetGDIEscapes(FALSE)
+            HeaderSet(FALSE)
+            HeaderItemSet "Display Printable Area", TRUE
+            TestsSet(FALSE)
+            TestsItemSet "Char Widths", TRUE
+            TestsItemSet "ResetDC", TRUE
+        ELSE
+            ' Select all tests but char widths, use escapes instead of GDI calls
+            SetGDIEscapes(TRUE)        
+            HeaderSet(TRUE)
+            HeaderItemSet "Samples only", TRUE
+            TestsSet(TRUE)
+            TestsItemSet "Char Widths", FALSE
+        END IF
+
+        hwndPrntTest=GetActiveWindow()
+    
+        ' Execute the tests
+        SelectMenuItem "Execute!"
+
+        WAIT 2
+
+        ' Select all pens, brushes, and fonts.
+        SetButtonState "All Pens", TRUE
+        SetButtonState "All Brushes", TRUE
+        SetButtonState "All Fonts", TRUE
+        ClickButton "OK"
+    
+        WAIT 2
+    
+        WHILE (hwndPrntTest <> GetActiveWindow())
+            WAIT 2
+        WEND
+
+        TestResult=RS_PASSED
+    END IF
+
+    SendKeys "%{F4}"
+    
+    endScript
+    '$IFDEF CTSHELL
+        HctScriptEnd (TestResult)   
+    '$ENDIF
+ENDIF
+
+SUB HeaderSet(bValue%)
+    ' Set the button states we want for this test
+    SelectMenuItem "Settings"
+    SelectMenuItem "Header"
+    SetButtonState "Title Page", bValue%
+    SetButtonState "List of Driver Entry Points", bValue%
+    SetButtonState "Gray Scale Display", bValue%
+    SetButtonState "Display Printable Area", bValue%
+    SetButtonState "List Device Capabilities", bValue%
+    SetButtonState "Brush Samples", bValue%
+    SetButtonState "Pen Samples", bValue%
+    SetButtonState "Font Information", bValue%
+    ClickButton "OK"
+end sub
+
+SUB HeaderItemSet(Text$, bValue%)
+    SelectMenuItem "Settings"
+    SelectMenuItem "Header"
+    SetButtonState Text$, bValue%
+    ClickButton "OK"
+end sub
+
+SUB TestsSet(bValue%)
+    SelectMenuItem "Settings"
+    SelectMenuItem "Tests"
+    SetButtonState "Fonts/Text", bValue%
+    SetButtonState "Raster (BitBlt)", bValue%
+    SetButtonState "Polygonal", bValue%
+    SetButtonState "Char Widths", bValue%
+    SetButtonState "Curves", bValue%
+    SetButtonState "Lines", bValue%
+    SetButtonState "AbortDoc", bValue%
+    ClickButton "OK"
+end sub       
+
+SUB FontsSet(bTTValue%,bDeviceValue%,bGDIValue%)
+    SelectMenuItem "Options"
+    SelectMenuItem "Fonts"
+    SetButtonState "TrueType Fonts", bTTValue%
+    SetButtonState "Device Fonts (Non-TrueType)",bDeviceValue%
+    SetButtonState "Non-Device Fonts (Non-TrueType)",bGDIValue%
+    ClickButton "OK"
+end sub
+    
+SUB TestsItemSet(Text$, bValue%)
+    SelectMenuItem "Settings"
+    SelectMenuItem "Tests"
+    SetButtonState Text$, bValue%
+    ClickButton "OK"
+end sub
+
+SUB SetGDIEscapes(bValue%)
+    SelectMenuItem "Options"
+    SelectMenuItem "Print Styles"
+    IF bValue% = TRUE THEN
+        SetButtonState "Windows 3.0 (Escapes)", TRUE
+    ELSE
+        SetButtonState "Windows 3.1 (Calls)", TRUE
+    ENDIF
+    ClickButton "OK"
+end sub

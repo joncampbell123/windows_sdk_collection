@@ -1,0 +1,112 @@
+
+
+subttl	Input Clipping
+page
+
+;	GDI doesn't do input clipping.  The source device must be clipped
+;	to the device limits, otherwise an exception could occur while in
+;	protected mode.
+;
+;	The destination X and Y, and the extents have been clipped by GDI
+;	and are positive numbers (0-7FFFh).  The source X and Y could be
+;	negative.  The clipping code will have to check constantly for
+;	negative values.
+
+
+setup_200:
+	mov	si,xExt 		;X extent will be used a lot
+	mov	di,yExt 		;Y extent will be used a lot
+	test	the_flags,F0_SRC_PRESENT;Is there a source?
+	jz	setup_230		;No source, no input clipping needed
+
+	mov	ax,SrcxOrg		;Will need source X org
+	mov	bx,Src.WidthBits	;Maximum allowable is WidthBits-1
+	or	ax,ax			;Any left edge overhang?
+	jns	setup_205		;  No, left edge is on the surface
+
+
+;	The source origin is off the left hand edge of the device surface.
+;	Move both the source and destination origins right by the amount
+;	of the overhang and also remove the overhang from the extent.
+;
+;	There is no need to check for the destination being moved off the
+;	right hand edge of the device's surface since the extent would go
+;	zero or negative were that to happen.
+
+
+	add	si,ax			;Subtract overhang from X extent
+	js	v_exit			;Wasn't enough, nothing to BLT
+	sub	DestxOrg,ax		;Move destination left
+	xor	ax,ax			;Set new source X origin
+	mov	SrcxOrg,ax
+
+
+;	The left hand edge has been clipped.  Now clip the right hand
+;	edge.  Since both the extent and the source origin must be
+;	positive numbers now, any sign change from adding them together
+;	can be ignored if the comparison to bmWidth is made as an
+;	unsigned compare (maximum result of the add would be 7FFFh+7FFFh,
+;	which doesn't wrap past zero).
+
+
+setup_205:
+	add	ax,si			;Compute right edge + 1
+	sub	ax,bx			;Compute right edge overhang
+	jbe	setup_210		;No overhang
+	sub	si,ax			;Subtract overhang from X extent
+	js	v_exit			;Wasn't enough, nothing to BLT
+
+setup_210:
+	mov	xExt,si 		;Save new X extent
+
+
+;	Now clip the Y coordinates.  The procedure is the same and all
+;	the above about positive and negative numbers still holds true.
+
+
+setup_215:
+	mov	ax,SrcyOrg		;Will need source Y org
+	mov	bx,Src.Height		;Maximum allowable is Height-1
+	or	ax,ax			;Any top edge overhang?
+	jns	setup_220		;  No, top is on the surface
+
+
+;	The source origin is off the top edge of the device surface.
+;	Move both the source and destination origins down by the amount
+;	of the overhang, and also remove the overhang from the extent.
+;
+;	There is no need to check for the destination being moved off
+;	the bottom of the device's surface since the extent would go
+;	zero or negative were that to happen.
+
+
+	add	di,ax			;Subtract overhang from Y extent
+	js	v_exit			;Wasn't enough, nothing to BLT
+	sub	DestyOrg,ax		;Move destination down
+	xor	ax,ax			;Set new source Y origin
+	mov	SrcyOrg,ax
+
+
+;	The top edge has been clipped.	Now clip the bottom edge. Since
+;	both the extent and the source origin must be positive numbers
+;	now, any sign change from adding them together can be ignored if
+;	the comparison to bmWidth is made as an unsigned compare (maximum
+;	result of the add would be 7FFFh+7FFFh, which doesn't wrap thru 0).
+
+
+setup_220:
+	add	ax,di			;Compute bottom edge + 1
+	sub	ax,bx			;Compute bottom edge overhang
+	jbe	setup_225		;No overhang
+	sub	di,ax			;Subtract overhang from Y extent
+	js	v_exit			;Wasn't enough, nothing to BLT
+
+setup_225:
+	mov	yExt,di 		;Save new Y extent
+
+setup_230:
+	or	si,si
+	jz	v_exit			;X extent is 0
+	or	di,di
+	jz	v_exit			;Y extent is 0
+

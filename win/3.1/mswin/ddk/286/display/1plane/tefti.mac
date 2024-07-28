@@ -1,0 +1,173 @@
+comment /
+
+Timer (TEFTI) Card Register Programming Specifications:
+
+Register Access Map:
+
+ 		     Write			Read
+
+BASE + 0	Reset Counter 1		Read Counter 1 LS byte
+BASE + 1	Start Counter 1		Read Counter 1 MS byte
+BASE + 2	Stop Counter 1		Read Counter 2 LS byte
+BASE + 3	Snapshot Counter 1	Read Counter 2 MS byte
+BASE + 4	Reset Counter 2		Read Counter 3 LS byte
+BASE + 5	Start Counter 2		Read Counter 3 MS byte
+BASE + 6	Stop Counter 2		
+BASE + 7	Snapshot Counter 2	
+BASE + 8	Reset Counter 3		
+BASE + 9	Start Counter 3		
+BASE + 10	Stop Counter 3		
+BASE + 11	Snapshot Counter 3	
+BASE + 12	Select Predivide
+
+NOTE:  Data is significant only when writing to the Predivide Register.  All other writes accomplish their desired function without regard to specific data.
+
+Predivide Register programming:
+
+	7 6 5 4 3 2 1 0
+	          X X X			Counter 1 Predivide (Table 1)
+  	    X X X			Counter 2 Predivide (Table 1)
+	X X				Counter 3 Predivide (Table 2)
+
+Value written to Predivide Register selects counter resolution as follows:
+
+	Table 1  (Counters 0 and 1)
+
+	Data		    Resolution	       Max Timer Count
+
+	  0		    1 microsec	       65.536 millisec
+	  1		    4 microsec	      262.140 millisec
+	  2		   16 microsec	       1.0486 seconds
+	  3		   64 microsec	       4.1943 seconds
+	  4		  256 microsec	      16.7770 seconds
+	  5		1.024 millisec	      67.1090 seconds
+	  6		8.196 millisec	       8.9478 minutes
+	  7	       32.784 millisec	      35.7910 minutes
+
+	Table 2  (Counter 2)
+
+	Data		    Resolution	       Max Timer Count
+
+	  0		    4 microsec	      262.140 millisec
+	  1		   32 microsec	       2.0971 seconds
+	  2		CNT1_out * 65,536      4.4597 years (1)
+	  3		CNT2_out * 65,536      4.4597 years (2)
+
+end comment /
+
+;---------------------------------------------------------------;
+;			MACRO DEFINITIONS			;
+;---------------------------------------------------------------;
+
+BASE	equ	220h
+SEL_DIV	equ	BASE+12
+CLR	equ	0
+GO	equ	1
+HALT	equ	2
+SNAP	equ	3
+NOP	equ	3
+
+clear	macro	cntr		; out to BASE + (CNTR*4) + CLR
+	mov	dx,cntr
+	shl	dx,1
+	shl	dx,1
+	add	dx,BASE+CLR
+	xor	al,al
+	out	dx,al
+	endm
+
+start	macro	cntr		; out to BASE + (CNTR*4) + GO
+	mov	dx,cntr
+	shl	dx,1
+	shl	dx,1
+	add	dx,BASE+GO
+	xor	al,al
+	out	dx,al
+	endm
+
+stop	macro	cntr		; out to BASE + (CNTR*4) + HALT
+	mov	dx,cntr
+	shl	dx,1
+	shl	dx,1
+	add	dx,BASE+HALT
+	xor	al,al
+	out	dx,al
+	endm
+
+latch	macro	cntr		; out to BASE + (CNTR*4) + SNAP
+	mov	dx,cntr
+	shl	dx,1
+	shl	dx,1
+	add	dx,BASE+SNAP
+	xor	al,al
+	out	dx,al
+	endm
+
+cmnd	macro	cntr,func	; out to BASE + (CNTR*4) + FUNC
+	mov	dx,cntr
+	shl	dx,1
+	shl	dx,1
+	add	dx,BASE+func
+	xor	al,al
+	out	dx,al
+	endm
+
+pre_dev	macro	c1,c2,c3	; out (c1 + (c2*8) + (c3*64)) to BASE + 12
+	xor	ax,ax
+	mov	al,c2
+	mov	ah,c3
+	mov	cl,3
+	shl	al,cl
+	mov	cl,6
+	shl	ah,cl
+	add	al,ah
+	add	al,c1
+	mov	dx,SEL_DIV
+	out	dx,al
+	endm
+
+get_cnt	macro	cntr	; in from (BASE + (CNTR*2)) + (256 * in(BASE + (CNTR*2)))
+	mov	dx,cntr
+	shl	dx,1
+	add	dx,BASE
+	inc	dx
+	in	al,dx
+	mov	ah,al
+	dec	dx
+	in	al,dx
+	endm
+
+timer_begin	macro	; you may want to do a CLI before timer_begin,
+	push	ax	; and a STI after timer_end
+	push	dx
+	stop	0	; Destroys AL,DX
+	stop	1
+	stop	2
+	clear	0	; Destroys AL,DX
+	clear	1
+	clear	2
+	push	cx
+	pre_dev	0,0,2	; Destroys AL,CL,DX
+	pop	cx
+	start	2	; Destroys AL,DX
+	start	0
+	pop	dx
+	pop	ax
+	endm
+
+timer_end	macro
+	push	ax
+	push	dx
+	stop	0	; Destroys AL,DX
+	latch	0	; Destroys AL,DX
+	latch	2
+	get_cnt	0	; read counter 1, count in AX  (Destroys DX)
+	push	ax
+	get_cnt	2
+	mov	dx,ax
+	pop	ax
+	int	3	; time delta in DX:AX
+	pop	dx
+	pop	ax
+	endm
+

@@ -1,0 +1,745 @@
+	page	60,132
+	title	DUMPUTIL - .ASM output routines for graphics output
+
+;************************************************************************
+;	DUMPUTIL.A
+;
+;	Copyright (C) 1989-1990 Microsoft Corporation. All rights reserved
+; * Copyright (C) 1989,1990 Hewlett-Packard Company.
+;
+;************************************************************************
+;
+;	Contains routines for composing graphics escapes and outputting
+;	them to the spooler.
+;
+;	Also contains some routines for scanning and manipulating bitmap
+;	data.
+;
+;	The routines in this module are called from DUMP.C, and are in
+;	the SAME segment.
+;
+;************************************************************************
+
+; History
+;
+;	01 may 90	t-bobp	peterbe Modified TransposeBitmap() to
+;					quit and return 0 if no data
+;					in the given scanlines. 1 otherwise.
+;	12 apr 90	craigc		rewrote compbytearray for huge
+;	04 apr 90	peterbe t-bobp	Added segment check for huge
+;					bitmaps.
+;	17 nov 89	peterbe		checked in johndr's change.
+;       11 nov 89       johndr          moved DumpLaserPort to Lasport.a
+;	19 sep 89	peterbe		Added LJ_IIP_Comp() for HP LJ IIP.
+;	13 sep 89	peterbe		move WEP() to WEP.A.
+;	07 sep 89	peterbe		cProc's specify <si,di> uniformly.
+;	03 aug 89	peterbe		Added WEP().
+;	09 may 89	peterbe		Added DumpLaserPort().
+;	28 apr 89	peterbe		bit shifting in TransposeBitmap()
+;					done inline instead with loop.
+;	27 apr 89	peterbe		Added TransposeBitmap().
+;	26 apr 89	peterbe		Minor change in StripTrail().
+;					Saved registers in cProc macros..
+;	25 apr 89	peterbe		CLD after call to myWriteSpool
+;	20 apr 89	peterbe		Debugging FindBitStrips().
+;	19 apr 89	peterbe		Completed FindBitStrips(), debugging.
+;	16 apr 89	peterbe		Adding FindBitStrips().
+;	14 apr 89	peterbe		Handle neg. case, relative Y, in
+;					SendGrEsc().
+;	13 apr 89	peterbe		Added bitmap manipulation functions:
+;					CompByteArray(), StripTrail().
+;	10 apr 89	peterbe		Wrote SendGrEsc().
+;	07 apr 89	peterbe		Coding begun.
+;
+;************************************************************************
+
+include cmacros.inc
+include gdidefs.inc
+include device.i
+
+; In UTILS.C:
+; int FAR PASCAL myWriteSpool(LPDEVICE)
+
+externFP myWriteSpool
+
+ExternA <__AHINCR>
+
+; Define CODE segment -- same as DUMP.C
+;
+createSeg _DUMP,dumputil,byte,public,CODE
+
+
+; === CODE segment ===
+sBegin	dumputil
+assumes	CS, dumputil
+
+; ============== Public routines, called from DUMP.C =====================
+
+; Send a graphics escape sequence (only called from DUMP.C!!)
+; which MAY include some graphics bytes (indicated by GrCount <> 0).
+; This returns 0 if there is no error, otherwise the value ERROR
+; Note: EscNum = 8000h indicates no numeric field in escape.
+;
+; No DATA variables are used.
+;
+cProc SendGrEsc, <NEAR, PUBLIC>,<si,di>
+
+	parmD	lpDevice		; pointer to LPDEVICE structure.
+	parmW	EscBeg			; 1st 2 characters of escape
+	parmB	Relative		; flag for relative x/y displacement.
+	parmW	EscNum			; numeric value of escape (see note).
+	parmB	EscEnd			; terminating character of escape
+	parmD	lpGraphics		; pointer to graphics characters.
+
+	localW	GrCount			; count of graphics bytes
+
+cBegin SendGrEsc
+
+	cld				; we're writing strings UPwards.
+
+    ; Check the epDoc field.
+
+	les	di,lpDevice		; DS:di = lpDevice
+	cmp	es:[di+epDoc], TRUE	; is lpDevice->epDoc TRUE?
+	je	SendGrOkDoc
+
+SendGrError:
+	mov	ax,-1			; nope .. return -1.
+	jmp	SendGrExit
+
+SendGrOkDoc:
+
+    ; compute GrCount
+
+	mov	GrCount, 0
+	cmp	word ptr lpGraphics[2],0   ; check seg. of lpGraphics --
+	jz	SendGrNoGraphics	; if it's NZ, then
+	mov	ax,EscNum		; GrCount = EscNum
+	mov	GrCount,ax
+
+SendGrNoGraphics:
+
+    ; Estimate the number of bytes in the escape (conservatively) to
+    ; be 10 + GrCount.  (real value may be as small as 4).
+    ; Get the count of bytes in the spooler buffer.
+    ; Output to the spooler (with myWriteSpool) if the buffer would overflow.
+
+	mov	ax,10			; escapes can be this big
+	add	ax,GrCount		; add count of graphics bytes, if any.
+	mov	bx,es:[di+epPtr]	; add current buffer byte count 
+	add	ax,bx			; (saving count in BX)
+	cmp	ax,SPOOL_SIZE		; .. will this all fit?
+	jg	SendGrWriteBuf
+	add	di,offset epSpool	; it WILL fit.
+	add	di,bx			; DI now points to next byte in buffer
+	jmp	short SendGrCreateEsc
+
+
+SendGrWriteBuf:				; need to write out buffer.
+
+	regptr	esdi,es,di
+	cCall	myWriteSpool,<esdi>	; Write contents of spooler buffer.
+	cld				; make sure...
+	cmp	ax,0			; check value returned ..
+	jl	SendGrError		; if < 0, error.
+	les	di,lpDevice		; 
+	add	di,offset epSpool	; Set ES:DI to buffer origin.
+
+    ; ES:DI -> spooler buffer.
+    ; Put ESC and the 2 bytes of EscBeg in the buffer.
+
+SendGrCreateEsc:
+
+	mov	al, 1bh			; send an escape character
+	stosb
+	mov	ax,EscBeg		; send 2 ASCII characters.
+	stosw
+
+    ; Get the numeric value, and handle the sign, depending on
+    ; whether 'Relative' is set.  Leave positive value in AX.
+
+	mov	bx,EscNum		; load numeric value
+	cmp	bx,8000h		; skip numeric field?
+	je	SendGrNoNum		;  if =, yes.
+	cmp	Relative, 0		; relative or absolute?
+	jnz	SendGrRel
+	cmp	bx,0			; Absolute: is the value neg?
+	jge	SendGrDoNum		; if not, go convert num.
+SendGrNeg:
+	mov	al,'-'			; neg, output minus sign
+	stosb
+	neg	bx			; and make value positive
+	jmp	short SendGrDoNum
+
+SendGrRel:				; incremental: + or -
+	cmp	bx,0			; check sign
+	jl	SendGrNeg		; if negative, go back..
+	mov	al,'+'			; +Y, so show as positive
+	stosb
+
+SendGrDoNum:
+	mov	ax,bx
+
+    ; convert the numeric value, writing the digits to the spooler
+    ; buffer.
+
+	call	dumpnum
+
+SendGrNoNum:
+
+    ; Copy the escape terminating character to the buffer.
+
+	mov	al,EscEnd
+	stosb
+
+    ; If GrCount > 0, copy the bytes at lpGraphics to the buffer.
+
+	mov	cx, GrCount
+	cmp	cx, 0			; CX = GrCount
+	jle	SendGrUpdateCount
+	push	ds
+	lds	si, lpGraphics		; DS:SI = lpGraphics
+	rep	movsb			; copy the bytes.
+	pop	ds
+
+    ; Update the spool count.  DI contains the current buffer pointer,
+    ; just subtract the buffer base to get the count.
+
+SendGrUpdateCount:
+
+	mov	ax,di			; current pointer to buffer
+	les	di,lpDevice		; recalculate base
+	mov	bx,di
+	add	bx,offset epSpool
+	sub	ax,bx			; subtract from current pointer
+	mov	es:[di+epPtr],ax
+
+	xor	ax,ax			; return 0
+
+SendGrExit:
+
+cEnd SendGrEsc
+
+;
+;   CompByteArray(LPSTR lpBits, DWORD cbBits)
+;
+;   Complements a huge bitmap.
+;
+;   lpBits is a far pointer to the bits
+;   cbBits is the size of the bitmap in bytes
+;
+;   ASSUMPTIONS:
+;	if a bitmap is > 64k, the offset is part of the pointer is zero
+;	if a bitmap is < 64k, the offset is arbitrary but it cannot cross
+;	    a segment boundary
+;	the array contains an even number of words
+;	better performance results if the bitmap is even aligned
+;	selectors differ by __AHINCR
+;	all segments are 64k except the last one
+;
+;   HISTORY:
+;	4-12-90 craigc	created for pcl driver
+;
+cProc	CompByteArray, <NEAR, PUBLIC>, <SI, DI>
+
+    parmD   lpBytes
+    parmD   cb
+
+cBegin
+
+    cld 				    ; copy forward
+
+    mov     dx, word ptr cb[2]		    ; get count of 64k segments
+    or	    dx, dx			    ; how many are there?
+
+    jz	    partial_segment		    ; only one (partial) segment
+
+    mov     es, word ptr lpBytes[2]	    ; get first selector
+    sub     di, di			    ; offset always 0
+
+inv_seg_loop:
+    not     word ptr es:[di]		    ; invert
+    add     di, 2
+    jnz     inv_seg_loop		    ; wrap around...
+
+    dec     dx				    ; any full segments left?
+    jz	    partial_segment_A		    ; if not, do last one
+
+    mov     cx, es			    ; update to next segment
+    add     cx, __AHINCR
+    mov     es, cx
+    jmp     short inv_seg_loop
+
+partial_segment_A:
+    ;
+    ;	last segment in multisegment bitmap
+    ;
+    mov     cx, word ptr cb[0]		    ; are there bytes in the last seg?
+    jcxz    cba_exit			    ; if not, exit
+    sub     di, di
+    mov     ax, es			    ; point to right selector
+    add     ax, __AHINCR		    ;
+    mov     es, ax
+    jmp     short do_partial_segment	    ; do it!
+
+partial_segment:
+    ;
+    ;	jump here if bitmap contained in one segment.  Because of
+    ;	real mode, don't assume bitmap starts at 0
+    ;
+    mov     cx, word ptr cb[0]		    ; get count
+    jcxz    cba_exit
+    les     di, lpBytes 		    ; get offset
+
+do_partial_segment:
+    shr     cx, 1			    ; bitmap must be even size/align
+					    ; odd align ok but slow
+partial_segment_loop:
+    not     word ptr es:[di]
+    add     di, 2
+    loop    partial_segment_loop	    ; continue
+
+cba_exit:
+
+cEnd
+
+
+
+; ========================================================================
+; int NEAR PASCAL StripTrail(lpString, size)
+;
+; Finds last nonblank byte in a scanline (strips trailing blanks).
+;
+; This searches leftward from the right end of a scanline, and returns
+; the index of the first 0 byte to the right of the first nonzero byte
+; it finds, which is the width in bytes of the scanline from the beginning
+; to the last nonzero byte, inclusive.
+;
+; It returns 0 if the whole scanline is 0.
+; ========================================================================
+
+cProc StripTrail, <NEAR, PUBLIC>,<si,di>
+
+	parmD	lpBytes			; pointer to beginning of scanline
+	parmW	lenStrip		; initial width of scanline
+
+cBegin StripTrail
+
+	xor	ax,ax			; match AL = 0 (also return value = 0)
+	mov	cx,lenStrip		; set up count
+	jcxz	STExit			; return 0 if CX is already 0.
+	les	di,lpBytes		; point to start of scanline.
+	mov	bx,di			; save ptr to beginning of scanline
+	add	di,cx			; point to (right) end of scanline
+	dec	di			; .. back up 1
+	std				; we're searching DOWN
+
+	repz scasb			; zip downwards past zero bytes..
+	cld				; back to normal.
+
+	jcxz	STExit			; return AX = 0 if CX is 0.
+	mov	ax,di			; otherwise DI points to byte before
+	sub	ax,bx			; first NZ byte we saw.
+	add	ax,2			; so we need to increment..
+STExit:
+
+cEnd StripTrail
+
+; ========================================================================
+; int NEAR PASCAL FindBitStrips(LPSTR, PosArray FAR *, int, int)
+;
+; This scans through a scanline, finding sequences of nonzero bytes
+; separated by more than 32 bytes of whitespace (0's).
+; In this test, 1 means black -- the scanline has already been inverted
+; for PCL.
+; The ScanBits array is initialized with -1's before the scanning begins.
+; ========================================================================
+
+cProc FindBitStrips, <NEAR, PUBLIC>,<si,di>
+	parmD	lpScanline		; start of scanline
+	parmD	lpScanBits		; array of <begin, end> pairs.
+	parmW	lenScanl		; length of scanline
+	parmW	ScanSize		; # of entries in ScanBits array.
+
+	
+cBegin FindBitStrips
+
+	cld				; as usual, make sure DF is clear
+	push	ds			; save DS
+
+	les	di,lpScanBits		; first, fill up ScanBits with -1's.
+	mov	cx,ScanSize
+	add	cx,cx			; 2 * scansize
+	mov	ax,-1			; fill with -1's
+	rep stosw			; do the fill.
+
+					; initialize for scan.
+	les	di,lpScanline		; DS:SI --> scanline
+	lds	si,lpScanBits		; ES:DI --> ScanBits array
+	sub	si,4
+	mov	bx,-1			; index to ScanBits = -1.
+	mov	cx,lenScanl
+	xor	dx,dx			; 'current position' index to scanline 
+;
+; in the following loop...
+;	CX		is number of bytes left to scan in scanline.
+;	DX		is current position in scanline
+;	BX		index to ScanBits[], init to -1.
+;	ES:DI		points to scanline
+;	DS:SI		points to current ScanBits[ScanIndex].startpos
+
+
+FBLoop:
+	jcxz	FBLoopEnd		; if CX=0, we're done
+	cmp	bx,ScanSize
+	jge	FBLoopend
+
+	; We're at the beginning, or just after a 'black' byte..
+	; Scan for a nonzero (some black) byte, counting the 'white'
+	; bytes on the way....
+
+	xor	al,al			; compare this against buffer
+	push	di			; save DI
+	repz scasb			; search for nonzero byte
+	pop	ax			; get previous value of DI
+	jcxz	FBLoopEnd		; redundant, we're done anyway!
+	inc	cx			; count went 1 past.
+	dec	di			; current position
+	sub	ax,di			; byte count
+	neg	ax			; this is byte count, this zero strip.
+	add	dx,ax			; add to current position
+
+	cmp	ax,32			; if > 32 'white' bytes
+	jg	FBStartStrip		; or
+	cmp	bx,0			; if we're just starting,
+	jge	FBCountBlack		; This is the beginning of a strip:
+
+FBStartStrip:
+	inc	bx			; increment the output count
+	add	si,4			; increment output index
+	mov	ds:[si],dx		; save current position in
+					; ScanBits[].startpos
+
+FBCountBlack:
+	; we've found a 'black' byte, so count some nonwhite bytes...
+	; scan for next zero (all-white) byte
+	xor	al,al			; compare this against buffer
+	push	di			; save DI
+	repnz scasb			; search for zero byte
+	pop	ax			; get previous value of DI
+	jcxz	FBLoopEnd		; not likely!!
+	inc	cx			; count went 1 past.
+	dec	di			; current position
+	sub	ax,di			; byte count
+	neg	ax			; this is byte count, this zero strip.
+	add	dx,ax			; add to current position
+	mov	ds:[si+2],dx		; save current position in
+					; ScanBits[].endpos
+	jmp	FBLoop
+
+FBLoopEnd:
+	
+FBExit:
+
+	mov	ax,bx
+	inc	ax
+	pop	ds			; restore DS
+
+
+cEnd FindBitStrips
+
+; ========================================================================
+; BOOL NEAR PASCAL TransposeBitmap(LPSTR, LPSTR, int, int, int, int)
+;
+; This function transposes a column of bytes in the landscape-mode
+; bitmap for a band, 8 * heightbytes scanlines high, into a scanline
+; buffer of 8 scanlines by heightbytes bytes per scanline.
+; ========================================================================
+
+cProc TransposeBitmap, <NEAR, PUBLIC>,<si,di>
+
+	parmD	lpBM			; top of column in landscape bitmap
+	parmD	lpBuf			; origin of buffer.
+	parmW	widthbytes		; width of band bitmap in bytes
+	parmW	heightbytes		; height of band / 8.
+	parmW	lastline		; offset of last valid scanline
+					; 04 apr 90 peterbe & t-bobp
+					;	    for huge bitmaps
+	parmW	height			; 02 may 90 need for first check
+
+cBegin TransposeBitmap
+
+	push	ds
+	lds	si,lpBM			; point to top of column in band
+	mov	dx,widthbytes		; get dimensions in registers, too.
+	mov	cx,height
+
+	jcxz	TBExitA 		; if (heightbytes == 0) exit
+
+TBLoopA:
+	cmp	byte ptr ds:[si],0	; check for non-zero value
+	jnz	TBSearch		; if non-zero start transpose
+	cmp	si, lastline		; check if at last line
+	jae	TBNextSegA		; move to next segment if so
+	add	si, dx			; SI += widthbytes
+	loop	TBLoopA 		; go to next byte
+
+TBExitA:
+	xor	ax,ax			; return: no data found
+	jmp	TBExit			; jump to exit
+
+TBNextSegA:
+	mov	si, word ptr[lpBM]	; offset of first line in segment
+	mov	ax, ds			; reset data segment
+	add	ax, __AHINCR		; move by segment increment index
+	mov	ds, ax			; set data segment
+	loop	TBLoopA 		; go do next byte ...
+
+	xor	ax,ax			; return: no data found
+	jmp	TBExit			; jump to exit
+
+TBSearch:
+	lds	si,lpBM			; point to top of column in band
+	les	di,lpBuf		; origin of output bitmap.
+	mov	dx,widthbytes		; get dimensions in registers, too.
+	mov	bx,heightbytes
+	mov	cx,bx			; move height count into cx
+
+TBLoopY:				; do this heightbytes times
+	push	cx			; .. handles 8 x 8 pixel block.
+	mov	cx,8			; do 8 byte of input at a time
+TBLoop8:
+	push	di			; save dest. index
+	mov	al,byte ptr ds:[si]	; get byte from input
+    REPT 8				; shift 8 bits from bmp. to scanlines.
+	shr	al,1			; (1) right bit of input -> carry
+	rcl	byte ptr es:[di],1	; rotate carry into scanline byte.
+	add	di,bx			; DI += heightbytes
+    ENDM
+	pop	di			; reset DI for next horiz. line
+	cmp	si, lastline
+	jae	TBNextSeg
+	add	si, dx			; SI += widthbytes
+	loop	TBLoop8			; go do next byte ...
+	inc	di			; next byte in output scanlines..
+	pop	cx
+	loop	TBLoopY			; go do next 8 x 8 pixel block ...
+	jmp	short TBFound		; Quit function
+TBNextSeg:
+	mov	si, word ptr[lpBM]	; offset of first line in segment
+	mov	ax, ds			; reset data segment
+	add	ax, __AHINCR		; move by segment increment index
+	mov	ds, ax			; set data segment
+	loop	TBLoop8			; go do next byte ...
+	inc	di			; next byte in output scanlines..
+	pop	cx
+	loop	TBLoopY			; go do next 8 x 8 pixel block ...
+TBFound:
+	mov	ax, 1			; return: data found
+TBExit:
+	pop	ds
+
+cEnd TransposeBitmap
+
+; ========================================================================
+;
+; int NEAR PASCAL LJ_IIP_Comp(LPSTR, PosArray FAR *, int, int)
+;
+; Graphics compression for LaserJet IIP printer.
+;
+; This function compresses a scanline (starting with the first nonzero
+; byte).
+;
+; Once in a repeated run, we stop and emit a block if a different byte
+; is encountered.
+;
+; Once in a literal run, we stop and emit a block if at least 4 repeated
+; bytes follow: the next block will be a repeat block.
+;
+; The number of bytes transferred to lpCompress is returned in AX.
+;
+; The compression is done according to LJ IIP Mode 2 compression: mixed
+; binary and run-length encoding.  To select this mode, the escape sequence
+; "Esc * b 2 M" must be sent before any graphics is output.
+;
+; Repeats of 2 or more instances of a byte b are represented by
+;
+;	-(n-1)  b
+;
+; Literal runs of different bytes b1 b2 b3 .. bn are represented by
+;
+;	(n-1) b1 b2 b3 .. bn
+;
+; Any combination of blocks of these types may be sent with the normal
+; raster output escape "Esc * b count W". The value returned by this function
+; is 'count'.
+;
+; ========================================================================
+
+cProc LJ_IIP_Comp, <NEAR, PUBLIC>,<ds,es,si,di>
+
+	parmD	lpScanline		; start of scanline
+	parmD	lpCompress		; start of compressed buffer
+	parmW	lenScanl		; length of input scanline
+
+	localW	nCount			; output count
+
+cBegin LJ_IIP_Comp
+
+if 1	; for debug
+public ECentry, ECLoop, ECLastOne, ECMoreThan1,
+public ECNEstart, ECNEloop, ECNENext, ECNEemit
+public ECEQstart, ECEQloop, ECEQemit, ECExit
+endif
+
+ECentry:
+	cld				; string instructions go UP
+	mov	cx,lenScanl		; length of scan line.
+	mov	nCount,0		; clear output count
+
+	lds	si, lpScanline		; DS:SI -> source
+	les	di, lpCompress		; ES:DI dest.
+
+	; we get here initially, or after a transition between repeated
+	; byte and literal byte blocks.
+ECLoop:
+	jcxz	ECExit			; exit if nothing left
+	xor	bx, bx			; clear index (relative to DS:SI)
+
+	cmp	cx, 1			; handle special case of just
+	jne	ECMoreThan1		; exactly 1 byte left in input.
+
+ECLastOne:
+	xor	al, al			; literal mode:
+	stosb				; count is 1
+	lodsb				; get remaining input byte
+	stosb				; put it out
+	add	nCount, 2		; that's 2 bytes to output
+	jmp	short ECExit
+
+ECMoreThan1:				; there are at least 2 bytes left
+	mov	ax, word ptr ds:[si]	; get next 2 bytes
+	cmp	al, ah			; are we beginning repeat or not?
+	jne	ECNEstart		;  if not, do literal
+	cmp	cx, 4			; at least 4 bytes left?
+	jb	ECNEstart		;  no, do literal.
+	cmp	ax, word ptr ds:[si+2]	; if repeat of 4 or more, start repeat
+	je	ECEQstart
+
+	; in this loop, DS:SI points to beginning of run of differing bytes
+	; (literal run)
+	; BX is index to next byte
+ECNEstart:
+	jcxz	ECexit			; if no input bytes left, we're done
+ECNEloop:
+	cmp	bx, 127			; max block size is 127 bytes.
+	jae	ECNEemit
+	cmp	cx, 4			; 4 bytes left?
+	jb	ECNENext		; if not, stay in literal block
+	mov	ax, word ptr ds:[si+bx]	; 2 bytes equal?
+	cmp	ah, al			;
+	jne	ECNENext		; if not, definitely keep going
+	cmp	ax, word ptr ds:[si+bx+2] ; 4 bytes equal?
+	je	ECNEemit		; yes, repeat run follows!
+
+ECNENext:
+	inc	bx			; increment index/count
+	loop	ECNEloop
+
+ECNEemit:
+	mov	al, bl			; convert count to
+	dec	al			; (count - 1) for literal run,
+	stosb				; and copy to lpCompress,
+	inc	nCount			; include in output count.
+	push	cx			; Copy data bytes to lpCompress:
+	mov	cx, bx			; get count
+	rep movsb			; copy data, advance SI, DI!!
+	pop	cx
+	add	nCount, bx		; add length of run to output count.
+	jmp	ECLoop
+
+	; in this loop, DS:SI points to beginning of repeat run.
+	; BX is index to next byte
+	; AH contains previous byte
+ECEQstart:				; at least 2 prev. bytes == [AH]
+	jcxz	ECExit			; if no bytes left, we're done.
+ECEQloop:				; 
+	cmp	bx, 127			; if we've repeated 127 times,
+	jae	ECEQemit		;  that's as big as a repeat can be.
+	cmp	ah, byte ptr ds:[si+bx]	; check next byte
+	jne	ECEQemit		; if not same, we're done repeating.
+	inc	bx			; incr. index
+	loop	ECEQloop		; (dec cx) (often doesn't go to 0!)
+
+ECEQemit:				; output 2-byte repeat block:
+	mov	al, bl			; get repeat count
+	dec	al			; -1
+	neg	al			; -(count - 1)
+	stosw				; put count flag and data byte
+	add	nCount, 2		; increment total count.
+	add	si, bx			; move SI to next block
+	jmp	ECLoop			; go see what's next...
+
+ECExit:
+	mov	ax,nCount		; return bytes transferred.
+
+cEnd LJ_IIP_Comp
+
+; ============== Local routines, called here only ========================
+
+; ========================================================================
+; dumpnum
+;
+; Convert a positive number in AX to decimal, left-to-right, quickly.
+; Output digits go to ES:DI++
+; ========================================================================
+; 
+dumpnum proc near
+
+	cmp	ax,10			; check for what first NZ digit is.
+	jl	numLT10
+	cmp	ax,100
+	jl	numLT100
+	cmp	ax,1000
+	jl	numLT1000
+	cmp	ax,10000
+	jl	numLT10000
+
+	mov	bx,10000		; num > 10000,
+	xor	dx,dx
+	div	bx			;  divide by 10000
+	add	al,'0'
+	stosb				; store 10000's digit
+	mov	ax,dx			; get remainder
+numLT10000:
+	mov	bx,1000			; num > 1000,
+	xor	dx,dx
+	div	bx			;  divide by 1000
+	add	al,'0'
+	stosb				; store 1000's digit
+	mov	ax,dx			; get remainder
+numLT1000:
+	mov	bx,100			; num > 100,
+	xor	dx,dx
+	div	bx			;  divide by 100
+	add	al,'0'
+	stosb				; store 100's digit
+	mov	ax,dx			; get remainder
+numLT100:
+	mov	cl,10			; num > 100,
+	xor	ah,ah
+	div	cl			;  divide by 10
+	add	al,'0'
+	stosb				; store 10's digit
+	mov	al,ah			; get remainder
+numLT10:
+	add	al,'0'
+	stosb				; store 1's digit
+
+	ret
+
+dumpnum endp
+
+sEnd dumputil
+
+end

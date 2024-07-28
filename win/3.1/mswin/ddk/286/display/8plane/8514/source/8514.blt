@@ -1,0 +1,268 @@
+        subttl  Call the 8514's BitBlt if Necesary
+	page
+
+public  HiresBLTProcessing
+HiresBLTProcessing      proc    near
+
+;We determine whether to call the BoardBlt routine depending on whether we
+;have a source or destination device OR a color memory to memory bitblt.
+;Entry:
+;	gl_the_flags has the source/pattern present flags,
+;	and source/destination IS_COLOR and IS_DEVICE flags
+;Exit:
+;       Carry SET if we called BoardBLT.
+;       Carry CLEAR if we are doing a monochrome memory-memory BLT.
+
+	lea	ax,ss:MSFTPBrush	;get pointer to the area on the stack
+	mov	off_lpPBrush,ax 	;which'll hold the Microsoft format
+	mov	seg_lpPBrush,ss 	;PBrush
+
+	mov	bl, gl_the_flags
+	test	bl, IS_DEVICE		;is destination the screen?
+	jnz	HBPCallBoardBlt_10	;yes, go call BoardBlt
+	test	bl, 01h 		;is destination in color?
+	jnz	HBPCallBoardBlt_10	;yes, go call BoardBlt
+
+;we know that at this point the destination is a monochrome bitmap.
+
+	test	bl, F0_SRC_PRESENT	;is there a source?
+	jz	HBPDoMonoBLT_10 	;nope, go do the monochrome BitBlt
+	test	bl, 04h 		;is source in color
+	jz	HBPDoMonoBLT_10 	;no, go call monochrome blt
+
+;At this point we know that we are about to perform a color DC to mono DC
+;BitBlt.  In order to do that correctly, we need to make sure to handle ROP3s
+;other than SRCCPY correctly.  This can be accomplished by allocating a
+;temporary monochrome bitmap, Blt'ing (SRCCPY) the color source into that
+;bitmap, then perform the appropriate monoDC to monoDC bitblt, and finally
+;free the temporary mono bitmap.  Sould the allocation of that bitmap fail,
+;exit showing an error.
+
+	cmp	seg_Rop, SRCCOPY_HIGH	;is it possible we're doing a SRCCOPY?
+	jne	DoItTheHardWay		;no
+	cmp	off_Rop, SRCCOPY_LOW
+	jne	DoItTheHardWay		;no
+HBPCallBoardBlt_10:
+	jmp	HBPCallBoardBlt 	;yes! Do it the easy way
+
+HBPDoMonoBLT_10:
+	jmp	HBPDoMonoBLT
+
+ErrorExit_10:
+	mov	si, hTempMonoBmp	;allocating the bitmap bits failed.
+	cCall	GlobalUnlock, <si>	;get rid of the header and bail out
+	cCall	GlobalFree, <si>
+
+ErrorExit:
+	stc
+	ret
+
+public	DoItTheHardWay
+DoItTheHardWay:
+
+;Now we need to backpatch gl_scr as well as gl_the_flags to reflect the fact
+;that the actual monoblt code will deal with our temporary monochrome bitmap
+
+	and	gl_the_flags, 0f3h	;source is monochrome memory bitmap
+	mov	gl_src.dev_flags, 0	;source in in main memory
+	mov	ax, size BITMAP 	;start out by creating the bmp header
+	cwd
+	cCall	GlobalAlloc, <GMEM_MOVEABLE, dx, ax>
+	or	ax, ax
+	jz	ErrorExit		;Alloc failed? exit!
+	mov	hTempMonoBmp, ax	;save handle
+	cCall	GlobalLock, <ax>	;get far ptr to header bits
+	mov	seg_lpTempMonoBmp, dx
+	mov	off_lpTempMonoBmp, ax
+	mov	es, dx
+	mov	di, ax			;ES:DI-->temp mono bmp header
+
+	sub	ax, ax			;now fill out the header
+	stosw
+	.errnz	bmType
+	mov	ax, xExt
+	stosw				;fill in width
+	mov	gl_src.width_bits, ax	;also update in gl_src
+	.errnz	bmWidth-bmType-2
+	mov	bx, yExt
+	xchg	bx, ax
+	stosw				;fill in height
+	mov	gl_src.height, ax
+	.errnz	bmHeight-bmWidth-2
+	xchg	bx, ax
+	add	ax, 0fh
+	and	al, 0f0h
+	shiftr	ax, 3			;AX: width bytes
+	stosw
+	mov	gl_src.width_b, ax
+	.errnz	bmWidthBytes-bmHeight-2
+	mov	si, ax
+	mul	bx			;DX:AX has the bitmap bits size
+	push	dx
+	push	ax
+	mov	bx, 0101h
+	xchg	ax, bx
+	stosw				;store bitmap format (1 plane, 1 b/p)
+	.errnz	bmPlanes-bmWidthBytes-2
+	.errnz	bmBitsPixel-bmPlanes-1
+	mov	ax, bx
+	add	di, bmWidthPlanes-bmBits
+	.errnz	bmBits-bmBitsPixel-1
+	stosw				;store product of width bytes and
+	xchg	dx, ax			; bitmap height
+	stosw
+	mov	gl_src.plane_w, dx
+	mov	cx, ax
+	add	di, bmSegmentIndex-bmlpPDevice
+	.errnz	bmlpPDevice-bmWidthPlanes-4
+	sub	ax, ax			;AX will contain scans/segment
+	sub	bx, bx			;BX will contain segment index
+	sub	dx, dx			;DX will contain fill bytes
+	jcxz	SmallBitmap
+	inc	dx			;DX:AX 64k
+	div	si			;AX: scans per segment, DX: fill bytes
+	mov	bx, __AHIncr
+SmallBitmap:
+	xchg	ax, bx
+	stosw				;store the segment index
+	mov	gl_src.seg_index, ax
+	mov	ax, bx
+	stosw				;store the number of scans per segment
+	mov	gl_src.scans_seg, ax
+	.errnz	bmScanSegment-bmSegmentIndex-2
+	xchg	ax, dx
+	stosw				;store the number of fill bytes
+	mov	gl_src.fill_bytes, ax
+	.errnz	bmFillBytes-bmScanSegment-2
+	sub	si, si
+	or	ax, ax			;AX: fill bytes, if any
+	jz	FinishHeader
+	mov	cx, ax			;CX: remainder (fill bytes)
+	mov	ax, yExt		;AX: Y extent, DX: scans per segment
+GetTotalFillBytesLoop:
+	add	si, cx
+	sub	ax, dx
+	jns	GetTotalFillBytesLoop
+	sub	si, cx			;SI: total number of fill bytes in bmp
+	sub	ax, ax
+FinishHeader:
+	stosw
+	stosw
+	.errnz	(size BITMAP)-32
+
+	pop	cx			;its time to allocate the actual
+	pop	dx			;bitmap bits.  Get the size first...
+	add	cx, si			;now add all the fill bytes
+	adc	dx, ax
+	cCall	GlobalAlloc, <GMEM_MOVEABLE, dx, cx>
+	or	ax, ax
+	jz	ErrorExit_20
+	mov	hTempMonoBits, ax
+	cCall	GlobalLock, <ax>
+	les	di, lpTempMonoBmp
+	mov	wptr es:[di].bmBits[0], ax
+	mov	wptr es:[di].bmBits[2], dx
+	mov	off_lpTempMonoBits, ax
+	mov	seg_lpTempMonoBits, dx
+	mov	wptr gl_src.lp_bits[0], ax  ;now the internal src bmp header is
+	mov	wptr gl_src.lp_bits[2], dx  ;completely updated
+
+;Now we have created the temporary monochrome bitmap. It is time to call
+;BoardBlt() to convert the color source into this bmp.
+
+	push	es			;lpDstDev
+	push	di
+	sub	ax, ax
+	push	ax			;DstxOrg
+	push	ax			;DstyOrg
+	push	seg_lpSrcDev		;lpSrcDev
+	push	off_lpSrcDev
+	push	SrcxOrg
+	push	SrcyOrg
+	push	xExt
+	push	yExt
+	push	SRCCOPY_HIGH
+	push	SRCCOPY_LOW
+	push	seg_lpMyPBrush
+	push	off_lpMyPBrush
+	push	seg_lpDrawMode
+	push	off_lpDrawMode
+	cCall	BoardBlt
+
+;The color to mono conversion is completed.  Now let the mono bmp to mono bmp
+;Blt routines finish up.
+
+	mov	ax, off_lpTempMonoBmp	;make our mono bmp the source device
+	mov	off_lpSrcDev, ax
+	mov	ax, seg_lpTempMonoBmp
+	mov	seg_lpSrcDev, ax
+	sub	ax, ax
+	mov	SrcxOrg, ax		;make source X and Y (0,0)
+	mov	SrcyOrg, ax
+
+public	HBPDoMonoBLT
+HBPDoMonoBLT:
+	test	gl_the_flags,F0_PAT_PRESENT ;have we a brush? (if bit isn't set,
+					;we'll automatically clear the carry!)
+	jz	HBPExitNode		;nope, get out now!
+	les	di, lpDrawMode		;need text/background color for convrsn
+	mov	bl, bptr es:[di].bkColor[1]
+	mov	bh, bptr es:[di].TextColor[1]
+	mov	ah, bWriteEnable
+	lds	si,lpMyPBrush		;get 8514 format brush in DS:SI
+	les	di, lpPBrush		;ES:DI-->MS format PBrush
+        cCall   ConvertBrush            ;go convert the brush to the format
+HBPExitNode:				;that BitBlt expects; NC-->use BitBlt
+	jmp	short HBPExit		;we're done
+
+ErrorExit_20:
+	jmp	ErrorExit_10
+
+public  HBPCallBoardBlt
+HBPCallBoardBlt:
+	sub	cx, cx			;CX=0 we're done flag
+	mov	ax, xExt
+	mov	dx, ax
+	mov	bx, 1024
+	cmp	ax, bx			;the 8514 BoardBlt cannot handle X
+	jbe	HBPBandingLoop		;extents larger than 1024 pixels
+	dec	cx			;banding may be needed in case of
+	mov	dx, bx			; memory to memory Blts
+HBPBandingLoop:
+	push	ax			;save X extent for next iteration
+	push	bx
+	push	cx
+	push	dx			;DX=min(xExt, 1024)
+        arg     lpDestDev               ;send down the parameters for BoardBLT
+	arg	DestxOrg
+	arg	DestyOrg
+	arg	lpSrcDev
+	arg	SrcxOrg
+	arg	SrcyOrg
+	arg	dx
+	arg	yExt
+	arg	Rop
+	arg	lpMyPBrush
+	arg	lpDrawMode
+	cCall	BoardBlt		;call the 8514's BitBlt
+	pop	dx
+	pop	cx
+	pop	bx			;BX: 1024
+	pop	ax			;restore xExt
+	jcxz	HBPDone
+	sub	ax, bx			;subtract the band we just did
+	add	DestxOrg, bx		;get scr and dest X org. to point to
+	add	SrcxOrg, bx		;next band
+	cmp	ax, bx			;are there more bands to do
+	ja	HBPBandingLoop		;yes, do next 1024 pixels wide band
+	inc	cx			;CX=0-->do only one more iteration
+	mov	dx, ax			;DX: remaining X extent to do
+	jmp	short HBPBandingLoop
+
+HBPDone:
+        stc                             ;flag that we did a BoardBlt
+
+public  HBPExit
+HBPExit:
+	ret				;return to caller
+HiresBLTProcessing	endp

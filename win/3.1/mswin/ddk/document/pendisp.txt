@@ -1,0 +1,115 @@
+Developing Windows for Pens Display Drivers
+
+
+Overview
+
+Windows For Pens display drivers are normal Windows 3.1 compatible
+display drivers which have a two additional entry points to support
+drawing ink on the screen in response to input from a stylus device. 
+A Windows For Pens display driver does not require Windows For Pens. 
+Windows For Pens does require a Windows For Pens display driver.
+
+For efficiency and usability reasons, Windows For Pens needs to draw 
+ink (ie. lines) on the screen via the display driver either at
+interrupt time (if it is safe) or be notified when it is safe to draw
+lines via the display driver.  Regular 3.1 Windows display drivers do
+not indicate when it is safe to draw on the screen.
+
+
+
+Changes to 3.1 Display Drivers
+
+A Windows for Pens display driver is exactly the same as a Windows 3.1
+display driver, with the following exceptions
+
+PEN_NW.CUR
+
+A new cursor has been added so that an appropriate cursor is avialable
+for the pen  - ie. a "mouse" that leaves ink behind it.  The cursor
+is a pen with a tip that points to the northwest.
+
+.RC
+
+The pen cursor needs to be added to the .RC file for the display
+driver.  It should be assigned the id value OCR_NWPEN = 32631.
+
+ENABLE.ASM
+
+The enable routine in ENABLE.ASM should save the value of the
+lp_device parameter in the global variable lpDeviceForPenWindows. 
+This global variable will be needed in the file INKREADY.ASM.
+
+INKREADY.ASM
+
+INKREADY.ASM contains the guts of the Windows For Pens modifications
+to the display driver.  There are two functions here:
+
+DWORD GetLpDevice(VOID)
+
+This function simply returns the lpDeviceForPenWindows that was set in
+ENABLE.ASM
+
+BOOL InkReady(LPFN)
+
+When this function is called, Windows For Pens wants the drawing
+routine LPFN called when it is safe to draw on the screen.  If it is
+safe to draw on the screen at the time of the call, then InkReady
+should mark the screen as busy, call LPFN, and return TRUE.  If it is
+not safe to draw on the screen (i.e. the driver in the middle of
+another drawing routine), then the LPFN should be saved away in a
+variable (such as lpfnUpdateInking), some sort of flag should be set
+(such as fInkAvailable) so that the display driver knows LPFN should
+be called at a later time, and finally InkReady should return FALSE.
+
+The definition of it being safe to draw on the screen varies from
+display hardware to display hardware, but one rule of thumb is if it
+is safe to draw the cursor, then it is safe to draw anything else on
+the screen.  Cursors only get drawn if they are not excluded, and if
+the screen is not busy.  This makes the unexclude cursor function a
+logical place to call LPFN.  
+
+(unexclude code).ASM
+
+Unfortunately the Windows 3.1 display driver sources put the unexclude
+cursor routine in various files, so it can be difficult to find.  It
+can be in CURSOR.ASM, CURSORS.ASM, or TRAIL.ASM among other places. 
+Unexclude is called when a drawing operation has finished and it is
+once again safe to draw the cursor on the screen.  Therefore this is
+a good place to check the value of the fInkAvailable flag, and call 
+lpfnUpdateInking if the flag is set.
+
+MAKEFILE
+
+The makefile needs to include INKREADY.ASM along with the other asm
+files required for building the display driver.
+
+.LNK
+
+Likewise, the .LNK file also needs to include INKREADY.OBJ along with
+the other obj files required to build the display driver.
+
+.DEF
+
+This file needs two changes.  First, the code segments that contain
+the line and pixel drawing code need to be made FIXED, since they
+will be called at interrupt time.  Second, the functions InkReady and
+GetLPDevice need to be exported, at ordinals 600 and 601 respectively.
+
+Testing the display driver
+
+A quick test of the display driver is to load up Windows For Pens,
+launch a program with a large writing area (such as NotePad), and
+scribble across the whole screen.  If ink appears when it should, and
+is erased completely after recognition occurs, then the display
+driver has passed its first test.
+
+A second test is to launch a program that does some animation, such as
+TicTactics in the first Windows Entertainment Pack in a winning or
+losing situation.  While TicTactics is doing animation in one area of
+the screen, start inking in a handwriting aware window in a second
+part of the screen, and pay special attention to the colors of the
+marbles as they are updated.  If the marbles sometimes drawn in the
+ink color instead of the correct color, there is a bug in the display
+driver code that checks for the screen being safe to draw.
+
+

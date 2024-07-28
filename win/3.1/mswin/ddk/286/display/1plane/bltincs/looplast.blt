@@ -1,0 +1,353 @@
+
+
+subttl	Compile - Inner Loop Generation
+page
+
+;	Now for the hard stuff; The inner loop (said with a "gasp!").
+;
+;	If there is no innerloop, then no code will be generated
+;	(now that's fast!).
+
+cblt_5000:
+	mov	ax,es			;Set ds: to es: since code will be
+	mov	ds,ax			;  copied from/to the stack
+	mov	dx,innerloopCnt 	;Get the loop count
+	or	dx,dx			;If the count is null
+;	jz	cblt_6000
+	jz	cblt_5140		;  don't generate any code.
+
+
+
+;	We have something for a loop count.  If this just happens to be
+;	a source copy (S) with a phase of zero, then the innerloop degenerates
+;	to a repeated MOVSB instruction.  This little special case is
+;	worth checking for and handling!
+;
+;	Also, if this is one of the special cases {P, Pn, DDx, DDxn}, then it
+;	will also be special cased since these are all pattern fills (pattern,
+;	not pattern, 0, 1).
+;
+;	The same code can be shared for these routines, with the exception
+;	that patterns use a STOSx instruction instead of a MOVSx instruction
+;	and need a value loaded in AX
+;
+;
+;	So we lied a little.  If a color conversion is going on, then the
+;	REP MOVSB might not be usable.	If the RepOK flag has been set, then
+;	we can use it.	The RepOK flag will be set for a mono ==> color
+;	conversion where the background color is white and the foreground
+;	color is black, or for a color ==> mono conversion with the screen
+;	as the source (the color compare register will be used).
+;
+;	For the special cases {P, Pn, DDx, DDxn}, color conversion is
+;	not possible, so ignore it for them.
+
+
+	mov	bl,bptr (Rop)		;Get the raster op
+	test	bl,epsIndx		;Can this be special cased?
+	jnz	cblt_5500		;  No
+	errnz	<HIGH epsIndx>
+	errnz	SpecParseStrIndx	;The special case index must be 0
+
+	test	bl,epsOff		;Is this a source copy
+	jz	cblt_5040		;  Yes
+	errnz	<sourceCopy AND 11b>	;Offset for source copy must be 0
+
+
+
+;	We should have one of the following fill operations:
+;
+;		P	- Pattern
+;		Pn	- NOT pattern
+;		DDx	- 0 fill
+;		DDxn	- 1 fill
+
+
+	mov	ax,I_MOV_AL_0FFH 	;Assume this is a 0 or 1 fill
+	test	bl,01h			;Is it 0 or 1 fill?
+	jz	cblt_5020		;  Yes, initialize AX with 0FFh
+	mov	ax,I_MOV_AL_DH		;  No,	initialize AX with pattern
+
+	errnz	   patCopy-0000000000100001b
+	errnz	NOTpatCopy-0000000000000001b
+	errnz	 FillBlack-0000000001000010b
+	errnz	 FillWhite-0000000001100010b
+
+cblt_5020:
+	stosw
+	mov	ax,I_MOV_AH_AL
+	stosw
+	mov	si,I_STOSB		;Set up for repeated code processor
+	test	bl,LogPar		;If Pn or 0, then complement pattern
+	jnz	cblt_5060		;  Is just P or 1
+	errnz	<HIGH LogPar>
+	mov	ax,I_NOT_AX		;  Is Pn or 0, complement AX
+	stosw
+	jmp	short cblt_5060
+
+	errnz	   patCopy-00100001b
+	errnz	NOTpatCopy-00000001b
+	errnz	 FillBlack-01000010b
+	errnz	 FillWhite-01100010b
+
+
+
+
+;	This is a source copy.	The phase must be zero for a source copy
+;	to be condensed into a REP MOVSx.
+
+cblt_5040:
+	test	phaseH,0FFh		;Is horizontal phase zero?
+	jnz	cblt_5500		;  No, can't condense source copy
+	mov	si,I_MOVSB		;Set register for moving bytes
+
+;	For a color conversion, RepOK must be set.
+
+ifdef	GenColorBLT		;If this a color bitblt
+	test	the_flags,F0_GAG_CHOKE	;Color conversion?
+	jz	cblt_5060		;  No, rep is OK to use
+	test	MooreFlags,RepOK	;  Yes, can we rep it?
+	jz	cblt_5500		;    No, do it the hard way
+endif
+
+
+
+;	This is a source copy or pattern fill.	Process an odd byte with
+;	a MOVSB or STOSB, then process the rest of the bytes with a REP
+;	MOVSW or a REP STOSW.  If the REP isn't needed, leave it out.
+;
+;	Don't get caught on this like I did!  If the direction of the
+;	BLT is from right to left (decrementing addresses), then both
+;	the source and destination pointers must be decremented by one
+;	so that the next two bytes are processed, not the next byte and
+;	the byte just processed.  Also, after all words have been processed,
+;	the source and destination pointers must be incremented by one to
+;	point to the last byte (since the last MOVSW or STOSW would have
+;	decremented both pointers by 2).
+;
+;	If the target machine is an 8086, then it would be well worth the
+;	extra logic to align the fields on word boundaries before the MOVSxs
+;	if at all possible.
+;
+;	The generated code should look something like:
+;
+;	WARP8:				     ;This code for moving left to right
+;		movsb			     ;Process an odd byte
+;		ld	cx,innerLoopCnt/2    ;Set word count
+;		rep			     ;If a count, then repeat is needed
+;		movsw			     ;Move words until done
+;
+;
+;	WARP8:				     ;This code for moving left to right
+;		movsb			     ;Process an odd byte
+;		dec	si		     ;adjust pointer for moving words
+;		dec	di
+;		ld	cx,innerLoopCnt/2    ;Set word count
+;		rep			     ;If a count, then repeat is needed
+;		movsw			     ;Move words until done
+;		inc	si		     ;adjust since words were moved
+;		inc	di
+;
+;
+;	Of course, if any part of the above routine isn't needed, it isn't
+;	generated (i.e. the generated code might just be a single MOVSB)
+
+cblt_5060:
+	shr	dx,1			;Byte count / 2 for words
+	jnc	cblt_5080		;  No odd byte to move
+	mov	ax,si			;  Odd byte, move it
+	stosb
+
+cblt_5080:
+	jz	cblt_5140		;No more bytes to move
+	xor	bx,bx			;Flag as stepping from left to right
+	cmp	bl,stepDirection	;Moving from the right to the left?
+	errnz	STEPLEFT		;  (left direction must be zero)
+	jnz	cblt_5100		;  No
+	mov	ax,I_DEC_SI_DEC_DI	;  Yes, decrement both pointers
+	stosw
+	mov	bx,I_INC_SI_INC_DI	;Set up to increment the pointers later
+
+cblt_5100:
+	cmp	dx,1			;Move one word or many words?
+	jz	cblt_5120		;  Only one word
+	mov	al,I_MOV_CX_WORD_I 	;  Many words, load count
+	mov	ah,dl
+	stosw
+	mov	al,dh			;Set MSB of count
+	mov	ah,I_REP		;  and a repeat instruction
+	stosw
+
+cblt_5120:
+	mov	ax,si			;Set the word instruction
+	inc	ax
+	stosb
+	errnz	I_MOVSW-I_MOVSB-1	;The word form of the instruction
+	errnz	I_STOSW-I_STOSB-1	;  must be the byte form + 1
+
+	or	bx,bx			;Need to increment the pointers?
+	jz	cblt_5140		;  No
+	mov	ax,bx			;  Yes, increment both pointers
+	stosw
+
+cblt_5140:
+	jmp	short cblt_6000		;Done setting up the innerloop
+page
+
+;	There is some count for the innerloop of the BLT.  Generate the
+;	required BLT. Two or four copies of the BLT will be placed on the
+;	stack.	 This allows the LOOP instruction at the end to be distributed
+;	over two or four bytes instead of 1, saving 11 or 12 clocks for each
+;	byte (for 4).  Multiply 12 clocks by ~ 16K and you save a lot of
+;	clocks!
+;
+;	If there are less than four (two) bytes to be BLTed, then no looping
+;	instructions will be generated.  If there are more than four (two)
+;	bytes, then there is the possibility of an initial jump instruction
+;	to enter the loop to handle the modulo n result of the loop count.
+;
+;	The innerloop code will look something like:
+;
+;
+;	<	mov	cx,loopcount/n> ;load count if >n innerloop bytes
+;	<	jmp	short ???     > ;If a first jump is needed, do one
+;
+;	BLTloop:
+;		replicate initial byte BLT code up to n times
+;
+;	<	loop	BLTloop >	;Loop until all bytes processed
+
+
+cblt_5500:
+	mov	bx,endFL		;Compute size of the fetch code
+	sub	bx,startFL
+	inc	bx			;A stosb will be appended
+	mov	si,4			;Assume replication 4 times
+	mov	cl,2			;  (shift count two bits left)
+	cmp	bx,32			;Small enough for 4 times?
+	jc	cblt_5520		;  Yes, replicate 4 times
+	shr	si,1			;  No,	replicate 2 times
+	dec	cx
+
+cblt_5520:
+	cmp	dx,si			;Generate a loop?
+	jle	cblt_5540		;  No, just copy code
+	mov	al,I_MOV_CX_WORD_I
+	stosb				;mov cx,loopcount/n
+	mov	ax,dx			;Compute loop count
+	shr	ax,cl
+	stosw
+	shl	ax,cl			;See if loopcount MOD n is 0
+	sub	ax,dx
+	jz	cblt_5540		;Zero, no odd count to handle
+
+
+;	There is an odd portion of bytes to be processed.  Increment
+;	the loop counter for the odd pass through the loop and then
+;	compute the displacement for entering the loop.
+;
+;	To compute the displacement, subtract the number of odd bytes
+;	from the modulus being used  (i.e. 4-3=1).  This gives the
+;	number of bytes to skip over the first time through the loop.
+;
+;	Multiply this by the number of bytes for a logic sequence,
+;	and the result will be the displacement for the jump.
+
+
+	inc	wptr es:-2[di]		;Not zero, adjust for partial loop
+	add	ax,si			;Compute where to enter the loop at
+	mul	bl
+	mov	cx,ax
+	mov	al,I_JMP_NEAR		;Stuff jump instruction
+	stosb
+	mov	ax,cx			;Stuff displacement for jump
+	stosw
+
+
+
+;	Currently:	dx = loop count
+;			si = loop modulus
+;			bx = size of one logic operation
+;			di --> next location in the loop
+
+cblt_5540:
+	mov	cx,bx			;Set move count
+	mov	bx,dx			;Set maximum for move
+	cmp	bx,si			;Is the max > what's left?
+	jle	cblt_5560		;  No, just use what's left
+	mov	bx,si			;  Yes, copy the max
+
+cblt_5560:
+	sub	dx,si			;If dx > 0, then loop logic needed
+	mov	si,startFL		;--> fetch code to copy
+	mov	ax,cx			;Save a copy of fetch length
+	rep	movsb			;Move fetch code and stuff stosb
+	mov	si,di			;--> new source (and top of loop)
+	sub	si,ax
+	mov	bptr es:-1[di],I_STOSB
+	dec	bl			;One copy has been made
+	mul	bl			;Compute # bytes left to move
+	mov	cx,ax			;Set move count
+	rep	movsb			;Move the fetches
+	sub	si,ax			;Restore pointer to start of loop
+
+
+;	The innermost BLT code has been created and needs the looping
+;	logic added to it.  If there is any looping to be done, then
+;	generate the loop code.  The code within the innerloop may be
+;	greater than 126 bytes, so a LOOP instruction may not be used
+;	in this case.
+
+cblt_5580:
+	or	dx,dx			;Need a loop?
+	jle	cblt_6000		;  No, don't generate one
+
+	mov	ax,si			;Compute offset of loop
+	sub	ax,di
+	cmp	ax,-125 		;Can this be a short label?
+	jc	cblt_5600		;  No, must make it a near jmp
+
+	sub	al,2			;Bias offset by length of LOOP inst.
+	mov	ah,al
+	mov	al,I_LOOP
+	stosw				;Set the loop instruction
+	jmp	short cblt_6000		;Go process the last byte code
+
+
+cblt_5600:
+	mov	si,codeOFFSET jmp_cx_nz	;Move in the dec CX jnz code
+	movs	wptr es:[di],wptr cs:[si]
+	movs	wptr es:[di],wptr cs:[si]
+	errnz	JMP_CX_NZ_LEN-4		;Must be four bytes long
+	sub	ax,6			;Adjust jump bias
+	stosw				;  and store it into jump
+
+
+
+subttl	Compile - Last Byte Processing
+page
+
+;	All the innerloop stuff has been processed.  Now generate the code for
+;	the final byte if there is one.  This code is almost identical to the
+;	code for the first byte except there will only be one fetch (if a
+;	fetch is needed at all).
+;
+;	The code generated will look something like:
+;
+;	<	fetch		>	;Get source byte
+;	<	align		>	;Align source if needed
+;		action			;Perform desired action
+;		mask and store
+
+cblt_6000:
+	mov	dx,lastMask		;Get last byte mask
+	or	dh,dh			;Is there a last byte to be processed?
+	jz	cblt_6100		;  No.
+
+	mov	cx,endFLS		;Get end of fetch/logic/store operation
+	mov	si,startFL		;Get start of fetch/logic sequence
+	sub	cx,si			;Compute length of the code
+	rep	movsb			;Copy the fetch/action/store code
+	xchg	dh,dl
+	mov	MASKED_STORE_MASK[di],dx ;Stuff last byte mask into the code
+

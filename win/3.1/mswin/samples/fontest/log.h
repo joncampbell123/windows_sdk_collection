@@ -1,0 +1,14 @@
+#define ID_LOGHEIGHT                101
+#define ID_LOGWIDTH                 102
+#define ID_LOGESCAPEMENT            103
+#define ID_LOGORIENTATION           104
+#define ID_LOGWEIGHT                105
+#define ID_UNDERLINE                106
+#define ID_ITALIC                   107
+#define ID_STRIKEOUT                108
+#define ID_CHARSET                  109
+#define ID_PRECISION                110
+#define ID_CLIPPRECISION            111
+#define ID_QUALITY                  112
+#define ID_PITCH                    113
+#define ID_FACE                     114

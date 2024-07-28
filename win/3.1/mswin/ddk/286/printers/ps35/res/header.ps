@@ -1,0 +1,1747 @@
+%-------------------------------------------------------------------------
+% header.ps
+%
+% windows postscript header
+% this code sets up the Win33Dict dictionary that contains all of the
+% windows postscript functions and variables
+%
+% NOTE:
+% some apps depend on the following routines being in this dictionary:
+% CB B F S do not rename these
+%
+%-------------------------------------------------------------------------
+
+#include "windict.h"
+
+/PSWINDICT
+#ifdef FULL_HEADER
+290 
+#else
+60
+#endif
+dict def PSWINDICT begin
+
+/bd {bind def} bind def
+/in {72 mul} bd		% inches (user -> inches)
+/ed {exch def} bd
+/ld {load def} bd
+/tr /translate ld
+
+/gs /gsave ld
+/gr /grestore ld
+
+#ifdef FULL_HEADER
+
+% shorthand notation for compactness
+
+/M   /moveto ld
+/L   /lineto ld
+/rmt /rmoveto ld
+/rlt /rlineto ld
+/rct /rcurveto ld
+/st  /stroke ld
+
+/n  /newpath ld
+/sm /setmatrix ld
+/cm /currentmatrix ld
+/cp /closepath ld
+
+/ARC /arcn ld
+/TR {65536 div}bd 
+
+% /sc /setrgbcolor ld
+/lj /setlinejoin ld
+/lc /setlinecap ld
+/ml /setmiterlimit ld
+/sl /setlinewidth ld
+
+%
+% r g b sc --
+%
+% special setcolor that special cases grays to get better black on
+% CMYK color printers
+%
+/scignore false def
+/sc {
+    scignore {
+        pop pop pop
+    } {
+	0 index	% B
+	2 index	% G
+	eq
+	2 index	% G
+	4 index	% R
+	eq
+	and {		% this is a gray. use setgray
+	    	pop pop 
+		255 div		% convert to 0.0 - 1.0 range
+	    	setgray
+	} {
+		% convert R G B to 0.0 - 1.0 range
+		3 {
+			255 div 3 1 roll
+		} repeat
+		setrgbcolor	% non gray, use setrgbcolor
+	} ifelse
+    } ifelse
+} bd
+
+/FC { bR bG bB sc } bd		% fill color
+% r g b fC --
+/fC
+{
+	/bB ed 
+	/bG ed 
+	/bR ed 
+} bd
+
+
+/HC { hR hG hB sc } bd		% hatch and pattern color
+% r g b hC --
+/hC
+{
+	/hB ed
+	/hG ed
+	/hR ed
+} bd
+
+/PC { pR pG pB sc } bd
+% r g b pC --
+/pC {
+	/pB ed
+	/pG ed
+	/pR ed
+} bd
+
+
+% variable init
+
+/sM matrix def 
+/PenW 1 def
+/iPen 5 def 		% default pen type	NULL
+/mxF matrix def		% current font matrix
+/mxE matrix def		% current escapement matrix
+/mxUE matrix def        % current underline escapement matrix
+/mxUF matrix def        % current underline font matrix
+
+/fBE false def		% use break extra (initially turned off)
+/iDevRes 72 0 matrix defaultmatrix dtransform dup mul exch dup mul add sqrt def
+
+#endif 	/* FULL_HEADER */
+
+
+% SS and RS frame every page to make each page independant of the
+% other and to conserve that precious VM space that (supposedly) dwindels
+% away as you do everyday standard things (see the ps red book)
+%
+% if fPP is TRUE then generate save / restore pair, else generate gsave /
+% grestore pair.  This is used to control font residency across pages.
+% debugging code can be enabled to print stuff on SS and EJ so we
+% see what is going on at the start and end of every page
+
+%
+% save state
+%
+/fPP false def          % assume fonts stick around across pages
+
+/SS {
+    fPP { /SV save def } { gs } ifelse
+
+#ifdef DEBUG
+%---------------------------------------------------------------------------
+% timer and VM debuggin code
+% tap in here and set the timer and get the vmstatus
+
+	/debug_str 40 string def		% use this for printing
+
+	32 0 0 58 58 0 0 54 /Helvetica font
+
+	50 50 moveto
+	vmstatus			% get the VM status
+	(Total Mem: ) show
+	debug_str cvs show
+	(  Mem Used: ) show
+	dup /StartMem exch def
+	debug_str cvs show
+	pop				% get rid of level
+
+	/StartTime usertime def		% get the current time
+%---------------------------------------------------------------------------
+#endif
+
+} bd
+
+%
+% restore state
+%
+/RS {
+    fPP { SV restore } { gr } ifelse
+} bd
+
+%
+% Eject (print the current page)
+%
+% -- EJ --
+%
+/EJ {
+
+#ifdef DEBUG
+%---------------------------------------------------------------------------
+% timer and VM debuggin code
+% report the elapsed time and VM status
+
+	usertime StartTime sub	% leave time on the stack
+				% (don't include time to do stuff below)
+
+	32 0 0 58 58 0 0 54 /Helvetica font
+	50 3000 moveto
+	(Time: ) show
+	debug_str cvs show		% convert time to string
+	( msec  ) show
+	vmstatus			% get the VM status
+	(Total Mem: ) show
+	debug_str cvs show
+	(  Mem Used: ) show
+	dup StartMem sub exch
+	debug_str cvs show
+	(  Page Mem Used: ) show
+	debug_str cvs show
+	pop				% get rid of level
+%---------------------------------------------------------------------------
+#endif
+	gsave showpage grestore		% leave as full
+} bd	% showpage does initgraphics
+
+%
+% set the number of copies
+%
+%	int #C --
+%
+/#C {userdict begin /#copies ed end } bd
+
+%
+% set the job timeout
+%
+% 	int SJT --
+%
+% /SJT {statusdict begin setjobtimeout end} bd
+%
+
+%
+% fill in portion of an encoding array
+%
+%       EncodingArray FirstChar LastChar FE EncodingArray
+%
+% The glyph name is G + hex encoding of char number.  I.E. 'A' would be /G41.
+% All characters are uppercase.
+%
+/FEbuf 2 string def
+/FEglyph (G  ) def
+/FE {
+    1 exch {                    % for loop from FirstChar to LastChar by 1
+        dup 16 FEbuf cvrs       % convert character to hex
+        FEglyph exch 1 exch putinterval     % make glyph string
+        1 index exch FEglyph cvn put   % put it in encoding array
+    } for
+} bd
+
+    
+
+
+
+#if 0
+%
+% OLD
+%
+% SetMetrics(cxM, cyM, cxP, cyP, res, landscape);
+%
+% all x and y values are passed in pixel units (GDI knows about us in
+% terms of our max vertical and horz resolution as defined by the
+% PAPER struct).
+%
+% we set global vars in USER UNITS (72/inch) based on the parameters
+% passed.
+%
+% note: iRes allows the user to change the dots/inch to something
+%	other than the default.
+
+/SM
+{
+ 	/fLS exch 0 ne def		 % set fLS flag
+ 	/iRes ed			 % res in dots/inch
+	fLS
+	% fLS 
+	{
+	    	/cxP exch iRes div in def % page height
+		/cyP exch iRes div in def % page width
+		/cxM exch iRes div in def % image y offset from origin
+		/cyM exch iRes div in def % image x offset from origin
+	} {	% !fLS 
+    		/cyP exch iRes div in def % page height
+		/cxP exch iRes div in def % page width
+		/cyM exch iRes div in def % image y offset from origin
+		/cxM exch iRes div in def % image x offset from origin
+	} ifelse
+
+	fLS { 0 cyP tr -90 rotate } if
+
+	%
+	% set current transform matrix (CTM) to map
+	% from GDI space to USER space
+	%
+	%	GDI space	  	   USER space
+	%
+	%	+------>	  	   ^
+	%	|		  	   |
+	%	|		  	   |
+	%	|	    -- CTM ->  	   |
+	%	|		  	   |
+	%	V		  	   +------->
+	%
+
+	% offset x by the margin width
+	% offset y by page heigth - margin
+	fLS
+ 	{
+		cyM cxP cxM sub
+	} {
+		cxM cyP cyM sub
+	} ifelse
+ 	tr
+
+	% scale to get GDI extent -> USER extent
+	% and negate y scale to flip coordinate system
+
+ 	72 iRes div dup neg
+ 	scale
+
+	% allign the PS coor sys to avoid rounding problems
+	%
+	% this leaves us inbetween the pixel grid and the pixel centers.
+	% this avoids rounding problems when things fall right on the
+	% pixel grid.
+
+	% NOTE: this effects the pattern brush filling code be sure
+	% to check there before changing this
+
+	0 0 transform .25 add round .25 sub exch
+		      .25 add round .25 sub exch
+	itransform translate
+} bd
+
+#endif
+
+%
+% set current transform matrix (CTM) to map
+% from GDI space to USER space
+%
+%	GDI space	  	   USER space
+%
+%	+------>	  	   ^
+%	|		  	   |
+%	|		  	   |
+%	|	    -- CTM ->  	   |
+%	|		  	   |
+%	V		  	   +------->
+%  
+%
+%  The function of this routine is to translate
+%  the default origin (lower left corner of paper)
+%  to either the upper left or right corner of the
+%  imageable region depending on fMirror and fLandscape.
+%
+%  The axes of the coordinate must then be rotated and
+%  inverted as appropriate.
+%
+%
+%        Portrait Mode                 90 Landscape Mode 
+%    -------------------------       -------------------------
+%    |^                      |       |                       |
+%    ||cyM                   |       |                       |
+%    ||                      |       |                       |
+%    |v     +-NX->...<-RX-+  |       |      ...............  |
+%    |      |             |  |       |      :             :  |
+%    |      |             |  |       |      :             :  |
+%    |      |NY         RY|  |       |      :             :  |
+%    |      |             |  |       |      :             :  |
+%    |      v             v  |       |      :             :  |
+%    |      :             :  |       |      :             :  |
+%    |      :             :  |       |      :             :  |
+%    |      :             :  |       |      :             :  |
+%    |      :             :  |       |      :             :  |
+%    |      :             :  |       |      :             :  |
+%    |      : Imageable   :  |       |      :  Imageable  :  |
+%    |      :             :  |       |      :             :  |
+%    |      :   Region    :  |       |      :    Region   :  |
+%    |      :             :  |       |      :             :  |
+%    |<---->:             :  |       |<---->^             ^  |
+%    | cxM  :             :  |       | cxM  |             |  |
+%    |      :             :  |       |      |NX         RX|  |
+%    |      :             :  |       |      |             |  |
+%    |      :             :  |       |      |             |  |
+%    |      :.............:  |       |      +-NY->...<-RY-+  |
+%    ^                       |       ^                      ^|
+%    |                       |       |                      ||
+%    |          Physical     |       |           Physical   ||
+%    |DY         Paper       |       |DY          Paper     |cyM
+%    |            Size       |       |             Size     ||
+%    |                       |       |                      ||
+%    | DX                    |       |  DX                  v|
+%    +----->------------------       +------>-----------------
+%
+%
+%
+%
+%        270 Landscape Mode
+%    -------------------------
+%    |^                      |
+%    ||cyM                   |
+%    ||                      |
+%    |v     +-RY->...<-NY-+  |
+%    |      |             |  |
+%    |      |             |  |
+%    |      |RX         NX|  |
+%    |      |             |  |
+%    |      v             v  |
+%    |      :             :  |
+%    |      :             :  |
+%    |      :             :  |
+%    |      :             :  |
+%    |      :             :  |
+%    |      : Imageable   :  |
+%    |      :             :  |
+%    |      :   Region    :  |
+%    |      :             :  |
+%    |<---->:             :  |
+%    | cxM  :             :  |
+%    |      :             :  |
+%    |      :             :  |
+%    |      :             :  |
+%    |      :.............:  |
+%    ^                       |
+%    |                       |
+%    |          Physical     |
+%    |DY         Paper       |
+%    |            Size       |
+%    |                       |
+%    | DX                    |
+%    +----->------------------
+%  
+%  
+%  
+%  
+%  DX, DY:  Default Postscript cooridinate system
+%  
+%  NX, NY:  normal  cooridinate system
+%  RX, RY:  reflected cooridinate system (selected by fMirror)
+%  cxM:     width of lefthand unprintable margin
+%  cyM:     width of top unprintable margin for portrait and 270 landscape
+%           OR  width of bottom unprintable margin for  90 landscape
+%
+%  Note:    all dimensions are in units of 1/100 ths of an inch.
+%           
+%  
+%  
+% set metrics
+%
+% fMirror LandscapeOr cxM cyM cxPg cyP iRes SM --
+
+/SM
+{	% grab all the parameters
+
+ 	/iRes ed		% res in dots/inch
+	/cyP ed 		% paper height
+	/cxPg ed 		% imageable page width
+	/cyM ed 		% see above comments
+	/cxM ed 		% image  offset from left of paper
+
+#ifdef FULL_HEADER
+	% scale user units to GDI units
+
+ 	72 100 div dup
+ 	scale
+
+	% on the stack now is LandscapeOr
+	% 0 == portrait (default)
+	% 90, 270 == landscape
+
+        dup
+
+        0 ne    %  if LandscapeOr == 90 or 270
+	{
+            90 eq
+            {
+           	% 90 deg landscape mode
+                cyM exch    % amount to move up, xpose fMirror
+
+                0 eq     %  if not fMirror
+                {   % normal parity
+                        cxM  exch  tr  
+                        -90  rotate
+                        -1 1 scale             % point axis 
+                }
+                {   % fMirror
+                        cxM  cxPg  add  exch  tr  
+                        +90  rotate             % point axis 
+                } ifelse
+            }
+            {
+                % 270 deg landscape mode
+                cyP cyM sub exch    % amount to move up, xpose fMirror
+
+                0 ne     %  if fMirror
+                {   % invert coordinates
+                        cxM  exch  tr  
+                        -90  rotate             % point axis 
+                }
+                {   % normal parity
+                        cxM  cxPg  add  exch  tr  
+                        -90  rotate             % point axis 
+                        1 -1 scale              % flip y axis down
+                } ifelse
+            } ifelse
+        }
+	{	% portrait mode
+                pop   % dispose of duplicate LandscapeOr
+                cyP cyM sub exch    % amount to move up, xpose fMirror
+
+                0 ne      %  if fMirror
+                {   % invert coordinates
+                        cxM  cxPg  add  exch  tr  % move to upper right
+                        180  rotate             % point axis 
+                }
+                {   % normal parity
+                        cxM  exch  tr           % move to upper left
+                        1 -1 scale              % flip y axis down
+                } ifelse
+        }  ifelse
+
+
+        % set scale to iRes units per inch
+
+        100 iRes div dup scale
+
+	% align the PS coor sys to avoid rounding problems
+
+	0 0 transform .25 add round .25 sub exch
+		      .25 add round .25 sub exch
+	itransform translate
+#else
+
+	% short header version.  here we just move the origin of the
+	% page.  we ignore unprintable margins. we don't scale.
+
+	% on the stack now is fLandscape
+	% 1 == landscape
+
+ 	0 ne
+	{	% landscape mode
+
+		0 cyP 72 mul 100 div tr 	% move to upper left
+
+		-90 rotate			% swing x axis down
+	} if
+        pop     % discard fMirror  parameter
+#endif
+} bd
+
+
+#ifdef FULL_HEADER
+
+%
+% SetJustify(TBreakExtra, BreakCount)
+%
+% sets global justify parameters for the next StrBlt. dxBreak fBE
+%
+/SJ
+{
+	1 index 0 eq	% get TBreakExtra
+	{
+		pop pop		% clear the stack
+		/fBE false def	% turn off if 0 BreakCount
+	} {
+		1 index		% get the Break value (# pixels to adjust)
+		/Break ed	% save it for use in SB
+		div		% dxBreak = TBreakExtra / BreakCount
+		/dxBreak ed	% insert this much for each
+		/fBE true def	% tell StrBlt to use these
+	} ifelse
+} bd
+
+
+% I would like to remove this ANSI font stuff and put it in a
+% demand resource.  stuff from ANSIVec through ANSIFont shouuld go
+
+% This vector remaps the character set from Adobe Standard to ANSI
+% The first few values are referenced by composite characters
+/ANSIVec[
+16#0 /grave
+16#1 /acute
+16#2 /circumflex
+16#3 /tilde
+16#4 /macron
+16#5 /breve
+16#6 /dotaccent
+16#7 /dieresis
+16#8 /ring
+16#9 /cedilla
+16#A /hungarumlaut
+16#B /ogonek
+16#C /caron
+16#D /dotlessi
+16#27 /quotesingle
+16#60 /grave
+16#7C /bar			%sjp20Aug87
+16#82 /quotesinglbase
+16#83 /florin
+16#84 /quotedblbase
+16#85 /ellipsis
+16#86 /dagger
+16#87 /daggerdbl
+16#89 /perthousand
+16#8A /Scaron
+16#8B /guilsinglleft
+16#8C /OE
+16#91 /quoteleft
+16#92 /quoteright
+16#93 /quotedblleft
+16#94 /quotedblright
+16#95 /bullet
+16#96 /endash
+16#97 /emdash
+16#99 /trademark
+16#9A /scaron
+16#9B /guilsinglright
+16#9C /oe
+16#9F /Ydieresis
+16#A0 /space
+16#A4 /currency
+16#A6 /brokenbar		%sjp20Aug87: changed from /bar
+16#A7 /section
+16#A8 /dieresis
+16#A9 /copyright		%sec 87-1-16
+16#AA /ordfeminine
+16#AB /guillemotleft
+16#AC /logicalnot		%sjp05Nov87 /bullet
+16#AD /hyphen
+16#AE /registered		%sec87-1-16
+16#AF /macron
+16#B0 /degree			%problem here?...sjp21jul87 /ring
+16#B1 /plusminus		%sjp21jul87 /bullet
+16#B2 /twosuperior		%sjp21jul87 /bullet
+16#B3 /threesuperior		%sjp21jul87 /bullet
+16#B4 /acute
+16#B5 /mu			%sjp21jul87 /bullet
+16#B6 /paragraph
+16#B7 /periodcentered
+16#B8 /cedilla
+16#B9 /onesuperior		%sjp21jul87 /bullet
+16#BA /ordmasculine
+16#BB /guillemotright
+16#BC /onequarter		%problem here?...sjp21jul87 /bullet		%sec87-1-16
+16#BD /onehalf			%sjp21jul87 /bullet
+16#BE /threequarters		%sjp21jul87 /bullet
+16#BF /questiondown
+16#C0 /Agrave
+16#C1 /Aacute
+16#C2 /Acircumflex
+16#C3 /Atilde
+16#C4 /Adieresis
+16#C5 /Aring
+16#C6 /AE
+16#C7 /Ccedilla
+16#C8 /Egrave
+16#C9 /Eacute
+16#CA /Ecircumflex
+16#CB /Edieresis
+16#CC /Igrave
+16#CD /Iacute
+16#CE /Icircumflex
+16#CF /Idieresis
+16#D0 /Eth			%sjp21jul87 /bullet
+16#D1 /Ntilde
+16#D2 /Ograve
+16#D3 /Oacute
+16#D4 /Ocircumflex
+16#D5 /Otilde
+16#D6 /Odieresis
+16#D7 /multiply			%sjp20Aug87	/bullet
+16#D8 /Oslash
+16#D9 /Ugrave
+16#DA /Uacute
+16#DB /Ucircumflex
+16#DC /Udieresis
+16#DD /Yacute			%sjp21jul87 /bullet
+16#DE /Thorn			%sjp21jul87 /bullet
+16#DF /germandbls
+16#E0 /agrave
+16#E1 /aacute
+16#E2 /acircumflex
+16#E3 /atilde
+16#E4 /adieresis
+16#E5 /aring
+16#E6 /ae
+16#E7 /ccedilla
+16#E8 /egrave
+16#E9 /eacute
+16#EA /ecircumflex
+16#EB /edieresis
+16#EC /igrave
+16#ED /iacute
+16#EE /icircumflex
+16#EF /idieresis
+16#F0 /eth			%sjp21jul87 /bullet
+16#F1 /ntilde
+16#F2 /ograve
+16#F3 /oacute
+16#F4 /ocircumflex
+16#F5 /otilde
+16#F6 /odieresis
+16#F7 /divide			%sjp20Aug87	/bullet
+16#F8 /oslash
+16#F9 /ugrave
+16#FA /uacute
+16#FB /ucircumflex
+16#FC /udieresis
+16#FD /yacute			%sjp21jul87 /bullet
+16#FE /thorn			%sjp21jul87 /bullet
+16#FF /ydieresis
+] def
+
+/reencdict 12 dict def
+
+
+% CharName  IsChar  BOOL
+% IsChar tests to see if a character is in the basefontdict.
+% It returns true if it is, otherwise false.
+%
+/IsChar {basefontdict /CharStrings get exch known} bd
+
+
+% CharPosition CharName  MapCh  --
+% MapCh sets the specified character mapping in the font
+% being created (newfontdict)
+%
+/MapCh
+{
+	dup IsChar not {
+		pop /bullet
+	} if 
+	newfont /Encoding get 3 1 roll put 
+} bd
+
+
+% --  MapDegree  --
+% MapDegree maps /degree to 0xb0 if it exists in the character set
+% otherwise it tries to map the older /ring.
+%
+/MapDegree{16#b0 /degree IsChar {/degree}{/ring} ifelse MapCh} bd
+
+
+% --  MapBB  --
+% MapBB maps /brokenbar to 0xa6 if it exists in the character set
+% otherwise it tries to map the older /bar.
+%
+/MapBB {16#a6 /brokenbar IsChar {/brokenbar}{/bar}ifelse MapCh} bd
+
+
+% ANSIFont (/PSFontName /NewFontName)
+% This routine creates a new font that has the ANSI character set
+/ANSIFont
+	{
+	reencdict begin
+        /newfontname ed           %may use up VM
+        /basefontname ed
+
+ 	FontDirectory newfontname known not
+ 	{
+ 		/basefontdict basefontname findfont def
+ 		/newfont basefontdict maxlength dict def
+ 		basefontdict
+ 			{
+				exch dup /FID ne
+ 				{ dup /Encoding eq
+ 					{ exch dup length array copy newfont 3 1 roll put }
+ 					{ exch newfont 3 1 roll put }
+ 					ifelse
+ 				}
+ 				{pop pop}
+ 				ifelse
+ 			}forall
+ 		newfont /FontName newfontname put
+ 		127 1 159 {newfont /Encoding get exch /bullet put} for
+ 		ANSIVec aload pop
+ 		ANSIVec length 2 idiv
+
+
+		% If the character is not part of the character set
+		% then substitute a bullet.  This is done because the new
+		% Adobe fonts are a superset of the old, and not all printers
+		% can be assumed to have these character sets available.
+
+		{MapCh} repeat 
+
+		% Since the old Adobe character sets did not have 
+		% /degree or /brokenbar they were previously mapped to
+		% to /ring and /bar (part of the old character set and
+		% also part of the new).  In order to provide some level
+		% of backward compatibility these 2 are remapped to the old
+		% characters (if possible) rather than becoming /bullet.
+
+		MapDegree MapBB
+
+ 		newfontname newfont definefont pop
+ 	} if
+ 	newfontname
+ 	end
+} bd
+
+
+%
+% strblt
+%
+% x y width str ULlen SB --
+%
+% x is x coordinate
+% y is y + ascent to use postscript char origin
+%
+% the string is expanded to occupy width units, either using the break char
+% or the break char and individual char spacing.
+%
+/SB
+{
+	FC			% set the text color
+        /ULlen ed
+ 	/str ed		   	% str
+	str length		% get the length on the stack
+	fBE not	{		% ! Break Extra
+		dup 1 gt {	% length > 1
+			1 sub	% length--
+		} if
+	} if
+	/cbStr ed		% cbStr = string length in chars
+ 	/dxGdi ed	   	% dxGdi = width (to expand string out to)
+	/y0 ed		   	% y
+   	/x0 ed		   	% x
+   	str stringwidth		% x y width
+
+	% avoid this junk for normal text
+	% we may want to just do this in all cases.  do some profiling
+	% to see...
+
+%	esc 0 ne {
+	dup 0 ne {   % if y width is non-zero
+                % all this transformation is unnecessary...
+		% here we have to transform the width vector back down
+		% to our rectangular coord system so we can compute the
+		% dx and dy Extra properly.  This is because ashow
+		% and awidthshow take their deltas in the current user
+		% coord system (non rotated)
+
+%		mxE itransform	% bring these back to rectangular system
+%		exch	      	% swap x an y
+%		neg dxGdi add	
+%		cbStr div	% dxExtra = (width - str_width) / cbStr
+%		exch		% swap back
+%		mxE transform	% transform back to rotate space
+		% leave dx dy on stack
+
+                /y1  ed       % natural extents of string
+                /x1  ed
+                y1 y1 mul
+                x1 x1 mul
+                add  sqrt     % total extent of string
+                dxGdi exch div
+                1 sub         % (req-actual)/actual = correction factor.
+                dup
+                x1 mul cbStr div   %dxExtra = (cf * x1)/cbStr 
+                exch y1 mul cbStr div  % dyExtra
+	} {
+		exch	      	% swap x an y
+		abs neg dxGdi add	
+		cbStr div	% dxExtra = (width - str_width) / cbStr
+		exch		% swap back
+	} ifelse
+
+	/dyExtra ed		% grab these
+	/dxExtra ed
+
+ 	x0 y0 M		% start drawing here
+
+ 	fBE {			% Break Extra mode?
+		dxBreak 0 BCh dxExtra dyExtra str awidthshow	% yes
+	} {
+		dxExtra dyExtra str ashow			% no
+	} ifelse
+
+ 	fUL {	% do underline
+		x0 y0 M			% move to start pos
+		dxUL dyUL rmt	% move relative to UL pos
+		ULlen fBE { Break add } if % adjust for justification
+		0
+		mxUE transform		% xform length vector
+                gs
+		rlt			% trace the path
+	 	cyUL sl			% set the line witdh
+                [] 0 setdash            % set Solid Pen
+		st                      % draw the line
+                gr
+	} if
+	fSO {	% do strikeout
+		x0 y0 M			% move to start pos
+		dxSO dySO rmt
+		ULlen fBE { Break add } if % adjust for justification
+		0 
+		mxUE transform
+                gs
+		rlt
+		cyUL sl
+                [] 0 setdash            % set Solid Pen
+		st
+                gr
+	} if
+
+	n	% start a new path
+
+ 	/fBE false def	% turn off. needs to be explictly enabled for each line
+} bd
+
+%
+% BCh esc ori Sx Sy fUL fSO fT3 Ascent /Font font --
+%
+% select a new font
+%
+/font
+{
+	/name ed		% save the font name (full postscript name)
+	/Ascent ed		% windows font ascent
+        0 ne /fT3 ed            % true if Type-3 font from TrueType converter
+ 	0 ne /fSO ed	       	% grab fSO strikeout
+ 	0 ne /fUL ed	       	% grab fUL underline
+ 	/Sy ed		       	% Sy
+ 	/Sx ed		       	% Sx
+ 	10.0 div /ori ed 	% orientation (char rotation)
+ 	-10.0 div /esc ed	% escapement (baseline rotation)
+ 	/BCh ed		       	% break char
+	name findfont		% font_dict
+
+        % setup parameters accordingly 
+        /xAscent 0 def          % setup Ascent vector
+        /yAscent Ascent def     
+        /ULesc esc def          % save actual escapement in ULesc
+        ULesc mxUE rotate pop   % make escapement matrix 
+        fT3 {
+                /esc 0 def      % set escapement to 0
+                xAscent yAscent mxUE transform   % transform Ascent vector
+                /yAscent ed     % save results 
+                /xAscent ed
+        } if
+
+	% scale and flip (neg y flips) to get position in GDI space
+	% translate moves char origin to upper left corner
+
+	[Sx 0 0 Sy neg xAscent yAscent]	% scale and translate matrix
+
+	% now rotate to support the escapement requested
+
+ 	esc mxE rotate		% fd m m store escapement in msE
+
+	mxF concatmatrix	% fd m	store this in mxF
+
+ 	makefont setfont	%
+ 
+        % now make the escapement matrix for underlines & strikeouts
+	[Sx 0 0 Sy neg 0 Ascent]
+	mxUE mxUF concatmatrix	pop
+
+	fUL {			% set underline params
+		currentfont
+	 	dup		% fd fd
+		/FontInfo get	% fd id
+		/UnderlinePosition known not
+	 	{
+			pop /Courier findfont
+		} if
+ 		/FontInfo get 
+		/UnderlinePosition get
+	 	1000 div		% char space is 1000 units high
+	 	0 exch mxUF transform	% transform UL pos
+	 	/dyUL ed
+ 		/dxUL ed
+	} if
+
+	fSO {			% set strikeout params
+		0 .3 mxUF transform	% .3 up the font height
+		/dySO ed
+		/dxSO ed
+
+	} if
+
+	fUL fSO or {
+		currentfont
+	 	dup		% fd fd
+		/FontInfo get	% fd id
+		/UnderlineThickness known not
+	 	{
+			pop /Courier findfont
+		} if
+ 		/FontInfo get
+	 	/UnderlineThickness get 1000 div Sy mul /cyUL ed
+	} if
+} bd
+
+
+% x y min min_x_y
+
+/min {2 copy gt {exch} if pop} bd
+/max {2 copy lt {exch} if pop} bd
+
+% clip path (safe clip that doesn't limit check)
+%
+% type CP --
+%
+%	type == 1	eoclip
+%	type == 0	clip
+%
+/CP {
+	/ft ed
+
+	% loop until we are successful
+
+	{
+		% this operation may cause a limit check
+		{
+			% gs 			% save state
+			ft 0 eq 
+			{clip}{eoclip}
+			ifelse
+		}
+		stopped
+		% error condition?
+		{
+			% yes, flatten curves
+			% gr 			% restore
+			currentflat 
+			1 add setflat		% bump current flat
+		}{
+			% no, we are done
+			exit
+		}ifelse
+	} loop
+} bd
+
+
+%-------------------------------------------------------------------------
+%
+% pattern filling code
+%
+% this implements pattern filling by defining a font and tiling chars
+% from the font over the bounding box (clipped) of the object.
+%
+% this works well because our pattern gets cached and thus does not
+% have to be re-rendered every time it is called.
+%
+% see pfill.ps for an alternate implementation of this using imagemask
+%
+% NOTE: we can't scale things here or else we will cause stitching
+% problems (overlaps between the filling characters)
+%
+% the bits for the image operation have already been flipped in the C code
+%
+% msd 03Apr91 note trueimage does not use patfont or pfill, the pattern
+% function (/p) is replaced with the trueimage operator setpattern.  pfill
+% is called by the fill function (/F) which we also replace.
+
+#ifndef TRUEIMAGE_HEADER
+
+/patfont 10 dict def patfont begin	% maybe this can be smaller
+/FontType 3 def				% user defined
+/FontMatrix [1 0 0 -1 0 0] def		% use this to flip bit order	
+					% and offset by 4 chars to make
+					% pfill code work right
+/FontBBox [0 0 16 16] def
+/Encoding StandardEncoding def		% needed to make the cache stuff work
+/BuildChar		% stack has: font char
+{
+	pop pop		% clear unneeded junk
+	16 0		% width between chars
+	0 0 16 16	% lower left and upper right
+	setcachedevice	% make this guy go in the cache
+
+	% the ".25 .25" is needed to allign to the device grid.  if
+	% this is not done we get stitching problems on older versions
+	% of postscript.  see the code in SM that does the initial grid
+	% alignment before changing this.
+
+	16 16 false [1 0 0 1 .25 .25] {pat} imagemask
+} bd
+end	% of patfont
+
+%
+% this scales the 8x8 pattern up to a 16x16 to make things more visible
+%
+% pat_string p --
+/p
+{
+%	/pat ed
+%
+	/pat 32 string def	% expand the 8x8 to 16x16
+	{} forall		% push the 8 chars from the string
+	
+	0 1 7 {
+		dup
+		2 mul
+		pat exch	% ... val i pat i*2
+		3 index		% ... val i pat i*2 val
+		put		% ... val i
+		dup
+		2 mul 1 add
+		pat exch	% ... val i pat i*2+1
+		3 index		% ... val i pat i*2+1 val
+		put
+		dup
+		2 mul 16 add
+		pat exch	% ... val i pat i*2+16
+		3 index		% ... val i pat i*2+16 val
+		put
+		2 mul 17 add
+		pat exch	% ... val pat i*2+17
+		2 index		% ... val pat i*2+17 val
+		put
+		pop		% done with this guy
+	} for
+} bd
+
+% make sure a save restore surounds this so we can redfine this font
+/pfill
+{
+%%	% width must be a multiple of 8 because allign pattern filling
+%%	% to byte boundaries
+%%
+%%	/w iRes 10 div 8 div round 8 mul def	% resolution independant
+%%	/PatFont patfont definefont pop		% generate pattern font
+%%	/PatFont findfont w scalefont setfont	% scale and select
+
+	/PatFont patfont definefont setfont	% create and select
+
+	% note: since the FontMatrix flips the chars to get the bit order
+	% right it is also offset by 4 chars (the number used here in
+	% the show) because show advances characters in the negative
+	% direction with the bits flipped.
+
+	/ch (AAAA) def		% do 4 chars at a time (this is faster)
+	X0 64 X1 {		% 16 x 4 (width of 4 chars)
+		Y1 -16 Y0 {
+			1 index exch M	% get x,y and moveto
+			ch show		% spit out the characters
+		} for
+		pop	% clear the x pushed
+	} for
+} bd
+
+#else
+%
+% TrueImage contains a setpattern function
+%
+% pat_string p --
+/p { setpattern } bd
+#endif
+
+%-------------------------------------------------------------------------
+
+
+%
+% -- vert --
+%
+% draw horzontal lines
+%
+% uses gloabals X0 Y0 X1 Y1
+%
+/vert
+{
+	X0 w X1 {
+		dup Y0 M
+		Y1 L
+		st
+	} for
+} bd
+
+%
+% -- horz --
+%
+% draw horzontal lines
+%
+% uses gloabals X0 Y0 X1 Y1
+%
+/horz
+{
+	Y0 w Y1 {
+		dup X0 exch M
+		X1 exch L
+		st
+	} for
+} bd
+
+
+%
+% -- fdiag --
+%
+% draw horzontal lines lower left to upper right
+%
+% uses gloabals X0 Y0 X1 Y1
+%
+/fdiag
+{
+	X0 w X1 {
+		Y0 M		% x Y0 moveto
+		X1 X0 sub dup rlt
+		st
+	} for
+	Y0 w Y1 {
+		X0 exch M		% X0 Y moveto
+		Y1 Y0 sub dup rlt
+		st
+	} for
+} bd
+
+%
+% -- bdiag --
+%
+% draw horzontal lines upper left to lower right
+%
+% uses gloabals X0 Y0 X1 Y1
+%
+/bdiag
+{
+	X0 w X1 {
+		Y1 M		% x Y1 moveto
+		X1 X0 sub dup neg rlt	% stroke down to the right
+		st
+	} for
+	Y0 w Y1 {
+		X0 exch M			% Y X0 moveto
+		Y1 Y0 sub dup neg rlt
+		st
+	} for
+} bd
+
+% allign up (rounds up to the nearest 16 pixel boundary)
+% val = (val + 1) | 0xF 
+/AU {1 add cvi 15 or} bd
+
+% allign down (rounds down to the nearest 16 pixel boundary)
+% val = (val - 1) & 0xFFFFFFF0 
+/AD {1 sub cvi -16 and } bd
+
+%
+% set hatch rect (sets gloabals bounding rect for fills)
+%
+% -- SHR --
+%
+/SHR
+{
+ 	pathbbox
+ 	AU /Y1 ed	% bump up upper right y
+ 	AU /X1 ed
+ 	AD /Y0 ed	% pull down lower left y
+ 	AD /X0 ed
+
+#ifdef DEBUG_FILL
+% for debugging		trace bounding rect of hatch/pattern rect
+	gs		
+	2 sl	
+	0 setgray	
+ 	n
+ 	X0 Y0 M	
+ 	X1 Y0 L	
+ 	X1 Y1 L	
+ 	X0 Y1 L	
+	cp	
+	st		
+	gr
+#endif
+
+} bd
+
+
+%
+% hatch_type hfill --
+%
+% uses globals X0 Y0 X1 Y1 (hatch bounding box)
+% 
+/hfill
+{
+	/w iRes 37.5 div round def	% resolution independant
+        0.1  sl		% seems to look ok
+	[] 0 setdash	% no dashes
+	n		% don't draw outline
+
+	dup 0 eq {horz} if		% HS_HORIZONTAL	    0 ----- 
+	dup 1 eq {vert} if		% HS_VERTICAL	    1 ||||| 
+	dup 2 eq {fdiag} if		% HS_FDIAGONAL	    2 ///// 
+	dup 3 eq {bdiag} if		% HS_BDIAGONAL	    3 \\\\\ 
+	dup 4 eq {horz vert} if		% HS_CROSS	    4 +++++ 
+	    5 eq {fdiag bdiag} if	% HS_DIAGCROSS	    5 xxxxx 
+
+} bd
+
+
+#ifndef TRUEIMAGE_HEADER
+%
+% fill the current path (don't rename)
+%
+% fill_type F --
+%
+/F
+{
+	/ft ed		% save the fill type 0 == fill 1 == eofill
+
+
+ 	fm 256 and 0 ne {		% FM_FILL (fill with solid color)
+		gs
+		FC	% fill color
+		ft 0 eq {fill}{eofill} ifelse
+		gr
+	} if
+
+ 	fm 1536 and 0 ne {		% FM_HATCH | FM_PATTERN
+		SHR
+		gs			% keep current path
+		HC			% hatch (and pattern) color
+		ft CP			% clip safely
+
+	 	fm 1024 and 0 ne {	% FM_PATTERN
+			/Tmp save def
+			pfill
+			Tmp restore
+		} {
+			fm 15 and hfill	% pass low nyble for hatch type
+		} ifelse
+		gr			% nothing ever happened
+	} if
+} bd
+#else
+%
+% TrueImage supports a patfill operator
+%
+% fill_type F --
+%
+/F { /ft ed fm 1024 and 0 ne
+	{ gs bR bG bB hR hG hB
+		6 { 255 div 6 1 roll } repeat ft patfill gr }
+	{ fm 256 and 0 ne
+		{ gs FC ft 0 eq
+			{ fill }
+			{ eofill }
+			ifelse gr }
+		if fm 512 and 0 ne
+		{ SHR gs HC ft CP fm 15 and hfill gr }
+		if }
+	ifelse
+} bd
+#endif
+
+%
+% stroke the current path with the current pen (don't rename)
+%
+% -- S --
+%
+/S
+{
+ 	PenW sl
+	PC st
+} bd
+
+/m matrix def 
+
+
+/GW  { iRes 12 div PenW add cvi } bd	% gap width
+/DoW { iRes 50 div PenW add cvi } bd	% dot width
+/DW  { iRes 8  div PenW add cvi } bd	% dash width
+
+
+
+%
+% SetPen
+%
+% style width SP --
+%
+% sets global pen stuff (iPen PenW)
+%
+/SP
+{
+ 	/PenW ed		% save width
+ 	/iPen ed		% save style
+
+ 	iPen 0 eq iPen 6 eq or
+	{ [] 0 setdash } if
+
+ 	iPen 1 eq 
+	{ [DW GW] 0 setdash } if
+
+ 	iPen 2 eq 
+	{ [DoW GW] 0 setdash } if
+
+ 	iPen 3 eq 
+	{ [DW GW DoW GW] 0 setdash } if
+
+	iPen 4 eq 
+	{ [DW GW DoW GW DoW GW] 0 setdash} if
+} bd
+
+
+%
+% Ellipse
+%
+%  dx dy x y E --
+%
+/E
+{
+ 	m cm pop	% save current matrix in m
+%
+%  possible alternative, to compute center with fractional part
+%  enable this for future versions
+%
+%  x1 y1 x2 y2 E --
+%
+%	3 index		% x1
+%	2 index		% x2
+%	add 2 div	% x center
+%	3 index		% y1
+%	2 index		% y2
+%	add 2 div	% y center
+ 	tr
+%	3 index		% x1
+%	2 index		% x2
+%	sub 2 div	% x center
+%	1 index		% y2
+%	4 index		% y1
+%	sub 2 div	% y center
+ 	scale
+        1 0 moveto      % remove line connecting current point to arc.
+ 	0 0 1 0 360 arc
+ 	cp
+ 	m sm		% restore
+} bd
+
+% arc guts
+
+/AG {
+	/sy ed
+	/sx ed
+
+	sx div 4 1 roll	% normalize the stuff for angle computation
+	sy div 4 1 roll
+	sx div 4 1 roll
+	sy div 4 1 roll
+
+ 	atan /a2 ed
+ 	atan /a1 ed 
+
+ 	sx sy scale		% by sx sy
+ 	a1 a2 ARC
+} def	% don't bind. we redefine ARC to change arc direction
+
+%
+% Arc
+%
+% 0 0 1 ax1 ay1 ax2 ay2 dx dy x0 y0 A --
+%
+/A
+{
+ 	m cm pop	% save current matrix
+ 	tr		% to x0 y0
+	AG
+ 	m sm		% restore
+} def	% don't bind. we redefine ARC to change arc direction
+
+%
+% Pie
+% 
+% 0 0 1 ax1 ay1 ax2 ay2 dx dy x0 y0 P --
+%
+/P
+{
+ 	m cm pop	% save current matrix
+ 	tr		% to x0 y0
+ 	0 0 M
+	AG
+ 	cp
+ 	m sm		% restore
+} def	% don't bind. we redefine ARC to change arc direction
+
+% Procedures to handle degenerated cases of RoundRect   PCW 5SEP90
+							
+%
+% Right Rectangle
+%
+% x1 y1 x2 y2 RRect -
+%
+/RRect
+{
+    n		% newpath is needed for closepath to draw the 4th side
+    4 copy M
+    3 1 roll exch L
+    4 2 roll L L
+    cp
+} bd
+
+%
+% RoundRect with circular corners
+%
+% x0 y0 x1 y1 r  RRCC  -
+%
+/RRCC {
+	/r ed	/y1 ed	/x1 ed	/y0 ed	/x0 ed
+	x0 x1 add 2 div y0 M
+	x1 y0 x1 y1 r arcto 4 {pop} repeat
+	x1 y1 x0 y1 r arcto 4 {pop} repeat
+	x0 y1 x0 y0 r arcto 4 {pop} repeat
+      x0 y0 x1 y0 r arcto 4 {pop} repeat
+        cp
+} bd
+
+%
+% RoundRect
+%
+% x0 y0 x1 y1 x2 y2 RR --
+%
+/RR
+{ 
+	2 copy 0 eq exch 0 eq or
+        { pop pop RRect}	% just draw rectangle
+      	{
+	    2 copy eq
+	    { pop RRCC }	% degenerates to circular corners
+            {   
+	        m cm pop	% save current matrix
+		/y2 ed	/x2 ed
+ 		/ys y2 x2 div 1 max def
+	 	/xs x2 y2 div 1 max def
+	 	/y1 exch ys div def
+ 		/x1 exch xs div def
+	 	/y0 exch ys div def
+ 		/x0 exch xs div def
+
+		/r2 x2 y2 min def
+ 		xs ys scale
+	 	x0 x1 add 2 div y0 M
+		x1 y0 x1 y1 r2 arcto 4 { pop } repeat
+		x1 y1 x0 y1 r2 arcto 4 { pop } repeat
+		x0 y1 x0 y0 r2 arcto 4 { pop } repeat
+		x0 y0 x1 y0 r2 arcto 4 { pop } repeat
+ 		m sm			% restore
+	 	cp
+	    } ifelse
+	} ifelse
+} bd
+
+#if 0
+%
+% RoundRect
+%
+% x0 y0 x1 y1 x2 y2 RR --
+%
+/RR {
+ 	m cm pop		% save current matrix
+	/y2 ed	/x2 ed
+ 	/ys y2 x2 div 1 max def
+ 	/xs x2 y2 div 1 max def
+ 	/y1 exch ys div def
+ 	/x1 exch xs div def
+ 	/y0 exch ys div def
+ 	/x0 exch xs div def
+
+	/r2 x2 y2 min def
+ 	xs ys scale
+ 	x0 r2 add y0 M
+	x1 y0 x1 y1 r2 arcto 4 { pop } repeat
+	x1 y1 x0 y1 r2 arcto 4 { pop } repeat
+	x0 y1 x0 y0 r2 arcto 4 { pop } repeat
+	x0 y0 x1 y0 r2 arcto 4 { pop } repeat
+ 	m sm			% restore
+ 	cp
+} bd
+#endif
+
+%
+% PolyPoints
+%
+% trace a path of n realitive points
+%
+% RPn RPn-1 RPn-2 ... RP1 n PP --
+%
+/PP
+{
+ 	{ rlt } repeat
+} bd
+
+
+
+%
+% OpaqueBox
+%
+% dx dy x y r g b fText OB --
+%
+% used by ExtTextOut and BitBlt
+%
+/OB
+{
+	gs
+        0 ne {
+                7 3 roll                % r g b dx dy x y
+                /y ed /x ed             % r g b dx dy
+                x y translate           % move points to origin
+                ULesc rotate            % rotate them
+                x neg y neg translate   % move them back where they belong
+                x y 7 -3 roll           % dx dy x y r g b
+        } if
+
+	sc
+	B
+	fill
+	gr
+} bd
+
+
+% these must also go in the EPS header because CB is used to clip all
+% stuff inside the eps box
+
+%
+% Box		make the current path the box defined by dx dy x y (don't rename)
+% 
+% dx dy x y B --
+%
+/B
+{
+	M
+ 	/dy ed
+	/dx ed
+ 	dx 0 rlt
+ 	0 dy rlt
+ 	dx neg 0 rlt
+ 	cp
+} bd
+
+
+%
+% ClipBox	set the current clipping region to a box (don't rename)
+% 
+% dx dy x y CB --
+%
+/CB
+{
+	B
+ 	clip
+%	1 CP
+	n
+} bd
+
+%
+% ErrHandler    adds the Windows error handler
+%
+%
+/ErrHandler 
+{
+        errordict dup maxlength exch length
+        gt dup
+        {
+                errordict begin  % place helpdict in here if there's room
+        } if
+        /errhelpdict 12 dict def
+        errhelpdict begin
+        /stackunderflow (operand stack underflow)
+                def
+        /undefined (this name is not defined in a dictionary)
+                def
+        /VMerror (you have used up all the printer's memory)
+                def
+        /typecheck (operator was expecting a different type of operand)
+                def
+        /ioerror (input/output error occured)
+                def
+        end   % pops errhelpdict
+        { end } if      % pops errordict if it was used.
+
+        errordict begin 
+        /handleerror 
+        { 
+                $error begin 
+                newerror 
+                { 
+                        /newerror false def 
+                        showpage 
+                        72 72 scale 
+                        /x .25 def 
+                        /y 9.6 def 
+                        /Helvetica findfont .2 scalefont setfont 
+                        x y moveto 
+                        (Offending Command = ) show 
+                        /command load 
+                        { 
+                                dup type /stringtype ne 
+                                { 
+                                        (max err string) cvs 
+                                } if 
+                                show 
+                        } exec 
+                        /y y .2 sub def 
+                        x y moveto 
+                        (Error = ) show 
+                        errorname 
+                        { 
+                                dup type dup ( max err string ) 
+                                cvs show ( : ) show
+                                /stringtype ne 
+                                { 
+                                        ( max err string ) cvs 
+                                } if 
+                                show 
+                        } exec
+                        errordict begin errhelpdict errorname known
+                        { 
+                                % printout additional message
+                                % if any exists for this error
+                                x 1 add y .2 sub  moveto 
+                                errhelpdict errorname get show
+                        } if   
+                        end
+                        /y y .4 sub def
+                        x y moveto (Stack =) show ostack 
+                        { 
+                                /y y .2 sub def x 1 add y moveto dup
+                                type /stringtype ne 
+                                { 
+                                        ( max err string ) cvs 
+                                } if 
+                                show 
+                        } forall 
+                        showpage
+                } if 
+                end 
+        } def 
+        end
+} bd
+
+#else	/* FULL_HEADER */
+
+
+%
+% ClipBox	for use with the small header
+% 
+% dx dy x y CB --
+%
+/CB
+{
+	moveto
+ 	/dy ed
+	/dx ed
+ 	dx 0 rlineto
+ 	0 dy rlineto
+ 	dx neg 0 rlineto
+ 	closepath
+ 	clip newpath
+} bd
+
+#endif	/* FULL_HEADER */
+end

@@ -1,0 +1,173 @@
+'=========================================================================
+'
+' automation script 
+'     For use with DCT-SHELL (calls HctScriptBegin(), HctScriptEnd()).
+'     Runs APPPATH + TESTAPP + ".exe " + DATAFILE
+'     Script waits for TESTAPP to complete before continuing.
+' Creator : 
+' Date    : 
+'
+' Notes:
+'     This script uses 2 definable symbols:
+'     PROMPT  - if defined, the script will prompt for user verification
+'     CTSHELL - if defined, the script callse HctScriptBegin() and 
+'               HctScriptEnd()
+'     These symbols are defined (enabled) from the command line via the 
+'        /d switch.  
+'     EX: wattdrvr script.wtd /run /d CTSHELL
+'
+'     MFDLL.DLL (magic fingers) SelectMenuItem subroutine does not
+'        work with win30.  
+'
+'=========================================================================
+
+'$include: 'mfdll.inc'
+'$include: 'wtdutil.inc'
+'$include: 'auto.inc'
+'$IFDEF CTSHELL
+   '$include: 'hct.inc'
+'$ENDIF
+
+CONST TESTAPP  = "PM4"                         ' name of app W/O EXTENSION!
+CONST APPPATH  = "PM4\"                        ' where TESTAPP is located
+CONST WINTITLE = "Pagemaker"                   ' window title
+CONST LOGPATH  = ".\"                          ' log file directory
+
+DECLARE FUNCTION bInitScript AS INTEGER
+DECLARE SUB StartScript
+DECLARE SUB EndScript
+DECLARE SUB PrinterSetup
+
+'==========================================================================
+
+FUNCTION bInitScript AS INTEGER
+   startScript
+   szExeName$ = APPPATH + TESTAPP + ".EXE"
+   IF EXISTS (szExeName$) = 0 THEN
+      bInitScript = FALSE
+      print szExeName$ + " does not exist."
+      Pause ("Could Not Initialize " + WINTITLE)
+      print ("Script aborting.")
+   ELSE 
+      bInitScript = TRUE
+   END IF
+END FUNCTION
+
+'=========================================================================
+
+SUB startScript
+   ViewPort OFF
+   ViewPort CLEAR
+   '$IFDEF PROMPT
+      pause "Start Of " + WINTITLE + " Test"
+   '$ENDIF
+   print "Start Of " + WINTITLE + " Test"
+END SUB
+
+'=========================================================================
+
+SUB endScript
+    '$IFDEF PROMPT
+        Pause "End Of " + WINTITLE + " Test"
+    '$ENDIF
+    print "End Of " + WINTITLE + " Test"
+END SUB
+
+'==========================================================================
+' MAIN
+'==========================================================================
+
+DIM document AS STRING
+DIM keySequence AS STRING
+DIM hwndPM AS INTEGER
+DIM bLinkedDocuments AS INTEGER
+
+'$IFDEF CTSHELL
+    HctScriptBegin  TESTAPP
+'$ENDIF
+
+IF (bInitScript () = TRUE) THEN
+    'Get the optional parameters passed from the shell.
+    document$ = command$
+    
+    'Start the application with the specified .DOT file
+    RUN APPPATH + TESTAPP + ".exe " + APPPATH + document$, NOWAIT 
+
+    IF document$ = "color3.pm4" OR document$ = "color7.pm4" OR document$ = "pgmkr_03.pm4" THEN
+        bLinkedDocuments = TRUE
+    ELSE
+        bLinkedDocuments = FALSE
+    ENDIF
+    
+    IF bLinkedDocuments THEN
+        'Click on the ignore all button to dismiss included graphics.
+        SendKeys "%{a}"
+	Wait 5
+	'ClickButton "Ignore all"
+    ENDIF
+    
+    'Exit application.  We have to use keystrokes because PM4 is an
+    'MDI application and our focus window has no menu associated with
+    'it.
+    Wait 7
+    SelectWindow "PageMaker 4.0"
+    hwndPM = GetActiveWindow()
+
+    'Reformat document for default printer
+    PrinterSetup
+
+    'Get to the print dialog box
+    SelectMenuItem "File"
+    SelectMenuItem "Print"
+
+    'Set the orientation of the printer depending on document.
+    ClickButton "Setup"
+    IF document$ = "color3.pm4" OR document$ = "capabil.pm4" OR document$ = "pgmkr_03.pm4" THEN
+        ClickButton "Landscape"    
+    ELSE
+        ClickButton "Portrait"
+    END IF
+    ClickButton "OK"
+
+    'We're in print dialog box, simply chose OK.
+    ClickButton "OK"
+    
+    'For those documents where included graphics are ignored, select
+    'print anyway on presented dialog box.
+    IF bLinkedDocuments THEN
+        ClickButton "Print Pub"
+    END IF
+
+    'After finishing printing, exit application.  Don't save changes.
+    WHILE GetActiveWindow() <> hwndPM
+    WEND
+    SelectWindow "PageMaker 4.0"
+    SelectMenuItem "File"
+    SelectMenuItem "Exit"
+
+    'Save document on Exit?
+    ClickButton "No"
+   
+    endScript
+
+    '$IFDEF CTSHELL
+        HctScriptEnd (RS_PASSED)   
+    '$ENDIF
+ENDIF
+
+SUB PrinterSetup
+    DIM defaultPrinter AS STRING
+
+    'Get to target printer dialog box
+    SelectMenuItem "File"
+    SelectMenuItem "Target Printer"
+    
+    'Get the current default printer for windows
+    defaultPrinter$ = GetDefaultPrinter
+    print defaultPrinter$
+    ClickListBoxItem(defaultPrinter$)
+    ClickButton "OK"
+
+    'Click on OK button on recompose document dialog 
+    ClickButton "OK"    
+END SUB
