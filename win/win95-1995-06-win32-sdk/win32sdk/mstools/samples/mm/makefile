@@ -1,0 +1,51 @@
+#############################################################################
+#
+#   THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY
+#   KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+#   IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR
+#   PURPOSE.
+#
+#   Copyright (c) 1993-1995  Microsoft Corporation.  All Rights Reserved.
+#
+#############################################################################
+
+DIRLIST =   acmapp    \
+            aviedit   \
+            aviview   \
+            captest   \
+            dseqfile  \
+            icmapp    \
+            icwalk    \
+            langplay  \
+            lowpass   \
+            mciapp    \
+            mciplay   \
+            mcipuzzl  \
+            midimon   \
+            mixapp    \
+            mmcaps    \
+            movplay   \
+            mplay     \
+            palmap    \
+            reverse   \
+            soundapp  \
+            textout   \
+            vidcap    \
+            wavefile  \
+            writeavi
+
+all: $(DIRLIST) win95
+
+$(DIRLIST):
+	cd $@
+	@echo *** mm\$@ *** >>$(MSTOOLS)\samples\mm.tmp
+	@nmake -a -i -nologo >>$(MSTOOLS)\samples\mm.tmp
+	cd ..
+	
+
+win95:
+!IF EXIST (win95)
+    cd win95
+    @nmake -a -i -nologo
+    cd ..
+!ENDIF

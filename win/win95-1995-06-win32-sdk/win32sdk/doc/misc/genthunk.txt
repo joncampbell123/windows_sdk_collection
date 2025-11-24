@@ -1,0 +1,444 @@
+Windows NT Generic Thunk Overview
+=================================
+
+Windows NT supports running 16-bit applications using a technology referred
+to as WOW (Windows on Windows NT). Each 16-bit application can be run in its
+own address space (VDM) or run in a shared address space (the default). The
+16-bit Windows API calls are mapped to Win32 APIs in the WOW layer.
+
+Windows NT does not allow mixing 16-bit and 32-bit code in the same process.
+WOW supports standard IPC mechanisms such as DDE, RPC, OLE, and named pipes,
+but there are occasions when it is necessary to call a routine in a Win32
+DLL (including Win32 APIs in the system DLLs) from a 16-bit application. This
+functionality is provided by WOW Generic Thunks.
+
+When deciding whether to use existing IPC mechanisms or use Generic Thunks, it
+is important to consider that Generic Thunks are unique to Windows NT and code
+that uses them will not be portable to other Win32 platforms. Other Win32
+platforms support different thunking mechanisms (i.e. Universal Thunks on
+Win32s). The best thing to do is to isolate thunking code into DLLs which can
+be made platform-specific, or to detect the platform at runtime and call
+the appropriate APIs (see the \SCT\Samples\Interop sample for an example).
+
+WOW Application Programming Interfaces
+======================================
+
+The following are 16-bit WOW APIs exported by KERNEL for use in Generic Thunks.
+The prototypes can be found in wownt16.h.
+
+----------
+
+DWORD FAR PASCAL LoadLibraryEx32W(
+   LPCSTR lpszLibFile,
+   DWORD  hFile,
+   DWORD  dwFlags);
+
+This API allows a 16-bit thunk DLL to load a 32-bit thunk DLL.
+
+Parameters
+
+This API thunks to the Win32 LoadLibraryEx(). For a complete description of
+the parameters, please refer to the Win32 SDK documentation.
+
+Returns
+
+If the call succeeds, the return value is a 32-bit DLL HINSTANCE, otherwise,
+it is NULL.
+
+Comments
+
+The 16-bit thunk DLL can then call GetProcAddress32W() to get the address of
+the 32-bit entry point(s) and then call the thunk(s) via CallProc32W().
+
+----------
+
+BOOL FAR PASCAL FreeLibrary32W(DWORD hInst);
+
+This API allows a 16-bit thunk DLL to free a 32-bit thunk DLL which it had
+previously loaded via LoadLibraryEx32W().
+
+Parameter
+
+This API thunks to the Win32 FreeLibrary(). For a complete description of the
+parameter, please refer to the Win32 SDK documentation.
+
+Returns
+
+If the function succeeds, the return value is TRUE, otherwise, it is FALSE.
+
+Comments
+
+Note that WOW does not do any cleanup of 32-bit thunk DLLs when the WOW task
+exits. It is up to the 16-bit thunk DLLs to free the 32-bit thunk DLLs as
+necessary.
+
+----------
+
+DWORD FAR PASCAL GetProcAddress32W(DWORD hModule, LPCSTR lpszProc);
+
+This API allows a 16-bit thunk DLL to get a value that corresponds to a
+32-bit thunk routine.
+
+Parameters
+
+This API thunks to the Win32 GetProcAddress(). For a complete description of
+the parameters, please refer to the Win32 SDK documentation.
+
+Returns
+
+If the call succeeds, the return value is a 32-bit value that must be passed
+as a parameter to CallProc32W() or CallProcEx32W(), rather than used directly.
+
+----------
+
+DWORD FAR PASCAL GetVDMPointer32W(lpAddress, fMode);
+
+This API allows a 16-bit thunk DLL to translate a 16-bit far pointer into
+a 32-bit flat pointer for use by a 32-bit thunk DLL.
+
+Parameters
+
+   LPVOID lpAddress Valid 16:16 address, either protect or "real" mode
+   UNIT   fMode     1 - address is interpreted as Protect Mode address
+                    0 - address is interpreted as "Real" Mode Address
+
+Returns
+
+If the call succeeds, the return value is a 32-bit linear address. Otherwise,
+the function will return NULL. Note that on non-x86 platforms "real" mode
+address 0:0 may not point to linear 0 in memory, so always use this function
+and make no assumptions about memory layout.
+
+Comments
+
+The WOW Kernel memory manager moves segments in memory and keeps the selectors
+the same. However if you get the linear address, it may not be valid if the
+memory manager has moved memory. If you need to keep a flat pointer to
+a buffer for a long period (rather than doing the address conversion each time
+the pointer is used), then call GlobalWire() to lock the segment in low memory.
+On non-x86 platforms, it will not be possible to use this address directly,
+but the address can be useful to pass to other 32-bit thunk DLLs or as a part
+of a packet of data to be passed to another process.
+
+----------
+
+DWORD FAR PASCAL CallProc32W( DWORD param1, DWORD param2, ... ,
+                              LPVOID lpProcAddress32,
+                              DWORD fAddressConvert, DWORD nParams);
+
+This API is used by a 16-bit thunk DLL to call an entry point in a 32-bit DLL.
+
+Parameters
+
+   DWORD   param1-param32    Parameters for 32-bit procedure represented by
+                             lpProcAddress32
+
+   LPVOID  lpProcAddress32   The 32-bit value corresponding to the procedure
+                             to be called, returned by GetProcAddress32().
+
+   DWORD   fAddressConvert   Bit mask representing which parameters will be
+                             treated as 16:16 pointers and translated into
+                             flat linear pointers before being passed to the
+                             32-bit procedure
+
+   DWORD   nParams           Number of DWORD params passed (not counting
+                             fAddressConvert and nParams). For functions
+                             that take no parameters this will be 0.
+
+Returns
+
+The API returns a DWORD which is the return value from the 32-bit entry point
+represented by lpProcAddress32. The return value can also be 0 if lpProcAddress
+was 0 or if nParams is greater than 32.
+
+Comments
+
+At minimum this routine takes 3 parameters (lpProcAddress32, fAddressConvert
+and nParams). It can additionally take a maximum of 32 optional parameters.
+These parameters must be DWORDS and must match the type that the 32-bit thunk
+DLL is expecting. If the appropriate bit is set in the fAddressConvert mask,
+the parameter will be translated from a 16:16 pointer to a 32-bit flat linear
+pointer. Note that the lowest bit in the mask represents param1, the second
+lowest bit represents param2, and so forth.
+
+Under Windows NT version 3.1, the procedure called must be defined with the
+_stdcall calling convention.
+
+WARNING: Be careful when using this API, since there is no compiler check made
+on the number and type of parameters, no conversions of types (all parameters
+passed a DWORDS and will be passed directly to the function called without
+conversion). No checks of 16:16 address are made (limit checks, NULL checks,
+correct ring level, and so forth).
+
+Reference
+
+See also CallProcEx32W().
+
+----------
+
+DWORD FAR CallProcEx32W( DWORD nParams, DWORD fAddressConvert,
+                         DWORD lpProcAddress, DWORD param1, ... );
+
+This API is used by a 16-bit thunk DLL to call an entry point in a 32-bit DLL.
+This function is new to Windows NT version 3.5.
+
+Parameters
+
+See the parameters for CallProc32W().
+
+Comments
+
+CallProcEx32W() is similar to CallProc32W(), but it uses the C calling
+convention to allow easier and more flexible prototyping.
+
+On Windows NT version 3.5, both CallProc32W() and CallProcEx32W() accept a
+flag OR'd with the parameter count which indicates the calling convention of
+the 32-bit procedure. For example, the call to a _cdecl function that accepts
+1 parameter by value would look like this:
+
+   dwResult = CallProcEx32W( CPEX_DEST_CDECL | 1, 0, dwfn32, param1 );
+
+while a similar call to a _stdcall function would look like this:
+
+   dwResult = CallProcEx32W( CPEX_DEST_STDCALL | 1, 0, dwfn32, param1 );
+
+Reference
+
+See also CallProc32W().
+
+-------------------------------------------------------------------------------
+
+The following are 32-bit WOW APIs exported by WOW32.DLL.
+
+----------
+
+LPVOID WINAPI WOWGetVDMPointer(DWORD vp, DWORD dwBytes, BOOL fProtectedMode);
+
+Convert a 16:16 address to the equivalent flat address.
+
+Parameters
+
+   vp               Valid 16:16 address
+
+   dwBytes          Size of block pointed to by vp
+
+   fProtectedMode   1 - upper 16 bits are treated as a selector in the local
+                        descriptor table
+                    0 - upper 16 bits are treated as a real-mode segment value
+
+Returns
+
+If the API is successful, the return value the 32-bit address. The return value
+is NULL if the selector is invalid.
+
+Comments
+
+Limit checking is not performed in the retail build of Windows NT. It is
+performed in the checked (debug) build of WOW32.DLL, which will cause NULL to
+be returned when the limit is exceeded by the supplied offset.
+
+----------
+
+LPVOID WINAPI WOWGetVDMPointerFix(DWORD vp, 
+                                  DWORD dwBytes,
+                                  BOOL fProtectedMode);
+VOID WINAPI WOWGetVDMPointerUnfix(DWORD vp);
+
+
+The WOWGetVDMPointerFix is functionally equivalent to WOWGetVDMPointer on 
+Windows NT.  However, on future releases of Windows this function
+will call GlobalFix before returning the flat address, so that the 16-bit 
+memory will not move around in linear space.  WOWGetVDMPointerUnFix will
+GlobalUnFix the memory and return.
+
+The reason for this is that while the 32-bit code called through Generic
+Thunks is executing on Windows NT, no other 16-bit code will execute in that
+VDM. As a result, the 16-bit memory will not move around in linear
+(32-bit) memory.  However, this will not be the case on all platforms
+that support these APIs.
+
+Please note that Windows NT 3.5 does not GlobalFix the memory when you use
+this call so if your thunks use callbacks (WOWCallback16 and WOWCallback16Ex)
+then it is possible that the 16-bit memory will move around in linear space on
+Windows NT during the callback. In that case you should either GlobalFix the 
+memory before calling the thunk or discard all flat pointers and call 
+WOWGetVDMPointer after returning from the callback.
+
+Also, if you use any of the WOWGlobalAlloc16 family of APIs, its possible that
+any 32-bit pointers that you have to 16-bit memory may become invalidated as the
+16-bit heap is shuffled during the callback.
+
+----------
+
+WORD  WINAPI WOWGlobalAlloc16(WORD wFlags, DWORD cb);
+WORD  WINAPI WOWGlobalFree16(WORD hMem);
+DWORD WINAPI WOWGlobalLock16(WORD hMem);
+BOOL  WINAPI WOWGlobalUnlock16(WORD hMem);
+
+These APIs thunk to the 16-bit side and call the Win16 versions of 
+these APIs.
+
+----------
+
+DWORD WINAPI WOWGlobalAllocLock16(WORD wFlags, DWORD cb, WORD *phMem);
+WORD  WINAPI WOWGlobalUnlockFree16(DWORD vpMem);
+DWORD WINAPI WOWGlobalLockSize16(WORD hMem, PDWORD pcb);
+
+These APIs combine several common Win16 operations into one call
+across the thunk.
+
+----------
+
+VOID WINAPI WOWYield16(VOID);
+VOID WINAPI WOWDirectedYield16(WORD htask16);
+
+These APIs, like the WOWGlobalAlloc16 family of APIs, thunk down to the
+Win16 forms of these APIs to allow other tasks to run while the thunk
+is doing a lengthy operation.  Note that 16-bit blocks of memory that have
+not been GlobalFix'd may move in memory as a result of this call.
+
+----------
+
+DWORD WINAPI WOWCallback16(DWORD vpfn16, DWORD dwParam);
+
+Used in 32-bit code called from 16-bit code via Generic Thunks to call back
+to the 16-bit side (Generic Callback).
+
+Parameters
+
+   vpfn16   Pointer to 16-bit callback routine, which is passed from the
+            16-bit side
+
+   dwParam  Parameter for the 16-bit callback routine
+
+Returns
+
+The value comes from the callback routine. If the callback routine returns a
+WORD instead of a DWORD, the upper 16 bits of the return value are undefined.
+If the callback routine has no return value, the entire return value of this
+API is undefined.
+
+Comments
+
+The 16-bit function to be called must be declared with one of the following
+types:
+
+   LONG FAR PASCAL CallbackRoutine(DWORD dwParam);
+
+   -or-
+
+   LONG FAR PASCAL CallbackRoutine(VOID FAR *vp);
+
+depending on whether the parameter is a pointer or not.
+
+NOTE: If you are passing a pointer, you'll need to get the pointer using
+either WOWGlobalAlloc16() or WOWGlobalAllocLock16() (see wownt32.h).
+
+----------
+
+BOOL WINAPI WOWCallback16Ex(
+              DWORD  vpfn16,
+              DWORD  dwFlags,
+              DWORD  cbArgs,
+              PVOID  pArgs,
+              PDWORD pdwRetCode
+              );
+
+Used in 32-bit code called from 16-bit code via Generic Thunks to call back
+to the 16-bit side (Generic Callback).
+
+Parameters
+
+   vpfn16      Pointer to 16-bit callback routine, which is passed from the
+               16-bit side
+
+   dwFlags     WCB16_PASCAL - to call a _pascal callback routine (default)
+               WCB16_CDECL  - to call a _cdecl callback routine
+
+   cbArgs      Count of bytes in arguments (used to properly clean 16-bit stack)
+
+   pArgs       Arguments for the callback routine
+
+   pdwRetCode  The return code from the callback routine
+
+Returns
+
+If cbArgs is larger than the WCB16_MAX_ARGS which the system supports, the
+return value is FALSE and GetLastError() returns ERROR_INVALID_PARAMETER.
+Otherwise, the return value is TRUE and the DWORD pointed to by pdwRetCode
+contains the return code from the callback routine. If the callback routine
+returns a WORD, the HIWORD of the return code is undefined and should be
+ignored by using LOWORD(dwRetCode).
+
+Comments
+
+WOWCallback16Ex() allows any combination of arguments up to WCB16_MAX_CBARGS
+bytes total to be passed to the 16-bit callback routine. Regardless of the
+value of cbArgs, WCB16_MAX_CBARGS bytes will always be copied from pArgs to the
+16-bit stack. If pArgs is less than WCB16_MAX_CBARGS bytes from the end of a
+page and the next page is inaccessible, WOWCallback16Ex() will incur an access
+violation.
+
+The arguments pointed to by pArgs must be in the correct order for the callback
+routine's calling convention. For example, to call the PASCAL routine
+SetWindowText()
+
+   LONG FAR PASCAL SetWindowText(HWND hwnd, LPCSTR lpsz);
+
+pArgs would point to an array of words:
+
+   WORD SetWindowTextArgs[] = {OFFSETOF(lpsz), SELECTOROF(lpsz), hwnd};
+
+In other words, the arguments are placed in the array in reverse order, with
+the least significant word first for DWORDs and offset first for FAR pointers.
+
+To call the CDECL routine wsprintf()
+
+   LPSTR lpszFormat = "%d %s";
+   int _cdecl wsprintf(lpsz, lpszFormat, nValue. lpszString);
+
+pArgs would point to the array:
+
+   WORD wsprintfArgs[] = {OFFSETOF(lpsz), SELECTOROF(lpsz),
+                          OFFSETOF(lpszFormat), SELECTOROF(lpszFormat),
+                          nValue,
+                          OFFSETOF(lpszString), SELECTOROF(lpszString)};
+
+In other words, the arguments are placed in the array in the order listed in
+the function prototype with the least significant word first for DWORDs and
+offset first for FAR pointers.
+
+----------
+
+HANDLE WINAPI WOWHandle32 (WORD, WOW_HANDLE_TYPE);
+WORD WINAPI WOWHandle16 (HANDLE, WOW_HANDLE_TYPE);
+
+These APIs (and the associated macros) are used to map a
+16-bit handle to a 32-bit handle (and vice-versa).  These
+APIs should be used in lieu of any private knowledge of
+the relationship between a Win16 handle and a Win32 handle.
+
+The reason is that the relationship between a Win16 handle
+and a Win32 handle can change (and has done so between
+Windows NT 3.1 and Windows NT 3.5).  We expect that they
+may change in the future.
+
+These APIs use the WOW_HANDLE_TYPE to indicate the type of
+handle being translated.  Types supported include:
+HWND, HMENU, HDWP, HDROP, HDC, HFONT, HMETAFILE, HRGN,
+HBITMAP, HBRUSH, HPALETTE, HPEN, HACCEL, HTASK, FULLHWND
+
+The WOW_HANDLE_TYPE corresponding to each of these is of
+the form WOW_TYPE_<handle>, e.g. WOW_TYPE_HWND.
+
+Also, there are macros in WOWNT32.H to use to map handles between
+Win16 and Win32.  For example, to map a Win16 HWND to a Win32
+HWND, you would use the HWND_32 macro (e.g. hWnd32 = HWND_32(hWnd16)).
+
+A "full" hWnd is a hWnd that a Win32 app would see (and therefore can
+be used in comparisons with 32-bit hWnds received from Win32 APIs.) 
+The other hWnd type has a different value but is recognized by the 
+system.  Please do not make assumptions about the relationship between
+the 16-bit hWnd, the 32-bit Hwnd, and the 32-bit Full hWnd.  This
+relationship has changed in the past (for performance reasons) and it
+may change again in the future.

@@ -1,0 +1,541 @@
+'**************************************************************************
+'*                       MAPI 1.0 PDK/NT RunTime Setup
+'**************************************************************************
+
+'$INCLUDE 'setupapi.inc'
+'$INCLUDE 'mscpydis.inc'    ''System
+'$INCLUDE 'msdetect.inc'    ''Detects Avalilable Disk Space
+
+CONST MB_YESNO        = 4
+CONST MB_ICONQUESTION = 32
+CONST IDNO            = 7
+
+''Dialog ID's
+CONST WELCOME       = 100
+CONST WELCOME32     = 102
+CONST ASKQUIT       = 200
+CONST ASKQUIT32     = 202
+CONST DESTPATH      = 300
+CONST DESTPATH32    = 302
+CONST EXITFAILURE   = 400
+CONST MAPIRUNNING	= 500
+CONST EXITQUIT      = 600
+CONST EXITSUCCESS   = 700
+CONST OPTIONS       = 800
+CONST APPHELP       = 900
+CONST APPHELP2      = 1500
+CONST APPHELP3      = 1700
+CONST APPHELP4      = 1800
+CONST MAPIRENAME16  = 2000
+CONST MAPIRENAME32  = 2100
+CONST CHECK         = 2500
+CONST BADPATH       = 6400
+CONST DEVSPACE      = 25000000
+CONST SYSSPACE      = 15000000
+
+''From MSKB: Q88414
+CONST WS_VISIBLE 		= &H10000000
+CONST WS_BORDER			= &H00800000
+CONST WS_CLIPCHILDREN	= &H02000000
+CONST GWL_STYLE			= -16
+CONST SW_SHOWMAXIMIZED  = 3
+
+
+''Bitmap ID
+CONST LOGO = 1
+
+'' Win NT = 32, Win 3.x = 16
+GLOBAL INSTALLING%
+
+GLOBAL File1
+
+''File Types
+GLOBAL DEST$        ''Default destination directory.
+GLOBAL WINDRIVE$    ''Windows Drive Letter.
+GLOBAL OPTCUR$      ''Option selection from option dialog.
+GLOBAL CHECKSTATES$
+GLOBAL WinSysDir$
+GLOBAL EXESuffix$
+GLOBAL SrcDir$
+GLOBAL CUIDLL$
+
+DECLARE SUB Install
+DECLARE SUB RenameMAPI
+DECLARE FUNCTION MakePath (szDir$, szFile$) AS STRING
+DECLARE FUNCTION FIsSpoolerRunning LIB "mscuistf.dll" () AS INTEGER
+DECLARE FUNCTION WorkingWinExec LIB "mscuistf.dll" (szDir$, szFile$, szCmdLine$) AS INTEGER
+
+DECLARE FUNCTION ShowWindow LIB "user.exe" (hWnd%, iShow%) AS INTEGER
+DECLARE FUNCTION SetWindowLong LIB "user.exe" (hWnd%, ffset%, style%) AS LONG
+
+
+INIT:
+    INSTALLING% = 32
+	
+	'' Maximize the Window - MSKB: Q88414 - piece of cakey
+	hWnd% = HwndFrame()
+	i1& = SetWindowLong(hWnd%, GWL_STYLE, WS_VISIBLE+WS_BORDER+WS_CLIPCHILDREN)
+	j1% = ShowWindow(hWnd%, SW_SHOWMAXIMIZED)
+	
+	
+    CUIDLL$ = "mscuistf.dll"            ''Custom user interface dll
+    HELPPROC$ = "FHelpDlgProc"          ''Help dialog procedure
+
+    MajorVer% = GetWindowsMajorVersion()
+    MinorVer% = GetWindowsMinorVersion()
+
+	IF MajorVer% = 3 AND MinorVer% = 95 THEN
+    	i% = DoMsgBox("The MAPI PDK run time install does not support Windows 95.  Please use the MAPI components supplied with Windows 95.", "Incorrect Operating System", MB_OK+MB_TASKMODAL+MB_ICONHAND)
+		END
+	ELSE
+	    IF  MajorVer% < 3 OR (MajorVer% = 3 AND MinorVer% < 10) THEN
+			IF INSTALLING% = 32 THEN
+	    		i% = DoMsgBox("Microsoft Windows NT version 3.51 is required for this software.  Please upgrade your version of Windows NT.", "Installation Problem", MB_OK+MB_TASKMODAL+MB_ICONHAND)
+				END
+			ELSE
+		    	i% = DoMsgBox("Microsoft Windows version 3.10 or greater is required for this software.  Please upgrade your version of Windows.", "Installation Problem", MB_OK+MB_TASKMODAL+MB_ICONHAND)
+				END
+	    	END IF
+		END IF
+	END IF
+
+    SetBitmap CUIDLL$, LOGO
+	IF INSTALLING% = 32 THEN
+    	SetTitle "Windows Messaging System Run Time Setup"
+	ELSE
+    	SetTitle "Windows Messaging System PDK Setup"
+	END IF
+
+    szInf$ = GetSymbolValue("STF_SRCINFPATH")
+    IF szInf$ = "" THEN
+		szInf$ = GetSymbolValue("STF_CWDDIR") + "SETUP.INF"
+    END IF
+    ReadInfFile szInf$
+
+    WINDRIVE$ = MID$(GetWindowsDir, 1, 1)
+    DEST$ = WINDRIVE$ + ":\MAPI.PDK"
+
+    OPTCUR$ = "2"
+
+WELCOME:
+	IF INSTALLING% = 32 THEN
+    	sz$ = UIStartDlg(CUIDLL$, WELCOME32, "FInfoDlgProc", APPHELP, HELPPROC$)
+	ELSE
+    	sz$ = UIStartDlg(CUIDLL$, WELCOME, "FInfoDlgProc", APPHELP, HELPPROC$)
+	END IF
+    IF sz$ = "CONTINUE" THEN
+		UIPop 1
+    ELSE
+		GOSUB ASKQUIT
+		GOTO WELCOME
+    END IF
+
+
+	InNT% = GetWOWMode()
+
+	SrcDir$ = GetSymbolValue("STF_SRCDIR")
+	IF INSTALLING% = 32 THEN
+		WinSysDir$ = GetWindowsDir() + "SYSTEM32\"
+		EXESuffix$ = "32"
+	ELSE
+		WinSysDir$ = GetWindowsDir() + "SYSTEM\"
+		EXESuffix$ = ""
+	ENDIF
+
+MAPIRUNNING:
+	IF FIsSpoolerRunning() = 1 THEN
+	    sz$ = UIStartDlg(CUIDLL$, MAPIRUNNING, "FInfoDlgProc", APPHELP4, HELPPROC$)
+	    IF sz$ = "EXIT" THEN
+			UIPopAll
+			END
+		END IF
+
+'' Old stuff from when MAPIRUNNING had a "CONTINUE" button
+''	    IF sz$ = "CONTINUE" THEN
+''			IF FIsSpoolerRunning() = 0 THEN
+''				UIPop 1
+''			ELSE
+''				GOTO MAPIRUNNING
+''			ENDIF
+''	    ELSE
+''			GOSUB ASKQUIT
+''			GOTO MAPIRUNNING
+''	    END IF
+
+	END IF
+
+''	Back up Mail 3.x MAPI files if necessary
+	RenameMAPI
+
+'' Set the default value for the Sample Files RADIO Button.
+    AddListItem "CheckItemsIn", "ON"
+
+	IF INSTALLING% = 16 THEN
+OPTION:
+    	SetSymbolValue "RadioDefault", OPTCUR$
+OPTL1:
+    	sz$ = UIStartDlg(CUIDLL$, OPTIONS, "FRadioDlgProc", APPHELP2, HELPPROC$)
+    	OPTCUR$ = GetSymbolValue("ButtonChecked")
+
+    	IF sz$ = "CONTINUE" THEN
+			UIPop(1)
+    	ELSEIF sz$ = "REACTIVATE" THEN
+			GOTO OPTL1
+    	ELSE
+			GOSUB ASKQUIT
+			GOTO OPTION
+	    END IF
+	ELSE
+		OPTCUR$ = "1"
+	END IF
+
+GETPATH:
+    SetSymbolValue "EditTextIn", DEST$
+    SetSymbolValue "EditFocus", "END"
+GETPATHL1:
+	IF INSTALLING% = 32 THEN
+    	sz$ = UIStartDlg(CUIDLL$, DESTPATH32, "FEditDlgProc", APPHELP3, HELPPROC$)
+	ELSE
+    	sz$ = UIStartDlg(CUIDLL$, DESTPATH, "FEditDlgProc", APPHELP3, HELPPROC$)
+	END IF
+    DEST$ = GetSymbolValue("EditTextOut")
+
+    IF sz$ = "CONTINUE" THEN
+		IF IsDirWritable(DEST$) = 0 THEN
+		    GOSUB BADPATH
+		    GOTO GETPATHL1
+		END IF
+		UIPop 1
+    ELSEIF sz$ = "REACTIVATE" THEN
+		GOTO GETPATHL1
+    ELSEIF sz$ = "BACK" THEN
+		UIPop 1
+		IF INSTALLING% = 16 THEN
+			GOTO OPTION
+		ELSE
+			GOTO WELCOME
+		END IF
+    ELSE
+		GOSUB ASKQUIT
+		GOTO GETPATH
+    END IF
+
+'' Check disk space
+    free& = GetFreeSpaceForDrive(MID$(DEST$, 1, 1))
+	IF OPTCUR$ = "1" THEN
+		need& = SYSSPACE
+	ELSE
+		need& = DEVSPACE
+	END IF
+    IF free& < need& THEN
+		retval% = DoMsgBox("There is not enough space on the selected drive to install the MAPI PDK.  Please select another location.", "Install Problem", IDOK)
+		GOTO GETPATH
+    END IF
+
+ClearCopyList
+
+Install
+
+QUIT:
+    ON ERROR GOTO ERRQUIT
+
+    IF ERR = 0 THEN
+		dlg% = EXITSUCCESS
+    ELSEIF ERR = STFQUIT THEN
+		dlg% = EXITQUIT
+    ELSE
+		dlg% = EXITFAILURE
+    END IF
+QUITL1:
+    sz$ = UIStartDlg(CUIDLL$, dlg%, "FInfo0DlgProc", 0, "")
+    IF sz$ = "REACTIVATE" THEN
+		GOTO QUITL1
+    END IF
+    	UIPop 1
+    END
+
+ERRQUIT:
+    i% = DoMsgBox("Setup sources were corrupted, call the included support number", "Setup Problem", MB_OK+MB_TASKMODAL+MB_ICONHAND)
+    END
+
+BADPATH:
+    sz$ = UIStartDlg(CUIDLL$, BADPATH, "FInfo0DlgProc", 0, "")
+    IF sz$ = "REACTIVATE" THEN
+		GOTO BADPATH
+    END IF
+	
+    UIPop 1
+    RETURN
+
+ASKQUIT:
+    sz$ = UIStartDlg(CUIDLL$, ASKQUIT, "FQuitDlgProc", 0, "")
+
+    IF sz$ = "EXIT" THEN
+		UIPopAll
+''      ERROR STFQUIT
+		END
+    ELSEIF sz$ = "REACTIVATE" THEN
+		GOTO ASKQUIT
+    ELSE
+		UIPop 1
+    END IF
+    RETURN
+
+'**
+'** Purpose:
+'**     Builds the copy list and performs all installation operations.
+'** Arguments:
+'**     none.
+'** Returns:
+'**     none.
+'*************************************************************************
+SUB Install STATIC
+
+'' this keeps it from checking sizes so that I don't have to rebuild the
+'' inf file all the time by hand
+'' Junk = SetSizeCheckMode(scmOff)
+
+'' Setting up OLD files that need to be removed from the users computer
+''        AddSectionFilesToCopyList "Remove Files", SrcDir$, DEST$
+
+'' Setting files to be copied
+	IF INSTALLING% = 32 THEN
+      CreateDir DEST$, cmoNone
+      AddSectionFilesToCopyList "mapi", SrcDir$, DEST$
+      AddSectionFilesToCopyList "sysfiles", SrcDir$, WinSysDir$
+      CreateDir DEST$ + "\IN", cmoNone
+      CreateDir DEST$ + "\OUT", cmoNone
+	ELSE
+      CreateDir DEST$, cmoNone
+      AddSectionFilesToCopyList "stuff", SrcDir$, DEST$
+      AddSectionFilesToCopyList "mapi", SrcDir$, DEST$
+      AddSectionFilesToCopyList "sysfiles", SrcDir$, WinSysDir$
+	  IF INSTALLING% <> 16 THEN
+      	AddSectionFilesToCopyList "isv", SrcDir$, DEST$
+	  ENDIF
+      CreateDir DEST$ + "\IN", cmoNone
+      CreateDir DEST$ + "\OUT", cmoNone
+	END IF
+
+   IF OPTCUR$ = "2" THEN   
+      CreateDir DEST$ + "\H", cmoNone
+      AddSectionFilesToCopyList "inc", SrcDir$, DEST$
+      CreateDir DEST$ + "\LIB", cmoNone
+      AddSectionFilesToCopyList "lib", SrcDir$, DEST$
+      AddSectionFilesToCopyList "dev", SrcDir$, DEST$
+   END IF
+
+''i% = DoMsgBox("Skip file copy?", "PDK Setup", MB_YESNO+MB_TASKMODAL+MB_ICONQUESTION)
+''IF i% = IDNO THEN
+	CopyFilesInCopyList
+''END IF
+
+''	Do what is necessary to set up the MSDN browser for our help files
+	IF INSTALLING% = 16 THEN
+		IF NOT Exists(GetWindowsDir() + "MSIN.INI") THEN
+			RegCmdLine$ = DEST$ + "\mergeini -c -q " + DEST$ + "\MSDN.INI -i " + GetWindowsDir() + "MSIN.INI"
+			Run RegCmdLine$
+		END IF
+		
+		RegCmdLine$ = DEST$ + "\mergeini -m -q " + DEST$ + "\MAPISDK.INI -i " + GetWindowsDir() + "MSIN.INI"
+		Run RegCmdLine$
+		
+		CreateIniKeyValue GetWindowsDir() + "MSIN.INI", "series", "MAPISDK", DEST$ + "\MAPISDK.MVB", cmoOverwrite
+		CreateIniKeyValue GetWindowsDir() + "MSIN.INI", "all titles", "MAPISDK.MVB", DEST$ + "\MAPISDK.MVB", cmoOverwrite
+		
+		CreateIniKeyValue GetWindowsDir() + "MSIN.INI", "MAPISDK.MVB", "LocalDir", DEST$, cmoOverwrite
+		CreateIniKeyValue GetWindowsDir() + "MSIN.INI", "MAPISDK.MVB", "Path", DEST$, cmoOverwrite
+	END IF
+
+''	Merge our MAPIPDK.INF with the MAPISVC.INF in the SYSTEM directory.
+''	On Windows 95, we use a smaller .INF file.
+	RegCmdLine$ = DEST$ + "\mergeini -m -q " + DEST$ + "\mapipdk.inf"
+	Run RegCmdLine$
+
+''	Indicate where the installation went	
+	CreateIniKeyValue WinSysDir$ + "MAPISVC.INF", "MAPI", "MAPIROOT", DEST$, cmoOverwrite
+	
+''  Register classes for OLE 2.0 and MAPI interface remoting
+	IF INSTALLING% = 16 THEN
+		RegCmdLine$ = "regedit /s " + WinSysDir$ + "ole2.reg " + SrcDir$ + "..\cfg\mapirpc.reg "
+		Run RegCmdLine$
+		RegCmdLine$ = "regedit /s " + SrcDir$ + "..\cfg\mdisp.reg"
+		Run RegCmdLine$
+	ELSE
+		RegCmdLine$ = "regedit /s " + SrcDir$ + "..\cfg\mapirpc.reg "
+		Run RegCmdLine$
+		RegCmdLine$ = "regedit /s " + SrcDir$ + "..\cfg\mdisp32.reg"
+		Run RegCmdLine$
+	ENDIF
+	
+	IF INSTALLING% = 32 THEN
+		PdkIn$ = MakePath(SrcDir$, "..\..\bin\winnt\i386\pdkin" + EXESuffix$ + ".exe")
+	ELSE
+		PdkIn$ = MakePath(DEST$, "pdkin" + EXESuffix$ + ".exe")
+	END IF
+	
+''	Register standard Capone forms
+	InCmdLine$ = PdkIn$ + " -f " + SrcDir$ + "..\cfg\mapif0.cfg"
+	Run InCmdLine$
+	InCmdLine$ = PdkIn$ + " -f " + SrcDir$ + "..\cfg\mapif1.cfg"
+	Run InCmdLine$
+	InCmdLine$ = PdkIn$ + " -f " + SrcDir$ + "..\cfg\mapif2.cfg"
+	Run InCmdLine$
+	InCmdLine$ = PdkIn$ + " -f " + SrcDir$ + "..\cfg\mapif3.cfg"
+	Run InCmdLine$
+	InCmdLine$ = PdkIn$ + " -f " + SrcDir$ + "..\cfg\mapif4.cfg"
+	Run InCmdLine$
+	InCmdLine$ = PdkIn$ + " -f " + SrcDir$ + "..\cfg\mapif5.cfg"
+	Run InCmdLine$
+	
+''	Record the install point in MAPISVC.INF.
+''	pdkin -r also cleans up the old MLCFG= line in CONTROL.INI.
+''  Also, create a default profile.
+
+	InCmdLine$ = PdkIn$ + " -r " + DEST$ + " -m -p User"
+	Run InCmdLine$
+
+''	Register PDK sample form
+	InCmdLine$ = PdkIn$ + " -f " + SrcDir$ + "..\cfg\chkrform.cfg"
+	Run InCmdLine$
+
+''	Register OLE servers for forms stuff (including sample)
+	RegCmdLine$ = "regedit /s " + SrcDir$ + "..\cfg\mapif.reg"
+	Run RegCmdLine$
+	
+''  Update Progman Groups
+
+	CreateProgmanGroup "MAPI 1.0 PDK", "", cmoNone
+	ShowProgmanGroup  "MAPI 1.0 PDK", 1, cmoNone
+	CreateProgmanItem "MAPI 1.0 PDK", "Release Notes", MakePath(DEST$, "readme.wri"), "", cmoOverwrite
+	CreateProgmanItem "MAPI 1.0 PDK", "Kill Debug Spooler", MakePath(WinSysDir$, "mapisp" + EXESuffix$ + ".exe -k"), "", cmoOverwrite
+	CreateProgmanItem "MAPI 1.0 PDK", "Microsoft Exchange", "exchng" + EXESuffix$ + ".exe", "", cmoOverwrite
+	
+	IF INSTALLING% = 16 THEN
+		CreateProgmanItem "MAPI 1.0 PDK", "Simple MAPI Client", MakePath(DEST$, "smpcli" + EXESuffix$ + ".exe"), "", cmoOverwrite
+		CreateProgmanItem "MAPI 1.0 PDK", "Inbox Repair Tool", MakePath(DEST$, "scanpst" + ".exe"), "", cmoOverwrite
+	END IF
+
+''  SDK stuff
+	IF OPTCUR$ = "2" THEN
+		CreateProgmanItem "MAPI 1.0 PDK", "MAPI Help File", MakePath(DEST$, "msin.exe"), "", cmoOverwrite
+		CreateProgmanItem "MAPI 1.0 PDK", "OLE Messaging", MakePath(DEST$, "dev\olemsg\olemsg.hlp"), "", cmoOverwrite
+		CreateProgmanItem "MAPI 1.0 PDK", "Sample Address Viewer", MakePath(DEST$, "abview" + EXESuffix$ + ".exe"), "", cmoOverwrite
+		CreateProgmanItem "MAPI 1.0 PDK", "Sample Store Viewer", MakePath(DEST$, "mdbvu" + EXESuffix$ + ".exe"), "", cmoOverwrite
+		CreateProgmanItem "MAPI 1.0 PDK", "Sample Stress Mailer", MakePath(DEST$, "send" + EXESuffix$ + ".exe"), "", cmoOverwrite
+		CreateProgmanItem "MAPI 1.0 PDK", "Sample CMC Client", MakePath(DEST$, "cmccli" + EXESuffix$ + ".exe"), "", cmoOverwrite
+		CreateProgmanItem "MAPI 1.0 PDK", "Sample Form Readme", MakePath(DEST$, "dev\chkrform\formsmpl.txt"), "", cmoOverwrite
+	END IF
+
+
+''	Indicate that simple MAPI, extended MAPI, and CMC are enabled
+''  Point to mapi.dll as the home of CMC, unless one already exists
+	CreateIniKeyValue "WIN.INI", "Mail", "MAPI", "1", cmoOverwrite
+	CreateIniKeyValue "WIN.INI", "Mail", "MAPIX", "1", cmoOverwrite
+	CreateIniKeyValue "WIN.INI", "Mail", "OLEMessaging", "1", cmoOverwrite
+	CreateIniKeyValue "WIN.INI", "Mail", "CMC", "1", cmoOverwrite
+	IF FDoesIniKeyExist("WIN.INI", "Mail", "CMCDLLNAME") = 0 THEN
+		CreateIniKeyValue "WIN.INI", "Mail", "CMCDLLNAME", "mapi" + EXESuffix$ + ".dll", cmoOverwrite
+	END IF
+	IF INSTALLING% <> 16 THEN
+		IF FDoesIniKeyExist("WIN.INI", "Mail", "CMCDLLNAME32") = 0 THEN
+			CreateIniKeyValue "WIN.INI", "Mail", "CMCDLLNAME32", "mapi" + EXESuffix$ + ".dll", cmoOverwrite
+		END IF
+	END IF
+
+
+''	Remove or rename obsolete files from earlier Beta and Test Release versions
+	IF FDoesFileExist(WinSysDir$ + "services.ini", femExists) THEN
+		CopyFile WinSysDir$ + "services.ini", WinSysDir$ + "mapisvc.old", cmoNone, FALSE
+		RemoveFile WinSysDir$ + "services.ini", cmoNone
+		TextLine$ = "Your old SERVICES.INI has been backed up as MAPISVC.OLD."
+		i% = DoMsgBox(TextLine$, "MAPI 1.0 PDK", MB_OK+MB_TASKMODAL+MB_ICONINFORMATION)
+	ENDIF
+	IF FDoesFileExist(WinSysDir$ + "mapiwz" + EXESuffix$ + ".dll", femExists) THEN
+		RemoveFile WinSysDir$ + "mapiwz" + EXESuffix$ + ".dll", cmoNone
+	ENDIF
+	IF FDoesFileExist(WinSysDir$ + "mapif" + EXESuffix$ + ".dll", femExists) THEN
+		RemoveFile WinSysDir$ + "mapif" + EXESuffix$ + ".dll", cmoNone
+	ENDIF
+	IF FDoesFileExist(WinSysDir$ + "imsg" + EXESuffix$ + ".dll", femExists) THEN
+		RemoveFile WinSysDir$ + "imsg" + EXESuffix$ + ".dll", cmoNone
+	ENDIF
+	IF FDoesFileExist(WinSysDir$ + "mrpc" + EXESuffix$ + ".dll", femExists) THEN
+		RemoveFile WinSysDir$ + "mrpc" + EXESuffix$ + ".dll", cmoNone
+	ENDIF
+	IF FDoesFileExist(WinSysDir$ + "mrpc.dll", femExists) THEN
+		RemoveFile WinSysDir$ + "mrpc.dll", cmoNone
+	ENDIF
+	IF FDoesFileExist(WinSysDir$ + "mlcfg" + EXESuffix$ + ".dll", femExists) THEN
+		RemoveFile WinSysDir$ + "mlcfg" + EXESuffix$ + ".dll", cmoNone
+	ENDIF
+	
+END SUB
+
+'**
+'** Purpose:
+'**     Appends a file name to the end of a directory path,
+'**     inserting a backslash character as needed.
+'** Arguments:
+'**     szDir$  - full directory path (with optional ending "\")
+'**     szFile$ - filename to append to directory
+'** Returns:
+'**     Resulting fully qualified path name.
+'*************************************************************************
+FUNCTION MakePath (szDir$, szFile$) STATIC AS STRING
+    IF szDir$ = "" THEN
+	MakePath = szFile$
+    ELSEIF szFile$ = "" THEN
+	MakePath = szDir$
+    ELSEIF MID$(szDir$, LEN(szDir$), 1) = "\" THEN
+	MakePath = szDir$ + szFile$
+    ELSE
+	MakePath = szDir$ + "\" + szFile$
+    END IF
+END FUNCTION
+
+SUB RenameMAPI STATIC
+
+'' If Mail 3.x MAPI DLLs exist, rename them.
+'' On Windows 95 we do not expect to find them.
+	FoundMapi3x% = 0
+	ver3& = 3
+
+	'' Check for 16-bit MAPI.DLL.
+	''   NT has NO version ID.
+	''   Mail 3.x/WfW has major version 3.
+	''   Ours has major version 4.
+	'' Do not bother checking for 32-bit DLL; we cannot
+	'' read its resources anyway. It should match the 16-bit one.
+	mapidll$ = WinSysDir$ + "MAPI.DLL"
+	IF FDoesFileExist(mapidll$, 1) THEN
+		mapiver$ = GetVersionOfFile(mapidll$)
+		IF LEN(mapiver$) = 0 THEN
+			FoundMapi3x% = 1
+		ELSE
+			mapivermajor& = GetVersionNthField(mapiver$, 1)
+			IF mapivermajor& = ver3& THEN
+				FoundMapi3x% = 1
+			END IF
+		END IF
+	END IF
+
+	IF FoundMapi3x% = 1 THEN
+		RenameFile mapidll$, "MAPI.BAK"
+		IF INSTALLING% = 32 THEN
+			mapidll$ = WinSysDir$ + "MAPI32.DLL"
+			IF FDoesFileExist(mapidll$, 1) THEN
+				RenameFile mapidll$, "MAPI32.BAK"
+			END IF
+		END IF
+
+		'' Tell the user what we just did.
+		IF INSTALLING% = 32 THEN
+		    sz$ = UIStartDlg(CUIDLL$, MAPIRENAME32, "FInfo0DlgProc", 0, "")
+		ELSE
+		    sz$ = UIStartDlg(CUIDLL$, MAPIRENAME16, "FInfo0DlgProc", 0, "")
+		END IF		
+		UIPop 1
+	END IF
+
+END SUB

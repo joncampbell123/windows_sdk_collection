@@ -1,0 +1,391 @@
+/*
+ * CHATCH.CPP
+ *
+ * Implementation of a class to manage a hatch border around an
+ * in-place editing window.  This is a modification of the OLESTD
+ * hatch window because we want to use this window to forward
+ * messages.
+ *
+ * Copyright (c)1993-1995 Microsoft Corporation, All Right Reserved
+ *
+ * Kraig Brockschmidt, Software Design Engineer
+ * Microsoft Systems Developer Relations
+ *
+ * Internet  :  kraigb@microsoft.com
+ * Compuserve:  >INTERNET:kraigb@microsoft.com
+ */
+
+
+#define INC_OLE2
+#include <windows.h>
+#include <ole2.h>
+
+#define SHADE_FULLRECT        1
+#define SHADE_BORDERIN        2
+#define SHADE_BORDEROUT       3
+
+/*
+ * DrawShading
+ *
+ * Purpose:
+ *  Shade the object when it is in in-place editing. Borders are drawn
+ *  on the Object rectangle. The right and bottom edge of the rectangle
+ *  are excluded in the drawing.
+ *
+ * Parameters:
+ *  lpRect      Dimensions of Container Object
+ *  hdc         HDC for drawing
+ *  dwFlags-
+ *      Exclusive flags
+ *          SHADE_FULLRECT    Shade the whole rectangle
+ *          SHADE_BORDERIN    Shade cWidth pixels inside rect
+ *          SHADE_BORDEROUT   Shade cWidth pixels outside rect
+ *      Optional flags
+ *          SHADE_USEINVERSE
+ *              use PATINVERT instead of the hex value
+ *  cWidth      width of border in pixel
+ *
+ * Return Value: null
+ *
+ * Copied from OBJFDBK.C
+ *
+ */
+void DrawShading(LPRECT lpRect, HDC hdc, DWORD dwFlags, UINT cWidth)
+{
+        HBRUSH  hbr;
+        HBRUSH  hbrOld;
+        HBITMAP hbm;
+        RECT    rc;
+        WORD    wHatchBmp[] = {0x11, 0x22, 0x44, 0x88, 0x11, 0x22, 0x44, 0x88};
+        COLORREF cvText;
+        COLORREF cvBk;
+
+        hbm = CreateBitmap(8, 8, 1, 1, wHatchBmp);
+        hbr = CreatePatternBrush(hbm);
+        hbrOld = (HBRUSH) SelectObject(hdc, hbr);
+
+        rc = *lpRect;
+
+        if (dwFlags == SHADE_FULLRECT) {
+                cvText = SetTextColor(hdc, RGB(255, 255, 255));
+                cvBk = SetBkColor(hdc, RGB(0, 0, 0));
+                PatBlt(hdc, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top,
+                        0x00A000C9L /* DPa */ );
+
+        } else {    // either inside or outside rect
+
+                if (dwFlags == SHADE_BORDEROUT)
+                        InflateRect((LPRECT)&rc, cWidth - 1, cWidth - 1);
+
+                cvText = SetTextColor(hdc, RGB(255, 255, 255));
+                cvBk = SetBkColor(hdc, RGB(0, 0, 0));
+                PatBlt(hdc, rc.left, rc.top, rc.right - rc.left,
+                        cWidth, 0x00A000C9L /* DPa */);
+                PatBlt(hdc, rc.left, rc.top, cWidth, rc.bottom - rc.top,
+                        0x00A000C9L /* DPa */);
+                PatBlt(hdc, rc.right - cWidth, rc.top, cWidth,
+                        rc.bottom - rc.top, 0x00A000C9L /* DPa */);
+                PatBlt(hdc, rc.left, rc.bottom - cWidth, rc.right-rc.left,
+                        cWidth, 0x00A000C9L /* DPa */);
+        }
+
+        SetTextColor(hdc, cvText);
+        SetBkColor(hdc, cvBk);
+        SelectObject(hdc, hbrOld);
+        DeleteObject(hbr);
+        DeleteObject(hbm);
+}
+
+
+#include "classlib.h"
+
+
+/*
+ * FHatchWindowRegister
+ *
+ * Purpose:
+ *  Registers the hatch window class for use with CHatchWin.
+ *
+ * Parameters:
+ *  hInst           HINSTANCE under which to register.
+ *
+ * Return Value:
+ *  BOOL            TRUE if successful, FALSE otherwise.
+ */
+
+BOOL FHatchWindowRegister(HINSTANCE hInst)
+    {
+    WNDCLASS    wc;
+
+    //Must have CS_DBLCLKS for border!
+    wc.style         = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
+    wc.hInstance     = hInst;
+    wc.cbClsExtra    = 0;
+    wc.lpfnWndProc   = HatchWndProc;
+    wc.cbWndExtra    = CBHATCHWNDEXTRA;
+    wc.hIcon         = NULL;
+    wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
+    wc.lpszMenuName  = NULL;
+    wc.lpszClassName = SZCLASSHATCHWIN;
+
+    return RegisterClass(&wc);
+        return FALSE;
+    }
+
+
+
+
+/*
+ * CHatchWin:CHatchWin
+ * CHatchWin::~CHatchWin
+ *
+ * Constructor Parameters:
+ *  hInst           HINSTANCE of the application we're in.
+ */
+
+CHatchWin::CHatchWin(HINSTANCE hInst)
+    : CWindow(hInst)
+    {
+    m_hWnd=NULL;
+    m_hWndKid=NULL;
+    m_hWndAssociate=NULL;
+    m_uID=0;
+
+    m_dBorder=GetProfileInt(TEXT("windows")
+        , TEXT("OleInPlaceBorderWidth"), HATCHWIN_BORDERWIDTHDEFAULT);
+
+    return;
+    }
+
+
+CHatchWin::~CHatchWin(void)
+    {
+    /*
+     * Chances are this was already destroyed when a document
+     * was destroyed.
+     */
+    if (NULL!=m_hWnd && IsWindow(m_hWnd))
+        DestroyWindow(m_hWnd);
+
+    return;
+    }
+
+
+
+/*
+ * CHatchWin::FInit
+ *
+ * Purpose:
+ *  Instantiates a hatch window within a given parent with a
+ *  default rectangle.  This is not initially visible.
+ *
+ * Parameters:
+ *  hWndParent      HWND of the parent of this window
+ *  uID             UINT identifier for this window (send in
+ *                  notifications to associate window).
+ *  hWndAssoc       HWND of the initial associate.
+ *
+ * Return Value:
+ *  BOOL            TRUE if the function succeeded, FALSE otherwise.
+ */
+
+BOOL CHatchWin::FInit(HWND hWndParent, UINT uID, HWND hWndAssoc)
+    {
+    m_hWnd=CreateWindowEx(WS_EX_NOPARENTNOTIFY, SZCLASSHATCHWIN
+        , SZCLASSHATCHWIN, WS_CHILD | WS_CLIPSIBLINGS
+        | WS_CLIPCHILDREN, 0, 0, 100, 100, hWndParent, (HMENU)uID
+        , m_hInst, this);
+
+    m_uID=uID;
+    m_hWndAssociate=hWndAssoc;
+
+    return (NULL!=m_hWnd);
+    }
+
+
+
+
+/*
+ * CHatchWin::HwndAssociateSet
+ * CHatchWin::HwndAssociateGet
+ *
+ * Purpose:
+ *  Sets (Set) or retrieves (Get) the associate window of the
+ *  hatch window.
+ *
+ * Parameters: (Set only)
+ *  hWndAssoc       HWND to set as the associate.
+ *
+ * Return Value:
+ *  HWND            Previous (Set) or current (Get) associate
+ *                  window.
+ */
+
+HWND CHatchWin::HwndAssociateSet(HWND hWndAssoc)
+    {
+    HWND    hWndT=m_hWndAssociate;
+
+    m_hWndAssociate=hWndAssoc;
+    return hWndT;
+    }
+
+HWND CHatchWin::HwndAssociateGet(void)
+    {
+    return m_hWndAssociate;
+    }
+
+
+
+
+
+/*
+ * CHatchWin::RectsSet
+ *
+ * Purpose:
+ *  Changes the size and position of the hatch window and the child
+ *  window within it using a position rectangle for the child and
+ *  a clipping rectangle for the hatch window and child.  The hatch
+ *  window occupies prcPos expanded by the hatch border and clipped
+ *  by prcClip.  The child window is fit to prcPos to give the
+ *  proper scaling, but it clipped to the hatch window which
+ *  therefore clips it to prcClip without affecting the scaling.
+ *
+ * Parameters:
+ *  prcPos          LPRECT providing the position rectangle.
+ *  prcClip         LPRECT providing the clipping rectangle.
+ *
+ * Return Value:
+ *  None
+ */
+
+void CHatchWin::RectsSet(LPRECT prcPos, LPRECT prcClip)
+    {
+    RECT    rc;
+    RECT    rcPos;
+
+    //Calculate the rectangle for the hatch window, then clip it.
+    rcPos=*prcPos;
+    InflateRect(&rcPos, m_dBorder, m_dBorder);
+    IntersectRect(&rc, &rcPos, prcClip);
+
+    SetWindowPos(m_hWnd, NULL, rc.left, rc.top, rc.right-rc.left
+        , rc.bottom-rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
+
+    /*
+     * Set the rectangle of the child window to be at m_dBorder
+     * from the top and left but with the same size as prcPos
+     * contains.  The hatch window will clip it.
+     */
+
+    SetWindowPos(m_hWndKid, NULL, rcPos.left-rc.left+m_dBorder
+        , rcPos.top-rc.top+m_dBorder, prcPos->right-prcPos->left
+        , prcPos->bottom-prcPos->top, SWP_NOZORDER | SWP_NOACTIVATE);
+
+    return;
+    }
+
+
+
+/*
+ * CHatchWin::ChildSet
+ *
+ * Purpose:
+ *  Assigns a child window to this hatch window.
+ *
+ * Parameters:
+ *  hWndKid         HWND of the child window.
+ *
+ * Return Value:
+ *  None
+ */
+
+void CHatchWin::ChildSet(HWND hWndKid)
+    {
+    m_hWndKid=hWndKid;
+
+    if (NULL!=hWndKid)
+        {
+        SetParent(hWndKid, m_hWnd);
+
+        //Insure this is visible when the hatch window becomes visible.
+        ShowWindow(hWndKid, SW_SHOW);
+        }
+
+    return;
+    }
+
+
+/*
+ * HatchWndProc
+ *
+ * Purpose:
+ *  Standard window procedure for the Hatch Window
+ */
+
+LRESULT APIENTRY HatchWndProc(HWND hWnd, UINT iMsg
+    , WPARAM wParam, LPARAM lParam)
+    {
+    PCHatchWin  phw;
+    int         d;
+    HDC         hDC;
+    PAINTSTRUCT ps;
+    RECT        rc;
+
+    phw=(PCHatchWin)GetWindowLong(hWnd, HWWL_STRUCTURE);
+
+    switch (iMsg)
+        {
+        case WM_CREATE:
+            phw=(PCHatchWin)((LPCREATESTRUCT)lParam)->lpCreateParams;
+            SetWindowLong(hWnd, HWWL_STRUCTURE, (LONG)phw);
+            break;
+
+
+        case WM_PAINT:
+            hDC=BeginPaint(hWnd, &ps);
+            GetClientRect(hWnd, &rc);
+
+            d=phw->m_dBorder;
+
+            //Always draw the hatching.
+            DrawShading(&rc, hDC, SHADE_BORDERIN, d);
+
+            EndPaint(hWnd, &ps);
+            break;
+
+
+        case WM_SETFOCUS:
+            //We need this since the container will SetFocus to us.
+            if (NULL!=phw->m_hWndKid)
+                SetFocus(phw->m_hWndKid);
+
+            break;
+
+
+        case WM_LBUTTONDBLCLK:
+            /*
+             * If the double click was within m_dBorder of an
+             * edge, send the HWN_BORDERDOUBLECLICKED notification.
+             *
+             * Because we're always sized just larger than our child
+             * window by the border width, we can only *get* this
+             * message when the mouse is on the border.  So we can
+             * just send the notification.
+             */
+
+            if (NULL!=phw->m_hWndAssociate)
+                {
+                SendCommand(phw->m_hWndAssociate, phw->m_uID
+                    , HWN_BORDERDOUBLECLICKED, hWnd);
+                }
+
+            break;
+
+
+        default:
+            return DefWindowProc(hWnd, iMsg, wParam, lParam);
+        }
+
+    return 0L;
+    }

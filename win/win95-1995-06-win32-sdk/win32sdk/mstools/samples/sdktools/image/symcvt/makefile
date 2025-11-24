@@ -1,0 +1,40 @@
+# Nmake macros for building Windows 32-Bit apps
+
+!include <ntwin32.mak>
+
+all: ..\lib\symcvt.exp ..\bin\symcvt.dll
+
+
+cflags = $(cflags) -DWIN32 -DTARGET32 -DHOST32 -DADDR_MIXED -DNT_BUILD -D_CROSS_PLATFORM_
+
+.c.obj:
+    $(cc) $(cflags) $(cvarsdll) -I..\include -I. $(scall) $(cdebug) $**
+
+OBJS = cofftocv.obj \
+       cvcommon.obj \
+       file.obj     \
+       symcvt.obj   \
+       symtocv.obj
+
+..\lib\symcvt.exp: $(OBJS) symcvt.def
+    @if not exist ..\lib md ..\lib > nul
+    $(implib) @<<
+-machine:$(CPU)
+-def:symcvt.def	
+$(OBJS: =
+)
+-out:..\lib\symcvt.lib
+<<NOKEEP
+
+..\bin\symcvt.dll: ..\lib\symcvt.exp $(OBJS) ..\lib\imagehlp.lib
+    @if not exist ..\bin md ..\bin > nul
+    $(link) @<<
+$(dlllflags)
+-base:0x58400000
+$(linkdebug)
+-out:$@
+$(**: =
+)
+$(conlibsdll: =
+)
+<<NOKEEP

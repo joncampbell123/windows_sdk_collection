@@ -1,0 +1,323 @@
+Below is the specification for the Custom Control support
+in the Dialog Editor (DlgEdit.Exe) for Windows NT.
+
+There are several reasons why the existing Windows 3.x scheme is not
+adequate for NT:
+
+1. DlgEdit can easily be crashed by a user.  The way that a custom
+   control DLL is written for Win 3.x, it must export three functions at
+   three hard-coded ordinals (2, 3 and 4).  The user chooses a menu
+   option that invokes a file open dialog, enters the name of a DLL then
+   presses OK to ask the Dialog Editor to load this "custom control DLL".
+   The editor loads the specified module, checks for and gets the address
+   of these ordinals, pushes parms on the stack, and starts calling
+   them.  There is no way for it to validate that the DLL that the
+   user chose is really a custom control DLL.  It checks for the
+   existence of these three ordinals, but because most DLL's will
+   have at least four exports, and usually start at 1, this doesn't
+   help much.  This means that a user can easily crash the editor
+   by trying to load a random DLL, such as USERSRV.DLL.
+
+2. There is no allowance for UNICODE.  The current scheme of exporting
+   ordinals does not allow for an xxxA and xxxW version of the api's.
+   Also, a set of xxxW structures need to be defined with room for the
+   UNICODE strings.
+
+3. The structures passed around have obsolete fields, and some are not
+   dword aligned.  This interface was originally written for the Win 3.0
+   dialog editor (dialog.exe) and some fields are not necessary for
+   the Win 3.1 and NT dialog editor (DlgEdit.Exe).
+
+4. There is no support for some of the new features of the Win 32
+   resource file format, such as Extended Styles for controls and
+   NLS Language and Sub-Language values.
+
+5. There is no support for some of the features of the new Dialog
+   Editor, such as sizing to text, or specifying that the control
+   does not take text and allowing the editor to disable the Text
+   entry field on the Properties Bar to prevent text from being
+   entered for the control.
+
+6. Custom controls are limited to one class per DLL.  This is an
+   arbitrary restriction based on the structures used, and groups
+   like Pen Windows have had to use hacks to work around this.
+
+
+The real driving factor is #2 above, the lack of support for UNICODE.
+Because of these reasons, the following will be the support of
+Custom Controls in the Win32 (NT) Dialog Editor.  For more information,
+look at the CUSTCNTL.H header file.
+
+
+-- INITIALIZING A CUSTOM CONTROL ----------------------------------------
+
+Custom control DLL's should export one or both of the following
+functions by name (the ordinal used for the export does not matter):
+
+UINT CALLBACK CustomControlInfoA(LPCCINFOA acci)
+UINT CALLBACK CustomControlInfoW(LPCCINFOW acci)
+
+The parameter to these functions is either NULL, or a pointer to an
+array of CCINFOA or CCINFOW  structures, defined as follows:
+
+typedef struct tagCCINFOA {
+    CHAR    szClass[CCHCCCLASS];     // Class name for the control.
+    DWORD   flOptions;               // Option flags (CCF_* defines).
+    CHAR    szDesc[CCHCCDESC];       // Short, descriptive text for the ctrl.
+    UINT    cxDefault;               // Default width (in dialog units).
+    UINT    cyDefault;               // Default height (in dialog units).
+    DWORD   flStyleDefault;          // Default style (WS_CHILD | WS_VISIBLE).
+    DWORD   flExtStyleDefault;       // Default extended style.
+    DWORD   flCtrlTypeMask;          // Mask for control type styles.
+    CHAR    szTextDefault[CCHCCTEXT];// Default text.
+    INT     cStyleFlags;             // Entries in the following style table.
+    LPCCSTYLEFLAGA aStyleFlags;      // Points to style flag table.
+    LPFNCCSTYLEA lpfnStyle;          // Pointer to the Styles function.
+    LPFNCCSIZETOTEXTA lpfnSizeToText;// Pointer to the SizeToText function.
+    DWORD   dwReserved1;             // Reserved.  Must be zero.
+    DWORD   dwReserved2;             // Reserved.  Must be zero.
+} CCINFOA, *LPCCINFOA;
+
+typedef struct tagCCINFOW {
+    WCHAR   szClass[CCHCCCLASS];     // Class name for the control.
+    DWORD   flOptions;               // Option flags (CCF_* defines).
+    WCHAR   szDesc[CCHCCDESC];       // Short, descriptive text for the ctrl.
+    UINT    cxDefault;               // Default width (in dialog units).
+    UINT    cyDefault;               // Default height (in dialog units).
+    DWORD   flStyleDefault;          // Default style (WS_CHILD | WS_VISIBLE).
+    DWORD   flExtStyleDefault;       // Default extended style.
+    DWORD   flCtrlTypeMask;          // Mask for control type styles.
+    INT     cStyleFlags;             // Entries in the following style table.
+    LPCCSTYLEFLAGW aStyleFlags;      // Points to style flag table.
+    WCHAR   szTextDefault[CCHCCTEXT];// Default text.
+    LPFNCCSTYLEW lpfnStyle;          // Pointer to the Styles function.
+    LPFNCCSIZETOTEXTW lpfnSizeToText;// Pointer to the SizeToText function.
+    DWORD   dwReserved1;             // Reserved.  Must be zero.
+    DWORD   dwReserved2;             // Reserved.  Must be zero.
+} CCINFOW, *LPCCINFOW;
+
+
+    szClass             - Class name of the control type.  This
+                          class must be registered by the DLL with
+                          a RegisterClass call.
+
+    flOptions           - Option flags, as follows:
+
+                            CCF_NOTEXT - The control does not have text.
+                                         The Text entry field in the
+                                         Properties Bar of the dialog
+                                         editor will not allow text to
+                                         be entered for this control.
+
+    szDesc              - A short description of the control type.  This
+                          can be a zero length string.
+
+    cxDefault           - Suggested width of new controls of this type.
+                          This value is in dialog units (not pixels).
+
+    cyDefault           - Suggested height of new controls of this type.
+                          This value is in dialog units (not pixels).
+
+    flStyleDefault      - Initial style of new controls of this type.
+                          At a minimum, this should include WS_VISIBLE
+                          and WS_CHILD.
+
+    flExtStyleDefault   - Initial extended style of new controls of this type.
+
+    flCtrlTypeMask      - A mask that identifies which bits of flStyleDefault
+                          are bits that differentiate between the different
+                          types of controls in this class.  This can be
+                          zero if there is only one type of control
+                          defined for this class.  See below for more
+                          information.
+
+    cStyleFlags         - The number of elements (styles) in the following
+                          array.
+
+    aStyleFlags         - Pointer to a LPCCSTYLEFLAGA(W) structure(s) that
+                          contains style information for the control.
+
+    szTextDefault       - Initial text of new controls of this type.  This
+                          can be a zero length string for no initial text.
+
+    lpfnStyle           - Pointer to the associated custom control Styles
+                          function for this control type.  This can be
+                          NULL if the custom control does not have a
+                          private Styles dialog written for it.  If
+                          NULL, a generic Styles dialog will be used
+                          by the dialog editor when the user wants to
+                          edit the styles for the control.  See below.
+
+    lpfnSizeToText      - Pointer to the associated custom control
+                          SizeToText function for this control type.
+                          This can be NULL if the control cannot be
+                          sized to it's text, and is ignored if CCF_NOTEXT
+                          is specified for flOptions.  See below.
+
+    dwReserved1         - Reserved value.  Must be zero.
+
+    dwReserved2         - Reserved value.  Must be zero.
+
+
+The CustomControlInfoW function will be used if it is available,
+otherwise the CustomControlInfoA function will be used.  The function
+must return the number of controls that the DLL supports, or
+zero if an error occurs.
+
+The CustomControlInfoA(W) function will be called with a NULL parameter
+first, to obtain the number of supported controls.  It will then
+be called with a pointer to an array of CCINFOA(W) structures.  The
+function should fill in this array with information about each of
+the control types that it supports.
+
+Note that the lpfnStyle and lpfnSizeToText fields, if
+not NULL,  will point to functions that expect UNICODE strings/structures
+in the CCINFOW structure, or functions that expect ANSI strings if in
+the CCINFOA structure.
+
+The flCtrlTypeMask field specifies which bits of the flStyleDefault field
+are used for defining a different "type" of control within the class.  For
+instance, the standard "BUTTON" class includes several different types
+of buttons, including Radio Buttons, Push Buttons, Check Boxes, etc.
+These different styles of the "BUTTON" class are all distinguished by the
+lower four bits of the style.  In this case, the flCtrlTypeMask would
+be 0x000F.  There are other styles, such as BS_LEFTTEXT (0x0020) that
+can be used with several button types, and the mask would be used to
+strip this style out when looking for a match.  The mask value is used
+to help the dialog editor match up a custom control from a dialog being
+edited with the exact type of the custom control class from the different
+control type variants that may have been defined for a class.  Because
+each control type within a class can have it's own Styles and
+SizeToText function specified, it can be important that a control be
+matched up with the proper control type within the custom control DLL.
+
+If the custom control DLL only has one control type for each class, or
+the same Styles and SizeToText function is used for each of
+the different control types within each class, then the flCtrlTypeMask
+value can be zero, because it is not important that a certain control
+type be matched up with the exact control type from the DLL that it
+was originally created from.  In all cases, however, each control type
+with the same class name must have the same mask specified.
+
+
+-- CHANGING THE STYLES OF A CUSTOM CONTROL ---------------------------
+
+When the user of DlgEdit requests that the styles for a custom control
+be edited, the editor will call the function specified in the
+lpfnStyle field of the CCINFOA(W) structure.  This function should be
+written to bring up and process a dialog box that allows the user
+to edit the styles of the custom control.  This dialog should be
+designed so that it follows the general style guidelines of the existing
+styles dialogs in the dialog editor.  The function has the following
+prototype:
+
+BOOL CALLBACK XxxxStyleA (HWND hwndParent,  LPCCSTYLEA pccs)
+
+BOOL CALLBACK XxxxStyleW (HWND hwndParent,  LPCCSTYLEW pccs)
+
+The function name 'XxxxStyleA(W)' is a placeholder for the real name
+that you give the function.  The actual name does not matter.
+It will be called with the following parameters:
+
+    hwndParent      - The parent window for the dialog that will be
+                      displayed.  The styles function should use
+                      this window as the parent of the styles dialog
+                      that it displays.
+
+    pccs            - Points to a CCSTYLEA(W) structure.  This structure
+                      contains the initial style of the control.  The
+                      style should be modified based on the user's
+                      input from the styles dialog.
+
+The CCSTYLEA(W) structures are defined as follows:
+
+typedef struct tagCCSTYLEA {
+    DWORD   flStyle;                // Style of the control.
+    DWORD   flExtStyle;             // Extended style of the control.
+    CHAR    szText[CCHCCTEXT];      // Text of the control.
+    LANGID  lgid;                   // Language Id of the control's dialog.
+    WORD    wReserved1;             // Reserved value.  Do not change.
+} CCSTYLEA, *LPCCSTYLEA;
+
+typedef struct tagCCSTYLEW {
+    DWORD   flStyle;                // Style of the control.
+    DWORD   flExtStyle;             // Extended style of the control.
+    WCHAR   szText[CCHCCTEXT];      // Text of the control.
+    LANGID  lgid;                   // Language Id of the control's dialog.
+    WORD    wReserved1;             // Reserved value.  Do not change.
+} CCSTYLEW, *LPCCSTYLEW;
+
+    flStyle     - Contains the current style of the control.  This
+                  should be set to what the user chose before
+                  returning.
+
+    flExtStyle  - Contains the current extended style of the control.
+                  This should be set to what the user chose before
+                  returning.
+
+    szText      - Contains the current text for this control.  This text
+                  can be changed, although it is not recommended.
+                  The Properties Bar in DlgEdit allows the text to be
+                  changed, and so this functionality does not normally
+                  need to be in the styles dialog for the custom control.
+                  An exception might be if the text of the control
+                  contains special information or control codes, and
+                  is interpreted in an unusual way by the custom control.
+
+    lgid        - Language id of the dialog the control is in.  Provided
+                  for informational purposes only, and should not be
+                  changed.
+
+    wReserved1  - Reserved value.  Do not change.
+
+
+This function should allow the user to change the styles for the control,
+update the CCSTYLEA(W) structure with the new values, then return TRUE.
+If the user cancels the dialog or an error occurs, the function should
+return FALSE.
+
+If the lpfnStyle field of the CCINFOA(W) structure is NULL, a default
+Styles dialog will be used by the dialog editor.  This dialog will allow
+all the bits of the style to be set, but will not have meaningful names
+for them, and some bit settings may not be valid for the custom control.
+It is better if the custom control provides it's own dialog.
+
+
+
+-- SIZING TO TEXT SUPPORT -----------------------------------------------
+
+It can be very useful for a custom control to be sized to fit it's text,
+along with the other standard controls (radio buttons, push buttons, etc.)
+that support this.  However, the dialog editor does not know what size of
+a margin, etc. a custom control has, and cannot automatically size it to
+fit the text.  The optional lpfnSizeToText field of the CCINFOA(W)
+structure allows a custom control to specify a function that will be
+called for the custom control when the user specifies that it should be
+sized to it's text.  This function will have the following prototype:
+
+
+INT CALLBACK XxxxSizeToTextA (DWORD flStyle, DWORD flExtStyle,
+                              HFONT hfont,   LPSTR pszText)
+
+INT CALLBACK XxxxSizeToTextW (DWORD flStyle, DWORD flExtStyle,
+                              HFONT hfont,   LPWSTR pszText)
+
+    flStyle     - Style of the control.  This may be necessary to
+                  determine how it should be sized.
+
+    flExtStyle  - Extended style of the control.  This may be necessary
+                  to determine how it should be sized.
+
+    hfont       - Either NULL or the font that is selected for the
+                  current dialog being edited.  This font should be used
+                  when determining the size of the control.  This font
+                  should not be deleted or left selected in a DC when
+                  the function returns.
+
+    pszText     - The text to size the custom control to.
+
+The XxxxSizeToTextA(W) function should use the specified styles, font and
+text string to determine the minimum size of the custom control,  then should
+return this value.  This value should be in pixels, not dialog units.
+The function should return -1 if an error occurs.
+
