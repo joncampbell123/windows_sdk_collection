@@ -1,0 +1,270 @@
+Microsoft Foundation Classes                           Microsoft Corporation
+Technical Notes 
+
+#6 : Message Maps
+
+This note describes the Foundation message map facility.
+
+-----------------------------------------------------------------------------
+The Problem
+===========
+
+Microsoft Windows implements what are essentially virtual functions
+in window classes using its messaging facility.  Due to the large
+number of messages involved, providing a separate virtual function
+for each Windows message results in a prohibitively large 
+vtable.
+
+-----------------------------------------------------------------------------
+Overview
+========
+
+The Foundation provides an alternative to the switch statement usually
+used in Windows programs to handle messages sent to a window.  A
+mapping from messages to member-functions may be defined so that when
+a message is to be handled by a window, the appropriate member
+function is called automatically.  This message map facility was
+designed to be as similar to virtual functions as possible without a
+large vtable overhead.
+
+
+Defining a Message Map
+======================
+
+
+The DECLARE_MESSAGE_MAP macro declares a private array for the
+message map entries called _messageEntries, a protected CMessageMap
+called messageMap, and a protected virtual function called
+GetMessageMap that returns the address of messageMap.  This macro
+should be placed in the declaration of any class using message maps.
+By convention, it is at the end of the class declaration.
+
+For example:
+
+    class CMyWnd : public CMyParentWndClass
+    {
+        // my stuff...
+        afx_msg void OnPaint();
+
+        DECLARE_MESSAGE_MAP()
+    };
+
+
+The message map's table is defined with a set of macros that expand
+to message map entries.  A table begins with the BEGIN_MESSAGE_MAP
+macro that defines the class that is handled by this message map and
+the parent class to pass unhandled messages to.  The table ends with
+the END_MESSAGE_MAP macro.
+
+Between these two lines is an entry for each message to be handled by
+this message map.  Every standard Windows message has a macro of the
+form ON_WM_xxx (where xxx is the name of the message) that generates
+an entry for that message.  
+
+A standard function signature has been defined for unpacking the
+parameters of each Windows message and providing type safety.  These
+signatures may be found in the file AFXWIN.H in the declaration of
+CWnd.  Each one is marked with the word afx_msg for easy identification.
+
+These function signatures were derived using a simple convention to
+make them easier to deduce.  The name of the function always starts
+with On.  This is followed by the name of the Windows message with
+the WM_ removed and only the first letter of each word capitalized.
+The ordering of the parameters is wParam followed by LOWORD(lParam)
+then HIWORD(lParam).  Unused parameters are not passed.  Any handles
+that are wrapped by Foundation classes are converted to pointers to
+the appropriate Foundation objects.
+
+The following example shows how to handle the WM_PAINT message
+and cause the CMyWnd::OnPaint function to get called:
+
+    BEGIN_MESSAGE_MAP(CMyWnd, CMyParentWndClass)
+        ON_WM_PAINT()
+    END_MESSAGE_MAP()
+
+The message map table must be defined outside the scope of any 
+function or class definition.  It should not be placed within 
+an extern "C" block.
+
+
+User Defined Messages
+=====================
+
+User defined messages may be included in a message map by using the
+ON_MESSAGE macro.  This macro accepts a message number and a member
+function of the form:
+
+// inside the class declaration
+    afx_msg LONG OnMyMessage(UINT wParam, LONG lParam);
+
+For example:
+
+    #define WM_MYMESSAGE 5
+
+    BEGIN_MESSAGE_MAP(CMyWnd, CMyParentWndClass)
+        ON_MESSAGE(WM_USER + WM_MYMESSAGE, OnMyMessage)
+    END_MESSAGE_MAP()
+
+In this example, we establish a handler for a custom message with
+a Windows message ID derived from the standard WM_USER base for
+user-defined messages.  You might invoke this handler with code
+such as:
+
+    extern CMyWnd myWnd;
+    myWnd->SendMessage(WM_USER + WM_MYMESSAGE);
+
+
+Registered Windows Messages
+===========================
+
+The ::RegisterWindowMessage function is used to define a new window
+message that is guaranteed to be unique throughout the system.
+The macro ON_REGISTERED_MESSAGE is used to handle these messages.
+This macro accepts a the name of a near UINT variable that contains
+the registered windows message ID.
+
+
+For example:
+
+class CMyWnd : public CMyParentWndClass
+{
+public:
+    CMyWnd();
+
+    afx_msg LONG OnFind(UINT wParam, LONG lParam);
+    
+    DECLARE_MESSAGE_MAP()
+};
+
+
+static UINT _near wm_Find = RegisterWindowMessage("commdlg_Find");
+
+BEGIN_MESSAGE_MAP(CMyWnd, CMyParentWndClass)
+    ON_REGISTERED_MESSAGE(wm_Find, OnFind)
+END_MESSAGE_MAP()
+
+
+Note: the registered Windows message ID variable (wm_Find in
+the example above) must be a _near variable because of the
+way ON_REGISTERED_MESSAGE is implemented.  If your program
+is designed to run in an ambient far data model (large or compact)
+you must explicitly qualify the variable declaration with the
+__near modifier, as shown above.  You are not required to qualify
+the declaration if your program uses small or medium model, but it
+does not hurt to make the declaration explicit.
+
+The Foundation library header file 'afx.h' #defines NEAR to be '_near'.
+
+
+User Defined Command Messages
+=============================
+
+Command messages from menus and accelerators are handled in message
+maps with the ON_COMMAND macro.  This macro accepts a command id as
+well as a member function.  Only WM_COMMAND messages with a wParam
+equal to the id match these table entries.  The macro has the form:
+
+    ON_COMMAND(id, memberFxn)
+
+Command handler member functions must take no parameters and 
+return void.
+
+For example:
+
+// inside a resource header (usually generated by DLGEDIT)
+#define    IDM_MYCMD    100
+
+// inside the class declaration
+    afx_msg void OnMyCommand();
+
+// inside the message map definition
+    ON_COMMAND(IDM_MYCMD, OnMyCommand)
+
+
+Control Notification Messages
+=============================
+
+Messages that are sent from child controls to a window have an extra
+bit of information in their message map entry: the control's id.  The
+message map entry only matches the message if the id in the entry
+matches the id sent with the notification message.
+
+Custom control notification messages may use the ON_CONTROL macro to
+define a message map entry with a custom notification code.  This
+macro has the form:
+
+    ON_CONTROL(wNotificationCode, id, memberFxn)
+
+
+How a Message is Translated
+===========================
+
+The WindowProc member function of class CWnd is the workhorse of the
+message handler.  It is the default window procedure for every window
+created with the Foundation.
+
+When a message is to be handled, WindowProc searches the message map
+attached to the window receiving the message for an appropriate
+entry.  
+
+If an entry is found, the wSig field of the entry is used to
+call the function pointer, pfn, in the entry with the appropriate
+signature.
+
+If an entry is not found, the message map of the window's parent
+class is searched.  This process continues until a handler is found
+or the top of the CWnd class hierarchy is found at which point the
+message is passed to DefWindowProc so the system can perform any
+default processing.
+
+A cache of recently handled messages is used to speed up searches
+through the message map.
+
+Registered windows messages are handled as a special case of the
+general mechanism.
+
+
+NOTE:
+It is important to realize that the message map parent class-child
+class relationship described above is established through the
+BEGIN_MESSAGE_MAP macro and *NOT* through the normal C++ language
+inheritance mechanism.
+
+For example:
+
+class CMyParentWnd : public CFrameWnd
+{ 
+    ... 
+    DECLARE_MESSAGE_MAP()
+};
+
+BEGIN_MESSAGE_MAP(CMyParentWnd, CFrameWnd)  // correct
+   ...
+END_MESSAGE_MAP()
+
+class CMyWnd : public CMyParentWnd
+{ 
+    ... 
+    DECLARE_MESSAGE_MAP()
+};
+
+BEGIN_MESSAGE_MAP(CMyWnd, CFrameWnd)    // incorrect
+  ...
+END_MESSAGE_MAP()
+
+The first message map is defined correctly.  CFrameWnd is an
+immediate base class of CMyParentWnd, and the BEGIN_MESSAGE_MAP 
+macro reflects this relationship.
+
+The second message map is defined incorrectly.  While CFrameWnd
+is a base class of CMyWnd, it is not an immediate base class.  If
+a message is sent to a CMyWnd object that the object does not
+know how to handle, the message will be passed on to the CFrameWnd
+message map for processing.  The message should have been passed
+to the CMyParentWnd message map first.  There is no way for this
+error to be caught at compile time -- it will only be evident
+by runtime misbehavior.
+
+
+
+

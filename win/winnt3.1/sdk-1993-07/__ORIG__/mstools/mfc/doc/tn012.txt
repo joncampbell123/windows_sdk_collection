@@ -1,0 +1,215 @@
+
+Microsoft Foundation Classes                           Microsoft Corporation
+Technical Notes
+
+#12 : Using MFC with Windows 3.1 Robustness Features
+
+Windows 3.1 is a major improvement over Windows 3.0 in the
+area of robust application development.  Windows 3.1 includes
+a number of new features that enhance the reliability of a
+Windows application.  This technical note describes the
+use of these features within the MFC library.
+
+=============================================================================
+
+Windows 3.1 Debug Kernel
+========================
+
+Testing your MFC application with the debug system executables is probably
+the best thing you can do to make sure your applications are robust
+and reliable.  The debugging versions of the system executables perform all
+sorts of useful error checking for you, informing you of any problems
+that arise with debug output messages.
+
+The best way to use the debug system is with two machines: a machine for
+testing and debugging that has the debug system installed, and a machine for
+development.  If you put a monochrome adapter card in your debug machine,
+CodeView and debug system output can be directed to the monochrome monitor.
+
+But, not everyone can afford to buy a second machine just for debugging. One
+drawback of installing the debug system on your development machine is that
+it runs somewhat slower than the standard Windows system, so it slows down
+your compiler, editor, and other debugging tools.
+
+A useful trick for single-machine debugging is to place copies of the system
+and debug binaries and symbols in a separate directory, and have batch files
+that copy the appropriate files to your Windows System directory.  This way
+you can exit Windows and switch back and forth quickly between debug and
+non-debug.  The SDK installation program will set this up for then you can
+switch between debug and nondebug version of Windows with the D2N.BAT and 
+N2D.BAT batch files.
+
+If you aren't running with a debugger or a debug terminal, you should run the
+DBWIN application so you can see the error and warning messages produced by
+the debug system.  This application is included with the SDK.
+
+Here are some common programming errors that appear more frequently than they
+should in shipped Windows applications.  Many of these problems can cause
+random system UAEs and other problems under Windows 3.0.  The debug system 
+binaries will help you track down these kinds of problems very quickly:
+
+    * Passing invalid parameters of all shapes and sizes
+
+    * Accessing nonexistent window words.  In 3.0, a SetWindowWord or
+      SetWindowLong call past the end of the allocated window words (as
+      defined with RegisterClass) would trash internal window manager data
+      structures!
+
+    * Using handles after they've been deleted or destroyed
+
+    * Using a DC after it has been released
+
+    * Deleting GDI objects before they're deselected from a DC
+
+    * Forgetting to delete GDI bitmaps, brushes, pens, or other GDI
+      or USER objects when an application terminates
+
+    * Writing past the end of an allocated memory block
+
+    * Reading or writing through a memory pointer after it has been freed
+
+    * Forgetting to export window procedures and other callbacks
+
+    * Forgetting to use MakeProcInstance with dialog procs and other
+      callbacks (alternatively, you can use the MS C/C++ 7.0 feature
+      of marking these functions as EXPORT in their declaration.)
+
+    * Shipping an app without running it with the debugging KERNEL, USER,
+      and GDI.
+
+
+MFC Diagnostics
+===============
+
+In addition, the Microsoft Foundation Classes ship with a 
+set of robustness features that are compiled and linked only in the
+debug build of the library (those library variants ending with a 'd'.)
+Use of these features in the applications you write and in the
+classes you design will greatly improve both the runtime and
+compile time error trapping of your application.  These functions
+are outlined below, but all are documented in the Class Library
+Reference manual.
+
+Every class in MFC includes a class invariant, AssertValid.  This
+member function is called to verify the "sanity" of a C++ object.  
+You call use this function whenever objects (or pointers or
+references to objects) are passed as parameters.  The macro
+ASSERT_VALID(pObject) is supplied so that these calls are not
+compiled for retail builds.  Your class' implementation of this
+function should first call the base class AssertValid explicitly
+before doing any derived class specific validation.
+
+Parameter validation is another important feature.  Aside from
+validating objects, it is also important to validate buffers
+and string constants.  The global function AfxIsValidAddress should
+be used to verify the validity of a buffer/length pair.  The
+Class Library Reference provides you with specific information
+on this API.
+
+Every class in MFC implements a Dump member function, which
+permits you to view the state of an object in an ASCII format.  This
+function can be called from CodeView or placed within #ifdef _DEBUG
+/#endif portions of your code.  You should supply a Dump member
+for classes that you implement.  As with AssertValid, you should
+first explicitly call your base class Dump member function.  The
+output of Dump is routed to the "afxDump" CDumpContext which 
+by default goes to the CodeView output window or to your debug 
+terminal.  You can also use the DBWIN program to view the output of 
+afxDump.  The source file \C700\MFC\SRC\DUMPINIT.CPP includes information 
+on how to route afxDump to another destination.
+
+TRACE is a macro that behaves much like printf, only routes
+output to the afxDump location.  You should use TRACE statements
+to indicate tricky or exceptional places in your code.  As with
+other robustness features, TRACE is only meaningful in the
+debug library, and has no affect in the retail build.  The MFC library
+includes a number of built in TRACE statements for tracking the
+flow of messages.  Please see TN007.TXT for more information of
+the debug trace information.
+
+ASSERT is a runtime check for the validity of a statement.  You
+should use ASSERTs liberally throughout your program.  Any place
+you have a comment to the affect:
+    /* lpStr should be NULL at this point */
+you should replace that with a runtime assert:
+    ASSERT(lpStr == NULL);
+The compiler cannot understand English, but it can execute
+code!  ASSERT statements have no affect in retails builds.  If
+you need the side effects of an ASSERT to occur in the retail build
+as well, then use the VERIFY macro.  
+
+MFC also includes an extensive diagnostic memory allocator.  You
+diagnostic memory allocator to make sure that you free all memory
+resources before your program exits.  The diagnostic
+allocator will track the source file and line number of an
+allocation, so if you use the CMemoryState::DumpAllObjectsSince
+API you can locate any remaining allocations.  A good place to
+use this API is in the ExitInstance member function of CWinApp
+(which you can override, but be sure to call the base class 
+ExitInstance.)  Additionally, if you have a rather tricky piece
+of code that does lots of allocations and deallocations, you can
+use the CMemoryState::Checkpoint and CMemoryState::Difference
+APIs to be sure to leave the world in a steady state after
+executing such code.
+
+
+Windows 3.1 STRICT type checking
+================================
+
+STRICT type checking is an option available with the new
+WINDOWS.H header file.  Before a discussion of the use
+of STRICT, a brief description of C++ typesafe linkage is
+in order.
+
+In C++ you are permitted to have many functions with the
+same name, so long as these functions have different formal
+parameter lists.  In order to have unique link symbols, the
+C++ compiler will "decorate" these names using an algorithm
+that encodes information about a function such as the name,
+number and type of formal parameters, calling convention, etc.
+This newly generated name is used as the external link symbol
+for the function.  This is known as typesafe linkage and is a 
+big benefit of C++.  This name decoration does not apply to
+functions within an extern "C" block, and is why all APIs in
+WINDOWS.H are in such a block.
+
+STRICT typechecking in WINDOWS.H attempts to imitate C++ type
+safety for C by using distinct types to represent all the different
+HANDLES in Windows.  So for example, STRICT prevents you from
+mistakenly passing an HPEN to a routine expecting an HBITMAP.
+Since the Windows APIs are all within extern "C" { } blocks,
+they are not decorated in the manner described above.  STRICT
+plays tricks with the C compiler by changing the types of
+the various Windows typedefs to make them unique (specifically
+it uses different pointer types to represent HANDLEs, which cannot
+be freely converted without an explicit cast.)
+
+As you can see, if you have STRICT typechecking enabled in
+one file, but not in another, the C++ compiler will generate
+different external link symbols for a single function.  This
+will result in link time errors.  Therefore, it is recommended
+that you use STRICT typechecking only for C modules (those that
+end in .C).  Additionally, STRICT is a compile time only
+option, so once you sucessfully compile your code the benefits
+of STRICT are completely realized.
+
+MFC accomplishes all of STRICT static typechecking, plus a whole
+lot more, by using the C++ language.  Therefore, STRICT is disabled
+by default.  If you wish to use STRICT you will need to recompile
+the MFC libraries that you regularly use (because of typesafe
+linkage, the external link symbols are different between STRICT
+and non-STRICT.)
+
+The following are guidelines for using STRICT with C/C++/MFC.
+
+If you have existing Windows 3.0 C code and you wish to keep it as C code,
+you can either work to make it STRICT compliant or not, that option is
+yours.  Be sure to use C++ conventions for your exported header file
+such as putting extern "C" { } around your C APIs if you intend on
+using the header file within any C++ code.  If you have existing Windows
+3.1 STRICT C code, then moving it to C++/MFC eliminates the need for
+STRICT.  
+
+For any C code that you have, the use of STRICT is optional
+and encouraged.  For C++ code, you should use STRICT with
+great care, if at all, because of the issues of typesafe linkage.

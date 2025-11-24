@@ -1,0 +1,319 @@
+Microsoft Foundation Classes                           Microsoft Corporation
+Technical Notes
+
+#9 : Writing an OLE Client Application
+
+This note describes the classes and steps involved in creating
+an OLE client application.
+
+Please be sure to read the general MFC OLE overview first (TN008.TXT).
+
+=============================================================================
+Features of an OLE Client Application
+=====================================
+
+User Interface Features
+-----------------------
+The following list briefly describes some of the end-user features of a
+typical OLE Client application. How the MFC OLE classes are used to provide
+this support is described later.
+
+1) Insert New Object dialog
+    The menu item "Insert &New Object" usually resides on the "Insert"
+    or "Edit" menu.  This menu item will bring up a dialog showing all
+    the available class names (from the registered OLE Servers in the system).
+    The selected class name is used to create a new object of that type
+    and insert it into the client document.
+    The new object will start out in a blank state - which means
+    you must add data to it (by editing it in the server application)
+    before it becomes useable by the end user.
+
+2) Paste, Paste Link menu items
+    The standard "Edit" menu will usually contain "Paste" and "Paste Link".
+    If the client app only supports embedding, there will be no "Paste Link".
+    These menu items will be enabled or disabled depending on the current
+    contents of the clipboard.
+
+3) Object menu item
+    The bottom of the "Edit" menu will usually contain an "Object" menu item.
+    This is a dynamic menu item that changes depending on the current
+    selection.  If more than one verb is possible it will change into
+    a popup menu listing all the verbs.
+
+4) Links dialog
+    This is the standard dialog used to view, fix and otherwise manipulate
+    all the links in the current document.
+
+5) Insitu features
+    The client document is reponsible for drawing the embedded/linked object
+    data in the appropriate location.  Also supporting selection of items
+    and/or ranges of items as well as non-embedded document components.
+    Lastly double-clicking on an embedded/linked object should activate
+    that object.
+
+6) OLE items as part of a document
+    The embedded/linked items are maintained as part of the document.
+    When the document is saved, so are the embedded items as well as the
+    links to the linked items.  When the client document is loaded from disk
+    the reverse happens and the embedded/linked items are loaded as part of
+    the document.
+    If your current client application (or the one you are planning) does
+    not have documents, or "load" and "save" functionality - you may
+    want to implement an OLE server instead.
+
+Additional Features
+-------------------
+There are many other advanced features of an OLE Client than you can
+implement on top of MFC OLE. These features are minimally supported in
+the MFC OLE classes and are not well documented or illustrated in the
+existing sample programs.  These will be added into future versions of
+MFC OLE.
+
+Additional information on these features can be found in the Windows 3.1
+OLE documentation.
+
+Features not supported:
+    * Paste Special dialog (all the interfaces are there, but no canned
+        dialog to make this easy).
+    * Full support for UNDO (COleClientItem::CreateCloneFrom is provided,
+        but a client app must still do a lot of extra work).
+    * Full range of object creation options (for example creating from
+        template, or creating from file).  Easy to add in your class derived
+        from COleClientItem if needed, but this functionality is
+        usually done with the MFC CFile and CArchive classes.
+    * Clients using the server data for more than pictures.  In general
+        a client will create an embedded/linked object with the
+        standard draw option (olerender_draw).  This means the 
+        client will just draw the embedded/linked object in a
+        rectangle on the screen.  Other render options are available.
+    * After loading a document which has manual links, the client app
+        should prompt the user to see if they want to update links now.
+
+=============================================================================
+Tasks of an OLE Client Developer
+================================
+
+The Classes
+------------
+As mentioned in the overview, the MFC OLE classes require that you
+derive your own document and item classes from the MFC OLE base
+classes.
+
+The document class defines the structure of how items are managed.
+The item class defines the structure of how linked and/or embedded
+OLE items fit into your application.
+
+Creating the document class
+---------------------------
+Your client document will typically contain both OLE and non-OLE data.
+Presumably you already have a class or two to manage non-OLE data in
+your application (i.e. to store, display, hit detect the contents
+of a Window's client area).
+You must decide how OLE data will mix with the non-OLE data.
+If your non-OLE data is stored as a CObject* collection, then there is
+no extra work needed (since an OLE item is a CObject as well).
+If not, you will have to extend your data structures so that they can
+contain a client item wherever you want to mix OLE and non-OLE data.
+
+Class 'COleClientDoc' provides a base class that is used to contain
+embedded items.  You must derive your own document class from
+'COleClientDoc'.  Be sure to override the member function 'GetNextItem'
+to iterate over all the OLE items in the document (the interface is
+very similar to MFC lists).
+
+You must register your client document when it is created (using 'Register').
+Also there are specific notification routines that must be called:
+    NotifyRename        - call after document has been renamed by user
+    NotifyRevert        - call after document has been reverted to original
+                        (i.e. re-opened ignoring recent changes)
+    NotifySaved            - call after document has been saved to disk
+
+All of these steps are covered in the OCLIENT sample program.
+The class CMainDocument is attached to CMainWnd and together they
+serve as the main client document.
+
+Creating the item class
+-----------------------
+Your client item is the client-side view of the linked or embedded
+OLE object.  Class 'COleClientItem' provides a base class that is used
+to keep extra application specific information about each linked/embedded
+item.  The position of the item in the client document is an example of
+extra  member data you can add to your class derived from COleClientItem.
+
+Since a COleClientItem must always be contained in a COleClientDoc, the
+containing document must be passed as a parameter to the constructor.
+
+Your client item objects (derived from COleClientItem) will be created
+in several end-user scenarios: (see below for how to implement these)
+    * with the InsertNewObject dialog
+    * when pasted from the clipboard (paste or paste-link)
+    * when loaded from an existing file
+
+You must override the member function 'OnChange' which is a callback
+that notifies the client that the server has changed.  There are three
+reasons the client item may change: a linked item is changed (with
+automatic notification turned on), the document edited on the server
+is saved or the document edited on the server is closed.
+
+In general do not redraw the client item when you get the 'OnChange'
+callback, but instead post an update message (or use InvalidateRect
+for the window).
+
+All of these steps are covered in the OCLIENT sample program.
+The class CEmbeddedItem is attached to CItemWnd and together they
+provide both the data and user interface to the client item.
+
+
+Checking errors and catching exceptions
+---------------------------------------
+Abnormal conditions, like out of memory, or can't launch server will
+result in a COleException being thrown.  A COleException object
+can be examined to see what OLESTATUS error code caused the problem.
+If a set of conditions are expected, the MFC OLE member function will
+return a BOOL.  If the BOOL returns FALSE, a more detailed error
+report can be determined by COleClientItem::GetLastStatus which
+returns the OLESTATUS of the last OLE API function call.
+
+Asynchronous Requests
+---------------------
+The member function COleClientItem::WaitForServer is used
+to synchronize the client with the server.  If a server request can't
+be finished immediately, the client application will wait inside of
+'WaitForServer' until the operation is complete (successful or not).
+The client code calling this just sees a simple synchronous call.
+
+While the client app is waiting it will continue to dispatch windows
+messages.  The static member function 'COleClientItem::InWaitForServer'
+can be used to see if the client application is already nested in
+a server request.  See the OCLIENT sample app for an example of the
+use of 'InWaitForServer'.
+
+Advanced users may wish to override 'WaitForServer' and customize
+it's behavior as appropriate.  See the OCLIENT sample app for an
+example of how to turn on the hourglass when a client operation
+is going to take too long as the result of a server not being ready.
+
+Implementing the UI features
+----------------------------
+The following gives a brief overview of what you must do to implement
+the major User Interface features of OLE for your client application.
+See above for the list of 6 major UI features.  See the OCLIENT sample
+program for a working example of how to implement these features.
+
+1) Insert New Object dialog
+    (a) call 'AfxOleInsertDialog' to prompt the user for class name
+    (b) create an object of your COleClientItem derived class using
+            'COleClientItem::CreateNewObject'.
+    (c) insert it at the current document (eg: at the insertion point
+            if applicable to your application).
+
+2) Paste, Paste Link menu items
+    (a) create menu items for "Paste" and, optionally, "Paste Link"
+    (b) override OnInitMenu or OnInitMenuPopup in your main frame window
+        (i) call 'COleClientItem::CanPaste' to determine if you
+            can paste or not and enable menu item accordinglly
+        (ii) call 'COleClientItem::CanPasteLink' to determine if you
+            can paste link or not and enable menu item accordinglly
+
+    (c) when either is selected, use CreateFromClipboard or
+        CreateLinkFromClipboard to create the new object from clipboard.
+
+3) Object menu item
+    This is a complicated UI which is provided for you in the standard
+    MFC OLE library.
+    (a) create menu items for "Object" with special ID value
+    (b) as with Paste, override OnInitMenu or OnInitMenuPopup in
+            your main frame window
+    (c) call 'AfxOleSetEditMenu' with the item, menu, and the position where
+            to store the 'Object' menu in the specific popup.
+
+4) Links dialog
+    (a) add a "Links" menu item to the "Edit" menu popup
+    (b) when the user selects the "Links" menu item, call 'AfxOleLinksDialog'
+    (c) you can disable the menu item either if no linked items are
+        selected, or if the document does not contain linked items.
+        (by overriding OnInitMenu or OnInitMenuPopup in
+        your main frame window).
+
+5) Insitu features
+    This is the most work.
+    (a) when your window gets an OnPaint request, it must draw the
+    COleClientItem by calling 'Draw'.  This draw routine is passed
+    a DC and a bounds rectangle.
+    (b) depending on your model of selection - you probably want to support
+    selection of linked/embedded items
+    (c) perhaps support resizing of embedded items - call SetBounds to
+    change the size.
+    (d) lastly, when the user double-clicks on a client item, it should
+    be activated by calling 'Activate'.  Overriding OnLButtonDblClk
+    in the appropriate window class.
+
+6) Object as part of a document
+    (a) provide an implementation of Save/load that uses the CArchive
+        serialization mechanism.
+    (b) implement Serialize for your derived COleClientItem class, and
+        be sure to call the base class COleClientItem::Serialize, since
+        this will save the embedded/linked object information.
+
+=============================================================================
+Other Issues:
+=============
+
+Building
+--------
+Assuming you are already building a normal MFC windows application,
+you must do the following additional steps:
+
+    * include 'afxole.h' in those source files using MFC OLE (this will
+        include 'afxwin.h' if not included already).
+    * Link with the appropriate MFC library as usual.
+    * You will also need to link with two additional libraries:
+        OLECLI.LIB   - interfaces to the client side OLE APIs
+        SHELL.LIB    - interfaces to the registration API
+        COMMDLG.LIB  - interfaces to the common dialog API
+    * you must include the standard client resources by including
+        'afxoleUI.h' and 'afxoleUI.rc' in your client application's
+        RC file.  This includes the dialog templates and standard
+        strings for the UI parts of the OLE support.
+
+    * Warning: the OLE Links dialog may call COMMDLG to prompt
+        the user for a new filename.  This requires a reasonable
+        amount of stack space (8K or more).
+
+Testing
+-------
+There are two test programs provided in source form in the MFC SAMPLE
+directory.
+
+        TESTCLNT    - a test client (i.e. used to test servers)
+        TESTSERV    - a test server (i.e. used to test clients)
+
+    You will probably want to use 'TestServ' or some other OLE server
+    to test your application.  See the contents of the sample source
+    directories for more details on these test programs.
+
+Debugging
+---------
+See TN007.TXT for a description of the 'afxTraceFlags' options for
+doing advanced debugging.  The multi-application debugging option
+(option 1) is extremely useful, especially if you are debugging a
+client and a server at the same time.
+
+The main message pump reporting (option 2) is very useful when you
+are trying to figure out which messages are being dispatched.
+
+Option 0x10 is provided specifically for OLE debugging, and
+turns on some rather verbose reporting messages informing you what
+is going on in the MFC OLE classes.
+
+Sample Code
+-----------
+In addition to the test programs, the OCLIENT sample provides a simple
+sample of a OLE Client application.  It exploits all of the user interfaces
+provided by MFC OLE.
+It is a good example since it is relatively simple.
+It is a poor example since each embedded/linked items is stored in a
+CWnd (a CItemWnd).  In general embedded/linked items are normally
+drawn as part of your client area.
+
+=============================================================================

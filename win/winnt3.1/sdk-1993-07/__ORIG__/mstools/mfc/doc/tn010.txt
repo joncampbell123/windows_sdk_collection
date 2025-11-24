@@ -1,0 +1,378 @@
+Microsoft Foundation Classes                           Microsoft Corporation
+Technical Notes
+
+#10 : Writing an OLE Server Application
+
+This note describes the classes and steps involved in creating
+an OLE server application.
+
+Please be sure to read the general MFC OLE overview (TN008.TXT).
+
+=============================================================================
+Features of an OLE Server Application
+=====================================
+
+User Interface Features
+-----------------------
+
+The following briefly describes some of the end-user features of a
+typical OLE Server application. How the MFC OLE classes are used to
+provide this support is described later.
+
+1) Editing Embedded Data
+    OLE Servers will support editing of embedded data.  That is, data stored
+    in a client document which is given to the server to edit or display.
+    The data is given back to the client document to be saved when closed.
+    In the case of editing an embedded document, the "File" menu should
+    have an "Update" menuitem instead of "Save".
+
+2) Editing Linked Data
+    A server may optionally provide linking to server documents.
+    In this case the server will provide in addition to the embedded
+    data editing features, the ability to open normal files and copy
+    data to the clipboard.
+
+    Additional features of linked data is that data updated the server
+    can automatically be updated in the client.  The client may turn
+    of automatic updates if desired.
+
+3) SDI vs MDI user interface
+    Since multiple client applications may be using embedded or linked
+    data at the same time, we need to support multiple servers.
+    There are two ways this can be done.  With a single document interface
+    (SDI) the application must support multiple instances (i.e. a new
+    instance of the server application will be launched for each edited
+    document).  For server applications that support links, or an MDI
+    interface, one instance of the application will responding to all
+    OLE client requests (i.e. create an new CMDIChildWnd for each document).
+
+4) Additional Verbs
+    All OLE client apps provide access to the primary verb for an embedded
+    or linked object. This primary verb is usually "edit". Additional
+    verbs may be defined, and will be presented in the OLE client's Edit
+    menu when the embedded (or linked) object is selected.
+    These additional verbs can be added by registering the server
+    using the AfxOleRegisterServerName() function, or by using a
+    setup program.
+
+Additional Features
+-------------------
+There are many other advanced features of an OLE Server you may wish
+to consider.
+
+    * the ability to support multiple data formats.  MFC OLE defaults
+        to supporting "native" format and drawing as a meta-file.
+
+    * OLE servers do not have to be visual and have a complete user
+        interface.  Note-it and sound players are examples of these
+        simple servers that support embedding.
+
+    * OLE servers can support multiple types.  For example the MS Excel
+        application supports charts and spreadsheets.
+
+    * OLE servers may also support execution of generic DDE execute
+        commands.  Refer to the 'OnExecute' member functions.
+
+    * it is possible to support links but not embedding.  This is not
+        very typical but it is possible.
+
+    * MFC OLE does not support OLE Handlers (i.e. DLLs for doing more
+        efficient server operations).  OLE Handlers can be written
+        using the OLE API and may talk to an OLE server application
+        written with MFC OLE.
+
+=============================================================================
+Tasks of an OLE Server Developer
+================================
+
+The Classes
+------------
+As mentioned in the overview, the MFC OLE classes require that you
+derive your own classes from the MFC OLE base classes.  You must
+provide at least three derived classes, one for the server
+application, one for the server document and one for the server
+items.
+
+The server is used for managing server docs and is notified when clients
+want to open or edit server documents.
+
+The server document class defines the structure of how items are managed.
+The server item class defines the structure of how linked and/or embedded
+OLE items fit into your application.
+
+There will typically only be one server object in your application.  Having
+more than one is necessary only if you want to support multiple OLE types.
+There will one server document object per document.  For an SDI multi-instance
+application this will be one document per application.  For an MDI
+single-instance application, this will be one document for each MDI Child
+window.
+
+Each document may have zero or more server items.
+
+
+Creating the server class
+-------------------------
+Class 'COleServer' provides a base class that is used for all global
+server management.  You must derive your own server class from
+'COleServer' and override several member functions:
+
+    OnCreateDoc   - create a new server document
+    OnEditDoc     - edit an existing server document
+
+For servers that support links, you must also implement:
+    OnOpenDoc     - open an existing document
+
+
+In all of these cases you should create a new object of your
+server document class (derived from COleServerDoc) and return
+it.  Do not register this server document.
+
+
+Creating the document class
+---------------------------
+Class 'COleServerDoc' provides a base class that is used to contain
+server items.  You must derive your own document class from
+'COleServerDoc' and override several member functions:
+
+    OnGetDocument    - return a new item representing the entire document
+    OnGetItem        - return a new item representing the named part of
+                            the document.
+
+In both of these cases, you should create a new object of your server
+item class (derived from COleServerItem) and return it.
+
+For applications that support links, a server document should be created
+for every named file.  If the server document is not opened as a
+result of a COleServer request (eg: OnCreateDoc or OnOpenDoc above) you must
+explicitly register the document (eg: when the user directly opens an
+existing file from the File/Open menu item).   The 'Register'
+member function is used for this registering.  'Revoke' can be used
+to revoke the document.
+
+When the server document changes, there are specific notification routines
+that must be called:
+    NotifyRename        - call after document has been renamed by user
+    NotifyRevert        - call after document has been reverted to original
+                        (i.e. re-opened ignoring recent changes)
+    NotifySaved         - call after document has been saved to disk
+
+Additional notifications include:
+    NotifyClosed        - closed notification for old OLE servers
+                            (usually NotifySaved and Revoke is enough)
+    NotifyChanged        - notify of some global document change
+
+
+Creating the item class
+-----------------------
+Your server item is the server-side view of the linked or embedded
+OLE object.  Class 'COleServerItem' provides a base class that is used
+to keep all the native data required to manage the server data as well
+as any additional user interface data.
+A COleServerItem must always be contained in a COleServerDoc.  If the
+server item is created as a result of a COleServerDoc callback
+(i.e. OnGetDocument or OnGetItem) than no extra work must be done.
+
+Do not create server items outside these callbacks.
+
+You must override several member functions:
+    OnShow is called when the item is to be shown.  It should scroll
+        the specific item into view and set the focus to it if appropriate.
+    OnDraw is called when the item is to be drawn (NOTE: it is drawn
+       into metafile DC, not a screen DC).
+    Serialize is part of the normal CObject serialization.
+
+    Serialize is the means for getting the native data.  You must implement
+        Serialize in your item class to load and store all important
+        native data for your server item.
+        COleServerItem::Serialize is a pure virtual function so you should
+        not call this as part of your serialize operation.
+
+
+Flow of control
+---------------
+Scenario for creating a new embedded object: (from Insert-New-Object
+  on the client app)
+   * the server is asked to create a new document (OnCreateDoc)
+   * the server document is asked to get an item representing
+       the entire document (OnGetDocument)
+   * the server item will be shown - but the client will still have
+       a "blank" item.
+   * when the server document is saved (eg: File/Update) then the client
+       will be updated.
+
+Scenario for editing an existing embedded object:
+   * the server is asked to create a new document (OnCreateDoc)
+   * the server document is asked to get an item representing
+       the entire document (OnGetDocument)
+   * the server item is de-serialized from the data provided by the client.
+       This will be the data from a previous serialization.
+   * the server item will be shown.
+   * when the server document is saved (eg: File/Update) then the client
+       will be updated.
+
+Scenario for editing an linked object:
+   * the server is asked to open an existing document (OnOpenDoc)
+   * the server document is asked to get an item representing
+       the entire document (OnGetDocument) or just a part of the
+       document (OnGetItem) depending on how the link was stored.
+   * the server item will be shown.
+
+
+Checking errors and catching exceptions
+---------------------------------------
+Some callbacks from the server or server document or server
+items will return OLESTATUS codes.  These should follow the conventions
+of the OLE API (i.e. return OLE_OK if ok, some other OLESTATUS code
+on error, eg: OLE_ERROR_GENERIC).
+Other callbacks that return more useful information may throw exceptions
+in the server or if possible just return a NULL value (eg: for OnCreateDoc
+in the COleServer).
+
+Asynchronous Requests
+---------------------
+When inside a callback from a server or server document or server item
+you should not do any modal operation or anything that will cause your
+application to call GetMessage or PeekMessage.  The debugging version
+of the MFC CWinApp class has special asserts that will catch scenarios
+where server code is calling the main message pump when it shouldn't.
+
+Implementing the UI features
+----------------------------
+The following gives a brief overview of what you must do to implement
+the major User Interface features of OLE for your server application.
+See above for the list of 4 major UI features.  See the OSERVER and
+TESTSERV sample program for a working examples (OSERVER just supports
+embedding, TESTSERV supports linking and embedding).
+
+1) Editing Embedded Data
+    When your program is executed, you should examine the command
+    line argument in InitInstance.  Check for the special "-Embedding"
+    or "/Embedding" flag, which determines if this application was
+    launched for embedding or not.
+    When constructing a server object (i.e. an object of your class
+    derived from COleServer) pass TRUE to the constructor if the
+    application was launched embedded.  If launched embedded, the
+    server application will automatically shutdown when no more
+    client applications are connected to it.
+
+    The basic structure of the server/server document/server item
+    provides most of what is needed for editing embedded data.
+    If your application also supports links to files, be sure to
+    change the file menu to "Update" instead of "Save".
+
+2) Editing Linked Data
+    There are additional ways of accessing data when passed links.
+    In addition to the "/Embedding" flag, server applications that
+    support links should also look for a filename after the embedding
+    command line argument.  If found, this is the first file that
+    should be opened.
+
+    In order for a client to paste a link to your server application,
+    you must copy a link to the clipboard.  See the TESTSERV program
+    for an example of this.
+
+    Lastly, since clients may want immediate updates, the NotifyChanged
+    operation in COleServerItem can be used to notify the client that
+    this one specific change has occured.  In general changes to all
+    server items (embedded and linked) will be notified when the
+    server document is saved (i.e. NotifySaved is called).
+
+3) SDI vs MDI user interface
+    Building an SDI vs MDI app is just like a normal MFC windows app.
+    The additional work you must do is to register your server
+    (i.e. an object of your class derived from COleServer).  Call
+    the Register function with the OLE class name (non-localized)
+    and a BOOL indicating if your app is multiple instance or not:
+
+        SDI <=> multiple instance
+                    (one CFrameWnd per document usually)
+        MDI <=> single instance
+                    (one CMDIChildWnd per document usually)
+
+4) Additional Verbs
+    Additional verbs must be defined in the registration database.
+    See below for the steps involved in creating a .REG file.
+    Additional verbs may be handled by overriding COleServerItem::OnExtraVerb
+    and doing a switch on the passed verb number).  You should
+    return OLE_ERROR_DOVERB for verbs you don't understand.
+
+    The primary verb of 0 is handled automatically by the default OnShow
+    member function.
+
+=============================================================================
+Creating a REG file
+===================
+
+In order to provide the OLE system functionality with enough information
+about your OLE server, you must add this information to the system
+registration database.
+
+The sample OSERVER.REG provides a registration file with the
+basic structure which you can start with.  Follow the additional
+steps below.
+
+To actually place the information in the registration database, you
+can use the AfxOleRegisterServerName() function to automatically
+register the server when running it from the program manager, file
+manager, or from an Icon.  The AfxOleRegisterServerName() function
+will also keep up with any changes in the server location.  To use
+this function, simply call it within your application's
+InitInstance() function.  It takes a class name and human readable
+name as parameters (see steps 2 and 3 below).
+
+Steps for writing/customizing a .REG file:
+
+1) start from an existing .REG file, it's easier that way.  The OLE
+      sample programs have sample .REG files in their source directories.
+
+2) pick a OLE class name for each of your OLE object types
+    This is an implementation name so it should be designed
+    to avoid collisions - so use your company's name or your
+    initials at the start of the class name.  This name should not
+    contain spaces.  eg: "MSGraph" or "JOE_CHART".
+
+3) provide a human readable form of that OLE class name.  This
+    is what people will see in the "Insert New Object" dialog box
+    and other user interfaces.  This name may contain spaces.
+    eg: "Microsoft Graph" or "Joe's Cool Chart Thing"
+
+4) provide the path name for where your server application will
+    be installed.  The standard for this is to place each server
+    in a sub-directory of the Windows system directory
+    (usually C:\WINDOWS\OLEAPPS\MYSERVER).
+    If the server is going to be on the search path when Windows
+    is running, you do not have to specify an absolute path.
+
+5) if you have a standard suffix for all your data files, add that
+    to the registration file.
+
+6) if you have additional verbs for your server data, add them starting
+    with index 0.  You will usually want to use verb index 0 as the
+    standard "Edit" verb.
+
+7) save the registration file with the same name as your server
+    (eg: if you are building MYSERVER.EXE, name the file MYSERVER.REG).
+
+=============================================================================
+Other Issues:
+=============
+
+Building
+--------
+Assuming you are already building a normal MFC windows application,
+you must do the following additional steps:
+
+    * include 'afxole.h' in those source files using MFC OLE (this will
+        include 'afxwin.h' if not included already).
+    * Link with the appropriate MFC library as usual.
+    * You will also need to link with two additional libraries:
+        OLESVR.LIB    - interfaces to the server side OLE APIs
+        SHELL.LIB     - interfaces to the system registration database
+
+Debugging and Testing
+---------------------
+See TN007.TXT and TN009.TXT for general tips on debugging OLE applications.
+
+
+=============================================================================
+

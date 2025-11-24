@@ -1,0 +1,34 @@
+# Nmake macros for building Windows 32-Bit apps
+
+!include <ntwin32.mak>
+
+my_lib = winmm.lib 
+
+all: mcitest.exe
+
+# Update the resource if necessary
+
+mcitest.res: mcitest.rc mcitest.h mcitest.ico mcimain.dlg mcimain.h
+    $(rc) $(rcvars) -r mcitest.rc
+
+mcitest.rbj: mcitest.res
+    cvtres -$(CPU) mcitest.res -o mcitest.rbj
+
+# Update the object file if necessary
+
+mcitest.obj: mcitest.c mcitest.h mcimain.h
+    $(cc) $(scall) $(cflags) $(cvars) $(cdebug) mcitest.c
+
+debug.obj: debug.c mcimain.h
+    $(cc) $(scall) $(cflags) $(cvars) $(cdebug) debug.c
+
+fileopen.obj: fileopen.c mcimain.h
+    $(cc) $(scall) $(cflags) $(cvars) $(cdebug) fileopen.c
+
+edit.obj: edit.c edit.h mcimain.h
+    $(cc) $(scall) $(cflags) $(cvars) $(cdebug) edit.c
+
+# Update the executable file if necessary, and if so, add the resource back in.
+
+mcitest.exe: mcitest.obj debug.obj fileopen.obj edit.obj mcitest.rbj mcitest.def
+    $(link) $(linkdebug) $(conflags) -out:mcitest.exe mcitest.obj edit.obj debug.obj fileopen.obj mcitest.rbj $(guilibs) $(my_lib)

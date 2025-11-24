@@ -1,0 +1,159 @@
+Microsoft Foundation Classes                           Microsoft Corporation
+Technical Notes
+
+#16 : MFC and Multiple Inheritance
+
+This note describes how to use Multiple Inheritance (MI) with
+the Microsoft Foundation Classes.
+
+=============================================================================
+Why Multiple Inheritance ?
+==========================
+
+There is an ongoing debate in the C++ and object oriented communities
+over the value of multiple inheritance (MI).   The C7 compiler
+and development environment fully supports MI.
+
+The MFC class library has been designed so that you do not need to
+understand MI to use it.  MI is not used in any of the MFC classes.
+We have found that MI is not required to write a class library,
+nor is it required for writing serious applications.
+The use of MI or not can be a personal decision, so we leave that
+decision to you.
+
+So you want to use MI?
+======================
+If you already understand how to use MI, understand
+the performance trade-offs, and want to use MFC,
+this technote will tell you what you must do.
+Some of the restrictions are general C++ restrictions,
+others are imposed by the MFC architecture.
+
+There is one MFC sample that uses MI.  The MINSVRMI example
+(in \c700\mfc\samples\minsvrMI) is a minimal OLE server that
+is implemented with one class.  The non-MI version is called
+MINSVR (in \c700\mfc\samples\minsvr) and is implemented
+with 5 classes.
+
+This is perhaps an excessive example of using MI (5 base classes),
+but it illustrates the points made here.
+
+=============================================================================
+CObject - the root of all classes
+=================================
+
+As you know, all significant classes derive directly or indirectly
+from CObject.  CObject does not have any member data, but does
+have some default functionality.
+
+When using MI, it will be common to inherit from two or more
+CObject derived classes, for example a CFrameWnd and a CObList:
+
+    class CListWnd : public CFrameWnd, public CObList
+    {
+     ...
+    };
+    CListWnd myListWnd;
+
+In this case CObject is included twice, which leads to two problems:
+    1) any reference to CObject member functions must be disambiguated.
+
+        myListWnd.Dump(afxDump);
+            // compile time error, CFrameWnd::Dump or CObList::Dump ?
+
+    2) static member functions, including 'operator new' and 'operator delete'
+        must also be disambiguated.
+
+Recommended steps:
+------------------
+When creating a new class with two or more CObject derived base classes,
+re-implement those CObject member that you expect people to use.
+
+Operators 'new' and 'delete' are mandatory, Dump is recommended.
+
+    class CListWnd : public CFrameWnd, public CObList
+    {
+    public:
+        void* operator new(size_t nSize)
+            { return CFrameWnd::operator new(nSize); }
+        void operator delete(void* p)
+            { CFrameWnd::operator delete(p); }
+
+        void Dump(CDumpContent& dc)
+            { CFrameWnd::Dump(dc);
+              CObList::Dump(dc); }
+         ...
+    };
+
+Virtual inheritance of CObject ?
+---------------------------------
+You may ask, "why not inherit CObject virtually, won't all of
+the ambiguity problems go away ?".
+
+Well first of all, even in the efficient Microsoft Object Model,
+virtual inheritance is not as efficient as non-virtual inheritance
+(just as Multiple inheritance is not as efficient as single
+inheritance in certain cases.) Since there is no member data in 
+CObject, virtual inheritance is not needed to prevent multiple 
+copies of a base class's member data.
+
+The real answer is no, virtual inheritance will not solve
+all the ambiguity problems illustrated above.
+For example: the Dump virtual member function is still
+ambiguous (since CFrameWnd and CObList implement it
+differently).
+
+Therefore we recommend following the steps above to provide 
+disambiguation where you think it is important.
+
+=============================================================================
+CObject - IsKindOf and runtime typing
+=====================================
+
+The runtime typing mechanism supported by MFC in CObject uses
+the macros DECLARE_DYNAMIC, IMPLEMENT_DYNAMIC, DECLARE_SERIAL
+and IMPLEMENT_SERIAL.
+The resulting programmer feature is the ability to do a runtime
+type check to allow for safe cast-downs.
+
+These macros only support a single base class, and will work
+in a limited way for multiply inherited classes.
+The base class you specify in IMPLEMENT_DYNAMIC or IMPLEMENT_SERIAL
+should be the first (or "left-most") base class.  For our example:
+
+    class CListWnd : public CFrameWnd, public CObList
+    {
+        DECLARE_DYNAMIC(CListWnd)
+        ...
+    };
+
+    IMPLEMENT_DYNAMIC(CListWnd, CFrameWnd)
+
+This will allow you to do type checking for the "left-most" base class
+only.  The runtime type system will know nothing about additional
+bases (CObList in this case).
+
+=============================================================================
+CWnd - and message maps
+=======================
+
+In order for the MFC message map system to work correctly, there are
+two additional requirements:
+
+1) there must be only one CWnd derived base class
+2) that CWnd derived base class must be the first (or "left-most")
+        base class.
+
+In the example above, we have made sure that 'CFrameWnd' is the
+first base class.
+
+Some counter examples:
+        class CTwoWindows : public CFrameWnd, public CEdit
+        { ... };
+                // error : two copies of CWnd
+
+        class CListEdit : public CObList, public CEdit
+        { ... };
+                // error : CEdit (derived from CWnd) must be first
+
+=============================================================================

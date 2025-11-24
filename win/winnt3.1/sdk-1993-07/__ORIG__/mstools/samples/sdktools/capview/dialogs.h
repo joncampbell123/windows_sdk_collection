@@ -1,0 +1,17 @@
+#define	DLG_STOCK_ADD_CAR	100
+#define	IDD_CAR_ID		101
+#define DLG_INDUSTRY_ADD            200
+#define IDD_NAME		201
+#define	ABOUTBOX		300
+#define IDHELP                      117
+#define IDD_LOCATION                104
+#define IDD_SIZE                    106
+#define IDD_SELF_SWITCH             107
+#define IDD_PRODUCE                 108
+#define IDD_PRESENT                 109
+#define IDD_CONSUME                 110
+#define IDD_CAR_TYPE                112
+#define IDD_CAR_COUNT               113
+#define IDD_ADD                     118
+#define IDD_DELETE                  119
+#define IDD_CHANGE                  120

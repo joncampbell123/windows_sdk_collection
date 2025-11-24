@@ -1,0 +1,162 @@
+HINTS FOR CREATING SCRIPTS FOR 32-BIT MICROSOFT TEST
+
+This file describes differences between using Microsoft Test on 16-bit Windows
+vs. 32-bit Windows (NT).  There are some areas where special code must be
+placed into the scripts in order for script to successfully run under NT.  In
+almost all cases it is possible to create the scripts such that they will run
+properly under both platforms without modification.
+------------------------------------------------------------------------------
+
+Due to differences between Windows 3.1 and Windows NT, MS Test scripts
+written for 16-bit (Win 3.1) may not run under 32-bit without modification.
+This file will explain some of the most common reasons for this and provide
+ways to workaround the problems with simple modifications to scripts.
+
+The primary difference is preemption vs. non-preemption.  Under 16-bit
+windows, MS Test scripts could perform actions on an application with a
+single statement, and be assured that by the time the next statement begins
+to execute, the application has already completed what it was asked to do
+with the first statement.  For example, under Win 3.1 the code below:
+
+    WMenu "File"
+    WMenu "Open..."
+    WButtonClick "Cancel"
+
+...would bring up the File.Open dialog and cancel it without any problem.
+
+(Note that this is *most often* the case -- there are cases in Win 3.1
+where the application "yields" while performing a task, in which case the
+script writer must take special steps to ensure that task has completed
+before continuing with the script.)
+
+However, the same code run on 32-bit windows will bring up the File.Open
+dialog, but the WButtonClick function may fail because the File.Open
+dialog may not be there yet.  Since NT is a preemptive system, both
+the application and the script run concurrently -- and if the application
+takes longer to bring up the file.open dialog than it takes MS Test to
+execute the WButtonClick call (which it often does), WButtonClick will
+fail to find a "Cancel" button, the script will continue on, and we will
+have effectively "lost" an important event.
+
+USING THE WFndWndWait FUNCTION:
+-------------------------------
+To combat this, 32-bit scripts need to WAIT for things to happen.  By far,
+the best way to do this is to use one of the new TestCtrl API:
+
+    h = WFndWndWait ("Open", FW_PART, 5)
+
+This call will wait for a window with "Open" (or "open" or "OPEN") in its
+caption to appear, or for 5 seconds, whichever happens first.  The handle
+to the window will be returned, or NULL if it timed out before the window
+was found.  When using this api, it is safe to use rather long timeout
+values (20 or 30 seconds) because the function returns as soon as the
+window is there, and if the window is expected to come up but doesn't,
+something has gone wrong, anyway.
+
+Calls like this could be placed in between things that might take some
+time to happen, like between "WMenu "File"" and "WButtonClick":
+
+    WMenu "File"
+    WMenu "Open..."
+    h = WFndWndWait ("Open", FW_PART, 5)
+    WButtonClick "Cancel"
+
+AND, to make this even easier, you could create a wrapper function like
+the following:
+
+    DECLARE SUB WndWait (Title$)
+    STATIC SUB WndWait (Title)
+        IF WFndWndWait (Title$, FW_PART, giTimeOut) = 0 THEN
+            PAUSE "Window " + Title$ + " could not be found!"
+            END
+        END IF
+    END SUB
+
+...and place it in a header file.  Then all you need to add are statements
+like the following:
+
+    WMenu "File"
+    WMenu "Open..."
+    WndWait "Open"
+    WButtonClick "Cancel"
+
+...and if the window you're looking for never comes up, the script will
+END, after telling you which window it couldn't find.
+
+USING THE QueSetSpeed AND QuePause FUNCTIONS:
+---------------------------------------------
+In some cases, slowing down playback of journalled events can be helpful, not
+only in allowing things to complete (which isn't too much of a concern, since
+NT synchronizes all input threads while journalling), but also in allowing
+you to see what is actually happening during the execution of a script.
+
+You can do this in two ways:
+    - The QueSetSpeed statement allows you to set a time (in milliseconds)
+      delay between each message is played
+    - The QuePause stateent lets you set a one-time pause in the event
+      stream just before the next queued event.
+
+USING THE NEW SPEED STATEMENT:
+------------------------------
+32-bit MS Test has a new statement called SPEED which allows you to control
+the general execution speed of the script.  It is dynamic, meaning you can
+run parts of the script at full speed, and slow other parts down drastically.
+For example:
+
+    SPEED 100
+
+...will cause TestDrvr to sleep for 100 milliseconds before executing each
+line of code in the script.  Likewise,
+
+    SPEED 0
+
+...will allow TestDrvr to run the script at full speed.
+
+This can also be an easy way to keep the application under test from "falling
+behind" the MS Test script.  However, care should be taken when controlling
+the speed of execution OR playback -- as it might work okay on one system, but
+still be too fast for another.
+
+OTHER CONSIDERATIONS:
+---------------------
+Some special things to watch out for include:
+
+    - Using Program Manager to launch apps under test.  Progman does NOT wait
+      for the application to come to the foreground before continuing.  Thus
+      if you use "File.Run" from progman to start your app, you MUST use some
+      way of waiting for the application to appear before continuing with
+      the script, such as the WFndWndWait method.  The best solution, though,
+      is to use MS Test's RUN statement.  Internally, RUN uses WinExec, which
+      will wait until the application appears before returning, which causes
+      the script to wait as well.  So, unless you are specifically testing
+      Program Manager's ability to launch applications, using RUN is a much
+      "safer" way of starting the app.
+
+    - Switching between apps within the script (such as setting focus to
+      another application, etc).  You should wait for a brief moment (perhaps
+      SLEEP 1 to sleep for a second) before starting to perform actions to
+      the new app.
+
+
+WS1.DLL - WaitUntilIdle() FUNCTION:
+-----------------------------------
+The following function is provided in the WS1.DLL:
+
+DECLARE FUNCTION WaitUntilIdle LIB "ws1.dll" (nMSecToWait&) as Integer
+
+The WaitUntilIdle function waits until the forground application has reached an
+idle state.
+
+Parameters:   nMSecToWait& -
+		Specifies the number of milliseconds the function will wait for
+		the foreground application to go idle.
+                0  : Function tests the idle state and returns immediately.
+		-1 : Function will not return until the idle state is reached.
+
+Return Value: TRUE  : The foreground application reached the idle state.
+
+	      FALSE : The wait was terminated because the timeout time was
+	              reached or an error occurred.
+
+
+

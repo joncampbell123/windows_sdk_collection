@@ -1,0 +1,501 @@
+
+Microsoft Foundation Classes                           Microsoft Corporation
+Technical Notes
+
+#13 : Using the standard dialog classes
+
+
+This note describes the use of the standard dialog classes provided
+with MFC.  The classes are CFileDialog, CFontDialog, CColorDialog, 
+CPrintDialog, and CFindReplaceDialog.  They provide standard user interface
+objects for your application.  The class declarations for these
+classes can be found in the source file \C700\MFC\INCLUDE\AFXDLGS.H.
+=============================================================================
+
+
+Requirements
+============
+You may use these classes for any MFC application.  Although these
+classes use the Windows 3.1 COMMDLG functions, they do not require
+Windows 3.1 to run.  You must redistribute COMMDLG.DLL with your 
+application and install the DLL in the user's Windows 3.0 system directory.
+When building an application that uses these classes, you must 
+link with the library COMMDLG.LIB, which is part of the Windows SDK
+installation.
+
+
+General Use
+===========
+These dialogs classes may be used in one of two ways.  You can use them
+"as is" and supply the necessary arguments to the constructor to
+customize the dialogs to suit your needs.  You might also
+consider deriving from these classes and providing a specific constructor
+tailored to your needs.  In either case, these dialogs act
+like standard MFC dialogs, since they derive from CDialog (either
+directly or indirectly.)  You can use message maps and customize
+these dialogs even more.
+
+COMMDLG dialog APIs interface with the application code via
+a parameter block structure.  The MFC dialog classes provide
+public access to this structure, which may be accessed at any
+time to permit maximum customization.  On the other hand, MFC
+provides sensible defaults for most of the fields in the parameter
+block so that you do not need to worry about them.  These structures
+are described in the online Windows 3.1 API reference.
+
+
+Examples
+========
+The MULTIPAD sample application uses the CFileDialog, CFontDialog,
+and CPrintDialog.  The CHART application uses CFileDialog
+and CPrintDialog.  The MDI application uses the CColorDialog.  In
+addition, the OLE classes use the standard CFileDialog for
+implementing standard OLE user interface objects.
+
+
+CFileDialog
+===========
+The CFileDialog class encapsulates the OPENFILENAME structure
+and the two Windows APIs GetOpenFileName and GetSaveFileName.  This
+dialog box is used to obtain from a user either a new file name 
+or the name of an existing file to open.  CFileDialog is a modal
+dialog and derives from the class CModalDialog.
+
+To use a CFileDialog class object, create an object using the CFileDialog
+constructor.  The arguments to the constructor are below, note
+that several have default values:
+
+        bOpenFileDialog     set to TRUE for file open dialog, FALSE for
+                                a file save dialog
+        lpszDefExt          is the default extension, if a user does not
+                                include a file extension, this is 
+                                automatically appended.
+        lpszFileName        is the initial file name (defaults to NULL)
+        dwFlags             is a set of flags that you can supply 
+                                that allow you to customize the dialog box.  
+                                See the online Windows API reference 
+                                (OPENFILESTRUCT) for more information 
+                                (defaults to OFN_HIDEREADONLY | 
+                                OFN_OVERWRITEPROMPT)
+        lpszFilter          is a series of pairs of strings that specify
+                                filters the user may apply to the files. 
+                                See below (defaults to NULL)
+        pParentWnd          is a pointer to a parent Window.  This is 
+                                used only when routing customized help 
+                                messages (defaults to NULL.)
+                                        
+The lpszFilter is used to display a possible list of suffixes.  For
+example Microsoft Excel permits users to open *.XLC and *.XLS
+(and many others).  The filter for Excel would look something
+like the following:
+
+char BASED_CODE szFilter[] = 
+"Chart Files (*.xlc)|*.xlc|Worksheet Files (*.xlm)|*.xlm|All Files (*.*)|*.*||"
+
+Note the use of '|' to separate the components of the filter.  Also
+note that the entire filter ends with two '|'.  This is the
+standard MFC syntax for specifying filters.  Also, note that the
+entire string is a standard NULL terminated C string, though you
+can always use an MFC CString object.
+
+Once the dialog has been constructed, you are free to modify the
+public member variable m_ofn, which is an OPENFILENAME structure.  
+You may manually set any flags or fields that you need.  When you
+are ready to prompt the user call the DoModal function (this is
+a virtual function derived from CModalDialog.)  The user is then
+prompted for a file name (either an existing file or new file,
+depending on the bOpenFileDialog constructor parameter.)  When
+the user clicks OK, CANCEL, or selected the CLOSE option from the
+dialogs System Menu, control is returned to your application.  The
+return value from DoModal indicates success (IDOK) or
+failure (IDCANCEL.)  If the return value is IDCANCEL, either the
+user closed the dialog or clicked CANCEL, or there was an error
+in the parameter block.  If you suspect an error, you can call
+the CommDlgExtendedError API to learn more about the problem.  
+CommDlgExtendedError function returns 0 if there was no error.
+This function differs from the standard OnOK and OnCancel functions
+in that it is possible to force the user to change actions, whereas
+OnOK and OnCancel are notifications that you must accept.
+
+If the user chose a file name, then you can continue processing.
+The CFileDialog class provides a number of helper functions to 
+retrieve information regarding the users choice:
+
+        GetPathName     retrieves the fully qualified path name of the
+                        selected file (suitable to use with CFile)
+        GetFileName     retrieves just the file name without an extension
+        GetFileExt      retrieves only the file extension (without a '.')
+        GetFileTitle    retrieves the preferred title of the file, which
+                        should be used as the title text of the frame window
+        GetReadOnlyPref returns TRUE if the user checked the read-only
+                        option.  If this is TRUE, you should open the file
+                        with read-only permissions.
+
+There are also several "callback" functions that you may respond
+to in your derived CFileDialog class.  You do not need message map
+entries for these, since they are standard virtual functions.
+
+        OnShareViolation    this function is called when a network
+                                sharing violation occurs while processing
+                                the dialog.  See OPENFILENAME in the Windows
+                                API for more information.
+        OnLBSelChangeNotify this function is called whenever the
+                                user changes the selection(s) in the file
+                                list.  You can use this message if you
+                                need to do extra work when a file is
+                                a potential selection, such as calculating
+                                disk space required, or displaying
+                                file access rights.
+        OnFileNameOK        this function is called when the user 
+                                selects OK.  You can validate the file name
+                                and determine if the user can continue.  If
+                                you return TRUE, be sure to indicate to the
+                                user the problem with the selected file(s.)
+        
+One other technique available to customize the CFileDialog is to
+introduce a message map in a derived class and to handle messages
+just as you would for any other dialog.  For example, you can modify
+the dialog background color or handle the command messages for
+a new control (the .RC file for the dialog is included.)
+
+
+CFontDialog
+===========
+The CFontDialog class provides support for a standard dialog
+that permits a user to choose a font.  The dialog makes use
+of the COMMDLG structure CHOOSEFONT and the API ChooseFont.  
+CFontDialog is a modal dialog derived from the CModalDialog class.
+
+To use a CFontDialog class object, create an object using the CFontDialog
+constructor.  The arguments to the constructor are below, note
+that several have default values:
+
+        lplfInitial the initial settings of the dialog box (defaults
+                        to NULL)
+        dwFlags     is a set of flags that you can use to customize
+                        the function and appearance of the dialog.  See
+                        the CHOOSEFONT structure reference for more
+                        information on possible values. (defaults to 
+                        CF_EFFECTS | CF_SCREENFONTS)
+        hdcPrinter  if supplied is a CDC for the printer for which fonts
+                        are to be selected (defaults to NULL)
+        pParentWnd  is a pointer to a parent Window.  This is 
+                        used only when routing customized help 
+                        messages (defaults to NULL)
+
+As with the CFileDialog class, once the object has been constructed
+you are free to modify the CHOOSEFONT structure, m_cf, in order
+to customize the dialog box fully.  After any further customization,
+you call the member function DoModal, which will return either
+IDOK or IDCANCEL.  If the return value is IDCANCEL, the user clicked
+on CANCEL or there was an initialization error in the dialog.  You
+may use the CommDlgExtendedError function to determine if there
+was an initialization error.  If the user selected OK the IDOK value
+is returned.  The CFontDialog class provides a number of helper functions
+for extracting information out of the dialog:
+
+        GetFaceName     returns the face name of the font
+        GetStyleName    returns the style name of the font
+        GetSize         returns the point size in 1/10ths of a point
+        GetColor        returns the color of the selected font
+        GetWeight       returns the weight of the font
+        IsStrikeout     returns TRUE if the strikeout effect was selected
+        IsUnderline     returns TRUE if the underline effect was selected
+        IsBold          returns TRUE if the weight is equal to FW_BOLD
+        IsItalic        returns TRUE if the font is italic
+
+In addition, the member variable m_lf is the LOGFONT descriptor
+of the font, which can be used in a CreateFontIndirect call,
+or accessed directly.
+
+You may customize the dialog by deriving your own class from CFontDialog
+and using a message map to handle any messages.  You can also use
+the CFontDialog::GetCurrentFont member function to determine the
+currently selected font while in a message handler.  
+
+
+CColorDialog
+============
+The CColorDialog class provides support for a standard dialog
+that permits a user to choose/create a color.  The dialog makes use
+of the COMMDLG structure CHOOSECOLOR and the API ChooseColor.  
+CColorDialog is a modal dialog derived from the CModalDialog class.
+
+CColorDialog is used just like CFontDialog.  The COMMDLG structure
+that is used for customizing the dialog is CHOOSECOLOR, and it
+can be modified after construction of the object and before
+DoModal is called.  The arguments to the constructor are as
+follows:
+
+        clrInit     is a COLORREF that is the initial color selection
+                        (defaults to RGB(0,0,0))
+        dwFlags     is a set of flags that you can use to customize
+                        the function and appearance of the dialog.  See
+                        the CHOOSECOLOR structure reference for more
+                        information on possible values. (defaults to 0)
+        pParentWnd  is a pointer to a parent Window.  This is 
+                        used only when routing customized help 
+                        messages (defaults to NULL.)
+
+In addition, the CColorDialog permits the user to define up to 16 
+custom colors.  The CColorDialog saves these custom colors between
+invocations of the dialog in the static member variable clrSavedCustom.
+If you wish to save these colors between executions of the application,
+then you must do this yourself.  After the dialog has been constructed
+you call DoModal.  If the return value is IDOK, then you can use
+the GetColor member function to retrieve the color the user
+selected.  
+
+As with all of the standard dialog classes, you are permitted
+to define a message map in your derived CColorDialog class 
+customize the dialog to suite your needs.  The member function
+SetCurrentColor is provided for forcing the currently selected
+color to a certain value.  As with CFileDialog, a validation
+callback is provided that gives you a chance to override the OK
+selection.  This validation is handled in the OnColorOK virtual
+function.
+
+
+CPrintDialog
+============
+The CPrintDialog class provides support for a standard dialog
+that permits a user to print a document or setup the printer.  
+The dialog makes use of the COMMDLG structure PRINTDLG and the 
+API PrintDlg.  CPrintDialog is a modal dialog derived from 
+the CModalDialog class.  
+
+As with CFileDialog, CPrintDialog is really two different dialogs,
+distinguished by a constructor argument.  The CPrintDialog class
+can be used to respond to the Print command and/or the Print Setup
+command (both usually in the File menu.)  The arguments to the
+constructor for CPrintDialog include:
+
+        bPrintSetupOnly TRUE if you want only a Print Setup
+                            dialog, FALSE for the Print dialog
+        dwFlags         is a set of flags that you can use to customize
+                            the function and appearance of the dialog.  See
+                            the PRINTDLG structure reference for more
+                            information on possible values. (defaults to
+                            PD_ALLPAGES | PD_USEDEVMODECOPIES | PD_NOPAGENUMS
+                            | PD_HIDEPRINTTOFILE | PD_NOSELECTION)
+        pParentWnd      is a pointer to a parent Window.  This is 
+                            used only when routing customized help 
+                            messages (defaults to NULL.)
+
+You may use the GetDefaults member function to retrieve the
+current printer defaults.  All of the helper functions described
+below will be valid after a successful return.  Note that
+this member function requires no user interaction.
+
+As with other standard dialogs, you can customize the appearance
+and functionality by directly modifying the PRINTDLG structure,
+which is the m_pd member variable.  After any customization
+you call DoModal, which will return IDOK or IDCANCEL as expected.
+Remember to check for extended errors if IDCANCEL is the return
+value, since there might have been a setup error.  If IDOK
+is returned there are a number of functions that can be used
+to retrieve information about the selected printer.  Some of
+these functions might not be valid, depending on the settings
+of dwFlags and m_pd.Flags.
+
+        GetCopies       returns the number of copies the user chose
+        GetFromPage     returns the starting page of the print job
+        GetToPage       returns the ending page of the print jon
+        GetDevMode      returns a pointer to the device mode
+        GetDriverName   returns a string that is the driver name
+        GetDeviceName   returns a string that is the device name
+        GetPortName     returns a string that is the port name
+        PrintCollate    returns TRUE if the job is to be collated
+        PrintAll        returns TRUE if All pages selected
+        PrintRange      returns TRUE if the user entered a print range
+                        (GetFromPage and GetToPage are then valid)
+        PrintSelection  returns TRUE if the user wishes to print
+                        the current selection
+        GetPrinterDC    returns an HDC for the selected printer
+
+The GetPrinterDC function returns an HDC only if the bPrintSetupOnly
+constructor parameter was FALSE (i.e. the Print dialog is displayed.)
+You are responsible for calling DeleteDC.  If you wish to
+use this DC as an MFC CDC object, then you can attach it to
+an object as follows:
+        {
+                CDC printerDC;
+                CPrintDialog pd(FALSE);
+                if (pd.DoModal() == IDCANCEL)
+                        return FALSE;
+                printerDC.Attach(pd.GetPrinterDC());
+                // print using printerDC
+        } // falling out of scope will implicitly call CDC::DeleteDC
+
+While the Print dialog is active, it is possible for the user to
+obtain a Print Setup dialog and further customize the print job.  
+MFC handles this automatically for you.  
+
+You may customize the CPrintDialog object by deriving your
+own class from it and using a message map to handle messages and
+commands of your choosing.  If you wish to handle the same message
+differently depending on if the Print dialog or Print Setup dialog
+is active you will need to derive an additional class, one 
+for the Print dialog and one for your custom Print Setup dialog.  In
+your print dialog class you will also need to override the 
+AttachOnSetup member function.  This function handles the creation
+of a new dialog for when the Print Setup button is clicked.  The
+source code in \C700\MFC\SRC\WINDLGS.CPP provides more documentation
+on how to implement this feature.
+
+
+CFindReplaceDialog
+==================
+The CFindReplaceDialog class is a standard modeless dialog for implementing
+a dialog that queries the user for a find/replace string pair.  The
+dialog is dual purpose in that it can display either a Find dialog
+or a Find Replace dialog.  This is a modeless dialog and is 
+derived from the CDialog class.  You are responsible for implementing
+code that does the actual search and replace, as this dialog only
+receives input from the user.  The relevant parameter block
+structure is FINDREPLACE and the APIs used are FindText and
+ReplaceText.
+
+Since this dialog is modeless, it should be dynamically allocated
+using operator new.  If you wish to allocate a CFindReplace dialog
+on the stack frame, you will need to derive your own CFindReplaceDialog
+and override the default behavior of the PostNcDestroy function.
+The constructor for this class takes no arguments.  When your application
+needs to query the user for find/replace information the Create
+member function is called.  This will create and show the modeless
+dialog.  The parameters to Create are as follows:
+
+        bFindDialogOnly TRUE for Find, FALSE for Find and Replace
+        lpszFindWhat    the default search string, such as the
+                            current selection
+        lpszReplaceWith the default replacement string
+                            (defaults to NULL)
+        dwFlags         is a set of flags that you can use to customize
+                            the function and appearance of the dialog.  See
+                            the FINDREPLACE structure reference for more
+                            information on possible values. (defaults to
+                            FR_DOWN)
+        pParentWnd      the parent of the dialog, this is the dialog
+                            that receives the special message indicating
+                            that a find/replace action is requested (defaults
+                            to the current frame window, CWinApp::m_pMainWnd)
+
+In order for the pParentWnd to be notified of find/replace requests
+you must use the Windows API ::RegisterMessage(FINDMSGSTRING).  The
+return value of this function is a message number that is unique to this
+application instance.  Your frame window should have a message map
+entry that handles this registered message.  The following code
+fragments show how to do this for a frame window class CMyFrameWnd.
+
+        class CMyFrameWnd : public CFrameWnd
+        {
+                // normal members
+
+        protected:
+                // CFindReplaceDialog helpers   
+                static CFindReplace* pFindReplace;
+                static UINT nMsgFind;
+                afx_msg LONG CmdFindHelper(UINT wParam, LONG lParam);
+                
+                DECLARE_MESSAGE_MAP()
+        };
+
+        BEGIN_MESSAGE_MAP(CMyFrameWnd, CFrameWnd)
+                // normal message map entries
+                ON_REGISTERED_MESSAGE(nMsgFind, CmdFindHelper) 
+        END_MESSAGE_MAP
+
+        UINT CMyFrameWnd::nMsgFind = ::RegisterMessage(FINDMSGSTRING);
+        CFindReplace* CMyFrameWnd::pFindReplace = NULL;
+
+Note the use of a static member that is the current CFindReplaceDialog
+object.  When the user first executes the Find command, a dialog will
+be created and that object will be used until the Close command on
+the system menu is executed or the user clicks CANCEL.
+
+Within the CmdFindHelper you will interpret the intentions of the
+user and do the work for find/replace.  In order to assist you, there
+are a number of helper functions available:
+        
+        GetFindString       returns the current find string
+        SearchDown          TRUE of the user wishes to search down
+                                the document
+        FindNext            TRUE if the user clicked the Find Next
+                                button
+        MatchCase           TRUE if the user wishes to match case
+                                of text exactly
+        MatchWholeWord      TRUE if the user wishes to match entire
+                                words only
+        GetReplaceString    returns the current replace string for
+                                a replace dialog
+        ReplaceCurrent      TRUE is the user requested that the current
+                                word be replaced in a replace dialog
+        ReplaceAll          TRUE if the user wishes all occurrences
+                                to be replaced
+        IsTerminating       TRUE is the dialog is terminating (the
+                                current m_hWnd is no longer valid when this
+                                function returns TRUE)
+        GetNotifier         return the CFindReplaceDialog structure
+                                (valid only in the CmdFindHandler callback
+                                function)
+
+The CmdFindHandler upon being called will first use the static
+member function of CFindReplaceDialog, GetNotifier, to convert
+the lParam into a CFindReplaceDialog object pointer, which will
+then be used to call member functions and extract dialog information.
+If you derived your own CFindReplaceDialog, you will need to
+provide a typesafe castdown static member function to safely convert
+the lParam to your own derived CFileDialog.
+
+Normally the CmdFindHandler will then do a check to see if the
+dialog is being terminated (using IsTerminating) and if this is
+TRUE you will cleanup (delete the current pFindReplace dialog and
+set the member variable to NULL) and possibly store away the
+final find/replace text to be used in the initialization of the
+next dialog.  
+
+Although this dialog is a modeless dialog, as with other 
+CDialog derived modeless dialogs MFC automatically
+handles the translation dialog messages and routes them to
+your dialog's message map.  Thus you are free to customize your
+CFindReplaceDialog by deriving and supplying a message map with
+the necessary handlers.
+
+
+Advanced Usage Notes
+====================
+Many of these dialogs permit the use of strings to customize
+the appearance or functionality of the dialog.  Whenever a 
+string is used, it is best to use a STRINGTABLE resource 
+rather than embedding the string in your code.  The CString::LoadString
+API can assist you in loading a string from a resource file.
+Similarly, if the string is read-only, you could place it in
+a code segment (use the MFC helper macro BASED_CODE.)
+
+The standard COMMDLG functions all permit the user to add special
+"hook" functions in order to customize the dialog box appearance and
+functionality.  With MFC you should not use these special
+hook procedures, but you should use a derived class and a message
+just as you would for any other standard Windows dialog.  If you
+require the use of the hook function, be sure to save the MFC
+hook function and call it if you do not handle a message, just
+as when dynamically subclassing a Windows window.
+
+As with other short-lived objects, dialogs that derive from
+the CModalDialog class are best allocated on the stack frame.
+The CFindReplaceDialog class is designed to be heap allocated
+(via operator new) since it is a long-lived object.  
+
+All of these dialog classes have a parent window pointer as
+a constructor parameter.  The classes will all use the current
+frame window (CWinApp::m_pMainWnd) as the parent if you
+specify NULL as the pParentWnd parameter (the default.)  If
+you are spawning a standard dialog from another dialog, it
+you must pass the current dialog as the the parent pointer 
+(the 'this' pointer in the command handler that spawns the
+dialog.  If you do not, the two dialogs will have sibling
+relationship rather than a parent/child relationship.
+
+COMMDLG functions require significant stack space, so be
+sure to have at least 16K of stack space available (use the
+.DEF file to change the default.)

@@ -1,0 +1,215 @@
+Microsoft Foundation Classes                           Microsoft Corporation
+Technical Notes
+
+#11 : Using MFC as part of a DLL
+
+This note describes how you can use the MFC library as part of a
+Windows DLL.  This note assumes you are familiar with Windows DLLs
+and how to build them.
+
+=============================================================================
+Overview
+========
+
+We will describe how you can build a DLL that uses MFC classes.  We
+provide simplified DLL support to reduce the impact on the MFC
+and C++ user.
+
+Interfaces:
+-----------
+This simplified DLL support assumes that interfaces between the application
+and the DLL are specified in normal C-like functions or explicitly exported
+classes.  MFC Class interfaces are not automatically exported.
+
+If both a DLL and an application want to use MFC, then they will both
+have a copy of the MFC library statically linked into them.  In fact,
+the versions of the libraries will be different.  The application uses
+one of the standard versions of the MFC library (depending on the memory
+model, say 'mafxcw.lib') which the DLL uses a special version of the MFC
+library ('lafxdwd.lib').
+
+This gives you several advantages including:
+
+* the application using the DLL does not have to use MFC, or for
+    that matter it does not have to be a C++ application.
+
+* the memory model of the application can be different than the DLL.  For
+    example our DLLs are large model, but the application using the DLL
+    can still be medium model.
+
+* the size of the DLL depends only on those MFC and C runtime routines
+    that are used and linked in by the linker. Therefore the size of a
+    WINDLL is only slightly bigger than the exact same code in a large
+    model application.
+
+* there are no problems with classes changing underneath you.  DLL
+    designers export only those interfaces they wish to.
+
+* if both DLL and application use MFC, there are no problems with the
+    application wanting a different version of MFC than the DLL (or vice
+    versa).  Since the MFC library is statically linked into each DLL
+    or EXE, there is no question about which version you have.
+
+* Several messy technical problems are avoided by not trying to split
+    classes across DLL boundaries.  The Microsoft C++ compiler does
+    support this feature with the "__export" keyword on classes.  Please
+    refer to the C7 language reference for more details.
+
+
+Limitations:
+============
+
+Some of the C runtime functions are not supported in DLLs.
+As a result of this, the following MFC functionality is not available
+in DLL-compatible MFC libraries:
+
+        CTime::Format,
+        CTime::FormatGmt,
+        CTimeSpan::Format
+
+The MFC classes assume large model for the WINDLL version.  As with any
+DLL, we also assume "SS != DS" (SS points to the application's
+stack segment, while DS points to the DLL's data segment).
+
+The OLE classes are not part of the WINDLL version.  This is a practical
+consideration since OLE servers tend to be small stand-alone executables
+and MFC does not support OLE handlers (i.e. a more efficient way to build
+an OLE server packaged in a DLL).
+
+=============================================================================
+What to do in your DLL code:
+============================
+
+Building:
+---------
+When compiling your windows DLL, the symbol "_WINDLL" must be defined.
+Your DLL code must also be compiled with the following compiler switches:
+    /ALw
+       large model, SS!=DS
+    /GD
+       signifies you are a windows DLL (and causes the compiler to
+       automatically define _WINDLL)
+
+The interfaces between the application and the DLL must be explicitly
+exported.  We recommend you define your interfaces to be low bandwidth,
+sticking to C interfaces where possible.  More direct C interfaces
+are easier to maintain than more complex C++ classes.
+
+If you wish high bandwidth C++ classes for your DLL interfaces,
+please see the C7 language reference for a description of how to export
+a class.  This has a lot more subtleties to understand to use effectively.
+
+We recommend you place these interfaces in a separate header that can
+be included by both C and C++ files (that way you won't limit your DLL
+customers to C++ programmers).  See the header 'TRACEAPI.H' in the DLLTRACE
+sample program for an example.
+
+Make sure these interfaces are declared as "FAR PASCAL _export"
+routines.  If you want your interfaces to work for mixed model
+client applications, add explicit "FAR" keywords for data pointers.
+
+WinMain->LibMain
+================
+The MFC library will define the standard windows 'LibMain' entry point
+that will initialize your CWinApp derived object as in a normal MFC
+application.  Place all DLL specific initialization in the
+'InitInstance' member function as with a normal MFC application.
+
+Note: the CWinApp::Run mechanism doesn't apply to a DLL since the
+application owns the main message pump.  If your DLL brings up modeless
+dialogs or has a main frame window of its own, your application's main
+message pump must call a DLL-exported routine that calls CWinApp's
+PreTranslateMessage.
+See the DLLTrace sample for use of this function.
+
+WEPs
+====
+If desired you can provide a Windows Exit Procedure (WEP) for your
+DLL just as described in the C SDK.
+
+=============================================================================
+What to do to link it all together:
+===================================
+
+You must do a one time build of the WINDLL version of the MFC library.
+The WINDLL version of the MFC library is built with the command line:
+
+    nmake MODEL=L TARGET=W DLL=1 DEBUG=1
+      for the debugging version of the library 'lafxdwd.lib'
+    nmake MODEL=L TARGET=W DLL=1 DEBUG=0
+      for the retail version of the library 'lafxdw.lib'
+
+You must link your DLL with this library (lafxdwd or lafxdw) along with
+the large model WINDLL version of the C runtimes called 'ldllcew.lib'.
+
+=============================================================================
+Sample Code:
+============
+
+Please see the MFC sample program directory DLLTRACE for a complete sample.
+This includes a simple DLL called 'TRACER.DLL' that implements the
+AFX Trace flags dialog (see TN007.TXT).
+It also has a simple HELLO.EXE application that calls the DLL to
+use the dialog.
+
+Several interesting thing to note:
+
+* the memory model and compiler flags of the DLL and the application
+    are very different.
+
+* the link lines and .DEF files for the DLL and the application are also
+    very different.
+
+* even though MFC DLLs must be large model, the application that uses
+    them can be any memory model you like.
+
+* the application using the DLL doesn't even have to be in C++.
+
+* the interface between the application and the DLL is a "C"-like API
+    with the compiler '_export' keyword set - see TRACEAPI.H.
+
+The one API defined in TRACEAPI.H illustrates what is needed for your
+APIs you will define in your DLL:
+
+    #ifdef __cplusplus
+    extern "C" {
+    #endif  /* __cplusplus */
+
+    struct TracerData
+    {
+        BOOL    bEnabled;
+        UINT    flags;
+    };
+
+    BOOL FAR PASCAL __export PromptTraceFlags(TracerData FAR* lpData);
+
+    #ifdef __cplusplus
+    }
+    #endif
+
+* the declaration is enclosed in an 'extern "C" { }' block for C++ users.
+    This has several advantages.  First it makes your DLL APIs usable
+    by non-C++ client applications.  Second it reduces DLL overhead
+    since C++ name mangling will not be applied to the exported name.
+    Lastly it makes it easier to explicitly add to a .DEF file (for
+    exporting by ordinal) without having to worry about name mangling.
+
+* all API functions are 'FAR PASCAL __export'.
+    This will generate the correct prologue/epilogue sequence for the
+    DLL entry points when we use the /GD compiler switch to build the DLL.
+    There is no need to do any archaic "MakeProcInstance"s or '_loadds'
+    entry points.
+
+* the structures used by the API are not derived from MFC classes, and
+    are defined completely in the API header.  This reduces the complexity
+    of the interface between the DLL and the application and once again
+    makes the DLL usable by C programs as well.
+
+* any data pointers used in the API are explicit FAR pointers.
+    Since the DLL is compiled large model, data pointers are already
+    FAR pointers by default.  Adding the extra FAR keyword will allow
+    your client applications to be small or medium model without having
+    to change your header.
+    Never have 'NEAR' pointers in an interface for a DLL.
+  
+=============================================================================

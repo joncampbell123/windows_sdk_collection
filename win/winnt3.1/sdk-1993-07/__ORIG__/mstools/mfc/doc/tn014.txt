@@ -1,0 +1,347 @@
+Microsoft Foundation Classes                           Microsoft Corporation
+Technical Notes
+
+#14 : Custom Controls and other topics
+
+This note describes the custom control support in MFC, how self
+drawing controls are supported as well as the interface and use
+of the CBitmapButton class.
+
+Also dynamic subclassing is described, as well as general advice on
+ownership of CWnd objects v.s. HWNDs.
+
+The MFC sample application 'CTRLTEST' illustrates many of these
+features.  Please refer to the source code to that sample
+(in \C700\MFC\SAMPLES\CTRLTEST) as well as the general
+README.TXT for the samples (\C700\MFC\SAMPLES\README.TXT).
+
+=============================================================================
+Custom Control Interface
+========================
+
+Owner Draw Controls/Menus:
+--------------------------
+
+Windows provides support for "owner draw" for controls and menus.
+These are windows messages sent to a parent window of a control or
+menu that allow you customize the visual appearance and behaviour
+of the control or menu.
+
+MFC directly supports owner draw with the message map entries:
+    CWnd::OnDrawItem
+    CWnd::OnMeasureItem
+    CWnd::OnCompareItem
+    CWnd::OnDeleteItem
+
+You can override these in your CWnd derived class (usually a dialog
+or main frame window) to implement the owner draw behaviour,
+just as it is done in the C API.
+
+This approach does not lead to reusable code.  If you have two
+similar controls in two different dialogs, you must implement
+the custom control behavior in two places.
+The MFC supported self drawing control architecture solves this problem.
+
+Self Drawing Controls/Menus:
+----------------------------
+
+MFC provides a default implementation (in CWnd) for the standard
+owner draw messages.  This default implementation will decode
+the owner draw parameters, and delegate the owner draw messages
+to the controls or menu.  This is called "self draw" since the
+drawing (/measuring/comparing) code is in the class of the control
+or menu, not in the owner window.
+
+This allows you to build reusable control classes that display
+using "owner draw" semantics, only the code for drawing the
+control is in the control class and not the owner.  This is
+an object-oriented approach to custom control programming.
+
+For self draw buttons:
+    CButton:DrawItem(LPDRAWITEMSTRUCT);
+        // draw this button
+
+For self draw menus:
+    CMenu:MeasureItem(LPMEASUREITEMSTRUCT);
+        // measure the size of an item in this menu
+    CMenu:DrawItem(LPDRAWITEMSTRUCT);
+        // draw an item in this menu
+
+For self draw listboxes:
+    CListBox:MeasureItem(LPMEASUREITEMSTRUCT);
+        // measure the size of an item in this listbox
+    CListBox:DrawItem(LPDRAWITEMSTRUCT);
+        // draw an item in this listbox
+
+    CListBox:CompareItem(LPCOMPAREITEMSTRUCT);
+        // compare two items in this listbox if LBS_SORT
+    CListBox:DeleteItem(LPDELETEITEMSTRUCT);
+        // delete an item from this listbox
+
+For self draw comboboxes:
+    CComboBox:MeasureItem(LPMEASUREITEMSTRUCT);
+        // measure the size of an item in this combobox
+    CComboBox:DrawItem(LPDRAWITEMSTRUCT);
+        // draw an item in this combobox
+
+    CComboBox:CompareItem(LPCOMPAREITEMSTRUCT);
+        // compare two items in this combobox if CBS_SORT
+    CComboBox:DeleteItem(LPDELETEITEMSTRUCT);
+        // delete an item from this combobox
+
+
+For details on the owner draw structures, DRAWITEMSTRUCT, MEASUREITEMSTRUCT,
+COMPAREITEMSTRUCT and DELETEITEMSTRUCT please refer to the MFC
+documentation for CWnd::OnDrawItem, OnMeasureItem, OnCompareItem,
+and OnDeleteItem respectively.
+
+You do not have to examine the 'CtlType' or 'CtlID' fields of these
+structures (MFC does that for you).
+
+For self drawing menus you must override both MeasureItem and DrawItem
+member functions.
+
+For self drawing listboxes and comboboxes you must override MeasureItem
+and DrawItem. You must specify the OWNERDRAWVARIABLE style in the dialog
+template (LBS_OWNERDRAWVARIABLE and CBS_OWNERDRAWVARIABLE respectively).
+The OWNERDRAWFIXED style will not work with self drawing items since
+the fixed item height is determined before self drawing controls
+are attached to the listbox (the Win 3.1 member functions
+CListBox::SetItemHeight and CComboBox::SetItemHeight can be used
+to get around this limitation).
+
+For self drawing listboxes and comboboxes with the SORT style
+(LBS_SORT and CBS_SORT respectively) you must override the
+CompareItem member function.
+
+
+Examples of Self Drawing Controls/Menus:
+----------------------------------------
+The CTRLTEST sample application (\c700\mfc\samples\ctrltest) provides
+samples of an self draw menu (showing colors) and an self draw
+listbox (also showing colors).
+
+The most typical example of a self drawing button is a bitmap
+button (a button that shows one, two or three bitmap images
+for the different states).  This is so common we have provided
+a class in MFC that directly provides this functionality.
+(see CBitmapButton below).
+
+=============================================================================
+CBitmapButton:
+==============
+
+The CBitmapButton class is derived from CButton and provides a
+self-draw implementation of a push button.  This button uses
+bitmaps instead of text for the face of the button.
+
+Creating a bitmap button:
+Here are the steps to create a bitmap button and use it in
+a dialog.  This just shows one way of using this class.
+There are more options available using the CBitmapButton class.
+    1) Create the bitmaps:
+        Create one, two or three bitmaps using IMAGEDIT.EXE.
+        Normally you should create all three.
+        The first bitmap is for the "up" button state, the second
+        for the "down" button state.  The third bitmap is for the
+        "focused" button state which used when the input focus is
+        on the button (usually the same as "up" but with a heavier
+        border).  All bitmaps should be the same size, but there
+        is no restriction on that size.
+
+        For each button, pick an image name for that button
+        (up to 7 characters, eg: "MYIMAGE").
+        Save the bitmaps to three separate files with file
+        names ending in "U", "D" and "F", all with the .BMP
+        extension, for example: MYIMAGEU.BMP, MYIMAGED.BMP,
+        and MYIMAGEF.BMP.
+        
+    2) Placing a bitmap button in a dialog:
+        Using DLGEDIT to edit your dialog.  Add an owner-draw
+        button wherever you want to have a bitmap button
+        (add a pushbutton and set the "Owner-Draw" style).
+        Set the text to the image name (eg: "MYIMAGE"),
+        and define a symbol for that button (eg: IDC_MYIMAGE).
+        The size of the button you draw on the dialog does
+        not matter, since the default CBitmapButton autoload
+        routine will resize it to the exact size of the bitmap.
+
+    3) Add the bitmaps to your .RC file:
+        Each of the bitmaps should be included in the RC file
+        with the same name as the file, for example:
+            MYIMAGEU    bitmap  MYIMAGEU.BMP
+            MYIMAGED    bitmap  MYIMAGED.BMP
+            MYIMAGEF    bitmap  MYIMAGEF.BMP
+
+        Note the choice of "U", "D" and "F" is not arbitrary,
+        the AutoLoad function relies on these particular names.
+
+    3) Aliasing the dialog control with the C++ CBitmapButton object:
+        Create a C++ dialog class (derived from CModalDialog usually).
+        For each bitmap button in the dialog, have a CBitmapButton
+        member object (the name of the member is not important).
+        In the OnInitDialog routine for your dialog, call AutoLoad
+        for each bitmap button (passing the control ID for the button
+        and the dialog pointer).
+        The AutoLoad member function will load in the bitmaps (based
+        on the image name we set up earlier).  AutoLoad will also
+        attach the dialog control to the C++ CBitmapButton object
+        using SubclassDlgItem (SubclassDlgItem is a very general
+        control/window aliasing mechanism that is described in detail below).
+
+        class CMyDlg : ...
+        {
+            CBitmapButton   m_mybtn;
+            ...
+        };
+
+        BOOL CMyDlg::OnInitDialog()
+        {
+            VERIFY(m_mybtn.AutoLoad(IDC_MYIMAGE, this));
+                // verify we have loaded the image into the button with
+                // control ID of IDC_MYIMAGE
+            ...
+        }
+
+
+Examples of CBitmapButtons:
+---------------------------
+See CTRLTEST and SPEAKN for examples of bitmap buttons.
+
+Member functions of CBitmapButton:
+----------------------------------
+
+    CBitmapButton       two constructors are provided, one with no
+                            parameters that does nothing, and another
+                            with 3 parameters that will load the
+                            bitmaps for you.
+    LoadBitmaps         loads the bitmaps from the named resource
+                            The first bitmap is required, the other
+                            two are optional.
+    SizeToContent       resizes the button to the size of the first
+                            bitmap
+
+    AutoLoad            does everything:
+                            * loads in the bitmaps based on the text
+                            of the button + suffices "U", "D" and "F"
+                            * resizes the button to content
+                            * dynamically subclasses the button object
+
+=============================================================================
+Dynamic Subclassing:
+====================
+
+Subclassing is the Windows term for replacing the WndProc of a
+window with a different WndProc, and calling the old WndProc
+for default (super class) functionality.
+
+This should not be confused with C++ class derivation (C++ terminology
+uses the words "base" and "derived" while the Windows object model
+uses "super" and "sub").  C++ derivation with MFC and Windows subclassing
+are very similar in functionality - except for the fact C++ does
+not support a feature similar to dynamic subclassing.
+
+The CWnd class provides the connection between a C++ object (derived
+from CWnd) and a Windows window object (aka an HWND).
+
+There are three common ways these are related:
+    * CWnd creates the HWND.  The behaviour can be modified in a derived class.
+        This is a case of "class derivation" and is done by creating
+        a class derived from CWnd and created with calls to 'Create'.
+    * CWnd gets attached to an existing HWND.  The behaviour of the
+        existing window is not modified.
+        This is a case of "delegation" and is made possible by
+        calling 'Attach' to alias an existing HWND to a CWnd C++
+        object.
+    * CWnd gets attached to an existing HWND and you can modify
+        the behaviour in a derived class.
+        This is called "dynamic subclassing" since we are changing
+        the behaviour (and hence the class) of a Windows object at runtime.
+
+This last case is done with the member functions:
+    CWnd::SubclassWindow and SubclassDlgItem.
+
+Both routines attach a CWnd object to an existing Windows HWND.
+SubclassWindow takes the HWND directly, and SubclassDlgItem is
+a helper that takes a control ID and the parent window (usually
+a dialog).  SubclassDlgItem is designed for attaching C++ objects
+to dialog controls created from a dialog template.
+
+Please refer to the CTRLTEST example for several examples of
+when to use SubclassWindow and SubclassDlgItem.
+
+=============================================================================
+Cleanup: CWnd::PostNCDestroy:
+=============================
+
+The following is an important topic.  If you follow the guidelines
+set out below, you will have very few problems with cleanup problems
+(either in forgetting to delete/free C++ memory, forgetting to
+free up system resources like HWNDs, or freeing objects too many times).
+
+There are typically four kinds of CWnd derived objects:
+    * child windows / controls (derived from CWnd)
+    * main frame windows (MDI and SDI included, derived from CFrameWnd)
+    * modeless dialogs (derived from CDialog)
+    * modal dialogs (derived from CModalDialog)
+
+
+Here are the recommended ownership rules:
+    * child windows / controls should be embedded as members in
+        their parent window / dialog class.  They will get automatically
+        cleaned up when the parent window / dialog object gets
+        destroyed.
+    * main frame windows should be allocated with 'new'.
+        The standard application startup will do this, eg:
+            m_pMainWnd = new CMyMainWindow;
+    * related to the above: main frame windows should not be
+        embedded as members in other classes/objects.
+    * main frame windows should not be deleted with the 'delete'
+        operator, but use DeleteWindow instead.
+    * modeless dialogs usually follow the same rules as main frame
+        windows - but you must override PostNcDestroy yourself
+        to call "delete this".
+    * modal dialogs should be embedded on the frame (i.e. auto
+        variables) and get cleaned up when the routine using
+        the dialog returns.
+
+When destroying a Windows window, the last windows message sent to
+the window is 'WM_NCDESTROY'.  The default CWnd handler for that
+message (CWnd::OnNcDestroy) will detach the HWND from the C++
+object and call the virtual function 'PostNcDestroy'.
+
+The default PostNcDestroy implementation does nothing.
+The CFrameWnd implementation will delete the C++ object.
+
+When to override PostNcDestroy?:
+    * if you have a CFrameWnd derived class embedded in another
+        class or statically allocated.
+    * if you have a modeless dialog you want to automatically
+        cleanup.
+
+For example, if you wish to have a frame window class that can
+be allocated on the stack frame, as a static member, or embedded in 
+another object, you would derive your own class as
+usual.  You would, in addition, override the virtual member function
+PostNcDestroy as follows:
+
+class CMyFrameWnd : public CFrameWnd
+// Frame window class that can be allocated on the stack or
+// in static memory.
+{
+    // standard function overrides, constructors, message handlers
+
+protected:
+    virtual void PostNcDestroy();
+};
+
+void CMyFrameWnd::PostNcDestroy()
+{
+    // do nothing
+}
+
+The owner of the object is responsible for calling DestroyWindow() and
+making sure the object is properly cleaned up.  This is demonstrated 
+in the CTRLTEST sample application.
+
+=============================================================================
