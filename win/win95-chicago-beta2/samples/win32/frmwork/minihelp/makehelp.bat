@@ -1,0 +1,2 @@
+hcrtf -x minihelp.hpj
+

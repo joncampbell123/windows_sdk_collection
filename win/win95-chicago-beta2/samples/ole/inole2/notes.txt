@@ -1,0 +1,179 @@
+Additional Notes Concerning the Win32 version of Inside OLE 2 samples.
+
+These notes are intended to supplement changes described in UPDATE.TXT.
+That text file describes earlier changes to these samples from the
+printed versions in Inside OLE 2.  These notes will not be as detailed
+as those in UPDATE.TXT and are intended to point out some of the changes
+in the Win32 port.
+
+The process of porting exposed numerous minute bugs in various
+samples.  Many of these are fixed by adding a parameter here or there
+to some function, or slightly modifying the behavior of a function.
+This file doesn't document all such changes, but will highlight
+some of the more important ones.
+
+
+
+General Changes:
+---------------------------------------------
+All the samples will compile for either Win16 or Win32 targets.
+Most of the differences between the two environments are isolated
+in the macros in inc\book1632.h.  Occasionally there will be
+a #ifdef WIN32 or a #ifdef UNICODE in a sample where a macro wasn't
+practical.
+
+In order to make a single Win16/Win32 code base, all the code
+compiled for Win16 is large model.  Therefore you will find no
+"FAR" keywords anywhere, and an effort has been made to remove
+"LP" pointer types and simply use "P", especially for sample-specific
+types.
+
+The makefile system has been overhauled to centralize all the rules
+and compiler options into the files inole2a.mak and inole2b.mak.
+All individual sample makefiles define their specific parameters
+and include these two files to perform the compilation.  In addition,
+all the samples (Cosmo, Patron, CoCosmo, etc.) that used to compile
+into separate MDI and SDI directories now compile into just one.
+There was little use of having both versions co-exist, and since
+the same sort of provision was not made for Win16/Win32, Unicode/Ansi,
+and Debug/Non-Debug, the MDI/SDI provision has been removed.
+Running any MAKEALL.BAT will build whatever version is set by
+the environment variables as described in BUILD.TXT.
+
+
+Chapter 2
+--------------------------------------------------
+Due to differences in structure packing and alignment, files
+written by a 16-bit version of Cosmo are not interchangeable
+with the 32-bit version and vice-versa.  Cosmo will report
+a failure in such cases.  This applies to all later chapters
+as well.
+
+
+Chapter 4
+--------------------------------------------------
+The MALLOC sample does not allow access to shared memory under
+Win32.  This is a restriction of OLE 32-bits as the CoGetMalloc
+function fails when passed MEMCTX_SHARED.  All applications should
+use MEMCTX_TASK for all memory allocation purposes under Win32, and
+should also do so under Win16 for portability.
+
+OLE 32-bit uses registry entries of InProcServer32, LocalServer32,
+and InProcHandler32.  This doesn't affect object users, like the
+OBJUSER sample, but does affect the registation files.  It is very
+important that your own applications register themselves appropriately
+depending on whether they are 16- or 32-bits.  The new registry
+keys allow you to register both types of modules together.
+
+The EKOALA sample in this chapter has the IExternalConnection
+interface implemented on the object.  This will demonstrate how
+the AddConnection and RemoveConnection members of this interface
+are called when LRPC stubs connect to the object.  More information
+about stubs is found in the OLE 2 SDK document REMOTING.DOC.
+
+
+
+Chapter 5
+--------------------------------------------------
+Due to differences in structure packing and alignment as well as
+the differences between Win16 and Win32 DEVMODE structures, files
+written by a 16-bit version of Patron are not interchangeable
+with the 32-bit version and vice-versa.  Patron will report
+a failure in such cases.
+
+
+When the Smasher sample attempts to copy a compressed file back
+over it's original, it used StgOpenStorage on the original file
+and calls IStorage::CopyTo from the compressed file to copy
+back to the original file.  This operation, however, doesn't
+overwrite the original file, and as a result the individual streams
+are not laid out sequentially as they are in the compressed file.
+In order to get the fully defragmented file back to the original
+filename, you need to copy the defragmented file back over the
+original file not using the IStorage interface at all.  In order
+to demonstrate the difference, a new sample is added to Chapter 5
+called Fragmenter, which is found in CHAP05\FRAGMENT.
+
+
+Chapter 8
+--------------------------------------------------
+This chapter's Patron example (and all those in later chapters) now
+pay attention to the "Drag Delay" and "Drag Distance" values to
+"debounce" the mouse before starting a drag & drop operation.  The
+drag delay is the amount of time the mouse has to be held down in
+the same position (defined as the mouse down point plus or minus
+the "Drag Distance" value) before drag & drop starts.  This is so
+a brief unwanted click in the pick region doesn't start the operation
+right away.  The drag distance is the number of pixels around the
+original mouse down point where the delay is meaningful, but if the
+mouse moves ourside this rectangle before the delay has expired,
+and the button is still held down, then a drag & drop operation
+is started.
+
+
+Chapters 9 & 10
+--------------------------------------------------
+Patron in this and all later chapters now pays attention to the
+OLEMISC_RECOMPOSEONRESIZE flag.  Cosmo in Chapter 10 sets this
+flag as a test for Patron.  When Patron resizes and embedded
+object and this flag is set, it explicitly runs the server
+(with OleRun) and requests a new rendering (see CTenant::SizeSet
+in TENANT.CPP).
+
+Note that if you attempt to use the Create From File feature
+in Patron's Insert Object dialog with a Cosmo object, the creation
+will fail.  Cosmo requires the IPersistFile interface in order
+to support Create From File, so you need to use the Chapter 13
+Cosmo for this feature to work.
+
+
+Chapter 11
+--------------------------------------------------
+Polyline has the IRunnableObject interface added and has changed
+the handling of the editing dialog box significantly.  A problem
+arose where Polyline was depending on the existence of its editing
+window for determining the size of the object.  When a container
+opened a document with a Polyline object therein and asked Polyline
+for its extents, there wasn't much on which to base the answer.
+To correct this, Polyline implements IRunnableObject which allows
+it to know when the object is "running" but not active.  When
+Polyline is now run, it creates the dialog but leaves it hidden.
+Only on IOleObject::DoVerb (PRIMARY) or (SHOW) will Polyline
+show the dialog.  Closing the dialog then only hides it, and it
+isn't actually destroyed until the Polyline object itself is
+destroyed.
+
+
+Chapter 12
+--------------------------------------------------
+Reconnecting a link that was already running when Patron opened a
+file with a linked object didn't work.  The reason is that OleLoad
+will not attempt to reconnect an already running object on loading
+if OleLoad is not given an IOleClientSite pointer.  Since Patron
+doesn't provide this pointer to OleLoad, it must call
+IOleLink::BindIfRunning after loading the object to perform the
+reconnect.
+
+
+Chapter 13
+--------------------------------------------------
+General improvements have been made to Patron to handle linkings
+to embeddings better and more consistently.  There were a number of
+bugs fixed in functions like IOleClientSite::GetMoniker and in
+moniker handling overall.
+
+There is a version of Polyline added to this chapter to handle
+linking to embeddings as well.  Objects that support this feature
+must implement IOleObject::GetMoniker and IOleObject::SetMoniker
+and must be registered without OLEMISC_CANTLINKINSIDE (which is set
+for Polyline and Cosmo prior to Chapter 13).  Polyline also implements
+the IExternalConnection interface to provide for proper shutdown of
+the intermediate container that is running in linking to embedding
+cases.
+
+Chapters 15 & 16
+--------------------------------------------------
+Improvements have been made to Patron and Polyline for more robust
+handling of inside-out objects as well as multiple active objects.
+True handling of many such objects really requires some of the
+features available in OLE Controls, but that's another whole topic...

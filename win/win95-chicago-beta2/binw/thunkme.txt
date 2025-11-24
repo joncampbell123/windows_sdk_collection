@@ -1,0 +1,649 @@
+MICROSOFT (R) Thunk Compiler for the Windows '95 PDK
+====================================================
+
+What's new in this release note
+===============================
+
+    o   The following section is new for this release THUNKME.TXT
+        
+        Synchronization and Reentrancy Issues
+        =====================================
+
+Introduction
+============
+
+    The case for programming to the Windows 32-bit application 
+    programming interface (api) is compelling and simple: 
+    
+    o   Flat address space - no segments or offsets 
+
+    o   Increased performance
+
+    o   Increased robustness
+    
+    However, as compelling as it is to move to the 32-bit programming model
+    there may be pragmatic reasons for not making the move all at once.
+    Certain components of an application may lend themselves to the 
+    migration to 32-bits while other components may be more tightly bound 
+    to the 16-bit environment. For example, an application developer may 
+    want to move the application's user interface code to 32-bits to take 
+    advantage of new system features but may have an existing dynamic link 
+    library specifically optimized for the 16-bit world of segments and 
+    offsets. Rather than delay the release of a new version of the 
+    application the developer can opt to take advantage of the Microsoft 
+    Thunk Compiler to mix 32-bit components and 16-bit components.
+
+    The Thunk Compiler addresses the following issues in a mixed 16-bit
+    and 32-bit environment:
+
+    o   Pointers in a Windows 3.1 16-bit environment consist of a selector 
+        and a 16-bit offset. In a Windows 32-bit environment pointers 
+        consist basically of a 32-bit offset.  That is, DS, ES, SS, and CS 
+        all contain selectors with the same base address.  All pointers in 
+        this environment are considered to be near 0:32 pointers.  
+        Translating a 16:16 pointer involves determing the segment base for 
+        the selector portion of the pointer and adding the offset to it. 
+        Translating a 0:32 pointer to a 16:16 pointer involves allocating 
+        a selector and calculating the offset from the base of the 
+        corresponding segment.
+
+    o   Another issue involved in a mixed 16-bit and 32-bit environment
+        has to do with stack segments. 16-bit and 32-bit applications 
+        pass function parameters on the stack. 16-bit applications address 
+        the stack using the SS:SP registers while 32-bit applications use 
+        the SS:ESP registers. When thunking between 16-bit and 32-bit (or 
+        back the other way) some piece of software must be responsible for 
+        switching stacks. 
+
+    o   The final issue is in some ways the most basic. Not to overstate
+        the obvious but in a 32-bit environment the word size is 32-bits
+        and in a 16-bit environment the word size is 16-bits. When an
+        application transitions between 16-bitness and 32-bitness some
+        piece of software must be able to translate 16-bit words to
+        32-bit words. Consider the following 16-bit function:
+        
+            DWORD foo(WORD i);
+
+        If a 32-bit component calls this 16 bit function it pushes a 32-bit
+        argument on the stack while the 16-bit function only knows to pop
+        16-bits off the stack. Conversely, upon return the function foo 
+        places the return DWORD value in the DX:AX register pair while
+        the 32-bit callee expects the return value to be EAX register.
+        It is the thunking layer's job to negotiate these translations.
+
+How the Thunk Compiler Works
+============================
+
+    The thunk compiler's input is a "thunk script", which is a list
+    of C-style function prototypes and typedefs. It outputs a .asm file 
+    which is really two .asm files in one. Assemble this .asm file with 
+    the "-DIS_16" flag to get the 16-bit .obj to link to the 16-bit component. 
+    Assemble the .asm file with the "-DIS_32" flag to get the 32-bit .obj 
+    to link into the 32-bit component.
+
+    The 16-bit component contains a jump table containing the 16:16
+    address of each function named in the thunk scripts (these functions
+    must exist elsewhere as PASCAL functions in the 16-bit component).
+    The 32-bit half contains a STDCALL function for each thunk which
+    converts its parameters to 16-bit and then calls (through some
+    kernel32 magic) the 16-bit target named in the jump table. When
+    a 32-bit app invokes a thunked api, it calls these compiler-generated
+    STDCALL functions directly.
+
+    For example, the thunk declaration for the LineTo api looks like this:
+
+        typedef          int INT;
+        typedef unsigned int UINT;
+        typedef UINT         HANDLE;
+        typedef HANDLE       HDC;
+
+        BOOL LineTo(HDC, INT, INT)
+        {
+        }
+
+    When this is fed through the thunk compiler, the following asm
+    code is generated. On the 16-bit half, there is a jump table:
+
+        externDef LineTo:far16
+
+        FT_gdiTargetTable label word
+            dw    offset LineTo
+            dw       seg LineTo
+
+    The 32-bit half contains the code:
+
+        public LineTo@12
+        LineTo@12:
+            mov    cl,0
+        ; LineTo(16) = LineTo(32) {}
+        ;
+        ; dword ptr [ebp+8]:  param1
+        ; dword ptr [ebp+12]:  param2
+        ; dword ptr [ebp+16]:  param3
+        ;
+        public IILineTo@12
+        IILineTo@12:
+            call    QT_Entry
+            push    word ptr [ebp+8]    ;param1: dword->word
+            push    word ptr [ebp+12]    ;param2: dword->word
+            push    word ptr [ebp+16]    ;param3: dword->word
+            call    QT_Target_gdi
+            movsx    ebx,ax
+            jmp        QT_Exit12
+
+    When a Win32 app calls "LineTo", it transfers directly to this
+    routine, which builds a 16-bit call frame and calls a local routine
+    asking it to please invoke table and sign-extend the return value 
+    (each component gets its own set of QT_ routines which knows what 
+    jump table to use.)
+
+    ***NOTE: The code above is used for illustrative purposes
+    only and could differ from the actual code which is generated
+    by the current version of the thunk compiler.)
+
+Script Files
+============
+
+    Script files contain descriptions of the functions which are thunked
+    and usually have the extension .thk. The script files are easily 
+    created using function prototypes.  For example, if a function is 
+    prototyped as:
+
+        BOOL Foo(int n);
+
+    The corresponding script definition is:
+
+        typedef int BOOL;
+        typedef int INT;
+
+
+        BOOL Foo(INT n)
+        {
+        }
+
+    Many functions take pointers in their parameter lists.  Some pointer
+    are input only, some are output only, and some are input/output.  Say
+    for example, that a function bar takes a pointer to an input string,
+    updates a second string, and outputs a third string:
+
+        BOOL Bar(LPSTR lpstrInput, LPSTR lpstrInOut, LPSTR Output);
+
+    The corresponding thunk script declaration for this function is:
+
+        typedef char *LPSTR;
+
+        BOOL Bar(LPSTR lpstrInput, LPSTR lpstrInOut, LPSTR Output)
+        {
+            pstrInput = input;      // Optional since pointers are input 
+                                    // by default.
+            lpstrInOut = inout;     // Pointer taken in and updated
+            lpstrOutput = output;   // Pointer returned.
+        }
+
+The Flat Code Generator Supports
+================================
+
+    o   Structures passed by value or reference.
+    o   Structures within structures.
+    o   Pointers within structures, provided that the object
+        pointed to doesn't require repacking. The object can be
+        another structure.
+    o   Arrays of scalars embedded in structures.
+    o   The "input", "output" and "inout" qualifiers for pointer
+        arguments. Default is "input".
+    o   "passifhinull" for pointer arguments.
+    o   Returning pointers provided that the object pointed to requires
+        no repacking. The object can be a structure.
+    o   The "voidtotrue" and "voidtofalse" qualifiers.
+
+    The code generator does not support:
+    o   Arrays of pointers or arrays of structures.
+
+Late Loading
+============
+
+    Starting with build M6.2, Windows '95 supports the concept of 
+    late loading of the thunk dll's. For better performance, 
+    loading the 16-bit dll will no longer cause the 32-bit dll to 
+    load. Instead, the thunk subsystem will load the 32-bit dll 
+    when the first 16->32 thunk is invoked. No changes are required 
+    to the thunk scripts or the dll's. 
+    
+    Late-loading has the following implications:
+
+        o   Performance and working set is improved for 16-bit 
+            applications that use only the 16-bit portions of 
+            thunked dll's. The 32-bit dll will not load into 
+            those processes.
+
+        o   The 16-bit dll must not depend on any action taken by 
+            the 32-bit dll's initialization code until at least one 
+            16->32 thunk has been called.
+
+        o   Missing 32-bit dll's or failed 32-bit loads will not be 
+            detected until the first call to a 16->32 thunk. If the 
+            32-bit dll cannot load or fails its initialization, the 
+            16->32 thunk call will return a value of 0. This error 
+            code may be changed on a thunk by thunk basis by including 
+            the line:
+
+                faulterrorcode = <dword>;
+
+            between the curly braces. For example, the function:
+
+                int Foo(void) {
+                    faulterrorcode = -1;
+                }
+
+            tells the thunk subsytem to return a -1 from the thunk
+            call if it is the first thunk call and the 32-bit dll 
+            cannot complete its load.
+
+            Although late-binding is a valuable optimization for 
+            16-bit dll's that can execute autonomously from its 
+            32-bit partner, it does complicate error recovery. 
+            Late-binding can be disabled by including the line:
+
+                preload32 = true;
+
+            in your thunk scripts. This will restore the pre M6.2 
+            behavior.
+
+            Although the thunk compiler supports a "preload16" keyword for
+            future expansion, late-loading of 16-bit dll's is not supported 
+            or planned.
+
+Support for the Windows NT 3.5 Generic Thunking Mechanism
+=========================================================
+
+    Starting with M6.2, Windows '95 supports the NT Generic Thunk api 
+    and the Windows NT 3.5 extensions. The Win32s Universal Thunk is 
+    not supported.
+
+    The following api are implemented:
+
+        krnl386
+            LoadLibraryEx32W
+            GetProcAddress32W
+            FreeLibraryEx32W
+            GetVDMPointer32W
+            CallProc32W
+            CallProcEx32W
+
+        wow32
+            WOWCallback16
+            WOWCallback16Ex
+            WOWGetVDMPointer
+            WOWGetVDMPointerFix
+            WOWGetVDMPointerUnfix
+            WOWHandle32
+            WOWHandle16
+            WOWGlobalAlloc16
+            WOWGlobalLock16
+            WOWGlobalUnlock16
+            WOWGlobalFree16
+            WOWGlobalAllocLock16
+            WOWGlobalUnlockFree16
+            WOWGlobalLockSize16
+
+    o   Thunking pointers
+
+        In certain cases, one may want to translate 16:16 pointers to 32:0
+        outside of thunks. The routines GetVDMPointer32W(), 
+        WOWGetVDMPointer() and WOWGetVDMPointerFix() all accomplish this.
+
+        GetVDMPointer32W() is a 16-bit routine and is portable across 
+        Windows NT.
+
+        WOWGetVDMPointer() is a 32-bit routine and is portable across 
+        Windows NT 3.5 but not Windows NT 3.1.
+
+        WOWGetVDMPointerFix() is a new 32-bit routine for Windows '95 
+        (it will also be provided in Windows NT 3.5). It is similar to 
+        WOWGetVDMPointer() but ensures that the memory pointed to will 
+        not be moved by the global memory compactor until 
+        WOWGetVDMPointerUnfix() has been called.
+
+        When using GetVDMPointer32W() or WOWGetVDMPointer(), it is important
+        to call GlobalFix() or GlobalWire() on the segment portion before
+        computing its linear address, if the segment points to a movable
+        global memory manager block. In Windows '95, the global memory 
+        compacter can break in any time your process is in 32-bit code. If 
+        this happens, the block may move and the linear address will become 
+        invalid. The DEBUG version of Windows '95 will warn about 
+        GetVDMPointer calls on unfixed segments. 
+        
+        ***NOTE: Use of the DEBUG version of Windows '95 is highly 
+        recommended in the development of robust applications.
+
+    For convenience and performance, two new WOW routines have been added
+    with this release:
+
+        LPVOID WINAPI WOWGetVDMPointerFix(DWORD vp, 
+                                          DWORD dwBytes, 
+                                          BOOL fProtected)
+        VOID   WINAPI WOWGetVDMPointerUnfix(DWORD vp)
+
+    WOWGetVDMPointerFix() converts a 16:16 pointer to a linear address
+    like WOWGetVDMPointer(). However, it will do an implicit GlobalFix()
+    if necessary on the selector. If the selector is allocated as a fixed
+    block, or not from the global memory manager, no special action is
+    taken. This routine is considerably faster than calling GlobalFix()
+    separately and is highly recommended.
+
+    WOWGetVDMPointerUnfix() takes a 16:16 address and undos the
+    effect of WOWGetVDMPointerFix() on the segment (the offset portion is
+    ignored). This should be called once the linear address is no longer
+    needed to avoid bottlenecks in the memory manager. It is faster than
+    GlobalUnfix and correct handles (ignores) non-memory-manager selectors.
+
+    Note that CallProc32W and CallProc32ExW do _not_ call these routines
+    for you. Pointers passed to these routines must be fixed manually.
+
+    16->32 thunks generated by the thunk compiler _do_ fix segments
+    as needed when thunking pointers. Thus, 16:16 pointers can be passed
+    to these thunks with no special treatment.
+
+Procedure for Adding Thunks
+===========================
+
+    1.  Write a thunk script containing thunk declarations and typedef's
+        for the functions which need to be thunked. Then place the 
+        following line at the beginning of the script:
+
+            enablemapdirect3216 = true;     // Creates 32->16 thunks
+
+                or
+
+            enablemapdirect1632 = true;     // Creates 16->32 thunks
+
+    2.  Compile your thunk script:
+
+            thunk.exe <inputfile> [-o <outputfile>]
+
+        Thunk Compiler usage follows:
+
+            thunk [{-|/}options] infile[.ext]
+
+            ?            Display help screen
+            h            Display help screen
+            o <name>    Override default output filename
+            p <n>       Change 16-bit structure alignment (default = 2)
+            P <n>       Change 32-bit structure alignment (default = 4)
+            t <name>    Override default stem name
+
+            Nx <name>    Name segment or class where x is
+                C32    32-bit code segment name
+                C16    16-bit code segment name
+
+    3.  To create the 16-bit side of the thunk, assemble the resulting 
+        .asm file making sure to define IS_16.  For example, using 
+        Microsoft MASM 6.11:
+
+        ml /DIS_16 /c /W3 /nologo /Fo thk16.obj 32to16.asm
+
+    4.  Be sure to mark your 16-bit DLL compatible with Windows
+        4.0 by running the Windows 4.0 Resource Compiler 
+        on the DLL:
+
+        \sdk\bin16\rc -40 <.DLL output file>
+
+        ***IMPORTANT: If the 16-bit DLL is not marked as 4.0, the 
+        32-bit DLL will not load. Please see the Troubleshooting
+        section for more information. We expect this to break people
+        who have had their thunks working correctly under M6 and
+        earlier releases. 
+
+    5.  To create the 32-bit side of the thunk, assemble the resulting 
+        .asm file making sure to define IS_32.  For example, using 
+        Microsoft MASM 6.11:
+
+        ml /DIS_32 /c /W3 /nologo /Fo thk32.obj 32to16.asm
+
+    6.  Add the entry points to the DLL's and the exports and imports
+        to the module definition file.
+
+    7.  Compile and link the 16-bit and 32-bit components.
+       
+Steps to Implement a Thunking Layer in 16-bit and 32-bit Components
+===================================================================
+
+    The thunking model allows either the 16-bit or the 32-bit thunk 
+    component to start first and will clean up everything afterward. 
+    The steps for implementing the thunking layer are:
+
+    1.  To your 16-bit dll, add a procedure "DllEntryPoint" which looks 
+        like the following (the names of the DLL's are provide for
+        illustrative purposes): 
+
+        BOOL FAR PASCAL __export FOO_ThunkConnect16(LPSTR pszDll16,
+                                                    LPSTR pszDll32,
+                                                    WORD  hInst,
+                                                    DWORD dwReason);
+
+        BOOL FAR PASCAL __export DllEntryPoint(DWORD dwReason,
+                                               WORD  hInst,
+                                               WORD  wDS,
+                                               WORD  wHeapSize,
+                                               DWORD dwReserved1,
+                                               WORD  wReserved2)
+        {
+            if (!(FOO_ThunkConnect16("DLL16.DLL",  // Name of 16-bit DLL
+                                     "DLL32.DLL",  // Name of 32-bit DLL
+                                     hInst,
+                                     dwReason)))
+            {
+                return FALSE;
+            }
+            return TRUE;
+        }
+
+        where FOO is the name of the thunk script file with the
+        path and extension removed.  Note, if a different stem waas
+        specified via the -t switch you would use the new stem name. 
+        For example if the following command line was specified:
+
+            THUNK /t BAR FOO.THK
+        
+        The thunk compiler generates the routine BAR_ThunkConnect16
+        which should subsequently be used in the the DllEntryPoint 
+        function.
+
+    2.  To your 16-bit dll's def file, add (pick the ordinals as
+        appropriate):
+
+        EXPORTS
+            DllEntryPoint       @1 RESIDENTNAME
+            FOO_ThunkData16     @2
+
+        IMPORTS
+            C16ThkSL01     = KERNEL.631
+            ThunkConnect16 = KERNEL.651
+
+    3.  To your 32-bit dll's entry point (DLLMain by default), include 
+        the call (the names of the DLL's are provide for illustrative 
+        purposes):
+
+        BOOL WINAPI FOO_ThunkConnect32(LPSTR pszDll16,
+                                       LPSTR pszDll32,
+                                       DWORD hIinst,
+                                       DWORD dwReason);
+
+        BOOL _stdcall DllMain(DWORD hInst, DWORD dwReason, DWORD dwReserved)
+        {
+            if (!(FOO_ThunkConnect32("DLL16.DLL",   // Name of 16-bit DLL       
+                                     "DLL32.DLL",   // Name of 32-bit DLL
+                                     hInst,
+                                     dwReason)))
+            {
+                return FALSE;
+            }
+            // Process dwReason
+        }
+
+    4.  To your 32-bit dll's def file, add
+
+        EXPORT
+            FOO_ThunkData32
+
+Important Rules
+===============
+
+    o   The 16-bit DllEntryPoint is called each time the module's usage 
+        count is incremented or decremented: dwReason is 1 for increment, 
+        0 for decrement.
+
+    o   Do not call GetModuleUsage() inside the DllEntryPoint. It's 
+        undefined as to whether it returns the pre-increment count or 
+        post-increment count (or either!). The usage count will look 
+        particularly confusing when this mechanism is used with ortho-thunk 
+        initialization. Do what Win32 dlls do and maintain your own counter 
+        if you need to know the current usage.
+
+    o   Do not call thunks inside the DllEntryPoint routines. The component 
+        has to call LoadLibrary() on its partner before it can start 
+        initializing the thunks and it can't (and doesn't want to) prevent 
+        the DllEntryPoint from running at that time.
+
+    o   You can have multiple ThunkConnectXX calls as long as they 
+        connect to the same dll_. In fact, this is the only way to 
+        get both 32->16 and 16->32 thunks in one thunk-paired dll set.
+        The procedure is to have a thunk script for each direction and 
+        link both into each dll. Then, each entry function would have 
+        two ThunkConnect calls.
+
+Synchronization and Reentrancy Issues
+=====================================
+
+    o   The thunk compiler accepts the statement:
+
+        win31compat = true;
+
+        Use of this is highly recommended if the 16-bit dll replaces
+        a dll that is currently used in a Windows 3.1 environment.
+        This statement causes unloading of the 32-bit dll to be
+        deferred until the containing process terminates. This
+        ensures that interprocess loads and frees, a practice that might
+        have worked with a pure 16-bit dll, will not cause premature
+        freeing of the 32-bit dll in the thunked version. Also,
+        it allows freeing the 16-bit library without executing
+        the 32-bit dll's notification routine, which can cause
+        undesirable reentering of 16-bit code.
+
+    o   16->32 thunks and preemption - It is important to remember 
+        that while a 16-bit process is executing 32-bit code, it 
+        is possible for a 32-bit process to execute 16-bit code, 
+        possibly reentering the 16-bit code you thunked from. That 
+        is, entering a 16->32 thunk yields the 16-bit subsystem 
+        to other 32-bit processes. Thus, 16->32 thunks should not 
+        be used if your code is not reentrable at that time. You 
+        should also avoid using 16->32 thunks inside callbacks 
+        passed to third-party dll's, unless it is documented that 
+        the code calling the callback is reentrant (for example, 
+        if the callback is allowed to yield, it is probably 
+        reentrant).
+
+    o   Executing 32-bit code inside 16-bit processes - 16->32 thunks 
+        on Windows '95 are primarily useful for implementing callback 
+        thunks on 32-bit processes. They can also be used to execute 
+        32-bit code in 16-bit processes. Though the latter can be a 
+        useful performance and multitasking win, there are important 
+        restrictions on what can be done in a 16-bit process.
+
+        Note that the "bitness" of a process is determined by the
+        format of the executable file that launched it, and is a 
+        permanent attribute of the process. A 16-bit process executing 
+        32-bit code is not the same as a 32-bit process executing the 
+        same code. The following caveats apply:
+
+        1)  The 32-bit code will still execute on the stack reserved 
+            by the 16-bit application, which is much smaller than the 
+            1Mb <or larger, growable> stack enjoyed by true 32-bit apps.
+
+        2)  16-bit processes cannot create new threads. Certain Win32 
+            api such as the new common dialogs for file operations and
+            the console api create threads on behalf of their caller.
+            These api cannot be used in a 16-bit process.
+
+        3)  Thunking into 32-bit code yields the 16-bit subsystem to
+            other 32-bit processes, but other 16-bit processes will still
+            be blocked unless your process explicitly yields (typically
+            by a GetMessage). In other words, 16-bit apps still multitask
+            cooperatively even when executing 32-bit code. This means
+            you must not block a 16-bit app for a long time without
+            yielding or no 16-bit app will get cpu time. A classic
+            problem is using CreateProcess() to launch a 16-bit app,
+            then waiting on a synchronization object for it to do 
+            something. Since your app has not yielded, the new app will 
+            never get to run and signal the object - a classic deadlock.
+
+            One way to avoid this problem is to use MsgWaitForMultipleObjects 
+            to wait for either messages or synchronization objects. This
+            solution, while effective when required, still results in a less 
+            efficient blocking operation than that of a 32 bit app.
+
+        In general, it is recommended that the use of 32-bit code within 
+        16-bit processes be limited to code that uses the 32-bit heap api, 
+        memory-mapped file api, file api and api involving the _current_ 
+        process and thread. Gdi and  dialogs, messagebox and message api 
+        will also work. Use of third-party libraries that aren't known to 
+        be 16-bit-safe is strongly discouraged.
+
+    o   16->32 thunks in GDI device drivers:
+
+        1)  You may thunk only on the following DDI calls: 
+            Control(STARTDOC), Control(ENDDOC), Control(ABORTDOC), 
+            Control(NEWFRAME), and Control(NEXTBAND).
+
+        2)  If you thunk, your driver must be re-entrant.
+
+        3)  You may call OpenJob, StartSpoolPage, EndSpoolPage, CloseJob,
+            DeleteJob only during those five control DDI calls outlined 
+            in 1) above. These calls will go through 
+            for 3.x drivers for compatibility but
+            will fail for 4.x drivers.
+
+
+
+Troubleshooting
+===============
+
+    o   If you are building 32->16 thunks and are experiencing missing 
+        kernel32 import errors (QT_ThunkPrime and FT_PrologPrime), the 
+        problem can be fixed by rebuilding your thunks with version 1.8 
+        or later of the thunk compiler: available with this release of 
+        the SDK. Thunks built with version 1.8 will run correctly on M7 
+        and subsequent kernel builds.
+
+    o   Symptom: The 32-bit dll won't load
+
+        The Windows '95 loader requires that the 16-bit dll be marked as 4.0 
+        or greater for the DllEntryPoint routine to run. The thunk subsystem 
+        now expressly checks this condition.
+
+        To check the version number, run
+
+            exehdr -v <your-16-bit-dll>
+
+        Look for the line:
+
+        Operating system: Microsoft Windows - version 4.0
+
+        If the number is less than 4.0, running the Windows '95 PDK rc.exe 
+        over your 16-bit dll will set the version correctly.
+
+    o   Symptom: Loading the 16-bit dll does not load the 32-bit dll.
+
+        This is by design. The 32-bit dll will now not load into a process 
+        context until that process calls its first 16->32 thunk. For more 
+        details, see the section which is entitled "Late Loading Thunks".
+
+        If this feature is incompatible with your dll design, you may disable 
+        it by including the line
+
+            preload32 = true;
+
+        in your thunk scripts. 
+
+
+
