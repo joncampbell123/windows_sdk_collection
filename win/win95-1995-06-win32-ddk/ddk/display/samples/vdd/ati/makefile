@@ -1,0 +1,62 @@
+#****************************************************************************
+#                                                                           *
+# THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY     *
+# KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE       *
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR     *
+# PURPOSE.                                                                  *
+#                                                                           *
+# Copyright (C) 1993-95  Microsoft Corporation.  All Rights Reserved.       *
+#                                                                           *
+#****************************************************************************
+
+#############################################################################
+#
+#   Makefile for ATI Mini-VDD Port
+#
+##########################################################################
+
+DEVICE   = ATI
+DDB_NAME = ATI_DDB
+OBJS     = ati.obj
+AFLAGS   = -coff -DBLD_COFF -W2 -Zd -c -Cx -DMASM6 -Sg -DVGA -DVGA31 -DMINIVDD=1
+ASMENV   = ML
+LFLAGS   = /VXD /NOD
+
+.asm.obj:
+        set ml=$(AFLAGS)
+        ml $< 
+
+$(DEVICE).vxd: $(OBJS)
+        link $(LFLAGS) @<<$(DEVICE).lnk /DEF:<<$(DEVICE).def
+$(OBJS)
+/OUT:$(DEVICE).vxd
+/MAP:$(DEVICE).map
+<<
+VXD $(DEVICE) DYNAMIC
+DESCRIPTION 'DOS386 $(DEVICE) Device (Version 4.0)'
+
+SEGMENTS
+        _LPTEXT         CLASS 'LCODE'   PRELOAD NONDISCARDABLE
+        _LTEXT          CLASS 'LCODE'   PRELOAD NONDISCARDABLE
+        _LDATA          CLASS 'LCODE'   PRELOAD NONDISCARDABLE
+        _TEXT           CLASS 'LCODE'   PRELOAD NONDISCARDABLE
+        _DATA           CLASS 'LCODE'   PRELOAD NONDISCARDABLE
+        CONST           CLASS 'LCODE'   PRELOAD NONDISCARDABLE
+        _TLS            CLASS 'LCODE'   PRELOAD NONDISCARDABLE
+        _BSS            CLASS 'LCODE'   PRELOAD NONDISCARDABLE
+        _ITEXT          CLASS 'ICODE'   DISCARDABLE
+        _IDATA          CLASS 'ICODE'   DISCARDABLE
+        _PTEXT          CLASS 'PCODE'   NONDISCARDABLE
+        _PDATA          CLASS 'PDATA'   NONDISCARDABLE SHARED
+        _STEXT          CLASS 'SCODE'   RESIDENT
+        _SDATA          CLASS 'SCODE'   RESIDENT
+        _DBOSTART       CLASS 'DBOCODE' PRELOAD NONDISCARDABLE CONFORMING
+        _DBOCODE        CLASS 'DBOCODE' PRELOAD NONDISCARDABLE CONFORMING
+        _DBODATA        CLASS 'DBOCODE' PRELOAD NONDISCARDABLE CONFORMING
+        _16ICODE        CLASS '16ICODE' PRELOAD DISCARDABLE
+        _RCODE          CLASS 'RCODE'
+EXPORTS
+        $(DDB_NAME) @1
+<<
+        mapsym -s $(DEVICE)
+

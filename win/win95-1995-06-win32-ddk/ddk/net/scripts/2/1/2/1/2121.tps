@@ -1,0 +1,10 @@
+ReadScript \tps\scripts\2\1\2\1\1.tps
+ReadScript \tps\scripts\2\1\2\1\2.tps
+ReadScript \tps\scripts\2\1\2\1\3.tps
+ReadScript \tps\scripts\2\1\2\1\4.tps
+ReadScript \tps\scripts\2\1\2\1\5.tps
+ReadScript \tps\scripts\2\1\2\1\6.tps
+ReadScript \tps\scripts\2\1\2\1\7.tps
+ReadScript \tps\scripts\2\1\2\1\8.tps
+ReadScript \tps\scripts\2\1\2\1\9.tps
+ReadScript \tps\scripts\2\1\2\1\10.tps

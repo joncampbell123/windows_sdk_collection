@@ -1,0 +1,7 @@
+FILES = shell01z.asm shell02z.asm shell03z.asm shell04z.asm \
+        shell05z.asm shell06z.asm shell07z.asm shell08z.asm \
+        shell09z.asm shell0az.asm shell0bz.asm shell0cz.asm \
+        shell0dz.asm
+
+!include ..\local.mk
+

@@ -1,0 +1,208 @@
+'-------------------------------------------------------------------------
+'
+' DIB_FORM.MST (2.0) automation script
+'    FileFormatTest: saves DIB files in different file formats.
+'
+' Defines:
+' _DEBUG    Define this to enable debugging code in the script.  Useful for
+'           adding dumb terminal output for tracking what your script is up to.
+'
+' CTSHELL   Define this to enable communication with the CT Shell.
+'
+' NO_PROMPT Define this to disable user interaction with the script.
+'
+' History:
+'  07/14/94 - davidkl - added history section, recompiled in 32-bit mstest
+'  07/26/94 - davidkl - fixed text of File Type button to match new DibView2
+'                       added new format information new to dibview2.exe
+'  08/23/94 - davidkl - added debug string output (ifdef _DEBUG)
+'  01/09/95 - davidkl - delete temp file (if exists) before saving.
+'  01/17/95 - davidkl - house cleaning
+'  01/27/95 - davidkl - added hct logging
+'-------------------------------------------------------------------------
+''$DEFINE _DEBUG
+
+'$DEFINE DIB_FORM
+''$DEFINE CTSHELL
+''$DEFINE NO_PROMPT
+
+CONST LOGS        = "dib_form.log"        ' assume current dir
+CONST SCRIPT      = "dib_form"
+CONST TESTFILE    = "testfile.dct"        ' filename for file format test
+
+DECLARE FUNCTION DeCode$   (szKeyString$)
+DECLARE SUB FileFormatTest (szDIBFile$)
+DECLARE SUB FileSaveAs     (szFileFormatKeys$)
+
+'$include: 'dib.inc'
+
+'-------------------------------------------------------------------------
+
+SUB FileSaveAs (szFileFormatKeys$)
+   ' Saves current file in specified DIB format.
+   ' Returns name of current file
+
+   if(EXISTS(gszHomeDir + TESTFILE) <> 0) then
+      DebugOut "-=> Temporary File exists, deleting. <=-"
+      kill gszHomeDir + TESTFILE
+   endif
+
+   DebugOut "File | Save As"
+   DoKeys "%fs"                     ' SelectMenuItem "File" SelectMenuItem "Save As"
+
+   'wait for the dialog box to be displayed
+   while(WFndWnd("Save Bitmap", FW_PART OR FW_FOCUS OR FW_DIALOG) = 0)
+   wend
+
+   DebugOut "File Name = " + gszHomeDir + TESTFILE
+   DoKeys "%n" + gszHomeDir + TESTFILE
+
+   DebugOut "File Type >>"
+   WButtonClick "File Type >>"
+   DoKeys szFileFormatKeys$         ' select file format
+   Print "  Saving in file format : " + szFileFormatKeys$
+   HctLog "  Saving in file format : " + szFileFormatKeys$
+
+   WButtonClick OK_BUTTON           ' save file in new format
+
+   DebugOut "Close Source File (CTRL+F4)" + CHR$(13) + chr$(10)
+   DoKeys "^{F4}"                   ' close source file
+END SUB
+
+'-------------------------------------------------------------------------
+
+FUNCTION DeCode$ (szKeyString$)
+   ' Takes sendkeys code for file formats and translates to
+   '   text.  "%g%1" --> "RGB 1bpp"
+
+   DIM szKeyCode AS STRING, szTranslation AS STRING
+
+   szKeyCode = Mid$ (szKeyString$, 2, 1)    ' extract first hotkey
+
+   IF (szKeyCode = "g") THEN
+      szTranslation = "RGB "
+   ELSEIF (szKeyCode = "l") THEN
+      szTranslation = "RLE 4bpp"
+   ELSEIF (szKeyCode = "e") THEN
+      szTranslation = "RLE 8bpp"
+   ELSEIF (szKeyCode = "p") THEN
+      szTranslation = "PM "
+   ELSE
+      szTranslation = "Invalid keycode!"
+   ENDIF
+
+   ' Get nBpp if saving in RGB or PM format
+   IF (szKeyCode = "g" OR szKeyCode = "p") THEN
+'      IF (Mid$ (szKeyString, 4, 1) = "2") THEN
+'         szKeyCode = "24"
+'      ELSE
+'         szKeyCode = Mid$ (szKeyString, 4, 1)
+'      ENDIF
+      '07/26/94 - davidkl - new for dibview2
+      SELECT CASE (Mid$(szKeyString, 4, 1))
+         CASE "6"   '16 bpp
+              szKeyCode = "16"
+         CASE "2"   '24 bpp
+              szKeyCode = "24"
+         CASE "3"   '32 bpp
+              szKeyCode = "32"
+         CASE ELSE  'everything else
+              szKeyCode = Mid$ (szKeyString, 4, 1)
+      END SELECT
+      szTranslation = szTranslation + szKeyCode + "bpp"
+   ENDIF
+
+   DebugOut "DeCode = " + szTranslation
+
+   DeCode$ = szTranslation
+END FUNCTION
+
+'-------------------------------------------------------------------------
+
+SUB FileFormatTest (szDIBFile$)
+   ' Save/Load current DIB file in each format available.
+
+   DIM lRet AS LONG, MAXFORMAT AS INTEGER, nFileFormat AS INTEGER
+   DIM hDibview AS INTEGER
+   STATIC aDibFormat$ (17)
+
+   MAXFORMAT = 17                       ' file formats + 1 (zero based arrays)
+
+   'RGB formats
+   aDibFormat$ (0) = "%g%1"            ' select RGB  1 bpp  format
+   aDibFormat$ (1) = "%g%4"            ' select RGB  4 bpp  format
+   aDibFormat$ (2) = "%g%8"            ' select RGB  8 bpp  format
+   aDibFormat$ (3) = "%g%6%a"          ' select RGB 16 bpp format
+   aDibFormat$ (4) = "%g%6%c"          ' select RGB 16 bpp 5-5-5 format
+   aDibFormat$ (5) = "%g%6%b"          ' select RGB 16 bpp 5-6-5 format
+   aDibFormat$ (6) = "%g%2"            ' select RGB 24 bpp format
+   aDibFormat$ (7) = "%g%3%a"          ' select RGB 32 bpp format
+   aDibFormat$ (8) = "%g%3%d"          ' select RGB 32 bpp 8-8-8 format
+
+   'RLE formats
+   aDibFormat$ (9) = "%l"              ' select RLE 4 bpp  format
+   aDibFormat$(10) = "%e"              ' select RLE 8 bpp  format
+
+   'PM formats
+   aDibFormat$(11) = "%p%1"            ' select PM  1 bpp format
+   aDibFormat$(12) = "%p%4"            ' select PM  4 bpp format
+   aDibFormat$(13) = "%p%8"            ' select PM  8 bpp format
+   aDibFormat$(14) = "%p%6"            ' select PM 16 bpp format
+   aDibFormat$(15) = "%p%2"            ' select PM 24 bpp format
+   aDibFormat$(16) = "%p%3"            ' select PM 32 bpp format
+
+   FOR nFileFormat = 0 TO MAXFORMAT - 1
+      FileSaveAs (aDibFormat$ (nFileFormat))
+
+         ' open the file saved in FileSaveAs
+      DoKeys "%fo"                  ' "File"  "Open"
+      DoKeys "%n" + gszHomeDir + TESTFILE
+      Print  "  Opening file format   : " + DeCode$ (aDibFormat$ (nFileFormat))
+      HctLog "  Opening file format   : " + DeCode$ (aDibFormat$ (nFileFormat))
+
+         ' wait for file to be loaded...
+      hDibView = WGetActWnd (0)
+      WButtonClick "OK"                ' open new format file
+      WHILE hDibView = WGetActWnd (0)
+         'wait for new window, could be error dlg...
+      WEND
+
+         ' check for error msg from DIBVIEW
+      IF (DIbError% (DeCode$ (aDibFormat$ (nFileFormat))) = TRUE) THEN
+         DoKeys "^{F4}"                ' close errant file
+         EXIT FOR       ' exit for loop - don't play with this file anymore
+      ELSE
+         '$IFNDEF No_prompt
+             ConfirmDisplay FILE_FORMAT
+             IF gszCancelFlag <> 0 THEN
+               EXIT FOR
+             ENDIF
+          '$ENDIF
+      ENDIF
+
+      'Print the file
+      DoKeys "%fp"                     ' File/Print
+      DoKeys "{ENTER}"                 ' Send to default printer
+      Sleep 10                         ' Let the spooler chew...
+
+      ' close test file and reload original
+      DoKeys "^{F4}"                   ' close new format file
+      ShowDibFile szDibFile$           ' reload source file for next format
+
+      IF (DIbError% (DeCode$ (aDibFormat$ (nFileFormat))) = TRUE) THEN
+         DoKeys    "^{F4}"             ' close errant file
+         EXIT FOR       ' exit for loop - don't play with this file anymore
+      ENDIF
+   NEXT nFileFormat
+   DoKeys "^{F4}"                      ' close file
+END SUB
+
+'-------------------------------------------------------------------------
+'MAIN
+'-------------------------------------------------------------------------
+
+StartScript FILE_PRINT
+InitApp     FILE_PRINT
+DIBTest     FILE_PRINT
+EndScript   FILE_PRINT
+'$include: 'abort.inc'

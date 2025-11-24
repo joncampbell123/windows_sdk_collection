@@ -1,0 +1,14 @@
+call gdc COMMAND
+call gdh EISA
+call gdc INTERRUP
+call gdc LOOPBACK
+call gdh MACBIN
+call gdc RESET
+call gdh NE3200HW
+call gdh NE3200PR
+call gdh NE3200SW
+call gdc PACKET
+call gdc REQUEST
+call gdc NE3200
+call gdc SEND
+call gdc TRANSFER

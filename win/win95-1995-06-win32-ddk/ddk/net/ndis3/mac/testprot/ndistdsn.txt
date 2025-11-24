@@ -1,0 +1,1150 @@
+
+
+
+
+
+
+
+
+
+
+
+
+NDIS 3.0 MAC Tester Specification
+Revision 1.2, May 8 1991
+Revision 1.3, May 6 1992
+Revision 1.4, July 31 1992
+
+
+.Begin Table C.
+{TOC \o|1. Introduction	3
+1.1. Goals	3
+2. Overview	3
+3. Driver Tester Functionality	3
+3.1. Functional Testing	4
+3.2. Stress Testing	5
+3.3. Driver Tester Commands	6
+3.3.1. Tester Control Commands	8
+3.3.1.1. BeginLogging	8
+3.3.1.2. BreakPoint	8
+3.3.1.3. EndLogging	8
+3.3.1.4. Help	8
+3.3.1.5. Quit	9
+3.3.1.6. SetEnvironment	9
+3.3.1.7. Verbose	10
+3.3.2. Tester Script Control Commands	10
+3.3.2.1. Go	10
+3.3.2.2. Pause	10
+3.3.2.3. ReadScript	11
+3.3.2.4. Wait	11
+3.3.3. Tester Functional Test Commands	11
+3.3.3.1. Call and Return	12
+3.3.3.1.1. AddMulticastAddress - NdisRequest	12
+3.3.3.1.2. Close - NdisCloseAdapter	12
+3.3.3.1.3. DeleteMulticastAddress - NdisRequest	12
+3.3.3.1.4. Open - NdisOpenAdapter	13
+3.3.3.1.5. QueryInformation - NdisRequest	13
+3.3.3.1.6. QueryStatistics - NdisRequest	13
+3.3.3.1.7. Reset - NdisReset	13
+3.3.3.1.8. SetFunctionalAddress - NdisRequest	14
+3.3.3.1.9. SetGroupAddress - NdisRequest	14
+3.3.3.1.10. SetInformation - NdisRequest	14
+3.3.3.1.11. SetLookAheadSize - NdisRequest	15
+3.3.3.1.12. SetPacketFilter - NdisRequest	15
+3.3.3.2. Send and Receive	16
+3.3.3.2.1. Receive	16
+3.3.3.2.2. Send - NdisSend	16
+3.3.3.2.3. StopReceive	17
+3.3.3.2.4. StopSend	17
+3.3.3.2.5. WaitSend	17
+3.3.3.2.6. Send and Receive Statistics	18
+3.3.3.3. Indications and Completions	18
+3.3.3.3.1. GetEvents	19
+3.3.4. MAC Tester Stress Test Commands	19
+3.3.4.1. CheckStress	19
+3.3.4.2. EndStress	19
+3.3.4.3. Stress	19
+3.3.4.4. StressServer	21
+3.3.4.5. WaitStress	22
+3.3.4.6. .6 Stress Statistics	22
+3.4. Script Files	23
+3.5. Test Logging	25
+4. MAC Tester Design	25
+4.1. TPCTL.EXE - MAC Tester Control Application	25
+4.2. TPDRVR.EXE - MAC Tester Protocol Driver	25
+4.3. Initialization	25
+4.4. Command Entry and Execution	26
+4.5. Tester Protocols	26
+4.5.1. Functional Test Protocol	26
+4.5.2. Stress Test Protocol	27
+4.5.3. Packet Headers	29
+4.6. Functional Test Flow of Control	33
+4.6.1. Call and Return	33
+4.6.2. Send and Receive	34
+4.6.3. Indications and Completions	36
+4.7. Stress Test Flow of Control	37
+5. MAC Tester Installation	38
+5.1. Installing and Running the MAC Tester	38
+5.2. Installing and Running the MAC Tester Scripts and Logs	38
+}.End Table C.
+
+1. Introduction
+This specification describes the NDIS 3.0 MAC (Media Access Control) Driver Tester.
+	It discusses the flow of control of both the functional and stress tests that can be run, and the commands and arguments that can be entered at the command line to start each of the types of tests.  It also details the design of the tester.
+1.1. Goals
+	The goal of the MAC Driver Tester is to assist driver developers in debugging and unit testing the driver during the development phase, and for conformance testing completed NDIS drivers.
+	During development, the developer can test each of the NDIS requests as they are completed.  After development, the driver can be put through a simple battery of tests to give the developer a high degree of confidence that the driver will pass the NDIS 3.0 Conformance Test Suite.  Finally, the  Tester is used in the NDIS 3.0 Conformance Test Suite to fully test each driver, thus ensuring that it conforms to the NDIS 3.0 Specification.
+2. Overview
+	The MAC Driver Tester performs two separate and distinct tasks: 
+	o It verifies the functionality of each NDIS 3.0 request supported by the driver.
+	o It heavily stresses the driver's packet send and receive routines.
+The developer can unit test and debug the driver during the early stages of development and guarantee its completeness and robustness.
+	The Tester emulates a transport protocol driver and binds through the NDIS wrapper to the MAC driver.  To test a variety of network configurations, multiple instances of the Tester can be bound to each driver.  This gives the user the ability to simulate having two separate network stacks installed on the same machine.
+	With this tool, each MAC driver can be tested to ensure that it conforms to the NDIS 3.0 specification, and that each of the NDIS requests is fully and correctly implemented.  The ability to test the functionality of a driver is supported by entering commands and their arguments either at the command line or from script files.  Script files are particularly useful for putting the driver through a specific series of events or for repetitiously testing a given request.
+	Each test logs the results to the selected log file and prints the results to the screen.  If a stress test is running, the tester can optionally print runtime results to the screen.
+	The Tester has a built-in routine, Stress, that thoroughly stresses a driver.  This routine creates a significant amount of network traffic by sending and receiving packets of selected size and packet and buffer makeup.
+3. Driver Tester Functionality
+	The Driver Tester is comprised of two separate modules:
+	o The Win32 user mode application, TPCTL.EXE, which accepts commands and sends them to the driver
+	o The kernel mode test protocol driver, TPDRVR.SYS, which accepts the commands, and issues the actual NDIS requests to the driver.
+	Through the Tester commands, a variety of stack configurations can be constructed.  In figure 1, TPDRVR is bound to a single instance of the driver, while in figure 2, TPDRVR simulates two different protocols bound to the same instance of the driver. In figure 3 TPDRVR simulates two different protocols bound to two different MAC drivers.  The first instance of TPDRVR is bound to the first instance of the driver and the second instance to the second driver.  Each of these configurations gives the user different capabilities when testing network traffic and the driver's functionality.(OI = Open Instance)
+
+    +--------+          +--------+               +--------+
+    н        н          н        н               н        н
+    н TPCTL  н          н TPCTL  н               н TPCTL  н
+    н        н          н        н               н        н
+    +--------+          +--------+               +--------+
+  --------------  ----------------------  ----------------------
+    +--------+     +--------++--------+     +--------++--------+
+    н        н     н        нн        н     н        нн        н
+    н TPDRVR н     н TPDRVR нн TPDRVR н     н TPDRVR нн TPDRVR н
+    н  OI=1  н     н  OI=1  нн  OI=2  н     н  OI=1  нн  OI=2  н
+    н        н     н        нн        н     н        нн        н
+    +--------+     +--------++--------+     +--------++--------+
+  +------------+      +------------+           +------------+
+  н  WRAPPER   н      н  WRAPPER   н           н  WRAPPER   н
+  +------------+      +------------+           +------------+
+    +--------+          +--------+          +--------++--------+
+    н        н          н        н          н        нн        н
+    н DRIVER н          н DRIVER н          н DRIVER нн DRIVER н
+    н        н          н        н          н        нн        н
+    +--------+          +--------+          +--------++--------+
+     Fig. 1              Fig. 2                   Fig. 3
+3.1. Functional Testing
+	Functional testing verifies that all requests to the MAC driver and all indications and completions called from within the driver work as specified in the NDIS 3.0 specification.  From the command line, the user can call all of the NDIS requests and induce specific driver indication and completion routines.  Also, the user can develop a series of script files to run the driver through its paces in a simple functional way.
+	The commands have been divided into three groups: Call and Return, Send and Receive, and Events.
+	The Call and Return commands call each of the NDIS requests that change the configuration of the driver, but do not cause any data transfer or additional activity once the call has completed.
+			o AddMulticastAddress		o Close
+			o DeleteMulticastAddress 		o Open
+			o QueryInformation			o QueryStatistics
+			o Reset					o SetFunctionalAddress	
+			o SetGroupAddress			o SetInformation
+			o SetLookAheadSize			o SetPacketFilter
+
+	The Send and Receive commands send and receive packets to/from the local machine or other participating machines.
+			o Receive		o Send
+			o StopReceive		o StopSend
+			o WaitSend
+
+	The Event command determines if any unexpected or erroneous indications and completions have occurred on the machine.
+			o GetEvents
+
+	Each command has a long and short format that can be used to invoke the selected request.  All of the commands and their arguments are case-insensitive.
+3.2. Stress Testing
+	The stress test stresses a MAC driver to show it conforms with the NDIS 3.0 specification.  The tool can be started in one of three modes: as either client, server, or as both client and server.
+	If the machine is started as a Client, it is responsible for control of the test, for sending test packets, and for keeping track of the number and type of packets sent to each of the servers participating in the test.  Once initialized, the client broadcasts for any server machines set up to participate in the test.
+	The Server machine in turn responds, registering itself with the client, resetting statistics counters, and then processing test packets that subsequently arrive from the client.  After the registration phase, the actual testing phase begins and the client sends packets to each of the servers that have registered.
+	The client continuously sends packets to each of the servers in turn.  This continues for either a given number of iterations or a given number of packets.  After the tests have ended the client queries each server for its test statistics and then displays them on the screen and logs them to a file.  Finally, it sends a packet to each server requesting it to end the test.
+	The server machine does nothing more than receive packets, determine the necessary response, and act upon it.  Depending on the command in the packet, the server either responds by sending a packet back to the client, or discarding the packet.  In either case, the server increments counters to track the number of packets received, the number responded to, and any errors occurring in the test.
+	A machine can also run as both a client and a server. This means that it both sends packets to servers and returns packets to itself or to other clients.
+	The Stress commands are:
+			o Stress		o StressServer
+			o EndStress		o WaitStress
+			o CheckStress
+
+	Each command has a long and short format that can be used to invoke the selected request.  All of the commands and their arguments are case-insensitive.
+3.3. Driver Tester Commands
+	The following are the command line arguments supported by the user mode application, TPCTL, to either drive the Tester or control the flow of script files.  Each command has a long and short format that can be used to invoke the selected request.  All of the commands and their arguments are case-insensitive.
+	The application itself can be started to either read a script file or accept commands from the Tester prompt.  To start the application type:
+TPCTL [Script_File_Name] [Log_File_Name]
+
+Arguments:
+			Script_File_Name __An OPTIONAL script file containing test commands.
+			Log_File_Name __An OPTIONAL log file for logging test results.  If no name is given the logfile name defaults to TESTPROT.LOG.
+
+	If a command or its arguments have been entered incorrectly, a command error is returned to the user.  If the command is entered correctly but the request fails in the driver, the error status of the request is returned.
+	If there is no script file, then the application expects commands from the keyboard.  The application prompts the user for the Open_Instance value and each of the argument values once a command is entered.  It displays the argument name, and the user can either enter the new value for the argument, or press ENTER to accept the default value.
+	If the commands are read from a script file, the Open_Instance value and any new argument-value pairs must immediately follow the command, either on the same line, or on following lines. If the arguments are on new lines following the command, each line of the command, except the last, must end with the plus sign, "+".  If a command entry in a script file does not have an argument-value pair for a given argument, the default value for that argument is used in that instance of the call.
+	The command line command syntax:
+	Command
+		or
+	Command OI# Value_1 ...
+		or 
+	Command [Open_Instance=OI#] [Argument_1=Value_1] ...
+	A command and its arguments entered at the command line may be followed by a semicolon ";" telling the command parser that no other arguments are to be requested and to use the defaults for the remaining arguments.  The semicolon may be entered at any point during command parsing.
+  	The script file command syntax:
+Command 						+
+			[Open_Instance=OI#]			+
+			[Argument_1=Value_1]			+
+			[Argument_2=Value_2]			+
+					.				+
+					.				+
+					.				+
+			[Argument_X=Value_X]
+
+where:
+
+			Command __The Tester command being issued.
+
+			Open_Instance=OI# __Represented by an integer value, the Open_Instance determines which instance of the test protocol driver, TPDRVR, to send the command packet to.  This is an optional parameter for each command. If it is not supplied, the command defaults to the first open instance of the protocol driver.  If an open instance does not exist an error is returned.  No spaces are allowed in the argument.
+
+			Argument_# = Value_# __The argument-value pair represents an argument specific to the Tester command being issued and its value.  These pairs are used in script files to select non-default values for any of the arguments to the command.  If an argument is not present in the call, the default argument is used.  The argument-value pairs in a script file may be indented.  No spaces are allowed in the argument.
+
+			+ __The plus sign indicates that a command line in a script file is continued on the next line.  The script processor continues to read each successive line until a line with no "+" following it is found.
+
+	If invalid commands or arguments are entered at the command line, an error message is returned and the user is prompted to re-parse the argument.  If invalid command arguments are entered from a script file, an error message appears on the screen the processing of the script file halts, and the script files are unloaded.
+	The Tester can simulate several transport protocol drivers loaded simultaneously.  Each instance of TPDRVR can be bound to the same or different drivers.  So that the application can distinguish between different instances of TPDRVR, an Open_Instance value is assigned when an instance of a MAC is opened.  When a new instance of a MAC is opened, an Open_Instance value is assigned and must be used to send commands to the correct instance.
+3.3.1. Tester Control Commands
+	The Tester control commands control TPDRVR itself and are not used to call any NDIS requests.  They set up TPDRVR and get test status and statistics.
+3.3.1.1. BeginLogging
+	BeginLogging enables the logging of commands and their results.  Once logging is started any commands entered from the command line are written to a log file.  If commands are being read from scripts this function is disabled.
+BeginLogging [Log_File]
+
+Arguments:
+
+		Log_File __The name of the file to log the commands and their results to.  WARNING: If this file exists, it will be overwritten.  The default log file name is CMDLINE.LOG.
+
+			BL __The short form of the command.
+
+3.3.1.2. BreakPoint
+	Breakpoint causes an interrupt in the driver to break into the debugger.
+BreakPoint
+
+Arguments:
+			None.
+
+			BP __The short form of the command.
+
+3.3.1.3. EndLogging
+	EndLogging disables the logging of commands and their results.
+EndLogging
+
+Arguments:
+			None.
+
+			EL __The short form of the command.
+
+3.3.1.4. Help
+	Help prints out either a list of the commands or help for a specific command.
+Help [Command]
+
+Arguments:
+			Command __The command that help is request for.
+
+			H __The short form of the command.
+
+3.3.1.5. Quit
+	Quit exits the control application.  Any tests currently running are stopped and any opens to any MACs are subsequently closed.
+Quit
+
+Arguments:
+			None.
+
+			Q __The short form of the command.
+
+3.3.1.6. SetEnvironment
+	SetEnvironment allows the user to customize tester environment variables that will effect the running of tests.
+SetEnvironment [Open_Instance] [Env_Var=Value]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to issue the request to.  The default value is 1.
+
+			Env_Var=Value __The env_var-value pair represents an environment variable and its value.  The environment variables control TPDRVR and how it functions.  These pairs are used in script files to select non-default values for any of the arguments to the command.  If an environment variable is not present, the default argument for that variable is used.  No spaces are allowed in this argument.
+
+Environment Variable values that may be set:
+
+			WindowSize __The number of packets in the window buffer of the windowing algorithm.  The default is 10 packets.
+
+			RandomMaxBuffer __The maximum value passed to the rand routine to determine the number of buffers in RAND_MAKEUP packets. The default value is 5 which generates an average buffer size of 1/54 of the packet size.
+
+			Stress_Address __The multicast or functional address that will be used to initiate a stress test.  All machines in a given stress test must use the same Stress_Address.
+
+			Stress_Delay __The standard number of seconds to delay each loop through a stress test.
+
+			Up_For_Air_Delay __The number of seconds to delay on the loop through a stress test after Delay_Interval iterations loops have occurred.
+
+			Delay_Interval __The number of Stress_Delays between each Up_For_Air_Delay
+
+			SE __The short form of the command.
+
+3.3.1.7. Verbose
+	Verbose toggles the verbose flag, which determines if the output of each command is displayed on the screen.  The default value displays all test results on the screen.
+Verbose
+
+Arguments:
+			None.
+
+			V __The short form of the command.
+
+3.3.2. Tester Script Control Commands
+3.3.2.1. Go
+	Go sends a TP_GO packet to a remote machine signalling a paused instance of the driver to continue processing its test scripts.  Go continuously resends the packet, and will wait, retrying,  until it is acknowledged or stopped with <ctrl-c>.
+Go [Open_Instance] [Remote_Address] [Test_Signature]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter that will send the TP_GO packet.  The default value is 1.
+
+			Remote_Address __The address of the card on the remote machine to send the TP_GO packet to.  It must be of the form "XX-XX-XX-XX-XX-XX", the X's representing the hex value of the address.
+
+			Test_Signature __A unique signature used by both machines to determine if the correct packets have been sent and acknowledged.  This value must match the Test_Signature value on the PAUSED machine.
+
+			G __The short form of the command.
+
+3.3.2.2. Pause
+	Pause waits for the receipt of a TP_GO packet with a matching test signature and then acknowledges it by sending a TP_GO_ACK packet.  Pause will wait for the receipt of the TP_GO packet until it arrives, or the command is cancelled by <ctrl-c>
+Pause [Open_Instance] [Remote_Address] [Test_Signature]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter that will wait for the TP_GO packet.  The default value is 1.
+
+			Remote_Address __The address of the card on the remote machine to send the TP_GO_ACK packet to.  It must be of the form "XX-XX-XX-XX-XX-XX", the X's representing the hex value of the address.
+
+			Test_Signature __A unique signature used by both machines to determine if the correct packets have been sent and acknowledged.  This value must match the Test_Signature value on the machine sending the TP_GO packet.
+
+			P __The short form of the command.
+
+3.3.2.3. ReadScript
+	ReadScript gives the user the ability to run tests using predefined script files.  The script files are constructed from Tester commands.  Recursive script file reading is supported to ten levels of recursion.
+ReadScript [Script_File_Name] [Log_File_Name]
+
+Arguments:
+			Script_File_Name __The name of the file containing the test protocol commands.  If no name is given the script-file name defaults to TESTPROT.TPS.
+
+			Log_File_Name __The name of the file logging the results of the test.  If no name is given the logfile name defaults to TESTPROT.LOG.
+
+			RS __The short form of the command.
+
+	If the ReadScript command is recursively called from within a script file, the file used to log the results is the same as the log file from the level above unless otherwise specified.
+3.3.2.4. Wait
+	Wait forces script file processing to pause for a given number of seconds.  This gives script files the ability to make a request and then Wait, allowing time for the test results to occur.
+Wait [WaitTime]
+
+Arguments:
+			WaitTime __The time, in seconds, the call will wait before returning command to the script file processor.
+
+			W __The short form of the command.
+
+3.3.3. Tester Functional Test Commands
+	The Tester Functional Test Commands can call each of the NDIS requests with parameters of the user's choice.  There are three types of functional test commands:
+	o Call and Return commands
+	o Send and Receive commands
+	o Indication and Completion commands.
+3.3.3.1. Call and Return
+	The Call and Return commands comprise all of the NDIS requests made by TPDRVR to the driver except NdisSend and NdisTransferData.  Although these commands may pend, once they have completed there is no outstanding work to finish, i.e. no packets to send, receive or respond to.  The return status of the actual NDIS request, and whether the request returned pending or not, is returned to the application upon completion of each of the commands.
+3.3.3.1.1. AddMulticastAddress - NdisRequest
+	AddMulticastAddress issues a call to the MAC using NdisRequest to add a multicast address to the list of multicast address currently set on the card.
+AddMulticastAddress [Open_Instance] [Multicast_Address]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to issue the request to.  The default value is 1.
+
+			Multicast_Address __The multicast address to add.  It must be of the form "XX-XX-XX-XX-XX-XX", the X's representing the hex value of the multicast address to be added.
+
+			AM __The short form of the command.
+
+3.3.3.1.2. Close - NdisCloseAdapter
+	Close issues a call to NdisCloseAdapter to close the MAC adapter associated with the given Open_Instance.
+Close [Open_Instance]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to be closed.
+
+			C __The short form of the command.
+
+3.3.3.1.3. DeleteMulticastAddress - NdisRequest
+	DeleteMulticastAddress issues a call to the MAC using NdisRequest to delete a multicast address from the list of multicast addresses currently set on the card.
+DeleteMulticastAddress [Open_Instance] [Multicast_Address]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to issue the request to.  The default value is 1.
+
+			Multicast_Address __The multicast address to delete.  It must be of the form "XX-XX-XX-XX-XX-XX", the X's representing the hex value of the multicast address to be deleted.
+
+			DM __The short form of the command.
+
+3.3.3.1.4. Open - NdisOpenAdapter
+	Open issues a call to NdisOpenAdapter to open the MAC adapter specified and associate it with the given Open_Instance.  Subsequent calls to the Open_Instance will be directed to this adapter.
+Open [Open_Instance] [Adapter_Name]
+
+Arguments:
+			Open_Instance __The open instance between the test driver and the MAC adapter this open will be associated with.  The default value is 1.
+
+			Adapter_Name __The MAC adapter to be opened.
+
+			O __The short form of the command.
+
+3.3.3.1.5. QueryInformation - NdisRequest
+	QueryInformation issues a call to the MAC using NdisRequest to query a given class of information from the MAC.
+QueryInformation [Open_Instance] [OID_Request]
+
+Arguments:
+			Open_Instance __The open instance between the test driver and the MAC adapter to issue the request to.  The default value is 1.
+
+			OID_Request __the information type to query.  The default value is NDIS_SUPPORTED_OID_LIST.
+
+			QI __The short form of the command.
+
+3.3.3.1.6. QueryStatistics - NdisRequest
+	QueryStatistics issues a call to the wrapper to query a given class of information from the MAC.
+QueryStatistics [Open_Instance] [OID_Request]
+
+Arguments:
+			Open_Instance __The open instance between the test driver and the MAC adapter to issue the request to.  The default value is 1.
+
+			OID_Request __the information type to query.  The default value is NDIS_SUPPORTED_OID_LIST.
+
+			QS __The short form of the command.
+
+3.3.3.1.7. Reset - NdisReset
+	Reset issues a call to the MAC using NdisReset to reset the MAC.
+Reset [Open_Instance]
+
+Arguments:
+			Open_Instance __The open instance between the test driver and the MAC adapter to issue the request to.  The default value is 1.
+
+			R __The short form of the command.
+
+3.3.3.1.8. SetFunctionalAddress - NdisRequest
+	SetFunctionalAddress issues a call to the MAC using NdisRequest to set the functional address on the card.
+SetFunctionalAddress [Open_Instance] [Functional_Address]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to issue the request to.  The default value is 1.
+
+			Functional_Address __The functional address to set on the card.  It must be of the form "XX-XX-XX-XX", the X's representing the hex value of the last four bytes of the functional address to be added.
+
+			SF __The short form of the command.
+
+3.3.3.1.9. SetGroupAddress - NdisRequest
+	SetGroupAddress issues a call to the MAC using NdisRequest to set the group address on the card.
+SetGroupAddress [Open_Instance] [Group_Address]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to issue the request to.  The default value is 1.
+
+			Group_Address __The group address to set on the card.  It must be of the form "XX-XX-XX-XX", the X's representing the hex value of the last four bytes of the group address to be added.
+
+			SG __The short form of the command.
+
+3.3.3.1.10. SetInformation - NdisRequest
+	SetInformation issues a call to the MAC using NdisRequest to set a given class of information on the MAC.
+QueryInformation [Open_Instance] [OID_Request]
+
+Arguments:
+			Open_Instance __The open instance between the test driver and the MAC adapter to issue the request to.  The default value is 1.
+
+			OID_Request __the information type to set.  The default value is NDIS_CURRENT_PACKET_FILTER.  The information type may be one of the following:
+				NDIS_CURRENT_PACKET_FILTER
+				NDIS_CURRENT_LOOKAHEAD
+				NDIS_CURRENT_MULTICAST_LIST
+				NDIS_CURRENT_FUNCTIONA_ADDRESS
+				NDIS_CURRENT_GROUP_ADDRESS
+
+			SI __The short form of the command.
+
+3.3.3.1.11. SetLookAheadSize - NdisRequest
+	SetLookAheadSize issues a call to the MAC using NdisRequest to set the lookaheadsize on the card.
+SetLookAheadSize [Open_Instance] [LookAhead_Size]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to issue the request to.  The default value is 1.
+
+			LookAhead_Size __The new size of the card's lookahead buffer.  The default value is 100 bytes.
+
+			SL __The short form of the command.
+
+3.3.3.1.12. SetPacketFilter - NdisRequest
+	SetPacketFilter issues a call to the MAC using NdisRequest to set the card's packet filter to a given value.
+SetPacketFilter [Open_Instance] [Packet_Filter]
+
+Arguments:
+			Open_Instance __The open instance between the test driver and the MAC adapter to issue the request to.  The default value is 1.
+
+			Packet_Filter __The filter to be set on the MAC adapter.  Multiple filter values may be entered by separating each with the "|" character.  The values may be one or more of the following:
+				DIRECTED
+				MULTICAST
+				ALLMULTICAST
+				BROADCAST
+				SOURCEROUTING
+				PROMISCUOUS
+				MACFRAME
+				FUNCTIONAL
+				ALLFUNCTIONAL
+				GROUP
+				NONE
+
+			SP __The short form of the command.
+
+3.3.3.2. Send and Receive
+	The Send and Receive commands give the user the ability to send and/or receive packets to/from a source that is looped back locally or a remote server machine.
+3.3.3.2.1. Receive
+	Receive enables the local machine to receive packets and, if requested, resend them to the address specified.  This command causes the MAC driver to expect packets to arrive.  Each packet is examined to determine if it contains a Resend packet, which is resent, and the proper statistics counters are incremented.
+Receive [Open_Instance]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to set up to expect to receive packets.  The default value is 1.
+
+			R __The short form of the command.
+
+3.3.3.2.2. Send - NdisSend
+	Send issues a call or calls to NdisSend to send packets to a specific address.  It continues to send packets until the requested number of packets have been sent, or the command is stopped by a call to StopSend.  If the Resend_Address argument is given, the data field of the packet(s) that is being sent contains a "Resend" packet that can be stripped out and resent by the receiver.  Once all the packets have been sent, the statistics specific to sending may be written to the log file and displayed on the screen.
+Send [Open_Instance] [Destination_Address] [Packet_Size] [Number] [Resend_Address]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to send packets from.  The default value is 1.
+
+			Destination_Address __The network address to send the packet to.  The address can be either a broadcast address, a multicast address, a functional address, or a directed address.  It must be of the form "XX-XX-XX-XX-XX-XX", the X's representing the address.
+
+			Packet_Size __The size of the packet(s) to send.
+
+			Number __The number of packets to send.  If the value entered for Number is -1 the Send command continues to send packets until stopped by a call to the StopSend command.  If the value is 1 the results are printed immediately upon completion of the send, any other positive value requires a call to StopSend or WaitSend to retrieve the results.  It should be noted that if the Send command is issued with an argument value of 1 for Number, the command returns synchronously, otherwise the command returns asynchronously.
+
+
+			Resend_Address __This parameter designates that the packet(s) to be sent contain a Resend packet in the data field with Resend_Address in the Resend packet's ResendDestAddr field.  Upon receipt of this packet, the destination machine strips off the media header and sends the "new" packet contained in the data field.  The address can be either a broadcast, multicast, functional, group or a directed address.  It must be of the form "XX-XX-XX-XX-XX-XX", where the X's represent the address.  Resend_Address is an optional argument, and there is no default value for it.  If it is omitted from the command line, the packets sent have only data in the data field, and will not be resent by the machine receiving them.
+
+			S __The short form of the command.
+
+3.3.3.2.3. StopReceive
+	StopReceive stops a previously started instance of Receive, logs the statistics for the packets received, and displays them on the screen.
+StopReceive [Open_Instance]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to stop expecting packet receives on.  The default value is 1.
+
+			SR __The short form of the command.
+
+3.3.3.2.4. StopSend
+	StopSend stops a previously started instance of Send, logs the statistics for the packets sent, and displays them on the screen.
+StopSend [Open_Instance]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to stop sending on.  The default value is 1.
+
+			SS __The short form of the command.
+
+3.3.3.2.5. WaitSend
+	WaitSend stops a previously started instance of Send, logs the statistics for the packets sent, and displays them on the screen.
+StopSend [Open_Instance]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to stop sending on.  The default value is 1.
+
+			SS __The short form of the command.
+
+3.3.3.2.6. Send and Receive Statistics
+	The following statistics are returned by the Send, WaitSend and StopSend commands:
+Packet Sends			=	X
+Packet Pends			=	X
+Packet Send Completes		=	X
+Packet Send Fails		=	X
+
+	These statistics refer to the results for a given instance of the Send command. Packet Sends is the number of calls to NdisSend attempted.  Packet Pends is the number of NdisSend calls that returned pending.  Packet Send Completes is the number of pending calls to NdisSend that completed, and Packet Send Fails is the number of calls to NdisSend that failed, or pended and then failed.
+	The following statistics are returned by the StopReceive command:
+Packet Receives				=	X
+Packet Receive Completes		=	X
+Corrupt Receives			=	X
+
+Packet Sends				=	X
+Packet Send Pends			=	X
+Packet Send Completes			=	X
+Packet Send Fails			=	X
+
+Packet Transfer Data			=	X
+Packet Transfer Data Pends		=	X
+Packet Transfer Data Completes	=	X
+Packet Transfer Data Fails		=	X
+
+	These statistics refer to the results for a given instance of the Receive command.  Packet Receives is the number of packets indicated to the MAC tester by the MAC.  Packet Receive Completes is the number of times the MAC indicates that receives have completed.  Corrupt Receives is the number of MAC Tester packets which contained corrupted data
+3.3.3.3. Indications and Completions
+	The Indications and Completions commands handle notification that an indication or completion routine that was not associated with a request has occurred.  All indications are added to the Event_Queue while only those completion routines that are unexpected, i.e. erroneous completions, are added to the queue.  When an indication or completion routine is called, the transport protocol handler routines place the routine's Event_Type, return status and any significant information on the Event_Queue.  The GetEvents command can then be called to return this information to the application, where it is written to the log file, and printed to the screen.
+	It should be noted that if the command Receive has been started, the indications NdisIndicateReceive and NdisIndicateReceiveComplete will not be added to the Event_Queue, but intercepted and handled by the Receive routine.
+3.3.3.3.1. GetEvents
+	GetEvents issues a call to the tester to retrieve the events stored on the Event_Queue, and pass them back to the application.  The events are taken off the queue one at a time, written to the log file, and printed to the screen.  Once the Event_Queue is empty the command returns control to the user prompt.  If the Event_Queue is continuously being added to it will never empty, the command may then be stopped with <Ctrl-C>.
+GetEvents [Open_Instance]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to request events from the Event_Queue on.  The default value is 1.
+
+			GE __The short form of the command.
+
+3.3.4. MAC Tester Stress Test Commands
+3.3.4.1. CheckStress
+	CheckStress check to see if a stress test has finished and if it has then the results are logged and printed to the screen, otherwise it returns control back to the command line.  CheckStress may only be used on an Open_Instance where a stress test has been started.
+CheckStress [Open_Instance]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to check to see if a stress test has finished.  The default value is 1.
+
+			CS __The short form of the command.
+
+3.3.4.2. EndStress
+	EndStress stops a stress test that is currently running.  The test in question shuts down gracefully, and the results are logged and printed to the screen.  This command stops both the client and/or server sides of a stress test.
+EndStress [Open_Instance]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to end a stress test on.  The default value is 1.
+
+			ES __The short form of the command.
+
+3.3.4.3. Stress
+	Stress starts a machine running the client side of a stress test.  This routine returns asynchronously, and an event is signalled in the application when it has finished, or it may be stopped prematurely using the command EndStress.  Once a test has been started it may be monitored using CheckStress and WaitStress.  These commands will report the results of a test if it has finished, or wait for it to finish.
+Stress [Open_Instance] [Member_Type] [Number_Of_Packets] [Number_Of_Iterations] [Packet_Type] [Packet_Size] [Packet_MakeUp] [Response_Type] [Delay_Type] [Delay_Length] [Windowing_Enabled] [Data_Checking] [Packets_From_Pool]
+
+Arguments:
+			Open_Instance __The open instance of the driver to direct the command to.  This instance of the driver must exist, or an error is returned.
+
+			Member_Type __This argument determines the action the machine takes once the tests have started.  The possible Member_Type values are:
+				CLIENT
+				BOTH
+
+CLIENT __This machine acts as a client, controlling the flow of the tests.
+BOTH __This machine behaves as a client and a server, both controlling the flow of the test and participating in it.
+
+			Number_Of_Packets __The number of packets that will be sent to each server prior to the test completing.  A value of -1 causes the test to run forever unless a values is entered for Number_Of_Iterations.  The default value for Number_Of_Packets is -1.
+
+			Number_Of_Iterations __The number of iterations this test will run through.  A value of -1 causes the test to run forever unless a positive value is entered for Number_Of_Packets.  The default value for Number_Of_Iterations is -1.
+
+			Packet_Type __The type of packet size algorithm used to create packets for this test; FIXEDSIZE, RANDOMSIZE or CYCLICAL.  The default type is FIXEDSIZE.
+
+FIXEDSIZE __Each packet is of a fixed size Packet_Size.
+RANDOMSIZE __Each packet is of a random size ranging from a low of the minimum test packet size of 60 bytes up to Packet_Size.
+CYCLICAL __Packets are of sent of all possible sizes, starting at the minimum test packet size of 60 bytes up to the maximum frame size for the given media.
+
+			Packet_Size __With the Packet_Type argument, Packet_Size is used to determine the size of packets in the test. The Default size if 512 bytes.
+
+			Packet_MakeUp __The number and size of the buffers that makeup each packet; RAND, SMALL, ZEROS, ONES, and KNOWN.  The default makeup is RAND.
+
+RAND __The number and size of each buffer in the packet is randomly selected.
+SMALL __The number and size of each buffer in the packet is randomly selected, with the buffers averaging 1/100 of the maximum frame size for the media.
+ZEROS __The number and size of each buffer in the packet is randomly selected, but there is a high percentage of zero byte buffers represented in the packet..
+ONES __The number and size of each buffer in the packet is randomly selected, but there is a high percentage of one byte buffers represented in the packet..
+KNOWN __Used with the Packet_Type CYCLICAL the buffers in the packet are all the same "known" size.  
+
+			Response_Type __The method the server will use when responding to test packets; NO_RESPONSE, FULL_RESPONSE, ACK_EVERY, and ACK_10_TIMES.  The default value is FULL_RESPONSE.
+
+NO_RESPONSE __The server simply accepts the stress packets, counts them, and discards them.
+FULL_RESPONSE __The server responds to each stress packet with an exact copy of the packet.
+ACK_EVERY __The server responds to each stress packet with a 64 byte acknowledgment packet.
+ACK_10_TIMES __The server responds to each stress packet with a 10 separate 64 byte acknowledgment packets.
+
+			Delay_Type __The method used to determine the next interpacket delay; FIXEDDELAY or RANDOMDELAY.  The default value is FIXEDDELAY.
+
+FIXEDDELAY __Each delay between sends to a server is Delay_Length iterations long.
+RANDOMDELAY __Each delay between sends to a server is randomly selected from a range of zero to Delay_Length iterations.
+
+			Delay_Length __The length in iterations the interpacket delay will be.
+
+			Windowing_Enabled __A boolean used to determine whether a simple windowing algorithm will be used between the client and each server.  The default value is TRUE.
+
+			Data_Checking __A boolean used to determine whether data checking will be performed on each packet received.  The default value is TRUE.
+
+			Packets_From_Pool __A boolean used to determine whether a pool of packets will be created prior to the test, or each packet will be created at runtime.  The default value is TRUE.
+
+			ST __The short form of the command.
+
+3.3.4.4. StressServer
+	StressServer starts a machine running as the passive server side of a stress test.  This command returns asynchronously.
+StressServer [Open_Instance]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to start a stress server on.  The default value is 1.
+
+			SV __The short form of the command.
+
+3.3.4.5. WaitStress
+	WaitStress waits for a stress test that is currently running to end.  Once the test in question has completed the results are logged and printed to the screen.  This command stops both the client and/or server side of a stress test.  WaitStress may only be used on an Open_Instance where a stress test has been started.  The command may be cancelled with <Ctrl-c>.
+WaitStress [Open_Instance]
+
+Arguments:
+			Open_Instance __The open instance between the tester and the adapter to wait for a stress test to complete on.  The default value is 1.
+
+			WS __The short form of the command.
+
+3.3.4.6. .6 Stress Statistics
+	The following statistics are returned by the CheckStress, EndStress and WaitStress commands:
+CLIENT STRESS STATISTICS:
+Client Address 02-60-8C-4D-37-B3 - OpenInstance 0
+Total Packets Sent:		 	X
+Total Packets Received:		X
+Total Packets Lost:			X
+Packets Per Second:			X
+
+The Client had X Server(s) for this test as follows:
+Server # 1 - Address XX-XX-XX-XX-XX-XX - OpenInstance X
+Server # 2 - Address XX-XX-XX-XX-XX-XX - OpenInstance X
+
+SERVER STRESS STATISTICS:
+Server Instance Counters collected on the Client:
+Server #		1		2
+
+S:			X		X
+R:			X		X
+L:			X		X
+SP:			X		X
+SC:			X		X
+SF:			X		X
+CR:			X		X
+
+Server Instance Counters collected on the Server:
+
+R:			X		X
+S:			X		X
+L:			X		X
+SF:			X		X
+SP:			X		X
+SC:			X		X
+TD:			X		X
+TDP			X		X
+TDC:			X		X
+TDF:			X		X
+
+	These stress statistics are divided into two sections: the client statistics, collected on the local client machine, and the server statistics, collected on both the local client machine, and each of the remote server machines participating in the stress test.
+	The client statistics represent the total results for a stress test.  Total Packets Sent is the total number of packets sent by the local MAC Tester.  Total Packets Received is the total number of packets received by this machine.  Total Packets Lost is simply the difference between the number of packets sent, and the number of packets received.  This value indicates the number of packets that where lost in transit from the client to the server and back again.  Packets Per Second is the number of packets sent by the client and the servers divided by the number of seconds the test ran.  Following these statistics is a list of the servers that participated in the stress test, their card address, and their OpenInstance on the remote machine.
+	The server statistics represent the results for a specific stress server participating in the test.  These statistics are collected on both the local machine by the client, and on the remote server machine by the server itself.  S is the number of calls to NdisSend made.  R is the number of receives indications.  In the local section of the server statistics L is the difference between the number of packets sent to the server, and the number received back from the same server.  In the section of statistics collected on the server L is the difference between the number of packets received from the client, and the number of packets resent to the client.  SP is the number of calls to NdisSend that returned pending.  SC is the number of pending sends that completed.  SF is the number of calls to NdisSend that failed, and the number of pending sends that completed with a non-success status.  CR is the number of packets that contained corrupted data.  In the section of statistics collected on the server TD, TDP, TDC and TDF are the number of calls to NdisTransferData, the number of times the call pended, the number of pending calls that completed, and the number of calls that failed, or pending calls that completed with a non-success status respectively.
+3.4. Script Files
+	The Tester can be driven by script files containing a series of commands and their arguments.  Each line of the script file is read and parsed for the command or its subsequent arguments.
+	A comment line can be placed anywhere in the script file, and is prefixed with a hash mark "#".
+# Comment about the command being issued or 
+# its arguments.
+
+	An example for using script files would be to create a script file that opened an adapter, set up the packet filter to receive directed and multicast packets, added a multicast address, and sent 10 packets of size 1514 bytes to a remote machine.  After this has finished the adapter is closed.
+The script file would read as follows:
+# Open the FOOBAR adapter.
+
+Open										+
+			Open_Instance=1							+
+			AdapterName=FOOBAR01
+
+# Set the packet filter to receive directed and multicast packets.
+
+SetPacketFilter								+
+			Open_Instance=1							+
+			PacketFilter=DIRECTED|MULTICAST
+
+# Add the following multicast address.
+
+AddMulticastAddress							+
+			Open_Instance=1							+
+			MulticastAddress=07-07-07-07-07-07
+
+# Send the packets.
+
+Send										+
+			Open_Instance=1							+
+			DestinationAddress=C0-A0-00-0B-57-72		+
+			PacketSize=1514						+
+			Number=10
+
+# And close the adapter
+
+Close							+
+			Open_Instance=1
+
+	Another script file could be used to start an instance of the stress test running as both client and server with the cyclical packet makeup, wait 1 hour, and then stop.  Since the Stress command is given only the three arguments, Member_Type, Packet_Size and Test_Duration, the rest of the arguments are given their default values.
+# Start the stress test 
+
+Stress						+
+			Open_Instance=1				+
+			MemberType=BOTH 			+
+			PacketSize=CYCLICAL
+			
+# Wait 1 hour
+
+Wait 							+
+			WaitTime = 3600
+
+# And then stop the stress test
+
+EndStress 						+
+			Open_Instance=1
+
+3.5. Test Logging
+	If a script file is running a test, results from all commands are written to the log file.  Unless otherwise specified in the call to the ReadScript command, the results are logged to the file TESTPROT.LOG located in the directory where the test was started.  If the verbose flag has not been disabled, the Verbose command causes the results to be printed to the screen as well.  With the Verbose flag disabled only the actual results and any errors that occur will be logged to the screen and the log file. 
+	To verify a test run, take the log file from a test and compare it to the expected results by DIFFing it with a log file containing the correct results.
+4. MAC Tester Design
+_	The MAC Tester is comprised of two separate modules:  the Win32 user mode application which accepts commands and sends them to the driver, and the kernel mode driver which accepts the ioctls from the application and issues the actual NDIS requests to the driver being tested.
+4.1. TPCTL.EXE - MAC Tester Control Application
+	TPCTL.EXE is the MAC Tester control application.  It is a user mode WIN32 application that allows the user to control the driver with a set of commands.  It either accepts the commands from the command line, or reads them from a script file.  Each command, with its arguments, is packaged into an buffer and sent to the driver using the NtDeviceIoControlFile function.  The kernel mode driver, in turn, processes the command and returns the results to the application.  TPCTL.EXE examines the return status to see that the request succeeded or failed, and that any information passed back by the kernel mode driver is correct.  This information can be logged to a file, and/or displayed on the screen.  Additionally, TPCTL.EXE can query the driver for test status and statistics which it can also display on the screen.
+4.2. TPDRVR.EXE - MAC Tester Protocol Driver
+	TPDRVR.EXE is the MAC Tester protocol driver.  It is a kernel mode driver that binds to the driver being tested, and issues the requests that are specified by calls from TPCTL.EXE.  The I/O subsystem loads TPDRVR.EXE at boot time and then executes the first phase of initialization.  When TPCTL.EXE starts, it "pings" the driver using NtDeviceIoControlFile to ensure the driver has loaded properly, and to set the default test environment variables.  
+All communication between TPDRVR.EXE and the control application is done via the NtDeviceIoControlFile and IoCompleteRequest routines.  The protocol driver either issues a single NDIS request, or calls the Stress routine to start a stress test.  The functional tests return either synchronously or asynchronously while the stress tests always return asynchronously, thus allowing other requests to be issued while a stress test is running.
+4.3. Initialization
+	The driver is loaded at system startup by the I/O subsystem which calls the driver entry initialization routine.  This routine, in turn, initializes the driver object and sets up the necessary data structures, thus enabling it to receive commands from the user mode application.  At this point the driver waits for a request from the application telling it what actions to take.
+	At initialization, TPCTL.EXE sends an IOCTL to the driver to ensure that the driver has initialized successfully and set the default test environment variables.  It then displays the MAC Tester command prompt.  If the driver failed to initialize, the application reports an error and exits.
+4.4. Command Entry and Execution
+	Start TPCTL.EXE from the command line by typing, TPCTL.   The program is now ready to accept input.  Each command, with its arguments, is bundled into the input buffer and passed to the driver using NtDeviceIoControlFile, where it is processed by the driver.  If the command is to read a specific test script file, all subsequent commands are then read from the file. Once the test script is completed, control is passed back to the command line.
+	The following method is used for issuing a command:
+	The first entry on the command line must be the command itself.  This entry is used in an internal switch statement to select the proper structure to place in the input buffer.  The commands are then written into the buffer.
+	At this point a call to NtDeviceIoControlFile is made with the newly constructed buffer to send the command information to the transport protocol driver.  The application then waits on the event associated with that instance of the call.  The driver receives the buffer in the routine TpIssueRequest where it is unbundled, and the driver determines what request, or stress test variation, to call and then issues the call.
+	Once the request has completed, the results of the command are first placed in the output buffer that was passed in by the call.  A call to IoCompleteRequest is then issued.  This sets the state of the event to signalled.  The application can then gather the results from the buffer and write them to the log file and the screen.
+	If the request to the driver was a call to run a stress test, the NtDeviceIoControlFile call itself returns asynchronously.  If the call was a call to run a specific functional request then the call will not return until the request has completed.  Once the routine does complete, the status code and any information returned is bundled into the output buffer, and returned to the application for processing.
+	In the case of a stress test, the NtDeviceIoControlFile call returns immediately so that, while the stress test is running, the application can run other functional tests.  When the stress test is over, it issues an IoCompleteRequest call to the application thread.  The application may then gathers the test statistics from the run of the test.
+4.5. Tester Protocols
+4.5.1. Functional Test Protocol
+	The protocol that controls sending and receiving packets in functional testing is made up of two types of packets: FUNC1_PACKET_TYPE and FUNC2_PACKET_TYPE packets.
+	A FUNC1_PACKET_TYPE packet is simply a packet with a known size and a data field.  This type of packet tests send routines.  There is no expected response to this packet and there may or may not be a machine at the destination address to receive the packet.
+	A FUNC2_PACKET_TYPE packet contains a FUNC1_PACKET_TYPE packet in its data field, and is used to create simple non-stressful traffic on the network.  The packet is sent to a machine which has run the Receive command.  The receiving machine receives the packet, removes the FUNC1_PACKET_TYPE from the data field, and sends the new packet to the address contained in the media header of the new packet.  The address in the header of the packet can be any legal network address type:  broadcast, multicast, functional, group, or directed.
+4.5.2. Stress Test Protocol
+	The protocol that controls the stress tests is made up of several control packets and several data send and response packets.  The protocol types are:
+	REGISTER_REQ - The register request or REGISTER_REQ packet is issued by the client to search for any servers.  The packet is sent to the multicast address 07-07-07-07-07-07 or the functional address C0-00-00-01-00-00 (depending on media type), which was registered by all servers at initialization time.  The packet is issued ten times by the Client at the beginning of the test.  Each server receiving the packet allocates the necessary test control structures, initializes the test counters, and then sends a REGISTER_RESP packet stating that it is available to run the test for the specific client.  
+	The server then waits for the client to begin sending the test packets.  If a server has already received a REGISTER_REQ packet from a specific client, and again receives a REGISTER_REQ from the same client, the server merely resets the test counters and waits for the client to begin the test.  This allows for the restarting of clients after a crash without any necessary work required on the server machines.
+	REGISTER_REQ2 - The second register request packet or REGISTER_REQ2 packet is issued by the client periodically during the beginning of the test to enlist any servers which did not respond to the first series of REGISTER_REQ packets.  This packet does away with the necessity for human synchronization of the tests.  Again, the client sends this packet to the multicast address 0x070707070707, or the functional address C0-00-00-01-00-00 (depending on media type), which was registered by the server.  If a server is already registered with this client it ignores the packet.  Otherwise, the server follows the REGISTER_REQ packet scenario. 
+	REGISTER_RESP - The register response or REGISTER_RESP packet is sent by the server to any client which has previously sent a REGISTER_REQ or REGISTER_REQ2 packet.  It tells the client that the server will participate in this run of the test.  Upon reception of this packet, the client allocates and initializes the necessary control structures for the new server.  When the client begins sending packets this server will be one of the addresses to which the packets are sent.  If this packet is in response to a REGISTER_REQ2, the client automatically begins sending to this server the next time through the packet sending loop.
+	TEST_REQ - The test request or TEST_REQ packet is one of the two "test" data packet types that is sent and received between the client and each of the registered servers.  Once the test has begun, the client loops through the list of registered servers, sending directed packets to each of the server's machine addresses.
+	TEST_RESP - The test response or TEST_RESP packet responds to a TEST_REQ packet from a client.  Once a server receives a TEST_REQ, it examines the Response_Type stored in the TP_PACKET_HEADER, and, depending on this parameter, either sends the entire packet back to the client, sends one or more smaller acknowledgment packets, or simply discards the packet.
+	STATS_REQ - The statistics request or STATS_REQ packet is used by the client to request the test statistics from each of the servers.
+	STATS_RESP - The statistics response or STATS_RESP packet is used by the server to respond to a request from a client for test statistics.  Upon receipt of a STATS_REQ packet, the server collects the test statistics into a STATS_RESP packet, and sends it to the client.
+	END_TEST - The end test packet is issued by the client to inform each of the servers that the test has concluded.
+	The protocol used is summed up by the following diagram:
+
+    CLIENT                                   SERVER 
+
+                                           [-------------+
+                     REGISTER_REQ                        |
+            -----------------------------]               |
+                                                         |
+                     REGISTER_REQ2                       |
+           (issued periodically during test)             |
+            -----------------------------]               |
+                                                         |
+                     REGISTER_RESP                       |
+            [-----------------------------               |
+                                           [--+          |
+                       TEST_REQ               |          |
+            -----------------------------]    | repeat   | repeat
+                                              | duration | for each
+                       TEST_RESP              | times    | test
+            [-----------------------------    |          |
+                                           ---+          |
+                       STATS_REQ                         |
+            -----------------------------]               |
+                                                         |
+                       STATS_RESP                        |
+            [-----------------------------               |
+                                           --------------+
+                       END_TEST
+            -----------------------------]
+
+4.5.3. Packet Headers
+	There are two types of packets that can be sent during functional testing, and one during stress testing.  The format of each is similar, but the data fields differ.
+	The first functional packet type, used by the "Send and Receive" commands, is made up of a media header, a test header, packet type information and a data field which contains a "Resend" packet.  This packet type is sent by one functional test machine to another. The destination machine strips off the header information and resends the new packet.
+	The second functional packet type is made up of a media header, a test header and a data field.  This type of packet is only used for sending, and no action is taken upon its receipt.
+	It should be noted that these packets are not packed.
+typedef union _MEDIA_HEADER {
+
+	typedef struct _ETHERNET {
+		UCHAR DestAddr[6];
+		UCHAR SrcAddr[6];
+		BYTE PacketSize_Hi;
+		BYTE PacketSize_Lo;
+	} ETHERNET, * PETHERNET;
+
+	typedef struct _TOKENRING {
+		BYTE AC;
+		BYTE FC;
+		UCHAR DestAddress[6];
+		UCHAR SrcAddress[6];
+	} TOKENRING, * PTOKENRING;
+
+	PUCHAR Padding;
+} MEDIA_HEADER, * PMEDIA_HEADER;
+
+MEDIA_HEADER Structure;
+
+DestAddr __The destination address of the packet.
+SrcAddr __The source address of the packet.  This address matches the StationAddress in the OPEN_BLOCK for this binding.
+PacketSize_Hi __The high byte of the packet size.
+PacketSize_Lo __The low byte of the packet size.
+AC and FC __TokenRing packet control bytes defined by the 802.5 specification.
+Padding __Used to offset the PACKET_INFO to DWORD alignment
+	The test header identifies and controls MAC Tester packets and is defined as follows:
+typedef struct _PACKET_INFO {
+
+	ULONG Signature;
+	ULONG PacketSize;
+	UCHAR DestInstance;
+	UCHAR SrcInstance;
+	UCHAR PacketType;
+
+	union {
+		UCHAR PacketProtocol;
+		UCHAR PacketNumber;
+	} u;
+
+	ULONG CheckSum;
+
+} TP_HEADER, * PTP_HEADER;
+
+TP_HEADER Structure;
+
+Signature __Defines this to be a MAC Tester Packet.  This signature enables the transport protocol driver to determine whether a packet is actually a valid test packet or not.
+STRESS_PACKET_SIGNATURE 0x81818181
+FUNC1_PACKET_SIGNATURE  0x72727272
+FUNC2_PACKET_SIGNATURE  0x63636363
+
+DestInstance __Determines which instance of the transport protocol driver should receive and respond to the packet if two or more transport protocol drivers are bound to the same driver under test.
+SrcInstance __Determines which instance of the transport protocol driver sent the packet.  The SrcInstance is used in a Resend packet by the receiving system to determine which protocol should receive the packet.
+PacketType __Defines this to be either a Stress packet or one of the two Functional Packet types.  PacketType enables the test protocol driver to pass the packet to the proper functional or stress receive handler routines.  
+STRESS_PACKET_TYPE  0
+FUNC1_PACKET_TYPE   1
+FUNC2_PACKET_TYPE   2
+
+PacketProtocol __Defines the stress protocol type of the packet.
+PacketNumber __Functional packet iteration number.
+CheckSum __A simple packet header checksum value.
+	The remainder of the packet header is made up of PacketType specific information stored in one of the following structures.  If the PacketType in the TP_HEADER is a functional Type 2 packet the PACKET_TYPE_INFO pointer is null, and there is no more header information.
+	If the PacketType is a stress packet, the structure contains information about the type of packet, who sent it,  who should receive it, and various other pieces of flow control information.
+typedef struct _STRESS_CONTROL {
+
+	ULONG   DataBufOffset;
+	ULONG   SequenceNumber;
+	ULONG   MaxSequenceNumber;
+	UCHAR   ResponseType;
+	UCHAR   ClientReference;
+	UCHAR   ServerReference;
+	BOOLEAN DataChecking;
+	ULONG   CheckSum;
+
+} STRESS_CONTROL, *PSTRESS_CONTROL;
+
+TP_PACKET_HEADER Structure:
+
+DataBufOffset __Determines the value used to find the start of a packet's data in the DataBuffer. The DataBuffer is initialized at the beginning of the test, and all packets use this buffer for their data contents.
+SequenceNumber __Determines the sequence number of the packet being sent.  It also monitors the sending and reception of packets and regulates the flow of packets between the client and server.
+MaxSequenceNumber __Determines the maximum sequence number for a packet.  The client uses it in the windowing algorithm to determine if it can send another packet.
+ResponseType __Determines the manner in which the server should respond to each packet it receives.  Sent in every packet type, this information is only used at the start of a stress test by the server.
+ClientReference __An index into the clients array of the SERVERS_STORAGE structure on the server machine.  The server uses the  ClientReference to determine which of the registered clients the server is communicating with.
+ServerReference __An index into the servers array of the CLIENT_STORAGE structure on the client machine.  The client  uses the ServerReference to determine which of the registered servers the client is communicating with.
+DataChecking __Passed to each server at the start of a stress test, DataChecking tells the server whether to verify the data in each packet it receives from a client.
+CheckSum __A simple packet header checksum value.
+	Each type 1 functional packet contains a media specific header that makes up the Resend packet.  The receiver of the packet strips off MEDIA_HEADER and TP_HEADER and leaves the media specific header and the remaining data field.  It then transmits this new packet.
+
+typedef struct _FUNC1_PACKET {
+
+	typedef struct _802_3 {
+		UCHAR ResendDestAddr[6];
+		UCHAR ResendSrcAddr[6];
+		BYTE PacketSize_Hi;
+		BYTE PacketSize_Lo;
+	} 802_3, * P802_3;
+
+	typedef struct _802_5 {
+		BYTE AC;
+		BYTE FC;
+		UCHAR ResendDestAddr[6];
+		UCHAR ResendSrcAddr[6];
+	} 802_5, * P802_5;
+
+} FUNC1_PACKET, *PFUNC1_PACKET;
+
+FUNC1_PACKET Structure:
+
+ResendDestAddr __The destination address of the Resend packet.
+ResendSrcAddr __The source address of the Resend packet.  This address matches the DestAddress in the MEDIA_HEADER of the initial packet.
+PacketSize_Hi __The high byte of the packet size.
+PacketSize_Lo __The low byte of the packet size.
+AC and FC __TokenRing packet control bytes defined by the 802.5 specification.
+4.6. Functional Test Flow of Control
+	There are three general types of Functional test commands that can be entered at the command line:  Call and Return, Events, and Send and Receive commands.  The flow of control for each of these command types from the application down to the transport protocol driver and back to the application, differs for each of the three types.
+4.6.1. Call and Return
+	The Call and Return commands call NDIS requests that either complete immediately, or complete in the requests completion routine. In either case, once the request has finished there is no outstanding work to be done, and no side effects that cause other NDIS requests, indications, or completion routines to be called.
+These commands are implemented in the following manner:
+o The command and its arguments are parsed, checked for correctness, packaged into the input buffer, and passed to the transport protocol driver.  Any arguments not entered by the user are given their default values.
+
+o The application writes the command and its arguments to the log file.
+
+o The application then waits on an EVENT tied to this invocation of NtDeviceIoControlFile.  There is a 60 second timeout on the wait call.
+
+o Upon receipt of the buffer, the driver reads the command from the buffer and then passes the arguments to the routine that handles the call to the NDIS request.
+
+o The NDIS request is issued.
+
+o If the NDIS request completes successfully or returns an error, the routine calls the completion routing for the request to handle the return of the information back to the application.  The routine places the IRP so that the completion routine can pass the return information back to the application.
+
+o If the NDIS request returns NDIS_STATUS_PENDING the routine returns the status back to the application.  The application continues to wait on the EVENT, which is signalled by the completion routine.
+
+o In either case a call to the requests completion is made, either from the MAC driver under test upon the completion of the request or by the routine itself.
+
+o The completion routine places the return status, the pending status, and any pertinent information into the output buffer, and issues a call to IoCompleteRequest.
+
+o The I/O completion routine sets the EVENT's state to signalled, thus allowing the application to process the output buffer.
+
+o The application uses the information from the buffer as the results of the call, and if applicable, writes them to the log file and displays it on the screen.
+
+o The application is then ready to accept the next command from the command line, or read it from the script file.
+
+4.6.2. Send and Receive
+	The Send and Receive commands create network traffic on the driver being tested.  The Receive command returns asynchronously, while the Send command can return either synchronously or asynchronously.  After the commands have executed, the routines in the driver continue indefinitely, and must be stopped, either by calls to their respective stop routines, or, in the case of the Send command, until the number of required packets have been sent.
+	Since the routines return immediately, other commands can be issued once the initial command has returned.  This gives the MAC Tester the ability to create simple non-stressful network traffic, (packets being sent and/or received), then issue other NDIS requests to ensure they continue to behave correctly.
+The Send commands are implemented in the following manner:
+o The command and its arguments are parsed, checked for correctness, packaged into the input buffer, and passed to the driver.  Any arguments not entered by the user are given their default values.
+
+o The application writes the command and its arguments to the log file.
+
+o The application waits for the call to NtDeviceIoControlFile to return.
+
+o Upon receipt of the buffer, the driver reads the command from the buffer and then passes the arguments to the routine that handles the calls to the NDIS request.
+
+o If the call requires that only one packet should be sent, the driver calls the send routine directly to issue the calls to NdisSend.
+
+o If more than one packet will be sent, the driver creates a new system thread that executes the send routine to issue the calls to NdisSend.
+
+o The send routine creates each packet using the arguments passed from the application.
+
+o The call to NdisSend is issued.
+
+o If there is a finite number of packets to be sent, the new send  thread loops, sending packets until all packets are sent and then returning the status of the request to the application.
+
+o If the request pends, the completion routine increments the statistic counters. If the request succeeds or returns an error, the send routine increments the counters.
+
+o After the final packet has been sent the completion routine calls IoCompleteRequest, passing the send statistics and results back to the application, and the system thread exits.
+
+o If there are an indefinite number of packets to send, the new system thread executing the send routine continues sending packets until halted by a call to the StopSend command.  The StopSend command sets a flag to stop the send routine which then finishes the send currently being processed and exits.
+
+o Once all pending packets have been sent, the completion routine issues the call to IoCompleteRequest, passing the send statistics and results back to the application in the output buffer.
+
+o The application uses the information from the buffer as results of the call.  If required, the results are written to the log file and displayed on the screen.
+
+o The application is then ready to accept the next command from the command line, or read it from the script file.
+
+The Receive commands are implemented in the following manner:
+o The command is parsed, checked for correctness, packaged into the input buffer, and passed to the driver.
+
+o The application writes the command to the log file.
+
+o The application waits for the call to NtDeviceIoControlFile to return.
+
+o Upon receipt of the buffer, the transport protocol driver reads the command from the buffer and calls the routine that enables receive handling.
+
+o The receive routine sets a flag that enables the receive routines and disables the event routines which place receive indications on the Event_Queue.
+
+o From that point on all packets received from any address are passed to the receive packet routines where they are examined for the existence of Resend packets, and the receive statistics counters are incremented.
+
+o If a Resend packet does exist, it is resent in the receive indication routine.
+
+o If there is no Resend packet, the newly received packet is counted and discarded.
+
+o Every packet received is processed in the above manner until a call to StopReceive is issued.
+
+o StopReceive resets the flag to enable the event routines to queue packet indications on the Event_Queue again.
+
+o It then packs the receive statistics into the output buffer of the Receive call, issues a call to IoCompleteRequest, and exits.
+
+o The application uses the information from the buffer as results of the call.  If required, the results are written to the log file and printed to the screen.
+
+o The application is then ready to accept the next command from the command line, or read it from the script file.
+
+4.6.3. Indications and Completions
+	Indications and Completions are not requests that are submitted from the command line, but are events passed up from the driver under test.  The routines to handle these events are contained in the driver.  Unless these routines are disabled by other MAC Tester commands, such as Receive, they monitor each occurrence of an event and place the necessary information on the Event_Queue.  There is one command, GetEvents, that can be issued from the command line, and is used to retrieve the information from the Event_Queue.
+The event routines are implemented in the following manner:
+o The driver calls an indication or completion routine indicating that an event has occurred.
+
+o The handler routine creates an EVENT and places the pertinent information about the event into the event structure.
+
+o This structure is then placed on the end of the Event_Queue.
+
+o If the Event_Queue is full, the queue's Overflow flag is set to TRUE and the event information is discarded.
+
+	It should be noted that no response is generated by the occurrence of any event.  The information is simply gathered into an EVENT structure and placed on the queue.
+The GetEvents command is implemented in the following manner:
+o The command is parsed, checked for correctness, packaged into the input buffer, and passed to the driver.
+
+o The application writes the command to the log file.
+
+o The application then waits for the call to NtDeviceIoControlFile to return.
+
+o Upon receipt of the buffer, the driver reads the command from the buffer and calls the routine that enables the querying of the Event_Queue.
+
+o The routine then resets the Overflow flag to FALSE, and removes the first event from the queue.
+
+o The routine issues a call to IoCompleteRequest and returns from the NtDeviceIoControlFile call.
+
+o The event information is passed back to the application by way of the output buffer where it is written to the log file and displayed on the screen if desired.
+
+o A new call to NtDeviceIoControlFile is issued and the process is repeated.  This continues until the Event_Queue is empty.
+
+o The application is then ready to accept the next command from the command line, or read it from the script file.
+
+	If there a events are continuously being added to the Event_Queue while GetEvents is removing them the Event_Queue may never become empty.  To stop GetEvents when it gets in this state simple enter <Ctrl-c>.
+4.7. Stress Test Flow of Control
+	The Stress test generates traffic on the network and can either be run on one machine acting as both a stress client and a server, or on several machines, with each machine acting as either a client, a server or as both.
+	The stress routine is implemented in the following manner:
+o A server machine (or machines) starts and waits for a REGISTER_REQ packet from any client requesting servers to join in a stress test.
+
+o A client starts, broadcasts 10 REGISTER_REQ packets, and then waits for responses.
+
+o Each server that receives the REGISTER_REQ packet registers the client, and responds with a REGISTER_RESP packet.
+
+o Upon receipt of the REGISTER_RESP packets the client registers each server that responded.  
+
+o Once the client's waiting period has ended the actual stress test begins.  The client continuously sends TEST_REQ packets to each registered server.  The makeup of these packets is determined by the arguments used to start the test.
+
+o Upon receipt of the TEST_REQ packet, the server responds by sending a TEST_RESP packet to the client.
+
+o Once the client has sent all the packets, it sends a STATS_REQ packet to each server.  
+
+o The servers respond with a STATS_RESP packet containing their statistics of the test run.
+
+o The client waits, and then sends a TEST_END packet to each server requesting the server clean up and exit.
+
+o The client then returns the results of the stress run to the application and exits.
+
+5. MAC Tester Installation
+5.1. Installing and Running the MAC Tester
+	The NDIS MAC Tester driver requires an entry in the registry for it to be loaded successfully.  To create this entry run the following command:
+	REGINI TESTINST.TXT
+	where the file TESTINST.TXT contains the following:
+\Registry\Machine
+
+	System
+		CurrentControlSet
+			Services
+				Tpdrvr
+					Type = REG_DWORD 0x1
+					Start = REG_DWORD 0x1
+					ErrorControl = REG_DWORD 0x1
+					Dependencies = REG_MULTI_SZ "NDIS"
+
+	Once the registry has been updated, and the files are in place reboot the system.  The driver will now be installed and waiting for a command from the control application.  To start the control application simply type TPCTL at the command line.  This will return a tester prompt ([TPCTL:]) from which test commands may be entered.  More information on the commands may be found in the NDIS 3.0 MAC Tester Specification, or type HELP at the MAC Tester command line.
+5.2. Installing and Running the MAC Tester Scripts and Logs
+	To install the MAC Tester scripts and known logs use the XCOPY command to copy the entire tree of directories and files to a directory named \TPS located in the root of the drive selected.  There are several empty directories required in the tree.  Use the XCOPY switch /E to create these directories.
+	To run the scripts change directories to the \TPS directory.  Edit the file SET_VARS.BAT to fit the environment the tests are to be run in.  The machine addresses of the card or cards participating in the test, and the driver names will be needed as will other driver specific details.  Once the file has been edited, run it.  Then run the command:
+	TPCTL CONF_X.TPS
+	(where the X is either an E for ethernet media tests, or a TR for tokenring media tests.)
+	This will cause the MAC Tester to run through the entire suite of tests, both the functional and stress tests.  As each test is run a log file will be created in \TPS\LOGS with the results of the test.  These will be used to later verify the results of the tests.
+	A smaller subset of the tests may be run by using one of the other control scripts described in the README.TXT located in the \TPS directory, or by specifying an explicit test name at the command line to be read and run by the MAC Tester.
+	To verify the results of the tests once they have completed, run the TPDIFF.EXE diff utility on the file LOGS_X using the following command:
+	TPDIFF -F LOGS_X DIFFS
+	(where the X is either an E for ethernet media tests, or a TR for tokenring media tests.)
+	This will place any differences between the results contained in the known logs and the newly created tests logs in the file DIFFS where they may be viewed for errors.
+Microsoft Corporation Company Confidential
+
+Microsoft Corporation Company Confidential
+
+NDIS 3.0 Driver Tester Specification	{page|ii}
+
+NDIS 3.0 Driver Tester Specification	{page|i}
+
+Microsoft Corporation Company Confidential
+
+Microsoft Corporation Company Confidential
+
+NDIS 3.0 Driver Tester Specification	{page|42}
+
+NDIS 3.0 Driver Tester Specification	{page|41}
+
+Microsoft Corporation Company Confidential
+
+Microsoft Corporation Company Confidential
+
+

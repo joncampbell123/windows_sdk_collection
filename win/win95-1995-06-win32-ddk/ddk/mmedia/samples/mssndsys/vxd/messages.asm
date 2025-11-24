@@ -1,0 +1,41 @@
+        page    60, 132
+
+;******************************************************************************
+        title   MESSAGES.ASM - localizeable messages
+;******************************************************************************
+;---------------------------------------------------------------------------;
+;
+;  THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY
+;  KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+;  IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR
+;  PURPOSE.
+;
+;  Copyright (c) 1992- 1995	Microsoft Corporation.	All Rights Reserved.
+;
+;---------------------------------------------------------------------------;
+;
+;   Title:    MSSNDSYS.386 - MICROSOFT Windows Sound System 386 Driver
+;
+;   Module:   MESSAGES.ASM - localizeable messages
+;
+;   Version:  4.00
+;
+;   Date:     March 23, 1994
+;
+;******************************************************************************
+
+        .386p
+
+;==============================================================================
+;                             I N C L U D E S
+;==============================================================================
+
+        .xlist
+        include vmm.inc
+        include msgmacro.inc
+
+CREATE_MESSAGES equ     VMM_TRUE
+        include messages.inc
+        .list
+
+        end
