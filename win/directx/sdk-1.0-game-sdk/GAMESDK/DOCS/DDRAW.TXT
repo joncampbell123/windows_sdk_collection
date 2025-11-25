@@ -1,0 +1,359 @@
+************************
+***                  ***
+***                  ***
+*** DirectDraw Notes ***
+***                  ***
+***                  ***
+************************
+
+Last updated  Sept 26, 1995
+
+
+PLEASE NOTE:
+
+- In this release, DirectDraw will only support page flipping at and mode
+  setting to 640x480x8, 640x480x16, 320x200x8, 320x240x8 on all systems
+  and 640x400x8 and 640x400x16 on most systems.   As well, if you want 
+  to use DirectDraw to run in a window, that is supported as well at any
+  resolution at 8bpp or 16bpp: you just can't create a page flipping primary 
+  surface in a mode larger than 640x480.
+
+- dwSize fields are validated!
+  We must enforce size fields so that if we choose to grow the structure 
+  in the future, we can still allow old applications to run. Structures 
+  that have enforced dwSize fields include:
+  
+          DDCAPS
+          DDBLTFX
+          DDOVERLAYFX
+          DDPIXELFORMAT
+          DDSURFACEDESC
+          
+  When you are passing one of these structures in to us, you need to set
+  the dwSize field to the size of the structure, eg:
+  
+        DDSURFACEDESC   ddsd;
+        ddsd.dwSize = sizeof( DDSURFACEDESC );
+
+ The most common ones are DDBLTFX if you are doing a color fill and  
+ DDSURFACEDESC when you create a surface
+ 
+
+****************************
+***                      ***
+*** Changes from Beta II ***
+***                      ***
+****************************
+
+
+- Flip now takes a flags field as its last parameter.  This can be
+  either 0 or DDFLIP_WAIT (DDFLIP_WAIT waits until WASSTILLDRAWING is 
+  no longer true).
+  
+- Blt and BltFast take a flag that makes them wait until WASSTILLDRAWING
+  is no longer true (DDBLT_WAIT and DDBLTFAST_WAIT)
+  
+ 
+***************************
+***                     ***
+*** Changes from Beta I ***
+***                     ***
+***************************
+
+ 
+======================
+Exclusive Mode Changes
+======================
+SetExclusiveModeOwner was changed to SetCooperativeLevel.
+
+change from:
+
+lpdd->lpVtbl->SetExclusiveModeOwner( lpdd, DDSEMO_FULLSCREEN, TRUE );
+
+to:
+
+lpdd->lpVtbl->SetCooperativeLevel( lpdd, hWnd, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN );
+
+SetCooperativeLevel is required to run a DirectDraw application.
+Just follow your DirectDrawCreate call with a SetCooperativeLevel call.
+
+SetCooperativeLevel mode requires a valid HWND.  DirectDraw uses this HWND to
+handle various messages to control changing the mode when the user switches
+to and from your application.   
+
+DirectDraw reserves the GWL_USERDATA field in the HWND for its use; if you 
+need per window data, you should add data to the class. 
+
+If you do a SetCoopertativeLevel with DDSCL_EXCLUSIVE, then your HWND must
+be a topmost window, created with CreateWindowEx:
+
+    hwnd = CreateWindowEx( WS_EX_TOPMOST, ... )
+
+In this release, you must declare that you are DDSCL_FULLSCREEN when 
+you use DDSCL_EXCLUSIVE.
+
+===============================
+Changes to All Create Functions
+===============================
+DirectDrawCreate
+CreateSurface
+CreatePalette
+
+These have xHave been modified to take a pointer to a controlling IUnknown 
+as the last parameter.   This allows our objects to be aggregatable by other 
+COM objects; you will normally set it to NULL.    Unless you are a real 
+OLE 2/COM-head, this will not impact your life one iota.
+
+=====================
+CreateSurface Changes
+=====================
+CreateSurface has also been modified to be consistent with the rest of the
+create functions.   Instead of the surface object being passed in the
+DDSURFACEDESC structure, it is now a parameter... so code (using C++ notation)
+goes from:
+
+    ddrval = lpDD->CreateSurface( &ddsd );
+    if( ddrval != DD_OK )
+    {
+        return initFail(hwnd);
+    }
+
+    lpDDSPrimary = ddsd.lpDDSurface;
+    
+To:
+    ddrval = lpDD->CreateSurface( &ddsd, &lpDDSPrimary, NULL );
+    if( ddrval != DD_OK )
+    {
+        return initFail(hwnd);
+    }
+    
+In C Notation:
+
+From:
+    ddrval = lpDD->lpVtbl->CreateSurface( lpDD, &ddsd );
+    if( ddrval != DD_OK )
+    {
+        return initFail(hwnd);
+    }
+
+    lpDDSPrimary = ddsd.lpDDSurface;
+    
+To:
+    ddrval = lpDD->lpVtbl->CreateSurface( lpDD, &ddsd, &lpDDSPrimary, NULL );
+    if( ddrval != DD_OK )
+    {
+        return initFail(hwnd);
+    }
+    
+*********************
+***               ***
+*** General Notes ***
+***               ***
+*********************
+ 
+========
+Palettes
+========
+
+Palettes are restricted to entries 1-254 (0 is black, 255 is white).
+You can override this by specifiying DDPCAPS_ALLOW256 when you create the 
+palette, but be warned: palette index 0 is the overscan color on some 
+cards, and so setting it will cause the overscan area of the display to
+change color.
+  
+===========
+Lock/Unlock
+===========
+
+You should be careful  with how you use Lock/Unlock calls.
+Please be aware that the ONLY time the memory pointer is guaranteed to
+be valid is in between the Lock/Unlock calls.   If you stash the pointer
+and use it outside the Lock call, you can hang certain display cards.
+Also note that mode sets will fail and other problems will occur if you
+have outstanding locks.   You cannot just lock a surface and leave 
+it locked.   You should just lock the surface, party on it, and unlock it.
+  
+People have wondered why when using VC++ things hang over a Lock call:
+The reason for this is that we had to hold the Win16 lock in between Lock
+and Unlock.   The Win16 lock is the critical section that protects 16-bit
+GDI and USER.   So if this is held, VC++ will stop responding.   There
+are a number of reasons we had to do this, but the reasons don't make your
+life any easier.   There are two solutions you can use:  
+  1) use the kernel debugger or SoftIce for Win95 from NuMega.   This is the 
+     best solution.   
+  2) create your surfaces using the caps bit DDSCAPS_SYSTEMMEMORY.   This
+     is sub-optimal since you won't get any hardware acceleration.  Also
+     the front buffer will always be in video memory and so will require the
+     win16 lock.    IF YOU CREATE YOUR PRIMARY SURFACE USING THE SYSTEM
+     MEMORY FLAG YOU WILL NOT BE ABLE TO PAGE FLIP.
+  
+
+======
+Macros
+======
+
+DirectDraw defines some standard macros for use with C programs.   Instead
+of writing code like this:
+
+lpDD->lpVtbl->GetCaps( lpDD, &ddcaps, NULL );
+
+you can write:
+
+IDirectDraw_GetCaps( lpDD, &ddcaps, NULL );
+
+Every method is preceeded with the interface name and an underscore; ie:
+
+IDirectDraw_XXXX
+IDirectDrawSurface_XXXXX
+IDirectDrawPalette_XXXXX
+IDirectDrawClipper_XXXXX
+
+=====================
+Bank Switched Devices
+=====================
+
+We've added a caps bit for testing for bank switched devices: 
+DDCAPS_BANKSWITCHED.   See foxbear for an example of how this is used.
+
+A bank switched  device will be very slow in general when copying from 
+VRAM to VRAM over the bus.  Windows 95 uses a VxD called VFLATD to make 
+banked devices look like flat frame buffer devices.   It does this by 
+mapping in a 64k bank using page faults.   Whenever you touch a new 64k bank, 
+a page fault occurs and that 64k bank is mapped in.   So if you stay in the 
+same 64k bank, you will not incur any overhead.    If you don't (say you
+compose an image into VRAM and then try to copy it using memcpy to another
+section of VRAM), then you will incur 2 page faults/bank switches per pixel.
+
+A place this can be really bad is if you rely on our software stretching and
+try to stretch from a VRAM surface to the front buffer or back buffer.  
+Stretching 320x240 to 640x480 this way would cause on the order of 150,000
+page faults/bank switches per frame.   Needless to say, this non-optimal.
+
+If you are going to be stretching, or doing any other heavy VRAM-VRAM copies
+without using the bltter, then you need to make sure that you pay attention
+to the DDCAPS_BANKSWITCHED flag, and create a system memory surface. For 
+example:
+
+    extern LPDIRECTDRAW lpDD;
+    DDCAPS              ddcaps;
+    BOOL                is_banked;
+    DDSURFACEDESC       ddsd;
+    HRESULT             ddrval;
+    LPDIRECTDRAWSURFACE psurf;
+
+    is_banked = FALSE;
+    if( IDirectDraw_GetCaps( lpDD, &ddcaps, NULL ) == DD_OK )
+    {
+        if( ddcaps.dwCaps & DDCAPS_BANKSWITCHED )
+        {
+            is_banked = TRUE;
+        }
+    }
+    
+    ddsd.dwSize = sizeof( ddsd );
+    ddsd.dwFlags = DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH;
+    
+    ddsd.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
+    if( is_banked )
+    {
+        // force this surface to be in system memory
+        ddsd.ddsCaps.dwCaps |= DDSCAPS_SYSTEMMEMORY
+    }
+    ddsd.dwWidth = 320;
+    ddsd.dwHeight = 240;
+
+    ddrval = IDirectDraw_CreateSurface( lpDD, &ddsd, &psurf, NULL );
+    
+
+=====================
+Multiple Applications
+=====================
+DirectDraw will support multiple applications.  You can switch away from
+your DirectDraw application using the standard keys (alt-tab, ctrl-esc, 
+alt-esc).   When you do this, your application will minimize itself on the
+tray.   You can then select the game from the tray and it will restart.
+
+Please pay careful attention to the DDERR_SURFACELOST message.   You can
+receive this error whenever you flip, blt or lock a surface.   What this is
+telling you is that a mode change has happened since the last time you
+accessed the surface.   If a mode change happens, the video memory storage
+is "lost".   You should call the Restore method on the surface to recover its
+video memory, and you can reload the surface with its original data. 
+NOTE: surfaces *explicitly* created in system memory using 
+DDSCAPS_SYSTEMMEMORY will not be lost during a mode set.
+
+Also remember to pay attention to the WM_ACTIVATEAPP message.  This message
+tells you if your application is being activated or deactivated.  When
+your application is deactivated, you should not process your game loop.  Here
+is a code snipit from the Fox & Bear sample:
+
+from message loop:
+
+    case WM_ACTIVATEAPP:
+        bIsActive = (BOOL) wParam;
+        break;
+        
+from main game loop:
+
+    while( 1 )
+    {
+        if( !bIsActive || PeekMessage( &msg, NULL, 0, 0, PM_NOREMOVE ) )
+        {
+            if( !GetMessage( &msg, NULL, 0, 0 ) )
+            {
+                return msg.wParam;
+            }
+            TranslateMessage(&msg); 
+            DispatchMessage(&msg);
+        }
+        else
+        {
+            ProcessFox(lastInput);
+        }
+    }
+    
+Note that the game blocks on a GetMessageCall whenever the game has been
+deactivated.
+
+
+=============
+Low Res Modes
+=============
+We allow the following ModeX modes
+
+320x200
+320x240
+
+In these modes you can only update the back buffer, you can't write the 
+primary surface.   You must update your back buffer and then page flip
+for it to become visible.
+
+=====================
+Set Cooperative Level
+=====================
+
+SetCooperativeLevel is required to run a DirectDraw application.
+Just follow your DirectDrawCreate call with a SetCooperativeLevel call.
+
+SetCooperativeLevel mode requires a valid HWND.  DirectDraw uses this HWND to
+handle various messages to control changing the mode when the user switches
+to and from your application.   
+
+DirectDraw reserves the GWL_USERDATA field in the HWND for its use; if you 
+need per window data, you should add data to the class. 
+
+If you do a SetCoopertativeLevel with DDSCL_EXCLUSIVE, then your HWND must
+be a topmost window, created with CreateWindowEx:
+
+    hwnd = CreateWindowEx( WS_EX_TOPMOST, ... )
+
+In this release, you must declare that you are DDSCL_FULLSCREEN when 
+you use DDSCL_EXCLUSIVE.
+
+    
+==================
+Known Bugs/Gotchas
+==================
+1) BltBatch is not supported
+
+2) Emulation-only (non-DirectDraw drivers) isn't supported in < 8 or > 16bpp.

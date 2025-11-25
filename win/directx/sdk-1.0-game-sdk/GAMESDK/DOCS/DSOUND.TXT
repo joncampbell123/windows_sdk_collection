@@ -1,0 +1,104 @@
+1. DirectSound API Changes since Beta-2
+=======================================
+
+- We are now validating that the dwSize member of the DSCAPS, DSBCAPS,
+and DSBUFFERDESC structure are set correctly.  We do this so that we
+can add functionality to the structures and APIs in future releases.  You
+should always set the dwSize member before doing anything with the structure.
+     {       
+         DSCAPS dscaps;
+         dscaps.dwSize = sizeof(DSCAPS);
+         ...
+     }
+
+- IDirectSound::CreateSoundBuffer was changed for creating primary buffers.
+Now, applications must specify DSBUFFERDESC.dwBufferSize=0 and
+DSBUFFERDESC.lpwfxFormat=NULL when creating primary buffers.  To find out
+the size of the primary buffer created, call IDirectSoundBuffer::GetCaps.
+To set the format of the primary buffer, call IDirectSoundBuffer::SetFormat.
+
+- IDirectSoundBuffer::Restore has been implemented.  Be sure to check for
+DSERR_BUFFERLOST from the Play and Lock member functions.  You can also
+test for lost buffers by calling IDirectSoundBuffer::GetStatus and testing
+for the DSBSTATUS_BUFFERLOST flag.
+
+- If an application calls IDirectSoundBuffer::SetFormat on the primary
+buffer, DirectSound will set the primary buffer to that format whenever
+that application gains the input focus.  That way, all applications are
+guaranteed that the primary buffer is in their preferred format whenever
+their buffers are audible.  Note that only applications with
+DSSCL_PRIORITY cooperative level or higher can call
+IDirectSoundBuffer::SetFormat.
+
+- IDirectSoundBuffer::SetVolume and IDirectSoundBuffer::SetPan may be
+called on the primary buffer by any application, regardless of cooperative
+level.  This will affect the overall volume and pan of the sound hardware
+(i.e. for all secondary streams).
+
+- We implemented IDirectSound::DuplicateSoundBuffer.  Note, however, that
+if you try to duplicate a hardware secondary buffer and there are no more
+mixing channels available, the call will fail.  You should always test
+DuplicateSoundBuffer for failure, and if it fails you should try to
+create a buffer using CreateSoundBuffer.
+
+- The primary sound device (the one you get when you specify a NULL GUID
+in DirectSoundCreate) will create the preferred sound device as specified
+in the Multimedia control panel applet.
+
+- We added support for multiple DSSCL_WRITEPRIMARY applications.  Note,
+however, that when a write-primary app gains the input focus, all secondary
+buffers in that and other applications will be stopped and marked as lost,
+and must be Restored before they can be played again.  In addition, when a
+write-primary app loses the input focus, its primary buffer is marked as
+lost and cannot be restored until that application regains the input focus.
+
+- We dropped support for DSSCL_WRITEPRIMARY applications when running on
+emulated drivers (i.e. when no DirectSound driver is available).
+
+- New "C" interface macros were added to help out C programmers.  Check out
+the macros in dsound.h, such as IDirectSound_CreateSoundBuffer, etc.
+
+- We added a certified driver bit which is set when DirectSound is running
+on Microsoft-tested drivers.  To test for this bit, call
+IDirectSound::GetCaps and test the DSCAPS.dwFlags member for the
+DSCAPS_CERTIFIED flag.  Note, however, that wave-emulated objects will not
+have the DSCAPS_CERTIFIED flag set, but they will have the DSCAPS_EMULDRIVER
+flag set.
+
+- We removed the following APIs:  IDirectSound::GetLatency and
+IDirectSound::SetLatency.  We did this because they weren't needed -
+DirectSound currently gives you the best latency possible (15-20 ms on
+supported drivers).
+
+- We also removed IDirectSoundBuffer::WaveBlt.  We did this because it
+was not being used by developers, and had not undergone sufficient testing.
+Rather than release it with potential problems, we will review and test it
+for the next release.
+
+- IDirectSoundBuffer::SetCurrentPosition cannot be called on a primary
+buffer.  Most sound cards cannot support this function.
+
+- IDirectSound::Compact remains unimplemented.
+
+
+2. DirectSound Driver Support
+=============================
+
+The final release contains DirectSound versions of all sound drivers
+included in the Windows 95 product.  This includes the following:
+
+- Sound Blaster:  8-bit cards, 16-bit cards, and the AWE32.
+- ESS: 488, 688, 1488, 1688.
+- MediaVision: PAS 16, PAS Studio, PAS Plus, Pro 3D, and Blue Lite Special.
+- Aztech: Nova 16, Washington 16, Rocky 2.
+- Microsoft: Windows Sound System.
+
+Sound cards which do not have DirectSound drivers can still be accessed
+through DirectSound.  If no driver is available, DirectSound will use its
+emulation layer to communicate with the device through the standard Wave
+driver interface.  This provides full DirectSound functionality, but
+increases latency significantly and prevents access to hardware
+acceleration.
+
+We have also encountered faults in certain situations on the Roland
+Rap 10 and the Gravis UltraSound MAX.
