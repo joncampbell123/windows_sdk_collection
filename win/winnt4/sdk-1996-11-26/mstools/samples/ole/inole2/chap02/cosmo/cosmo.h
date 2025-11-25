@@ -1,0 +1,164 @@
+/*
+ * COSMO.H
+ * Cosmo Chapter 2
+ *
+ * Single include file that pulls in everything needed for other
+ * source files in the Cosmo application.
+ *
+ * Copyright (c)1993-1996 Microsoft Corporation, All Rights Reserved
+ *
+ * Kraig Brockschmidt, Software Design Engineer
+ * Microsoft Systems Developer Relations
+ *
+ * Internet  :  kraigb@microsoft.com
+ * Compuserve:  >INTERNET:kraigb@microsoft.com
+ */
+
+
+#ifndef _COSMO_H_
+#define _COSMO_H_
+
+#include <windows.h>
+#include <memory.h>
+
+extern "C"
+    {
+    #include <commdlg.h>
+    }
+
+#include <classlib.h>
+#include <book1632.h>
+#include <dbgout.h>
+#include "resource.h"
+
+
+//Get the editor window information.
+#include "polyline.h"
+
+
+
+//COSMO.CPP:  Frame object that creates a main window
+
+class CCosmoFrame : public CFrame
+    {
+    private:
+        HBITMAP         m_hBmpLines[5];     //Menu item bitmaps
+        UINT            m_uIDCurLine;       //Current line selection
+
+    protected:
+        //Overridable for creating a CClient for this frame
+        virtual PCClient  CreateCClient(void);
+
+        virtual BOOL      FRegisterAllClasses(void);
+        virtual BOOL      FPreShowInit(void);
+        virtual UINT      CreateGizmos(void);
+
+        virtual LRESULT   OnCommand(HWND, WPARAM, LPARAM);
+        virtual void      OnDocumentDataChange(PCDocument);
+        virtual void      OnDocumentActivate(PCDocument);
+
+        //New for this class
+        virtual void      CreateLineMenu(void);
+
+    public:
+        CCosmoFrame(HINSTANCE, HINSTANCE, LPSTR, int);
+        virtual ~CCosmoFrame(void);
+
+        //Overrides
+        virtual void      UpdateMenus(HMENU, UINT);
+        virtual void      UpdateGizmos(void);
+
+        //New for this class
+        virtual void      CheckLineSelection(UINT);
+    };
+
+
+typedef CCosmoFrame *PCCosmoFrame;
+
+
+
+
+
+//CLIENT.CPP
+
+/*
+ * The only reason we have a derived class here is to override
+ * CreateCDocument so we can create our own type as well as
+ * overriding NewDocument to perform one other piece of work once
+ * the document's been created.
+ */
+
+class CCosmoClient : public CClient
+    {
+    protected:
+        //Overridable for creating a new CDocument
+        virtual PCDocument CreateCDocument(void);
+
+    public:
+        CCosmoClient(HINSTANCE);
+        virtual ~CCosmoClient(void);
+
+        virtual PCDocument NewDocument(BOOL, PCDocumentAdviseSink);
+    };
+
+
+typedef CCosmoClient *PCCosmoClient;
+
+
+
+
+//DOCUMENT.CPP
+
+//Constant ID for the window polyline that lives in a document
+#define ID_POLYLINE         10
+
+
+class CCosmoDoc : public CDocument
+    {
+    friend class CPolylineAdviseSink;
+
+    protected:
+        UINT                    m_uPrevSize;    //Last WM_SIZE wParam
+        LONG                    m_lVer;         //Loaded Polyline ver
+
+        PCPolyline              m_pPL;          //Polyline window here
+        PCPolylineAdviseSink    m_pPLAdv;       //Advises from Polyline
+
+    protected:
+        virtual BOOL    FMessageHook(HWND, UINT, WPARAM, LPARAM
+            , LRESULT *);
+
+    public:
+        CCosmoDoc(HINSTANCE, PCFrame);
+        virtual ~CCosmoDoc(void);
+
+        virtual BOOL     FInit(PDOCUMENTINIT);
+
+        virtual void     Clear(void);
+
+        virtual UINT     ULoad(BOOL, LPTSTR);
+        virtual UINT     USave(UINT, LPTSTR);
+
+        virtual void     Undo(void);
+        virtual BOOL     FClip(HWND, BOOL);
+        virtual HGLOBAL  RenderFormat(UINT);
+        virtual BOOL     FQueryPaste(void);
+        virtual BOOL     FPaste(HWND);
+
+        virtual COLORREF ColorSet(UINT, COLORREF);
+        virtual COLORREF ColorGet(UINT);
+
+        virtual UINT     LineStyleSet(UINT);
+        virtual UINT     LineStyleGet(void);
+    };
+
+typedef CCosmoDoc *PCCosmoDoc;
+
+
+//These color indices wrap the polyline definitions
+#define DOCCOLOR_BACKGROUND             POLYLINECOLOR_BACKGROUND
+#define DOCCOLOR_LINE                   POLYLINECOLOR_LINE
+
+
+
+#endif //_COSMO_H_

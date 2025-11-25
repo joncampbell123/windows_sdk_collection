@@ -1,0 +1,248 @@
+REGISTER - Server Registration Utility
+
+
+SUMMARY
+=======
+
+The REGISTER sample builds a simple REGISTER.EXE utility that is used in
+subsequent code samples to invoke DLL- or EXE-housed COM servers and command
+them to register or unregister their components in the system registry.
+
+For functional descriptions and a tutorial code tour of REGISTER, see the
+Code Tour section below. For details on the external user operation of
+REGISTER, see the Operation and Usage sections below.
+
+In general, to set up your system to build and test the code samples in this
+OLE Tutorial series, see the global TUTORIAL.TXT file for details. The
+accompanying makefile (MAKEFILE) is Microsoft NMAKE-compatible. To create a
+debug build, issue the NMAKE command in the Command Prompt window.
+
+Usage
+-----
+
+REGISTER.EXE is an application that you can run directly from Windows or
+from the Command Prompt. REGISTER is usually run from the Command Prompt in
+one of the following forms:
+
+    register myserver.dll       - To register the DLL server.
+    register /u myserver.dll    - To unregister the DLL server.
+    register /e myserver.exe    - To register the EXE server.
+    register /u /e myserver.exe - To unregister the EXE server.
+
+
+OPERATION
+=========
+
+The REGISTER application operates transparently except when an error occurs.
+If an error occurs, a modal error dialog box is displayed with one of the
+following errors:
+
+  REGISTER.EXE: OLE initialization failed
+  REGISTER.EXE: DLL Unregister failed
+  REGISTER.EXE: DLL Registration failed
+  REGISTER.EXE: DLL Load Library failed
+
+This utility is designed to be used by installation programs that must
+register the COM components housed inside COM servers (either EXE or DLL).
+In this code sample series, REGISTER is invoked by the makefiles of the
+server code samples to register the components of the specified server.
+For example, the DLLSERVE code sample makefile supports NMAKE REGISTER and
+NMAKE UNREGISTER options to register and unregister its components.
+
+
+CODE TOUR
+=========
+
+Files          Description
+
+REGISTER.TXT   This file.
+MAKEFILE       The generic makefile for building the code sample.
+REGISTER.H     The include file for the REGISTER application. Contains
+               string literals and Resource identifiers.
+REGISTER.CPP   The main implementation file for REGISTER.EXE. Has WinMain
+               and CMainWindow implementation.
+REGISTER.RC    The application resource definition file.
+REGISTER.ICO   The application icon resource.
+
+REGISTER is a simple utility that is used in subsequent samples to register
+COM servers. Before a COM component can be used by a client, its server must
+be loaded and running. Because the client doesn't load the servers directly,
+the client doesn't need specific information about the location of the
+components. All the client needs is CLSIDs and Interface GUIDs (IIDs) of the
+components. The client presents to OLE a CLSID for a component and an IID
+for the services sought, and OLE takes care of finding and loading the
+appropriate server and creating an instance of the desired component.
+
+OLE can perform these tasks only if the components have been previously
+registered. There are currently two principal ways to register a
+component. In the first method, you provide a .REG file that contains the
+registry entries for your components. The eventual user of the components
+can then use a utility like the Registry Editor (REGEDIT.EXE in Windows
+95, REGEDT32.EXE in Windows NT) to process the .REG file and register the
+components. A disadvantage of this method is that the .REG file must
+contain specific paths to the server executables, so the .REG file may
+have to be edited when the components are installed.
+
+The second method solves this problem by having the components register
+themselves. Self-registration is thus built into the component's server
+and is accessed through a standard protocol. With this method, the entries
+for the path to the server are dynamically determined by the server
+itself; no editing of .REG files is required. Though it takes a little
+more work to implement the server housing, self-registration is recommended
+and is used throughout this code sample series.
+
+The specifics of self-registration will be covered when first encountered in
+the series: in the DLLSERVE lesson for DLL in-process servers, and in the
+LOCSERVE lesson for EXE local servers.
+
+The REGISTER.EXE utility in this lesson is used to load a specified server
+and invoke its self-registration facilities. This application is so simple
+that no main window or message loop is required. The only user interface
+that might be needed is a set of message dialog boxes to notify the user of
+error conditions.
+
+The main content of the program is in REGISTER.CPP. Almost all the work
+is done in the WinMain function. The program scans its own command line
+options to determine the kind of COM server to load and whether the server
+should be registered or unregistered. The following while loop does this:
+
+  while (ch = *psz)
+  {
+    BOOL    bStop = FALSE;
+
+    switch (ch)
+    {
+      case '\t':
+      case '\n':
+      case '\r':
+      case ' ':
+        // Skip any white space.
+        psz = SkipAnsiString(psz, TRUE);
+        continue;
+
+      case '/':
+      case '-':
+        // Check what option this is, then skip to next whitespace.
+        ch = *(++psz);
+        if ('u' == ch)
+          bUnreg = TRUE;
+        if ('e' == ch)
+          bEXE = TRUE;
+        psz = SkipAnsiString(psz, FALSE);
+        continue;
+
+      default:
+        bStop = TRUE;
+        break;
+    }
+
+    if (bStop)
+      break;
+
+    psz++;
+  }
+
+With psz pointing to the command line input, the loop scans for '/u' or
+'/e' to determine respectively whether unregistration or an EXE server is
+specified. The default is to register a DLL server. SkipAnsiString is a
+utility function defined locally in this module that can either skip over
+whitespace characters or skip to the next whitespace character. This
+entire application is compiled for the ANSI character set and uses the
+appropriate versions of Win32 API calls. This is simply because the
+pszCmdLine command line is available to WinMain only in ANSI. The
+makefile ignores any request to compile this program for Unicode.
+
+As the while loop scans the command line, the bUnreg and bEXE Boolean flags
+are assigned. They are then used to determine the execution of the remaining
+code in WinMain. For the default case of a DLL server (bEXE == FALSE), the
+following code runs:
+
+      // Because we load the DLL server into our own (ie, REGISTER.EXE)
+      // process space, call to initialize the OLE COM Library. Use the
+      // OLE SUCCEEDED macro to detect success. If fails, then exit
+      // application with error message.
+      if (SUCCEEDED(CoInitialize(NULL)))
+      {
+        HINSTANCE hMod;
+
+        // Load the Server DLL into our process space.
+        hMod = LoadLibraryA(psz);
+
+        if (NULL != hMod)
+        {
+          HRESULT (STDAPICALLTYPE *pfn)(void);
+
+          if (bUnreg)
+          {
+            (FARPROC&)pfn = GetProcAddress(hMod, "DllUnregisterServer");
+
+            if (NULL != pfn)
+              iFail = FAILED((*pfn)());
+
+            if (iFail)
+              ErrorBoxID(hInstance, IDS_DLLUNREG_FAIL);
+          }
+          else
+          {
+            (FARPROC&)pfn = GetProcAddress(hMod, "DllRegisterServer");
+
+            if (NULL != pfn)
+              iFail = FAILED((*pfn)());
+
+            if (iFail)
+              ErrorBoxID(hInstance, IDS_DLLREG_FAIL);
+          }
+          CoFreeLibrary(hMod);
+        }
+        else
+          ErrorBoxID(hInstance, IDS_LOADLIB_FAIL);
+
+        // We're exiting this app so shut down the OLE COM Library.
+        CoUninitialize();
+      }
+      else
+        ErrorBoxID(hInstance, IDS_OLEINITFAILED);
+
+Because the DLL server will probably make calls to OLE services, the
+program calls the CoInitialize function to initialize the OLE COM service
+libraries. After the /u and /e switches are found or not, the code treats
+the remainder of the command line pointed to by psz as the path to the DLL
+server. The server is then explicity loaded with a LoadLibraryA call. If
+/u was specified, GetProcAddress is called to obtain the address of the
+DllUnregisterServer function. If the function is found, it is called to
+actually get the server to unregister its components. If /u is not
+specified, the DllRegisterServer function is found and called. The loaded
+server DLL is freed after use, and the COM library is uninitialized.
+
+For the case of an EXE server (bEXE == TRUE) the following code runs.
+
+    if (bEXE)
+    {
+      UINT uError;
+      CHAR szEXE[MAX_PATH];
+
+      wsprintfA(
+        szEXE,
+        "%s %s",
+        psz,
+        bUnreg ? "/UNREGSERVER" : "/REGSERVER");
+
+      // We WinExec the .EXE server passing /unregserver or /regserver.
+      uError = WinExec(szEXE, SW_HIDE);
+      if (uError < 32)
+      {
+        ErrorBoxID(hInstance, IDS_EXERUN_FAIL);
+        iFail = FALSE;
+      }
+    }
+
+The EXE server is started by a call to WinExec with the appropriate command
+line option, /UNREGSERVER or /REGSERVER. The server is run with SW_HIDE
+because only an internal service of the server is being requested, and no
+user interface is required.
+
+One final note about self-registration. For tutorial purposes, this lesson
+shows the internal operation of a self-registering utility for both EXE
+and DLL COM servers. The latest version of Microsoft Visual C++ (version
+4.x) includes a similar utility, REGSVR32.EXE, which can be used in a
+similar fashion to register COM server DLLs and marshaling DLLs.

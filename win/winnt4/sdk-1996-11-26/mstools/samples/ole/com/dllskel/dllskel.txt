@@ -1,0 +1,364 @@
+DLLSKEL - DLL Skeleton
+
+
+SUMMARY
+=======
+
+The DLLSKEL sample introduces the basic DLL skeleton that can be used as a
+point of departure for more complex OLE DLLs (dynamic link libraries). It is
+used as a base for other OLE Tutorial code samples. In this series of OLE
+Tutorial code samples, DLLSKEL works with the DLLUSER code sample to
+illustrate how DLLSKEL's function services are called by an EXE consumer.
+
+For functional descriptions and a tutorial code tour of DLLSKEL, see the
+Code Tour section below. See also DLLUSER.TXT (in the sibling DLLUSER
+directory) for more details on the DLLUSER application and how it works with
+DLLSKEL.DLL. You must build DLLSKEL.DLL before building DLLUSER. After
+producing DLLSKEL.DLL and DLLUSER.EXE, the makefile for DLLSKEL copies the
+necessary DLLSKEL.H, DLLSKEL.LIB, and DLLSKEL.DLL files to the appropriate
+sibling directories.
+
+In general, to set up your system to build and test the code samples in this
+OLE Tutorial series, see TUTORIAL.TXT for details. The supplied makefile
+(MAKEFILE) is Microsoft NMAKE-compatible. To create a debug build, issue the
+NMAKE command at the command prompt.
+
+Usage
+-----
+
+DLLSKEL is a DLL that you can access from applications by either
+performing an explicit LoadLibrary call or implicitly loading the DLL by
+linking to its associated .LIB file. In either case, you need to include
+DLLSKEL.H to declare the functions that are defined as exported in the
+DLLSKEL DLL. In the case of this OLE Tutorial lesson, a representative
+DLLUSER.EXE application is provided to illustrate the programmatic use of
+DLLSKEL.DLL. DLLUSER is built in the DLLUSER lesson (in sibling directory
+DLLUSER). See below for more details.
+
+
+CODE TOUR
+=========
+
+Files        Description
+
+DLLSKEL.TXT  This file.
+MAKEFILE     The generic makefile for building the DLLSKEL.DLL
+             code sample of this tutorial lesson.
+DLLSKEL.H    The include file for declaring as imported or defining as
+             exported the service functions in DLLSKEL.DLL. Meant for
+             eventual use by outside users of the DLL.
+DLLSKEL.CPP  The main implementation file for DLLSKEL.DLL. Has DllMain
+             and the two exported service functions.
+DLLSKELI.H   The include file for the internal class declarations and
+             the identifier definitions for resources stored inside the
+             DLLSKEL.DLL.
+DLLSKEL.RC   The DLL resource definition file.
+DLLSKEL.ICO  The icon resource.
+
+In the context of this tutorial, the goal of DLLSKEL is to illustrate a
+C++ DLL skeleton that can serve as a point of departure for making more
+sophisticated DLLs. The resulting DLL is meant to work in conjuntion with
+DLLUSER.EXE to illustrate how to link to and call services in Win32 DLLs.
+It is the basic DLL framework for subsequent code samples in this
+tutorial. Study the code comments to learn more about this Win32 C++ DLL
+skeleton.
+
+DLLSKEL makes use of many of the utility classes and services provided by
+APPUTIL. For more details on APPUTIL, study the source code located in
+the APPUTIL directory, a sibling to DLLSKEL, and APPUTIL.TXT.
+
+In DLLSKEL.CPP, two exported functions are defined to export
+representative calls to outside consumers: DllHelloBox and DllAboutBox.
+
+DllHelloBox uses the MessageBoxFromIdsAndArgs function from the APPUTIL
+utility library to show a simple information message box. This box says
+hello and shows the instance of the DLL and a count of the number of times
+this Hello function has been called. The following fragment from
+DLLSKEL.CPP shows how to protect the incrementation of the global variable
+g_iHelloCount in a multitasking environment. This code fragment gives
+multiple processes access to the shared variable, but it enforces mutual
+exclusion for the incrementing operation.
+
+  // Increment the global count of Hellos.
+  InterlockedIncrement((LPLONG) &g_iHelloCount);
+
+The g_iHelloCount variable is global not only within the DLL, but across
+all loaded instances of the DLL. Hence the need for mutual exclusion in
+accessing the variable in a multitasking environment. The following
+fragment from DLLSKEL.CPP sets up this global variable in a shared data
+section.
+
+  // We define a global count variable and tell the compiler via a pragma
+  // to put that variable in a data section (called "Shared") that is
+  // shared by all loaded instances of this DLL.
+  #pragma data_seg("Shared")
+  // A place to store a global count of DllHelloBox calls.
+  int g_iHelloCount = 0;
+  #pragma data_seg()
+
+  // We tell the linker to make the Shared data section readable, writable,
+  // and shared.
+  #pragma comment(lib, "msvcrt " "-section:Shared,rws")
+
+DllAboutBox creates an object of the CAboutBox class, as implemented in
+the APPUTIL utility library, to load a dialog box from the DLL's resources
+and then display an About box.
+
+DLLSKEL.CPP defines the DllMain entry function for the entire DLL. To
+construct a Win32 DLL, you must provide the DllMain entry function and
+handle the following messages sent to the DLL via that function:
+DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH, DLL_THREAD_ATTACH,
+DLL_THREAD_DETACH.
+
+The following code fragment is taken in its entirety from DLLSKEL.CPP to
+show how the DllMain function is defined and how the messages are handled.
+In this simple example, no specific actions are taken during thread attach
+and detach.
+
+  BOOL WINAPI DllMain(
+                HINSTANCE hDLLInst,
+                DWORD fdwReason,
+                LPVOID lpvReserved)
+  {
+    BOOL bResult = TRUE;
+
+    // Dispatch this call based on the reason it was called.
+    switch (fdwReason)
+    {
+      case DLL_PROCESS_ATTACH:
+        // The DLL is being loaded for the first time by a given process.
+        // Perform per-process initialization here. If the initialization
+        // is successful, return TRUE; if unsuccessful, return FALSE.
+        bResult = FALSE;
+        if (UnicodeOk())
+        {
+          // Instantiate a DLL global data encapsulator class.
+          g_pDll = new CDllData;
+          if (NULL != g_pDll)
+          {
+            // Remember the DLL Instance handle.
+            g_pDll->hDllInst = hDllInst;
+            // Create a MsgBox object.
+            g_pDll->pMsgBox = new CMsgBox;
+            if (NULL != g_pDll->pMsgBox)
+              bResult = TRUE;
+          }
+        }
+        break;
+
+      case DLL_PROCESS_DETACH:
+        // The DLL is being unloaded by a given process. Do any
+        // per-process clean up here, such as undoing what was done in
+        // DLL_PROCESS_ATTACH. The return value is ignored.
+        if (NULL != g_pDll)
+        {
+          DELETE_POINTER(g_pDll->pMsgBox);
+          DELETE_POINTER(g_pDll);
+        }
+        break;
+
+      case DLL_THREAD_ATTACH:
+        // A thread is being created in a process that has already loaded
+        // this DLL. Perform any per-thread initialization here. The
+        // return value is ignored.
+        break;
+
+      case DLL_THREAD_DETACH:
+        // A thread is exiting cleanly in a process that has already
+        // loaded this DLL. Perform any per-thread clean up here. The
+        // return value is ignored.
+        break;
+
+      default:
+        break;
+    }
+
+    return (bResult);
+  }
+
+When the DLL is attached to a process (during DLL_PROCESS_ATTACH), the
+UnicodeOk function is called to determine if the DLL will run on the
+platform if compiled for Unicode strings. If the platform doesn't
+implement Unicode and yet the DLL is compiled for Unicode, the DllMain
+function fails, and the DLL is unloaded.
+
+When the DLL is detached from the process (during DLL_PROCESS_DETACH), the
+DELETE_POINTER macro from APPUTIL.H is used to delete the memory object
+pointed to by the pointer. This is a relatively thread-safe pointer
+delete. Here it is:
+
+  #define DELETE_POINTER(p)\
+  {\
+    PVOID pTmp = (PVOID)p;\
+    p = NULL;\
+    if (NULL != pTmp)\
+      delete pTmp;\
+  }
+
+The pointer value is written to a temporary location, and the pointer
+itself is immediately set to NULL. If the original pointer value was not
+NULL, the macro safely deletes the memory object that was pointed to. By
+immediately setting the pointer to NULL, the macro prevents other threads
+from using it. If the memory object were deleted first, as was common
+before multitasking environments, it would be possible for another thread
+to use the pointer after the memory object was deleted but before the
+pointer was reset.
+
+To build the DLL, you provide specific DLL-related instructions when you
+compile the modules of the DLL and when you link the modules with the Link
+command. The following fragment from the DLLSKEL makefile (file MAKEFILE)
+shows the compilation rule for the DLLSKEL.CPP module.
+
+  # Compilation/Dependency rules for the .DLL source files.
+  $(TDIR)\$(DLL).obj: $(DLL).cpp $(DLL).h $(DLL)r.h
+    $(cc) $(cvarsdll) $(cflags) $(cdebug) -Fo$@ $(DLL).cpp
+
+Note the use of the 'cvarsdll' macro when compiling module components of a
+DLL. This is in contrast to the 'cvars' macro normally used in linking EXE
+applications. Both of these macros are defined in the makefile include
+file WIN32.MAK. For more details, see WIN32.MAK in the \MSTOOLS\INCLUDE
+directory of the Win32 SDK. All of the OLE Tutorial code sample makefiles
+include WIN32.MAK.
+
+If there are to be resources in the DLL (as there are in the DLLSKEL DLL),
+the appropriate .RC file is RC-compiled in the normal manner as follows.
+
+  # Compile the DLL resources.
+  $(TDIR)\$(DLL).res: $(DLL).rc $(DLL).ico $(DLL)r.h
+    rc $(RCFLAGS) -r -fo$@ $(DLL).rc
+
+To link the modules and the resources together to build the DLL binary, you
+provide a Link command like the following from the DLLSKEL makefile:
+
+  # Link the object and resource binaries into the target DLL binary.
+  #   Build the import LIB file so apps can link to and use this DLL.
+  $(DLL).dll: $(DLLOBJS) $(TDIR)\$(DLL).res
+      $(LINK)  @<<
+      $(LINKFLAGS) $(dlllflags)
+      -base:0x1C000000
+      -out:$@
+      -map:$(TDIR)\$*.map
+      -implib:$*.lib
+      $(DLLOBJS)
+      $(TDIR)\$*.res
+      $(olelibsdll) $(APPLIBS)
+  <<
+
+The 'implib:$*.lib' directive to the Linker instructs it to produce the
+DLLSKEL.LIB import library file. This .LIB file is used in turn when the
+DLL is linked with any application that calls the DLL.
+
+Note also that this DLL makes calls to another library, APPUTIL, by
+statically linking to it. The APPLIBS macro reduces to APPUTIL.LIB. In
+this case, the compiled content of APPUTIL is contained entirely in
+APPUTIL.LIB.
+
+APPUTIL itself could have been a DLL. It is a judgement call as to
+whether you build one library type or another. Usually, if you are
+exporting C++ class definitions across the library boundary, the exported
+names are decorated in a manner proprietary to the compiler vendor. This
+approach restricts the use of such a DLL to applications that are also
+compiled with the same compiler. If the exported classes are small, it is
+often more convenient to put them into a static .LIB (as is the case with
+APPUTIL) than to put them into a .DLL.
+
+Because the DLLSKEL DLL has resources and because it is desirable to
+provide outside users of the DLL with an .H file of the same name, a
+separate DLLSKELI.H is used for internal class declarations and resource
+identifier definitions, while the DLLSKEL.H file is intended solely for the
+DLL's function import declarations and export definitions.
+
+For the consumer application (in this case DLLUSER.EXE) to link to and
+properly call the exported functions in the DLL, it must import them. The
+following fragment from DLLSKEL.H shows how to use the same convenient
+'STDENTRY' macros to serve both the consumer application's import
+declaration and the provider DLL's export definition needs.
+
+  #if !defined(_DLLEXPORT_)
+
+  // If _DLLEXPORT_ is not defined then the default is to import.
+  #if defined(__cplusplus)
+  #define DLLENTRY extern "C" __declspec(dllimport)
+  #define STDENTRY extern "C" __declspec(dllimport) HRESULT WINAPI
+  #define STDENTRY_(type) extern "C" __declspec(dllimport) type WINAPI
+  #else
+  #define DLLENTRY __declspec(dllimport)
+  #define STDENTRY __declspec(dllimport) HRESULT WINAPI
+  #define STDENTRY_(type) __declspec(dllimport) type WINAPI
+  #endif
+
+  // Here is the list of service APIs offered by the DLL (using the
+  // appropriate entry API declaration macros just #defined above).
+  STDENTRY_(BOOL) DllHelloBox (HWND);
+  STDENTRY_(BOOL) DllAboutBox (HWND);
+
+  #else  // _DLLEXPORT_
+
+  // Else if _DLLEXPORT_ is indeed defined then we've been told to export.
+  #if defined(__cplusplus)
+  #define DLLENTRY extern "C" __declspec(dllexport)
+  #define STDENTRY extern "C" __declspec(dllexport) HRESULT WINAPI
+  #define STDENTRY_(type) extern "C" __declspec(dllexport) type WINAPI
+  #else
+  #define DLLENTRY __declspec(dllexport)
+  #define STDENTRY __declspec(dllexport) HRESULT WINAPI
+  #define STDENTRY_(type) __declspec(dllexport) type WINAPI
+  #endif
+
+  #endif // _DLLEXPORT_
+
+The DLLENTRY macro allows you more freedom to specify return types and
+calling conventions. The STDENTRY assumes the OLE standard HRESULT return
+type and the WINAPI calling conventions (often __stdcall). The STDENTRY_
+macro makes this same assumption but does allow you to specify a return
+type.
+
+The '__declspec(dllimport)' and '__declspec(dllexport)' directives are the
+preferred ways to declare DLL imports and to define DLL exports in Win32.
+This is in contrast to the older Win16 .DEF file methods, which are still
+supported but discouraged. DLL exports can also be designated using the
+export switch on the Linker command line. In later code samples, this
+method will be studied.
+
+Note the use of extern "C" when compiling under C++ (__cplusplus). This
+tells the compiler, during compilation of both the DLL and the calling
+code, that the default C++ function name decoration will not be used.
+This is usually preferred in generic DLLs, whose function calls might be
+desired in calling applications that could be compiled with a variety of
+C++ compiler tools, including straight C compilers.
+
+The default behavior of DLLSKEL.H is to serve calling applications that
+import the functions in the DLL. Such applications simply include
+DLLSKEL.H during compilation of such a calling module. When the DLL
+itself is compiled, however, this file is included as in the following
+fragment from DLLSKEL.CPP.
+
+  #define _DLLEXPORT_
+  #include "dllskel.h"
+
+When _DLLEXPORT_ is thus defined, the behavior of DLLSKEL.H is to serve
+the DLL itself in defining its exported functions. The following fragment
+from DLLSKEL.CPP shows such a function definiton.
+
+  STDENTRY_(BOOL) DllAboutBox(HWND hWnd);
+  {
+    ...
+  }
+
+When the DllAboutBox function is defined in DLLSKEL.CPP, the STDENTRY_ macro
+expands to yield the following:
+
+  extern "C" __declspec(dllexport) BOOL WINAPI DllAboutBox(HWND hWnd)
+  {
+    ...
+  }
+
+Likewise, when the DllAboutBox function is imported in DLLSKEL.H, the
+declaration is expanded to the following import function prototype.
+
+  extern "C" __declspec(dllimport) BOOL WINAPI DllAboutBox(HWND hWnd);
+
+The WINAPI macro expands to various things, depending on the build
+environment, but generally stipulates the calling convention (usually
+__stdcall). See WIN32.MAK and the standard Windows include file WINDEF.H
+for more details on the WINAPI macro.
