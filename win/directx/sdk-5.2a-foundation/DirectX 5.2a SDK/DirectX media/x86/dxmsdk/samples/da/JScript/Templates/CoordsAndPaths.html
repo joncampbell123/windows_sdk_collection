@@ -1,0 +1,170 @@
+<HTML> 
+<HEAD>
+<TITLE>DirectAnimation SDK, JScript sample</TITLE>
+<SCRIPT LANGUAGE="JScript">
+<!--
+if (window.top.frames.length!=0 && window.top.frames[0].ShowNoButtons!=null)
+    window.top.frames[0].ShowNoButtons();
+//-->
+</SCRIPT>
+</HEAD>	 
+
+<BODY BGCOLOR=WHITE TOPMARGIN=15 LEFTMARGIN=20>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE=4> 
+<CENTER>
+<H1>Coordinates and Motion Paths</H1>
+</CENTER>
+          
+<OBJECT ID="DAControl"
+  STYLE="position:absolute; left:30%; top:150;width:320;height:320" 
+  CLASSID="CLSID:B6FFC24C-7E13-11D0-9B47-00C04FC2F51D">
+</OBJECT>
+
+<SCRIPT LANGUAGE="JScript">
+<!--
+  // The DirectAnimation library
+  m = DAControl.PixelLibrary; 
+
+  dim = 320; // dimension of coordinates frame in pixels, includes [0-319]
+  ovalDim = 10;              // diameter of an oval
+  axisDim = dim/2 - ovalDim;
+  
+  // frame line style
+  fLineStyle = m.DefaultLineStyle.Color(m.Purple).Width(2);
+  // path line style
+  pLineStyle = m.DefaultLineStyle.Color(m.Maroon).Width(1);
+
+  // construct a 10 pixel radius dot of the given color at origin
+  function Dot(clr) {
+    fillImg = m.SolidColorImage(clr);
+    return(m.Oval(ovalDim,ovalDim).Fill(m.DefaultLineStyle, fillImg));
+  } 
+
+  // Constructs a uniform cubic BSpline with standard end conditions
+  // based on the given array of control points. The function constructs
+  // the proper knot vector that is needed to construct the spline path.
+  // This makes spline construction simple because the developer is sheltered from
+  // the details of knot vectors (which are hard to swallow). The developer need only think about the
+  // general shape of the spline, and extract the control points from that.
+  function SimpleSpline(pts) {
+    // divide by 2 because these are 2D coordinates.
+    numPts = pts.length/2;
+    // We need 2 more knots (because this will be a cubic spline) than control points.
+    knts = new Array(numPts + 2);
+    // Set the uniform knots. Note that the knot vector doesn't need
+    // to start from 0. Only the relative spacing between knots is significant.
+    for (i=2; i<numPts; i++) knts[i] = i;
+    // first knot must have duplicity 3 (the degree) to interpolate first point
+    knts[0] = knts[1] = knts[2];
+    // last knot must have duplicity 3 (the degree) to interpolate last point
+    knts[numPts+1] = knts[numPts] = knts[numPts-1];
+    // finally, construct and return the spline path.
+    return(m.cubicBSplinePath(pts, knts));
+  }
+
+  // construct a rendering of the path along with a colored dot 
+  // that travels back and forth on the path in dur time each way.
+  // SlowInSlowOut and FastInFastOut are used for going forward and backward,
+  // respectively. This function also returns the travelling point along path.
+  function MotionPath(path, dur, clr) {    
+    im = path.Draw(pLineStyle);
+    // eval is a time varying number that goes from 0 to 1 in dur time,
+    // and back to 0 in dur time again, and repeats forever. In the first part, we use
+    // a sharpness of 1 for the max SlowInSlowOut effect, and in the second
+    // we use a sharpness of -1 for the opposite fastInFastOut effect.
+    eval = m.Sequence(m.SlowInSlowOut(0, 1, dur, 1), 
+                      m.SlowInSlowOut(1, 0, dur, -1)).RepeatForever();
+    // We use eval to span the path back and forth and generate a 
+    // corresponding time varying translation transform.
+    tf = m.FollowPathEval(path, eval);
+    // construct a time-varying dot of the given color based on the
+    // above time-varying transform.
+    pt = m.Origin2.Transform(tf);
+    mDot = Dot(clr).Transform(tf);
+    return(new Array(m.Overlay(mDot, im), pt));
+  }
+
+  rDotImg = Dot(m.Red);   // a red dot at the origin 
+  fLineStyle = m.DefaultLineStyle.Color(m.Purple).Width(2);
+
+
+  // a dot in the positive X direction
+  xDot = rDotImg.Transform(m.translate2(axisDim, 0)); 
+  // a dot in the positive Y direction  
+  yDot = rDotImg.Transform(m.translate2(0, axisDim));     
+                                                    
+  // X and Y axes, demonstrating two methods of specifying a line
+  xAxis = m.Polyline(new Array(-axisDim, 0, axisDim, 0));
+  yAxis = m.Line(m.Point2(0, -axisDim), m.Point2(0, axisDim));
+
+  // 8 control points for an "S" figure spline
+  splinePts = new Array(-125,-125, -162,-63, -100,-13, -25,-38, 25,-125, 
+                        125,-163, 163,-113, 125,-50);
+  spline = SimpleSpline(splinePts);
+
+  // an arc, X and Y parameters are still in meters [needs to be fixed]
+  arc = m.ArcDegrees(-30, -150, 2*axisDim, 2*axisDim); 
+
+  // construct three motion paths that correspond to the above
+  xImgPt = MotionPath(xAxis, 3, m.Green);
+  yImgPt = MotionPath(yAxis, 5, m.Green);
+  aImgPt = MotionPath(arc, 2, m.Yellow);
+  sImgPt = MotionPath(spline, 4, m.Blue);
+
+  // we need to subtract 2 to accomodate the line width of 2
+  frame = m.Rect(dim-2, dim-2);
+  frameImg = frame.Draw(fLineStyle);
+   
+  fillImg = m.SolidColorImage(m.Cyan);
+  tri1Img = m.Polyline(new Array(xImgPt[1], yImgPt[1], aImgPt[1])).Close(). 
+                Fill(m.DefaultLineStyle, fillImg).Opacity(0.4);      
+
+  fillImg = m.SolidColorImage(m.Yellow);
+  tri2Img = m.Polyline(new Array(xImgPt[1], yImgPt[1], sImgPt[1])).Close(). 
+              Fill(m.DefaultLineStyle, fillImg).Opacity(0.4);
+
+  // These images are composited in left-on-top order
+  finalImg = m.OverlayArray(new Array(xImgPt[0], yImgPt[0], rDotImg, xDot, yDot, 
+                                      aImgPt[0], sImgPt[0], tri1Img, tri2Img,
+                                      frameImg));
+
+  DAControl.Image = finalImg; 
+  // set the background in case of a non-windowless browser (like IE3)
+  DAControl.BackgroundImage = m.SolidColorImage(m.Blue);
+     
+  // start the animation       
+  DAControl.Start()
+//-->
+</SCRIPT>
+
+<P>
+Instantiates four paths including two axes, a circular arc, and a cubic spline.
+Constructs a rendering of each path along with a colored dot
+color that travels back and forth along the path in a given duration each way.
+SlowInSlowOut and FastInFastOut interpolation methods
+are used for going forward and backward,
+respectively.
+<P>
+This sample also demonstrates the pixel coordinate system by
+displaying the X and Y coordinates in terms of pixels. Also, the parameters for
+all paths are specified in terms of pixel coordinates. Notice 
+that in <B>Pixel Construction mode</B> the positive Y-axis goes downwards,
+which is consistent with the HTML coordinate system. 
+<P>
+The sample also demonstrates the construction of a freeform smooth path as a 
+cubic spline. The sample uses a generally useful utility function, 
+ SimpleSpline, 
+which takes a list of control points, automatically constructs a suitable knot vector,
+and returns the spline path.
+<P>
+The moving points are first class values in DirectAnimation, and can, therefore,
+be returned as parameters from functions. Here they are used to
+construct time-varying triangles. These triangles are partially opaque, as can be seen 
+where they overlap. Also, the animation overlays the HTML text,
+which means the transparent triangles are composed with the underlying HTML.
+Set "z-index:-1" for the DA control, whereby the animation is rendered behind
+the text, and notice the subtle difference in the way the triangles
+and text interact.
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,129 @@
+
+**********************
+***                ***
+*** Direct3D Notes ***
+***   DirectX5     ***
+***  July 7 1997   ***
+***                ***
+**********************
+
+
+Clarifications:
+===============
+
+	The MMX software rasterizers use a different value for maximum
+Z: 0x7FFF instead of 0xFFFF.  This needs to be taken into account when
+clearing via color-fill blits.  Alternatively, use viewport->Clear().
+
+	Also, the MMX rasterizer now needs to be requested explicitly
+via enumeration off the Device interface.
+
+	The ALPHAREF value should be specified as a 16.16 fixed point
+value in range 0 to 1.0 where 1.0 is 0x10000.
+
+	8-bit hardware render targets are not supported in D3D.
+
+	The Viewport is defined relative to the upper left of the render
+target DirectDraw surface.  When using TLVERTICES, they should be shifted
+to account for the position of a viewport smaller than this surface.
+
+Texture blending modes:
+	Here is a summary/clarification of the modes:
+
+	D3DTBLEND_MODULATE 
+		Cout =    Ctex*Cvert
+		Aout = ( Present(Atex) ? Atex : Avert )
+
+	D3DTBLEND_MODULATEALPHA
+		Cout =  Ctex*Cvert
+		Aout =  Atex*Avert
+
+	    Therefore, for textures with no alpha channel, MODULATE and
+		MODULATEALPHA do the same thing:
+		Cout = Ctex*Cvert;
+		Aout = Avert
+
+	D3DTBLEND_ADD
+		Cout = Ctex + Cvert
+		Aout = Avert
+
+	D3DTBLEND_DECALMASK
+		Cout = lsb(Atex) ? Ctex : Cvert
+		Cout = Avert
+	When the least-significant bit of the texture's alpha component
+	is zero, the effect is as if texturing were disabled.
+
+	D3DTBLEND_MODULATEMASK
+		Cout = lsb(Atex) ? Ctex * Cvert : CVert 
+		Aout = AVert 
+	When the least-significant bit of the texture's alpha component
+	is zero, the effect is as if texturing were disabled.
+
+
+	When using the RAMP software rasterizer, textures in background
+materials should have a ramp size of one.  Most of the samples show this.
+
+	ZENABLE=TRUE is the default if there is a Z-buffer attached on
+CreateDevice.  Otherwise the default initial state is ZENABLE=FALSE.
+
+	The coordinate system used to specify the clear rects for
+IDirect3DViewport{2}::Clear() calls is relative to the DDraw surface
+used as the render target, not the viewport. However, the clear rect
+is clipped to the viewport.
+
+
+	When using the DrawPrimitive API interspersed with updates to the
+content of the textures being used (via Lock, Blt, or GetDC), before calling
+EndScene(), a different texture from the intended can appear on some objects.
+If this occurs, a call to SetRenderState( D3DRENDERSTATE_FLUSHBATCH, 0 ),
+may help.  Use with caution since in some cases performance may be affected.
+
+
+Changes vs DX3:
+===============
+
+	All existing DX3 applications should run the same on DX5.  New
+applications that obtain the 3D device via DX5's CreateDevice entry point
+instead of QueryInterface will see the following new behavior.
+
+	ALPHABLENDENABLE controls alpha blended transparency.
+	COLORKEYENABLE   controls chroma key effects.
+	Both of these states default to off (FALSE).
+	BLENDENABLE is a legacy setting that is obsolete in DX5. 
+
+On Software:
+	Unlike DX3, mip mapping will now work in the software rasterizers 
+		(as reflected by the caps) except in conjunction with colorkeying.
+
+
+
+Improvements:
+=============
+
+	Hardware and the RAMP and RGB software rasterizers now support all 3
+backface culling options for D3DRENDERSTATE_CULLMODE: D3DCULL_NONE,
+D3DCULL_CCW, and D3DCULL_CW.  The MMX rasterizer only supports D3DCULL_CCW.
+However since the software rasterizers all share the same CAP structure,
+querying the culling caps for the MMX rasterizer will return incorrect
+information on this capability.
+
+	Clipping of TLVERTEX data is now supported.  This is on by default
+with DrawPrim calls but can be disabled via the D3DDP_DONOTCLIP flag.  Extent
+checking is still performed unless it is disabled by D3DDP_DONOTUPDATEEXTENTS.
+
+	Lights now respect range-based fall-off when defined via the D3DLIGHT2
+struct.  Check out the cool documentation on this.
+
+	1- and 2-bit deep palettized textures are now enabled for hardware
+that supports them.
+
+	Added MIPLODBIAS and ZBIAS RENDERSTATES for cards that support them.
+
+	Caps in D3DDeviceDesc are provided that indicate the minimum and
+maximum width and height of textures that the accelerator supports.  These
+will return 0 for drivers that are not up-to-date yet.  Check for
+D3DDEVCAPS_DRAWPRIMTLVERTEX to see if driver is DX5-aware.
+
+	D3DRENDERSTATE_SPECULARENABLE is now observed by SW and HW rasterizers.
+
+	Added a true C++ constructor for D3DMATRIX when using D3D_OVERLOADS.

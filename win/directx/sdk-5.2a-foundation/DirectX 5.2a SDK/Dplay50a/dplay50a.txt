@@ -1,0 +1,164 @@
+Microsoft DirectPlay 5.0a Web Redistribution
+============================================
+
+Release Notes
+=============
+DirectPlay 5.0a fixes the following problems:
+
+1) Simultaneous Join: When several clients attempt to join a session at the same time,
+it is possible that not all the players will be visible.  All the computers in the 
+session must have DPLAY50A.EXE installed for the fix to work.
+
+2) Send: Failure to send a guaranteed message on TCP/IP did not result in an error
+code being returned by the Send() API.  This has been fixed.
+
+
+Installation as part of a game setup
+====================================
+The command line arguments to install this are:
+
+"DPLAY50A.EXE"
+
+If you want it to install with out any prompting and minimal UI, the
+command line arguments are:
+
+"DPLAY50A.EXE /Q:A /R:N"
+
+The general scheme of things is that you launch this in a seperate process
+and then check the return code from process to see if you need to reboot or
+not.
+
+To install DPLAY50A.EXE alongside DirectX 5, your setup program will need to implement
+the following steps
+
+// return TRUE if reboot required
+// FALSE if no reboot required
+BOOL SetupDPlayAndDirectX(HWND hwnd, LPSTR lpszDXRootPath. LPSTR lpszDPlayPath)
+{
+  BOOL  fRebootDplay = FALSE;
+  BOOL  fRebootDX = FALSE;
+
+  // install DirectPlay 5.0a
+  fRebootDplay = LaunchCabPack("DPLAY50A.EXE", "/Q:A /R:N", lpszDPlayPath)
+
+  // setup DirectX 5.0
+  fRebootDX = DirectXSetup(hwnd, lpszRootPath, DSETUP_DIRECTX);
+
+  if ( fRebootDplay )
+  {
+    // Need to reinstall DirectPlay 5.0a if a reboot required
+    LaunchCabPack("DPLAY50A.EXE", "/Q:A /R:N", lpszCWD);
+  }
+
+  return ( fRebootDplay || fRebootDX );
+
+}
+
+
+#define IE_ERROR_SUCCESS_REBOOT_REQUIRED 3010L
+
+
+//****************************************************************************
+// Function: LaunchCabpack()
+//
+// Purpose:
+//      This function launched a cabpack and checks to see if it needs to
+//      rebooted.
+//
+// Parameters:
+//      LPSTR lpszApp     - appname (i.e. "DPLAY50A.EXE")
+//      LPSTR lpszCMDLine - Command Line (i.e. "/Q:A /R:N")
+//      LPSTR lpszCWD     - current working directory
+//
+// Return Code:
+//      BOOL  TRUE if you need to reboot. 
+//
+//****************************************************************************
+BOOL LaunchCabpack(LPSTR lpszApp, LPSTR lpszCMDLine, LPSTR lpszCWD)
+{
+    DWORD               dwReturnCode;
+    INT                 nResult = FALSE;
+    STARTUPINFO		si;
+    PROCESS_INFORMATION pi;
+
+
+    DPF(0, "LaunchCabpack:");
+    DPF(0, "LaunchCabpack: lpszApp     [%s]", lpszApp);
+    DPF(0, "LaunchCabpack: lpszCMDLine [%s]", lpszCMDLine);
+    DPF(0, "LaunchCabpack: lpszCWD     [%s]", lpszCWD);
+    
+    memset(&si, 0, sizeof(si));
+    
+    si.cb = sizeof(si);
+    if (CreateProcess(lpszApp, lpszCMDLine, NULL, NULL, 0, 0, NULL, lpszCWD, &si, &pi))
+    {
+        DWORD dwTimeout = 30;
+        DWORD dwRC      = WAIT_TIMEOUT;
+        MSG   msg;
+        
+        DPF( 0, "LaunchCabpack: Waiting for process %08X to end", pi.hProcess);
+
+        //
+        // Wait for App to shutdown
+        //
+        while (dwRC == WAIT_TIMEOUT)
+        {
+            //
+            // Wait for object
+            //
+            dwRC = WaitForSingleObject(pi.hProcess, dwTimeout);
+
+#ifdef DEBUG
+            switch (dwRC)
+            {
+                case WAIT_ABANDONED:
+                    DPF(0, "LaunchCabpack: WaitForSingleObject returned WAIT_ABANDONED");
+                    break;
+                case WAIT_FAILED:
+                    DPF(0, "LaunchCabpack: WaitForSingleObject returned WAIT_FAILED [%08X]", GetLastError);
+                    break;
+                case WAIT_OBJECT_0:
+                    DPF(0, "LaunchCabpack: WaitForSingleObject returned WAIT_OBJECT_0");
+                    break;
+                case WAIT_TIMEOUT:
+                    DPF(0, "LaunchCabpack: WaitForSingleObject returned WAIT_TIMEOUT");
+                    break;
+                default:
+                    DPF(0, "LaunchCabpack: WaitForSingleObject returned UNKNOWN - [%lu]", dwRC);
+                    break;
+            }       
+#endif
+            //
+            // Flush the Queue
+            //
+            while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+            {
+                 TranslateMessage(&msg);
+                 DispatchMessage(&msg);
+            }    
+
+        }
+        
+        GetExitCodeProcess(pi.hProcess, &dwReturnCode);
+        if (dwReturnCode == IE_ERROR_SUCCESS_REBOOT_REQUIRED)
+        {
+            DPF(0, "LaunchCabpack:  Need to force reboot...");
+            nResult = TRUE;
+        }
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        
+        DPF( 0, "LaunchCabpack: process %08X ended", pi.hProcess);
+
+    }
+    else
+    {
+        DPF(0, "LaunchCabpack: CreateProcess() Failed!!!");
+    }
+
+    return nResult;
+}
+
+
+
+

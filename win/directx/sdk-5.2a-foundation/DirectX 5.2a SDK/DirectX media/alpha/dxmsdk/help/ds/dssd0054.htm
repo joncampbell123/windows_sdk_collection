@@ -1,0 +1,1063 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<HTML>
+<HEAD><TITLE>Play a Movie in a Window Using DirectDrawEx and Multimedia Streaming</TITLE>
+<STYLE>
+<!--
+.tctop {color: blue}
+.cpslug {color: blue; text-decoration: none}
+-->
+</STYLE>
+<SCRIPT LANGUAGE="JAVASCRIPT">
+//<!--
+function ShowButtons() {
+    if (window.top.frames.length!=0 && window.top.frames[0].ShowButtons!=null)
+	window.top.frames[0].ShowButtons('/dssd0053.htm','/dssd0000.htm','/dssd0049.htm','/index.htm','/dssd0055.htm');
+}
+ShowButtons();
+//-->
+</SCRIPT>
+</HEAD>
+<BODY onLoad="ShowButtons()" TOPMARGIN=10 BGPROPERTIES="FIXED" BGCOLOR="#FFFFFF" LINK="#000000" VLINK="#808080" ALINK="#000000">
+<FONT FACE="VERDANA,ARIAL,HELVETICA" SIZE="2">
+<H2><A NAME="moviewin_0001040105000000">Play a Movie in a Window Using DirectDrawEx and Multimedia Streaming</A></H2>
+<BR CLEAR=ALL>
+<P>This article walks through the MovieWin C++ example code, which plays movies in a window by rendering to a Microsoft DirectDraw&#174; surface. The MovieWin example code is a Microsoft&#174; Windows&#174; 95 application that is an extension of the <A CLASS=TCTOP HREF="dssd0370.htm#samples_0001070208090000" TARGET="TEXT">ShowStrm Sample (Multimedia Streaming Application)</A> sample. MovieWin uses multimedia streaming to render a video file to a DirectDraw surface created through <A CLASS=TCTOP HREF="dssd0393.htm#ddrawex_0001090100000001" TARGET="TEXT">DirectDrawEx</A>. It implements a primary DirectDraw surface and an offscreen DirectDraw surface to optimize frame blitting. It also attaches a DirectDraw clipper to the window to process window overlapping.
+
+<P><B>Contents of this article:</B>
+<UL><LI><A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105010000" TARGET="TEXT">Necessary Header files and Libraries</A><LI><A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105020000" TARGET="TEXT">WinMain Function</A><LI><A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105030000" TARGET="TEXT">Initialize DirectDraw Surfaces and Create the Clipper</A><LI><A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105040000" TARGET="TEXT">Open a Movie File</A><LI><A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105050000" TARGET="TEXT">Create the Multimedia Stream Object</A><LI><A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105060000" TARGET="TEXT">Create the Stream Sample Object</A><LI><A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105070000" TARGET="TEXT">Render the Multimedia Stream to the DirectDraw Surface</A><LI><A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105080000" TARGET="TEXT">Release Objects</A><LI><A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105090000" TARGET="TEXT">WndMainProc Function</A><LI><A CLASS=TCTOP HREF="dssd0054.htm#moviewin_00010401050a0000" TARGET="TEXT">Entire MovieWin Example Code</A></UL>
+<P>The example demonstrates a way to render a movie that differs from the traditional method of instantiating a filter graph directly in your application. The MovieWin example code uses the multimedia streaming interfaces to automatically negotiate the transfer and conversion of data from the source to the application, so you don't have to write code to handle the connection, transfer of data, data conversion, or actual data rendering.
+
+<P>Additionally, the example demonstrates how to create DirectDraw surfaces and how to add code for a <A HREF="dssd0406.htm#external_00010a0109000025" TARGET="TEXT">DirectDrawClipper</A> object through DirectDrawEx.
+
+<P>Note that all error checking has been left out of the code walk-through. The <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_00010401050a0000" TARGET="TEXT">Entire MovieWin Example Code</A> section provides all of the code with complete error checking.
+
+
+
+
+<A NAME="moviewin_0001040105010000"></A><P><B>Necessary Header files and Libraries</B>
+<P>This section discusses necessary headers and libraries that need to be included and examines each function in the MovieWin example code in detail.
+
+<P>To compile the MovieWin example code you must have DirectX Media SDK 5.<I>x</I> or later installed and you will need to set your include path under Tools/Options/Directories/Include to c:\DXMedia\Include and your library path to c:\DXMedia\Lib. Also link with the Amstrmid.lib, the Quartz.lib, the Strmbase.lib, and the Ddraw.lib (DirectDrawEx does not provide its own library) libraries under Project/Settings/Link.
+
+<P>Include the necessary header files and define the window's name and the window class name.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+#include &lt;windows.h&gt;
+#include &lt;mmstream.h&gt;&#009;// Multimedia stream interfaces
+#include &lt;amstream.h&gt;&#009;// DirectShow multimedia stream interfaces
+#include &lt;ddstream.h&gt;&#009;// DirectDraw multimedia stream interfaces
+#include &lt;initguid.h&gt;   // Defines DEFINE_GUID macro and enables GUID initialization
+#include &lt;ddrawex.h&gt;&#009;// DirectDrawEx interfaces
+#include "resource.h"   // Resources for the menu bar
+
+#define APPLICATIONNAME "Multimedia Stream In Window"
+#define CLASSNAME "MMSDDRAWEXWINDOW"
+</FONT></PRE>
+<P>Then declare the following global variables:
+
+<PRE><FONT FACE="Courier" SIZE="2">
+HWND              ghWnd;
+HINSTANCE         ghInst;
+BOOL              g_bAppactive=FALSE,    // The window is active
+                  g_bFileLoaded = FALSE, // There is a file loaded
+                  g_bPaused=FALSE;       // The movie has been paused
+RECT              rect, rect2;          // Rectangles for screen coordinates
+</FONT></PRE>
+<P>The ghWnd variable is the handle of the window to send messages to. The ghInst variable is the handle of the instance of the window. The three Boolean values g_bAppactive, g_bFileLoaded, g_bPaused variables are used to determine the various states of the application and are used extensively by the WndMainProc function. They are declared as global variables to retain their TRUE or FALSE status. Finally, rect and rect2 are rectangle structures that will contain the original movie coordinates and the coordinates of the window to show the movie in, respectively.
+
+<P>Next, declare the DirectDrawEx and multimedia streaming interfaces. The reference count of the interfaces is automatically incremented on initialization, so you don't need to call the <A HREF="dssd0183.htm#If_000106015a030100" TARGET="TEXT">IUnknown::AddRef</A> method to increment them. For more information on these interfaces, see <A CLASS=TCTOP HREF="dssd0393.htm#ddrawex_0001090100000001" TARGET="TEXT">DirectDrawEx</A>, <A CLASS=TCTOP HREF="dssd0374.htm#mm_fm_0001080000000001" TARGET="TEXT"></A>, and the Microsoft DirectX&#174; SDK.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+//DirectDrawEx Global interfaces
+IDirectDraw            *g_pDD=NULL;   
+IDirectDraw3           *g_pDD3=NULL; 
+IDirectDrawFactory     *g_pDDF=NULL;
+IDirectDrawSurface     *g_pPrimarySurface=NULL,
+                       *g_pDDSOffscreen=NULL;
+IDirectDrawClipper     *g_pDDClipper=NULL;
+
+//Global MultiMedia streaming interfaces
+IMultiMediaStream        *g_pMMStream=NULL;
+IMediaStream             *g_pPrimaryVidStream=NULL;    
+IDirectDrawMediaStream   *g_pDDStream=NULL;
+IDirectDrawStreamSample  *g_pSample=NULL;
+</FONT></PRE>
+<P>Finally, declare the function prototypes.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+//Function prototypes
+int PASCAL WinMain(HINSTANCE hInstC, HINSTANCE hInstP, LPSTR lpCmdLine, int nCmdShow);
+LRESULT CALLBACK WndMainProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+HRESULT InitDDrawEx();
+BOOL GetOpenMovieFile(LPSTR szName);
+HRESULT RenderFileToMMStream(LPCTSTR szFilename);&#009;&#009;
+HRESULT InitRenderToSurface();
+void RenderToSurface();
+void ExitCode();
+</FONT></PRE>
+<A NAME="moviewin_0001040105020000"></A><P><B>WinMain Function</B>
+<P>The <A HREF="dssd0406.htm#external_00010a01090000eb" TARGET="TEXT">WinMain</A> function is a generic Windows function with a few exceptions. 
+
+
+<P>Immediately after the Win32 <A HREF="dssd0406.htm#external_00010a0109000018" TARGET="TEXT">CreateWindowEx</A> function, the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105030000" TARGET="TEXT">InitDDrawEx function</A> is called to initialize the DirectDrawEx surfaces that the movie will play on and to create a <A HREF="dssd0406.htm#external_00010a010900000b" TARGET="TEXT">clipper</A> to attach to the window. The clipper can only be created after it has a global handle to the window (ghWnd), and so must be created after the call to the <B>CreateWindowEx</B> function has returned.
+
+<P>The message pump is a standard Windows message pump containing the <A HREF="dssd0406.htm#external_00010a01090000e4" TARGET="TEXT">TranslateMessage</A> and the <A HREF="dssd0406.htm#external_00010a0109000029" TARGET="TEXT">DispatchMessage</A> functions
+
+ with an interesting note.
+
+
+ Before the code reaches these functions, it calls the <A HREF="dssd0406.htm#external_00010a01090000c9" TARGET="TEXT">PeekMessage</A> function. The <B>PeekMessage</B> function checks a thread message queue for a message and places the message (if any) in the specified structure. If there are messages being passed to the window the code proceeds to the regular <A HREF="dssd0406.htm#external_00010a010900003b" TARGET="TEXT">GetMessage</A>, TranslateMessage, and DispatchMessage functions respectively. However if there are no messages in the message queue, the process will check for the g_bFileLoaded Boolean value, which specifies whether a file has been loaded. Initially, the value in g_bFileLoaded is FALSE so the code maintains its loop, waiting for new messages.
+
+<P>After a file has been loaded and rendered to a multimedia stream (see <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105040000" TARGET="TEXT">GetOpenMovieFile function</A> and <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105050000" TARGET="TEXT">RenderFileToMMStream function</A>) the g_bFileLoaded value and the g_bAppactive values are set to TRUE and the message pump will call the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105070000" TARGET="TEXT">RenderToSurface function</A>, which blits one frame of the movie to the window's coordinates. As the loop continues, the movie continues to render frame by frame until completion or until it is interrupted the <A HREF="dssd0406.htm#external_00010a01090000c9" TARGET="TEXT">PeekMessage</A> function with an outside message to the window. If the movie is paused, stopped, or if it completes on its own, the g_bAppactive variable is set to FALSE, which causes the call to RenderToSurface to be skipped until g_bAppactive is set to TRUE again.
+
+<P>The following code shows how to create the message pump.
+
+<PRE><FONT FACE="Courier" SIZE="2">while(1){
+&#009;&#009;//The PeekMessage function checks a thread message queue 
+&#009;&#009;//for a message and places the message (if any) in the specified structure. 
+&#009;&#009;if(PeekMessage(&amp;msg, NULL, 0,0,PM_NOREMOVE)){
+&#009;&#009;&#009;
+&#009;&#009;&#009;// Quit if WM_QUIT found
+&#009;&#009;&#009;if(!GetMessage(&amp;msg,NULL, 0, 0)) return (msg.wParam);
+
+&#009;&#009;&#009;// Otherwise handle the messages
+&#009;&#009;&#009;&#009;TranslateMessage(&amp;msg);&#009;&#009;// Allow input
+&#009;&#009;&#009;&#009;DispatchMessage(&amp;msg);&#009;&#009;// Send to appropriate process.
+&#009;&#009;}
+&#009;&#009;else{
+&#009;&#009;&#009;// If there are no other windows messages...
+&#009;&#009;&#009;// Render frame by frame (but only if the App is the active
+&#009;&#009;&#009;// window and a file is actually loaded)
+&#009;&#009;&#009;if (g_bFileLoaded &amp;&amp; g_bAppactive) {&#009;
+&#009;&#009;&#009;&#009;RenderToSurface();&#009;
+&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;}
+&#009;&#009;}
+&#009;  return msg.wParam;
+</FONT></PRE>
+<A NAME="moviewin_0001040105030000"></A><P><B>Initialize DirectDraw Surfaces and Create the Clipper</B>
+<P>The InitDDrawEx function initializes a primary DirectDraw surface and an offscreen DirectDraw surface, as well as a clipper object that is attached to the window. The following code shows how to do this.
+
+<OL><LI>Declare local variables and initialize the COM subsystem.
+
+<PRE><FONT FACE="Courier" SIZE="2">HRESULT&#009;&#009;&#009;hr=NOERROR;
+DDSURFACEDESC&#009;ddsd, ddsd2;
+
+CoInitialize(NULL);
+</FONT></PRE>
+<LI>Create the DirectDrawFactory object and expose the <A HREF="dssd0395.htm#ddrawex_0001090102000000" TARGET="TEXT">IDirectDrawFactory</A> interface.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+CoCreateInstance(CLSID_DirectDrawFactory, NULL, CLSCTX_INPROC_SERVER, 
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;IID_IDirectDrawFactory, (void **)&amp;g_pDDF);
+</FONT></PRE>
+<P>Use the pointer to the <A HREF="dssd0395.htm#ddrawex_0001090102000000" TARGET="TEXT">IDirectDrawFactory</A> interface to call the <A HREF="dssd0395.htm#ddrawex_0001090102030100" TARGET="TEXT">IDirectDrawFactory::CreateDirectDraw</A> method, which you use to create the DirectDraw object, set the cooperative level, and get the address of an <A HREF="dssd0406.htm#external_00010a010900004a" TARGET="TEXT">IDirectDraw</A> interface pointer.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+g_pDDF-&gt;CreateDirectDraw(NULL, GetDesktopWindow(), DDSCL_NORMAL, 
+&#009;&#009;&#009;&#009;NULL, NULL, &amp;g_pDD);
+</FONT></PRE>
+<LI>Query for the <A HREF="dssd0396.htm#ddrawex_0001090103000000" TARGET="TEXT">IDirectDraw3</A> interface, which you use to create the DirectDraw surfaces.
+
+<PRE><FONT FACE="Courier" SIZE="2">g_pDD-&gt;QueryInterface(IID_IDirectDraw3, (LPVOID*)&amp;g_pDD3);
+</FONT></PRE>
+<LI>Initialize the <A HREF="dssd0406.htm#external_00010a010900001f" TARGET="TEXT">DDSURFACEDESC</A> structure for the primary surface. The following is the minimum code needed to accomplish this. You should also initialize other members of the structure here if your code must create more sophisticated applications.
+
+<PRE><FONT FACE="Courier" SIZE="2">ZeroMemory(&amp;ddsd, sizeof(ddsd));
+ddsd.dwSize = sizeof(ddsd);    
+ddsd.dwFlags = DDSD_CAPS;
+ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
+</FONT></PRE>
+<LI>Call the <A HREF="dssd0396.htm#ddrawex_0001090103030100" TARGET="TEXT">IDirectDraw3::CreateSurface</A> method to create the primary DirectDraw surface and return a pointer to <A HREF="dssd0406.htm#external_00010a0109000064" TARGET="TEXT">IDirectDrawSurface</A> interface.
+
+<PRE><FONT FACE="Courier" SIZE="2">g_pDD3-&gt;CreateSurface(&amp;ddsd, &amp;g_pPrimarySurface, NULL);</FONT></PRE>
+<LI>Create the offscreen surface where the <A HREF="dssd0380.htm#mms_face_0001080303030500" TARGET="TEXT">IStreamSample::Update</A> method will send the individual movie frames before they are blitted onto the screen. Using an offscreen surface optimizes the performance of the video and enables the blits to be processed at a faster rate. Also the video remains in memory and can be called upon in the event of a repaint notification.
+<P>You must create the offscreen surface with the identical height, width, and pixel format to the primary surface in order to blit from one to the other. Do this by first getting the <A HREF="dssd0406.htm#external_00010a010900001f" TARGET="TEXT">DDSURFACEDESC</A> structure from the primary surface through a call to the <A HREF="dssd0406.htm#external_00010a0109000078" TARGET="TEXT">IDirectDrawSurface::GetSurfaceDesc</A> method.
+
+<PRE><FONT FACE="Courier" SIZE="2">g_pPrimarySurface-&gt;GetSurfaceDesc(&amp;ddsd);</FONT></PRE>
+<LI>Now you can initialize the <A HREF="dssd0406.htm#external_00010a010900001f" TARGET="TEXT">DDSURFACEDESC</A> structure for the offscreen surface with the same parameters as the primary surface:
+
+<PRE><FONT FACE="Courier" SIZE="2">
+ZeroMemory(&amp;ddsd2, sizeof(ddsd2));
+ddsd2.dwSize = sizeof(ddsd2);    
+ddsd2.dwFlags = DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT;
+ddsd2.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
+ddsd2.dwHeight = ddsd.dwHeight;&#009;//set the height of the surfaces equal
+ddsd2.dwWidth  = ddsd.dwWidth;&#009;//set the width of the surfaces equal
+ddsd2.ddpfPixelFormat = ddsd.ddpfPixelFormat; //set the pixel formats equal
+</FONT></PRE>
+<LI>Call the <A HREF="dssd0396.htm#ddrawex_0001090103030100" TARGET="TEXT">IDirectDraw3::CreateSurface</A> method to create the offscreen surface.
+
+<PRE><FONT FACE="Courier" SIZE="2">g_pDD3-&gt;CreateSurface(&amp;ddsd2, &amp;g_pDDSOffscreen, NULL)</FONT></PRE>
+<P>At this point, you should have two identical DirectDraw surfaces: the offscreen surface that will be used to update the movie frames on, and the primary surface, which your user will see. The primary surface will contain the video after the data has been blitted from the offscreen surface to the primary surface.
+
+<LI>To give the window the look and feel of a regular window, you must add code for a clipper. The <A HREF="dssd0406.htm#external_00010a0109000025" TARGET="TEXT">DirectDrawClipper</A> object (casually referred to as a "clipper") helps you prevent blitting to certain portions of a surface or beyond the bounds of a surface. DirectDrawClipper objects expose their functionality through the <A HREF="dssd0406.htm#external_00010a0109000062" TARGET="TEXT">IDirectDrawClipper</A> interface. You can create a clipper by calling the <A HREF="dssd0406.htm#external_00010a010900006a" TARGET="TEXT">IDirectDraw3::CreateClipper</A> method. 
+
+<P>Use the following code to create the clipper object and retrieve a pointer to the <A HREF="dssd0406.htm#external_00010a0109000062" TARGET="TEXT">IDirectDrawClipper</A> interface.
+
+<PRE><FONT FACE="Courier" SIZE="2">g_pDD3-&gt;CreateClipper(0, &amp;g_pDDClipper, NULL);</FONT></PRE>
+<LI>Use the <A HREF="dssd0406.htm#external_00010a0109000064" TARGET="TEXT">IDirectDrawSurface</A> interface to attach the clipper to the primary surface.
+
+<PRE><FONT FACE="Courier" SIZE="2">g_pPrimarySurface-&gt;SetClipper(g_pDDClipper);</FONT></PRE>
+<LI>Finally, associate the clipper with the window by calling the <A HREF="dssd0406.htm#external_00010a0109000063" TARGET="TEXT">IDirectDrawClipper::SetHWnd</A> method.
+
+<PRE><FONT FACE="Courier" SIZE="2">g_pDDClipper-&gt;SetHWnd(0, ghWnd);</FONT></PRE>
+</OL>
+<P>At this point, you should have two DirectDraw surfaces, and a clipper attached to the primary surface and to the applications window. The DirectDrawEx initialization is complete and all the objects are available to the process until the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105080000" TARGET="TEXT">ExitCode function</A> is called to release the objects.
+
+<P>For more information on DirectDrawEx, see <A CLASS=TCTOP HREF="dssd0393.htm#ddrawex_0001090100000001" TARGET="TEXT">DirectDrawEx</A>.
+
+
+<A NAME="moviewin_0001040105040000"></A><P><B>Open a Movie File</B>
+<P>The following code shows how to use the GetOpenMovieFile function to display the Open file dialog box. It initializes the <A HREF="dssd0406.htm#external_00010a01090000c5" TARGET="TEXT">OPENFILENAME</A> structure and calls the <A HREF="dssd0406.htm#external_00010a010900003c" TARGET="TEXT">GetOpenFileName</A> API.
+
+<PRE><FONT FACE="Courier" SIZE="2">BOOL GetOpenMovieFile(LPSTR szName)
+{
+&#009;OPENFILENAME&#009;ofn;
+&#009;
+&#009;ofn.lStructSize       = sizeof(OPENFILENAME);
+&#009;ofn.hwndOwner         = ghWnd;
+&#009;ofn.lpstrFilter       = NULL;
+&#009;ofn.lpstrFilter       = "Video (*.avi;*.mpg;*.mpeg)\0*.avi;*.mpg;*.mpeg\0All Files (*.*)\0*.*\0";
+&#009;ofn.lpstrCustomFilter = NULL;
+&#009;ofn.nFilterIndex      = 1;
+&#009;*szName = 0;
+&#009;ofn.lpstrFile         = szName;
+&#009;ofn.nMaxFile          = MAX_PATH;
+&#009;ofn.lpstrInitialDir   = NULL;
+&#009;ofn.lpstrTitle        = NULL;
+&#009;ofn.lpstrFileTitle    = NULL;
+&#009;ofn.lpstrDefExt       = NULL;
+&#009;ofn.Flags             = OFN_FILEMUSTEXIST | OFN_READONLY | OFN_PATHMUSTEXIST;
+&#009;return GetOpenFileName((LPOPENFILENAME)&amp;ofn);
+}
+</FONT></PRE>
+<A NAME="moviewin_0001040105050000"></A><P><B>Create the Multimedia Stream Object</B>
+<P>The RenderFileToMMStream function creates a multimedia stream and attaches the stream to the file retrieved by the GetOpenMovieFile function. This function uses the <A HREF="dssd0387.htm#mms_face_000108030a000000" TARGET="TEXT">IAMMultiMediaStream</A> interface to expose DirectShow functionality to the application. After the address of a pointer to the <B>IAMMultiMediaStream</B> interface is retrieved, it will be used to initialize the stream, add specific media streams to the current filter graph, and open and automatically create a filter graph for the specified media file.
+<P>The following steps show how to do this.
+
+<OL><LI>Declare the local variables hr and pAMStream, and convert the provided file name to a wide (Unicode) string.
+
+<PRE><FONT FACE="Courier" SIZE="2">HRESULT hr;
+IAMMultiMediaStream *pAMStream=NULL;
+WCHAR wFile[MAX_PATH];
+MultiByteToWideChar(CP_ACP, 0, szFilename, -1, wFile,&#009;
+&#009;&#009;&#009;sizeof(wFile)/sizeof(wFile[0]));</FONT></PRE>
+<LI>Create the AMMultiMediaStream object and initialize it.
+
+<PRE><FONT FACE="Courier" SIZE="2">hr =CoCreateInstance(CLSID_AMMultiMediaStream, NULL, CLSCTX_INPROC_SERVER,
+                                      IID_IAMMultiMediaStream, (void **)&amp;pAMStream);
+hr = pAMStream-&gt;Initialize(STREAMTYPE_READ, 0, NULL);</FONT></PRE>
+<LI>Now that you have a stream object, add a single audio and video stream to it; typically, you need only these two streams for media file playback. When the <A HREF="dssd0387.htm#mms_face_000108030a030100" TARGET="TEXT">IAMMultiMediaStream::AddMediaStream</A> method receives the MSPID_PrimaryVideo flag as its second parameter, it uses the pointer in the first parameter as the destination surface for video playback. The audio stream needs no such surface, however, so pass NULL as the first parameter when you add audio streams. The AMMSF_ADDDEFAULTRENDERER flag automatically adds the default sound renderer to the current filter graph.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+hr = pAMStream-&gt;AddMediaStream(g_pDD3, &amp;MSPID_PrimaryVideo, 0, NULL);
+hr = pAMStream-&gt;AddMediaStream(NULL, &amp;MSPID_PrimaryAudio, AMMSF_ADDDEFAULTRENDERER, NULL);</FONT></PRE>
+<LI>Finally, open and create a filter graph for the specified media file and save the local stream to the global variable g_pMMStream. Don't forget to increase the reference count on the <A HREF="dssd0387.htm#mms_face_000108030a000000" TARGET="TEXT">IAMMultiMediaStream</A> object.
+
+<PRE><FONT FACE="Courier" SIZE="2">//Opens and automatically creates a filter graph for the specified media file
+hr = pAMStream-&gt;OpenFile(wFile, 0); 
+//save the local stream to the global variable
+g_pMMStream = pAMStream;&#009;
+// Add a reference to the file
+pAMStream-&gt;AddRef();
+</FONT></PRE>
+</OL>
+<P>Now that you have valid streams and a pointer to them, this function is complete. For more information on multimedia streams see <A CLASS=TCTOP HREF="dssd0374.htm#mm_fm_0001080000000001" TARGET="TEXT"></A> and <A CLASS=TCTOP HREF="dssd0053.htm" TARGET="TEXT">Use Multimedia Streaming in DirectShow Applications</A>.
+
+
+<A NAME="moviewin_0001040105060000"></A><P><B>Create the Stream Sample Object</B>
+<P>The InitRenderToSurface function creates the stream sample that will be associated with the offscreen <A HREF="dssd0406.htm#external_00010a0109000028" TARGET="TEXT">DirectDrawSurface</A> object. The stream sample will be used later by the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105070000" TARGET="TEXT">RenderToSurface function</A> to call the <A HREF="dssd0380.htm#mms_face_0001080303030500" TARGET="TEXT">IStreamSample::Update</A> method to perform frame-by-frame updates of the sample.
+
+<P>The following steps show how to do this.
+
+<OL><LI>To create and initialize the stream sample, declare the local variables, and then get the primary video media stream by using the <A HREF="dssd0378.htm#mms_face_0001080301030500" TARGET="TEXT">IMultiMediaStream::GetMediaStream</A> method.
+
+<PRE><FONT FACE="Courier" SIZE="2">HRESULT&#009;&#009;&#009;hr;
+DDSURFACEDESC&#009;ddsd;
+&#009;
+//Use the multimedia stream to get the primary video media stream
+hr = g_pMMStream-&gt;GetMediaStream(MSPID_PrimaryVideo, &amp;g_pPrimaryVidStream);
+</FONT></PRE>
+<LI>After you obtain the primary video stream interface (<A HREF="dssd0379.htm#mms_face_0001080302000000" TARGET="TEXT">IMediaStream</A>), you can use it to query for the <A HREF="dssd0381.htm#mms_face_0001080304000000" TARGET="TEXT">IDirectDrawMediaStream</A> interface, which you'll use to create the stream sample.
+
+<PRE><FONT FACE="Courier" SIZE="2">hr = g_pPrimaryVidStream-&gt;QueryInterface(IID_IDirectDrawMediaStream, (void **)&amp;g_pDDStream);</FONT></PRE>
+<LI>Before you can create the stream sample, you must call the <A HREF="dssd0381.htm#mms_face_0001080304030300" TARGET="TEXT">IDirectDrawMediaStream::GetFormat</A> method. The trick to watch on this call is that you must set the <B>dwSize</B> member of the <A HREF="dssd0406.htm#external_00010a010900001f" TARGET="TEXT">DDSURFACEDESC</A> structure. After the stream sample has retrieved the height and width of the movie file, you can set the rectangle that the offscreen surface will use to contain the video data.
+
+<PRE><FONT FACE="Courier" SIZE="2">ddsd.dwSize = sizeof(ddsd);
+hr = g_pDDStream-&gt;GetFormat(&amp;ddsd, NULL, NULL, NULL);
+rect.top = rect.left = 0;&#009;&#009;&#009;
+rect.bottom = ddsd.dwHeight;
+rect.right = ddsd.dwWidth;</FONT></PRE>
+<LI>Create the stream sample by calling the <A HREF="dssd0381.htm#mms_face_0001080304030100" TARGET="TEXT">IDirectDrawMediaStream::CreateSample</A> method with the offscreen surface and the <A HREF="dssd0406.htm#external_00010a01090000cd" TARGET="TEXT">RECT</A> structure, which was just initialized with the movie coordinates. This method will retrieve a pointer to the global <A HREF="dssd0382.htm#mms_face_0001080305000000" TARGET="TEXT">IDirectDrawStreamSample</A> interface <I>g_pSample</I>.
+
+<PRE><FONT FACE="Courier" SIZE="2">hr = g_pDDStream-&gt;CreateSample(g_pDDSOffscreen, &amp;rect, 0, &amp;g_pSample);</FONT></PRE>
+</OL>
+<P>At this point, the <A HREF="dssd0381.htm#mms_face_0001080304030100" TARGET="TEXT">IDirectDrawMediaStream::CreateSample</A> method has created a global <A HREF="dssd0382.htm#mms_face_0001080305000000" TARGET="TEXT">IDirectDrawStreamSample</A> stream sample and returned a pointer to <I>g_pSample</I>, its interface, which the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105070000" TARGET="TEXT">RenderToSurface function</A> can use.
+
+<A NAME="moviewin_0001040105070000"></A><P><B>Render the Multimedia Stream to the DirectDraw Surface</B>
+<P>The RenderToSurface function handles the actual rendering and blits the video stream's data to the primary surface. The main message pump in the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105020000" TARGET="TEXT">WinMain function</A> calls this method. The RenderToSurface function performs one individual frame update at a time and one blit from the offscreen surface to the primary surface. When the movie is complete, it will set the stream state to STOP.
+<P>The following steps show how to do this.
+
+<OL><LI>Declare the local variables.
+
+<PRE><FONT FACE="Courier" SIZE="2">HRESULT&#009;&#009;hr;
+POINT&#009;&#009;point;</FONT></PRE>
+<LI>Call the <A HREF="dssd0380.htm#mms_face_0001080303030500" TARGET="TEXT">IStreamSample::Update</A> method. Each loop iteration throws out the previous video image and grabs the next image from the stream. 
+
+<P>If the update is successful, the Microsoft Win32&#174; <A HREF="dssd0406.htm#external_00010a0109000038" TARGET="TEXT">GetClientRect</A> and the <A HREF="dssd0406.htm#external_00010a010900000a" TARGET="TEXT">ClientToScreen</A> functions are called to get the rectangle coordinates of the window into which the video will be displayed. These functions must be called after each update, in case a user has moved or resized the window. 
+
+<LI>After the window's coordinates have been retrieved, call the <A HREF="dssd0406.htm#external_00010a0109000086" TARGET="TEXT">IDirectDrawSurface3::Blt</A> method to perform a bit block transfer of the movie's video data from the offscreen surface to the primary surface. The loop breaks and the stream state is set to STOP when no renderable video data remains.
+
+<PRE><FONT FACE="Courier" SIZE="2">if (g_pSample-&gt;Update(0, NULL, NULL, 0) != S_OK) {
+&#009;&#009;g_bAppactive = FALSE;
+&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_STOP);&#009;&#009;
+&#009;}
+&#009;else {
+&#009;//get window coordinates to blit into
+&#009;GetClientRect(ghWnd, &amp;rect2);
+&#009;point.x = rect2.top;
+&#009;point.y = rect2.left;
+&#009;ClientToScreen(ghWnd, &amp;point);
+&#009;rect2.left = point.x;
+&#009;rect2.top = point.y;
+&#009;point.x = rect2.right;
+&#009;point.y = rect2.bottom;
+&#009;ClientToScreen(ghWnd, &amp;point);
+&#009;rect2.right = point.x;
+&#009;rect2.bottom= point.y;
+&#009;
+//Blit from the offscreen surface to the primary surface
+&#009;hr = g_pPrimarySurface-&gt;Blt(&amp;rect2, g_pDDSOffscreen, &amp;rect, DDBLT_WAIT, NULL);</FONT></PRE>
+<P>This function will be called repeatedly from the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105020000" TARGET="TEXT">WinMain function</A>'s message pump as long as the g_bAppactive and g_bFileLoaded Boolean values are TRUE.
+</OL>
+<A NAME="moviewin_0001040105080000"></A><P><B>Release Objects</B>
+<P>The ExitCode function releases all objects that the MovieWin application creates, destroys the window, and closes the COM library.
+
+<P>Call this function if the application fails or the user quits the program.
+
+<PRE><FONT FACE="Courier" SIZE="2">void ExitCode()
+{
+&#009;//Release MultiMedia streaming Objects
+&#009;if (g_pMMStream != NULL) {
+&#009;&#009;g_pMMStream-&gt;Release();
+&#009;&#009;g_pMMStream= NULL;
+&#009;}
+&#009;if (g_pSample != NULL) {
+&#009;&#009;g_pSample-&gt;Release();   
+&#009;&#009;g_pSample = NULL;
+&#009;}
+&#009;if (g_pDDStream != NULL) {
+&#009;&#009;g_pDDStream-&gt;Release();
+&#009;&#009;g_pDDStream= NULL;
+&#009;}
+&#009;if (g_pPrimaryVidStream != NULL) {
+&#009;&#009;g_pPrimaryVidStream-&gt;Release();
+&#009;&#009;g_pPrimaryVidStream= NULL;
+&#009;}
+&#009;//Release DirectDraw Objects
+&#009;if (g_pDDF !=NULL) {
+&#009;&#009;g_pDDF-&gt;Release();
+&#009;&#009;g_pDDF = NULL;
+&#009;}
+&#009;if (g_pPrimarySurface!=NULL) {
+&#009;&#009;g_pPrimarySurface-&gt;Release();   
+&#009;&#009;g_pPrimarySurface=NULL;
+&#009;}
+&#009;if (g_pDDSOffscreen !=NULL) {
+&#009;&#009;g_pDDSOffscreen-&gt;Release();
+&#009;&#009;g_pDDSOffscreen= NULL;
+&#009;}
+&#009;if (g_pDDClipper !=NULL) {
+&#009;&#009;g_pDDClipper-&gt;Release();
+&#009;&#009;g_pDDClipper=NULL;
+&#009;}
+&#009;if (g_pDD3 != NULL) {
+&#009;&#009;g_pDD3-&gt;Release();
+&#009;&#009;g_pDD3 = NULL;
+&#009;}
+&#009;if (g_pDD != NULL) {
+&#009;&#009;g_pDD-&gt;Release(); 
+&#009;&#009;g_pDD = NULL;
+&#009;}
+&#009;
+&#009;PostQuitMessage(0);
+&#009;CoUninitialize();
+}</FONT></PRE>
+<A NAME="moviewin_0001040105090000"></A><P><B>WndMainProc Function</B>
+<P>The WndMainProc callback function handles any messages sent to the window and calls the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105080000" TARGET="TEXT">ExitCode function</A> when the user quits the application. Users generate messages by selecting various items from the menu, including Open, Start, Stop, Pause, About, and Exit.
+
+<P>If the user chooses Open, an IDM_OPEN message is generated and the following code runs.
+
+<PRE><FONT FACE="Courier" SIZE="2">//If a file is already open - call STOP first
+&#009;&#009;&#009;&#009;&#009;if (g_bAppactive &amp;&amp; g_bFileLoaded) {
+&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_STOP);
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;
+&#009;&#009;&#009;&#009;&#009;bOpen = GetOpenMovieFile(szFilename);
+&#009;&#009;&#009;&#009;&#009;if (bOpen) {
+&#009;&#009;&#009;&#009;&#009;&#009;hr = RenderFileToMMStream(szFilename);  
+&#009;&#009;&#009;&#009;&#009;&#009;hr = InitRenderToSurface();
+&#009;&#009;&#009;&#009;&#009;&#009;g_bAppactive = g_bFileLoaded = TRUE;
+&#009;&#009;&#009;&#009;&#009;&#009;g_bPaused = FALSE;&#009;&#009;//Take care of any old pauses
+&#009;&#009;&#009;&#009;&#009;&#009;//Now set the multimedia stream to RUN
+&#009;&#009;&#009;&#009;&#009;&#009;hr = g_pMMStream-&gt;SetState(STREAMSTATE_RUN);
+&#009;&#009;&#009;&#009;&#009;}&#009;
+&#009;&#009;&#009;&#009;&#009;break;</FONT></PRE>
+<P>This code first checks whether a file is loaded (g_bFileLoaded) and if it is in a running state (g_bAppactive). If this is the case, the <A HREF="dssd0378.htm#mms_face_0001080301030900" TARGET="TEXT">IMultiMediaStream::SetState</A> method is called to stop the stream before another one is loaded through a call to the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105040000" TARGET="TEXT">GetOpenMovieFile function</A>. After the call to GetOpenMovieFile has returned successfully, the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105050000" TARGET="TEXT">RenderFileToMMStream function</A> is called, followed by the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105060000" TARGET="TEXT">InitRenderToSurface function</A>. If both of these functions are successful, the g_bFileLoaded and g_bAppactive Boolean values are set to TRUE and g_bPaused is set to FALSE in case the old file was in a paused state. Finally, the <B>IMultiMediaStream::SetState</B> method is called to set the state to RUN and now the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105070000" TARGET="TEXT">RenderToSurface function</A> will automatically be called through the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105020000" TARGET="TEXT">WinMain function</A>'s message pump.
+
+<P>If the user chooses Play from the application's menu, an IDM_START message is generated and the following code runs.
+
+<PRE><FONT FACE="Courier" SIZE="2">if (g_bAppactive &amp;&amp; g_bFileLoaded)&#009;
+&#009;&#009;&#009;&#009;&#009;{break;&#009;&#009;&#009;&#009;&#009;// If its already playing get out of here
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;else {
+&#009;&#009;&#009;&#009;&#009;&#009;if (g_bPaused) {&#009;// If its in a paused state, seek and run
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;Seek(StreamTime);
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_RUN);
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;g_bAppactive = TRUE;
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;g_bPaused = FALSE;
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;&#009;else {
+
+&#009;&#009;&#009;&#009;&#009;if (g_bFileLoaded) {&#009;// If a file is actually loaded
+&#009;&#009;&#009;&#009;&#009;&#009;g_bAppactive = g_bFileLoaded = TRUE;
+&#009;&#009;&#009;&#009;&#009;&#009;hr = g_pMMStream-&gt;SetState(STREAMSTATE_RUN);
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;else {
+&#009;&#009;&#009;&#009;&#009;&#009;MessageBox(hWnd, "Please select a movie file first.", "Error", MB_OK);
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;break;</FONT></PRE>
+<P>This code first checks if a file is loaded (g_bFileLoaded) and if it is in a running state (g_bAppactive). If this is the case, <B>break</B> is called to ignore the message. If the movie is in a paused state, the <A HREF="dssd0378.htm#mms_face_0001080301030800" TARGET="TEXT">IMultiMediaStream::Seek</A> method is called to seek to the correct location in the file, and then the <A HREF="dssd0378.htm#mms_face_0001080301030900" TARGET="TEXT">IMultiMediaStream::SetState</A> method is called to set the state to RUN again. The Boolean values g_bAppactive and g_bPaused are reset again to TRUE and FALSE respectively.
+
+<P>If a file is loaded but not in a paused state, it must be in a stopped state. Therefore, if this code succeeds on the
+if (g_bFileLoaded) call it must restart the movie from the beginning. This involves resetting the g_bAppactive Boolean value to TRUE and calling the <A HREF="dssd0378.htm#mms_face_0001080301030900" TARGET="TEXT">IMultiMediaStream::SetState</A> method to set the stream state to RUN.
+
+<P>If the user chooses Pause from MovieWin's menu, an IDM_PAUSE message is generated and the following code runs.
+
+<PRE><FONT FACE="Courier" SIZE="2">// Pause if not already in a paused state and you have a file loaded
+&#009;&#009;&#009;&#009;&#009;if (!g_bPaused &amp;&amp;g_bFileLoaded) {&#009;
+&#009;&#009;&#009;&#009;&#009;&#009;hr = g_pMMStream-&gt;GetTime(&amp;StreamTime);
+&#009;&#009;&#009;&#009;&#009;&#009;hr = g_pMMStream-&gt;SetState(STREAMSTATE_STOP);
+&#009;&#009;&#009;&#009;&#009;&#009;g_bAppactive = FALSE;
+&#009;&#009;&#009;&#009;&#009;&#009;g_bPaused&#009;= TRUE;
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;break;&#009;&#009;&#009;&#009;// If its already paused, just break</FONT></PRE>
+<P>In order for the pause key to do anything, the application must not already be in a paused stated (!g_bPaused) and a file must be loaded (g_bFileLoaded). If these two conditions are both TRUE, the <A HREF="dssd0378.htm#mms_face_0001080301030700" TARGET="TEXT">IMultiMediaStream::GetTime</A> method is called to store the <A HREF="dssd0389.htm#mm_types_000108030c000002" TARGET="TEXT">STREAM_TIME</A> at which the application was paused in the static StreamTime variable, and then the <A HREF="dssd0378.htm#mms_face_0001080301030900" TARGET="TEXT">IMultiMediaStream::SetState</A> method set the stream state to STOP. Finally, the g_bAppactive and the g_bPaused global Boolean values must be set to FALSE and TRUE respectively.
+
+<P>If the user chooses Stop from the application's menu, an IDM_STOP message is generated and the following code executes.
+
+<PRE><FONT FACE="Courier" SIZE="2">if (g_bFileLoaded) {
+&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_STOP);
+&#009;&#009;&#009;&#009;&#009;&#009;StreamTime = 0;&#009;// Reset the stream time to 0
+&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;Seek(StreamTime);&#009;//Run one frame to reset video
+&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_RUN);
+&#009;&#009;&#009;&#009;&#009;&#009;RenderToSurface();
+&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_STOP); // Stop for real this time
+&#009;&#009;&#009;&#009;&#009;&#009;StreamTime = 0;
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;g_bAppactive = FALSE;</FONT></PRE>
+<P>The preceding code runs if there is a file loaded (g_bFileLoaded).
+
+
+
+
+
+
+ In such a case the <A HREF="dssd0378.htm#mms_face_0001080301030900" TARGET="TEXT">IMultiMediaStream::SetState</A> method sets the stream state to STOP and the global <A HREF="dssd0389.htm#mm_types_000108030c000002" TARGET="TEXT">STREAM_TIME</A> value is set to zero.
+
+ Next, the <A HREF="dssd0378.htm#mms_face_0001080301030800" TARGET="TEXT">IMultiMediaStream::Seek</A> method and the <B>IMultiMediaStream::SetState</B> method are called to run one frame of the video before the true stop is called. After the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105070000" TARGET="TEXT">RenderToSurface function</A> renders the frame, the <B>IMultiMediaStream::SetState</B> method is called a final time to stop the video. This gives the user the visual experience of seeing the movie rewind to the beginning.
+
+<P>Finally, if the user chooses <B>Exit</B> from the application's menu, an IDM_EXIT message is generated and the following code runs.
+
+<PRE><FONT FACE="Courier" SIZE="2">response = MessageBox(hWnd, "Quit the Program?", "Quit", MB_YESNO);
+&#009;&#009;&#009;&#009;&#009;if (response==IDYES) SendMessage(ghWnd, WM_DESTROY,0,0);
+&#009;&#009;&#009;&#009;&#009;break;</FONT></PRE>
+<P>When it runs, this code will prompt the user if he or she really wants to quit the application. If the user chooses Yes, a WM_DESTROY message is sent, which calls the <A CLASS=TCTOP HREF="dssd0054.htm#moviewin_0001040105080000" TARGET="TEXT">ExitCode function</A>.
+
+<A NAME="moviewin_00010401050a0000"></A><P><B>Entire MovieWin Example Code</B>
+<P>This is the entire code for the MovieWin example code. To compile this code in Microsoft Visual Studio&#153;, create a new Win32 application project and add this code into the project. Follow the directions in the following code comments on how to set your project libraries and include paths.
+
+<PRE><FONT FACE="Courier" SIZE="2">// This application uses a Multimedia stream to render
+// a video file to a DirectDrawEx surface contained in 
+// a window. It implements a primary DirectDraw surface 
+// and an offscreen DirectDraw surface to optimize individual 
+// frame blits. It also attaches a DirectDraw clipper to the 
+// window to process window overlapping.
+
+
+//To compile this program you must have DXMedia SDK 5.1 installed 
+//and you will need set your include path under tools/options/directories/include
+//to c:\DXMedia\include and your library path to c:\DXMedia\lib
+//Also link with the following libraries under project/settings/link...
+//amstrmid.lib quartz.lib strmbase.lib ddraw.lib 
+
+#include &lt;windows.h&gt;
+#include &lt;mmstream.h&gt;&#009;// Multimedia stream interfaces
+#include &lt;amstream.h&gt;&#009;// DirectShow multimedia stream interfaces
+#include &lt;ddstream.h&gt;&#009;// DirectDraw multimedia stream interfaces
+#include &lt;initguid.h&gt;   // Defines DEFINE_GUID macro and enables GUID initialization
+#include &lt;ddrawex.h&gt;&#009;// DirectDrawEx interfaces
+#include "resource.h"&#009;// Resources for the menu bar
+
+#define APPLICATIONNAME "Multimedia Stream In Window"
+#define CLASSNAME "MMSDDRAWEXWINDOW"
+
+
+//Global variables
+HWND&#009;&#009;&#009;  ghWnd;
+HINSTANCE&#009;&#009;ghInst;
+BOOL&#009;&#009;&#009;  g_bAppactive=FALSE,&#009;&#009;// The window is active
+&#009;&#009;&#009;&#009;    g_bFileLoaded = FALSE,  // There is a file loaded
+&#009;&#009;&#009;&#009;    g_bPaused=FALSE;&#009;&#009;// The movie has been paused
+RECT&#009;&#009;&#009;  rect, rect2;&#009;&#009;&#009;// Rectangles for screen coordinates
+
+//DirectDrawEx Global interfaces
+IDirectDraw&#009;&#009;&#009;*g_pDD=NULL;   
+IDirectDraw3&#009;&#009;*g_pDD3=NULL; 
+IDirectDrawFactory&#009;*g_pDDF=NULL;
+IDirectDrawSurface&#009;*g_pPrimarySurface=NULL,
+&#009;&#009;&#009;&#009;&#009;*g_pDDSOffscreen=NULL;
+IDirectDrawClipper&#009;*g_pDDClipper=NULL;
+
+//Global MultiMedia streaming interfaces
+IMultiMediaStream&#009;&#009;*g_pMMStream=NULL;
+IMediaStream&#009;&#009;&#009;*g_pPrimaryVidStream=NULL;    
+IDirectDrawMediaStream&#009;*g_pDDStream=NULL;
+IDirectDrawStreamSample *g_pSample=NULL;
+
+//Function prototypes
+int PASCAL WinMain(HINSTANCE hInstC, HINSTANCE hInstP, LPSTR lpCmdLine, int nCmdShow);
+LRESULT CALLBACK WndMainProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+HRESULT InitDDrawEx();
+BOOL GetOpenMovieFile(LPSTR szName);
+HRESULT RenderFileToMMStream(LPCTSTR szFilename);&#009;
+HRESULT InitRenderToSurface();
+void RenderToSurface();
+void ExitCode();
+
+
+void ExitCode()
+{
+&#009;//Release MultiMedia streaming Objects
+&#009;if (g_pMMStream != NULL) {
+&#009;&#009;g_pMMStream-&gt;Release();
+&#009;&#009;g_pMMStream= NULL;
+&#009;}
+&#009;if (g_pSample != NULL) {
+&#009;&#009;g_pSample-&gt;Release();   
+&#009;&#009;g_pSample = NULL;
+&#009;}
+&#009;if (g_pDDStream != NULL) {
+&#009;&#009;g_pDDStream-&gt;Release();
+&#009;&#009;g_pDDStream= NULL;
+&#009;}
+&#009;if (g_pPrimaryVidStream != NULL) {
+&#009;&#009;g_pPrimaryVidStream-&gt;Release();
+&#009;&#009;g_pPrimaryVidStream= NULL;
+&#009;}
+&#009;//Release DirectDraw Objects
+&#009;if (g_pDDF !=NULL) {
+&#009;&#009;g_pDDF-&gt;Release();
+&#009;&#009;g_pDDF = NULL;
+&#009;}
+&#009;if (g_pPrimarySurface!=NULL) {
+&#009;&#009;g_pPrimarySurface-&gt;Release();   
+&#009;&#009;g_pPrimarySurface=NULL;
+&#009;}
+&#009;if (g_pDDSOffscreen !=NULL) {
+&#009;&#009;g_pDDSOffscreen-&gt;Release();
+&#009;&#009;g_pDDSOffscreen= NULL;
+&#009;}
+&#009;if (g_pDDClipper !=NULL) {
+&#009;&#009;g_pDDClipper-&gt;Release();
+&#009;&#009;g_pDDClipper=NULL;
+&#009;}
+&#009;if (g_pDD3 != NULL) {
+&#009;&#009;g_pDD3-&gt;Release();
+&#009;&#009;g_pDD3 = NULL;
+&#009;}
+&#009;if (g_pDD != NULL) {
+&#009;&#009;g_pDD-&gt;Release(); 
+&#009;&#009;g_pDD = NULL;
+&#009;}
+&#009;
+&#009;PostQuitMessage(0);
+&#009;CoUninitialize();
+}
+
+//Create the stream sample which will be used to call updates on the video
+HRESULT InitRenderToSurface()
+{    
+&#009;HRESULT&#009;&#009;&#009;hr;
+&#009;DDSURFACEDESC&#009;ddsd;
+&#009;
+&#009;//Use the multimedia stream to get the primary video media stream
+    hr = g_pMMStream-&gt;GetMediaStream(MSPID_PrimaryVideo, &amp;g_pPrimaryVidStream);
+&#009;if (FAILED(hr))
+&#009;{   goto Exit;
+&#009;}
+&#009;//Use the media stream to get the IDirectDrawMediaStream
+    hr = g_pPrimaryVidStream-&gt;QueryInterface(IID_IDirectDrawMediaStream, (void **)&amp;g_pDDStream);
+&#009;if (FAILED(hr))
+&#009;{   goto Exit;
+&#009;}
+&#009;//Must set dwSize before calling GetFormat
+    ddsd.dwSize = sizeof(ddsd);
+    hr = g_pDDStream-&gt;GetFormat(&amp;ddsd, NULL, NULL, NULL);
+&#009;if (FAILED(hr))
+&#009;{   goto Exit;
+&#009;}
+
+&#009;  rect.top = rect.left = 0;&#009;&#009;&#009;
+    rect.bottom = ddsd.dwHeight;
+    rect.right = ddsd.dwWidth;
+
+&#009;//Create the stream sample
+&#009;hr = g_pDDStream-&gt;CreateSample(g_pDDSOffscreen, &amp;rect, 0, &amp;g_pSample);
+&#009;if (FAILED(hr))
+&#009;{   goto Exit;
+&#009;}
+Exit:
+&#009;if (FAILED(hr)) 
+&#009;{&#009;MessageBox(ghWnd, "Initialization failure in InitRenderToSurface", "Error", MB_OK);
+&#009;&#009;return E_FAIL;
+&#009;}
+&#009;return NOERROR;
+}
+
+//Perform frame by frame updates and blits. Set the stream 
+//state to STOP if there are no more frames to update.
+void RenderToSurface()
+{
+&#009;HRESULT&#009;&#009;hr;
+&#009;POINT&#009;&#009;point;
+&#009;&#009;&#009;&#009;&#009;&#009;   
+&#009;//update each frame
+&#009;if (g_pSample-&gt;Update(0, NULL, NULL, 0) != S_OK) {
+&#009;&#009;g_bAppactive = FALSE;
+&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_STOP);&#009;&#009;
+&#009;}
+&#009;else {
+&#009;//get window coordinates to blit into
+&#009;GetClientRect(ghWnd, &amp;rect2);
+&#009;point.x = rect2.top;
+&#009;point.y = rect2.left;
+&#009;ClientToScreen(ghWnd, &amp;point);
+&#009;rect2.left = point.x;
+&#009;rect2.top = point.y;
+&#009;point.x = rect2.right;
+&#009;point.y = rect2.bottom;
+&#009;ClientToScreen(ghWnd, &amp;point);
+&#009;rect2.right = point.x;
+&#009;rect2.bottom= point.y;
+&#009;
+&#009;//blit from the offscreen surface to the primary surface
+&#009;hr = g_pPrimarySurface-&gt;Blt(&amp;rect2, g_pDDSOffscreen, &amp;rect, DDBLT_WAIT, NULL); 
+&#009;if(FAILED(hr))
+    {   MessageBox(ghWnd, "Blt failed", "Error", MB_OK);
+&#009;&#009;    ExitCode();
+    }
+&#009;}&#009;
+}
+
+//Renders a file to a multimedia stream
+HRESULT RenderFileToMMStream(LPCTSTR szFilename)&#009;&#009;//IMultiMediaStream **ppMMStream
+{&#009;
+&#009;HRESULT hr;
+&#009;IAMMultiMediaStream *pAMStream=NULL;
+
+//Convert filename to Unicode
+&#009;WCHAR wFile[MAX_PATH];
+&#009;MultiByteToWideChar(CP_ACP, 0, szFilename, -1, wFile,&#009;
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;&#009;sizeof(wFile)/sizeof(wFile[0]));
+
+&#009;//Create the AMMultiMediaStream object
+    hr =CoCreateInstance(CLSID_AMMultiMediaStream, NULL, CLSCTX_INPROC_SERVER,
+                                      IID_IAMMultiMediaStream, (void **)&amp;pAMStream);
+&#009;if (FAILED(hr))
+&#009;{   MessageBox(ghWnd, "Could not create a CLSID_MultiMediaStream object\n"
+&#009;&#009;"Check you have run regsvr32 amstream.dll\n", "Error", MB_OK);
+&#009;&#009;  return E_FAIL;
+&#009;}
+
+&#009;//Initialize stream
+    hr = pAMStream-&gt;Initialize(STREAMTYPE_READ, 0, NULL);
+&#009;if (FAILED(hr))
+&#009;{   MessageBox(ghWnd, "Initialize failed.", "Error", MB_OK);
+&#009;&#009;  return E_FAIL;
+&#009;}
+&#009;//Add primary video stream
+    hr = pAMStream-&gt;AddMediaStream(g_pDD3, &amp;MSPID_PrimaryVideo, 0, NULL);
+&#009;if (FAILED(hr))
+&#009;{   MessageBox(ghWnd, "AddMediaStream failed.", "Error", MB_OK);
+&#009;&#009;  return E_FAIL;
+&#009;}
+&#009;//Add primary audio stream
+    hr = pAMStream-&gt;AddMediaStream(NULL, &amp;MSPID_PrimaryAudio, AMMSF_ADDDEFAULTRENDERER, NULL);
+&#009;if (FAILED(hr))
+&#009;{   MessageBox(ghWnd, "AddMediaStream failed.", "Error", MB_OK);
+&#009;&#009;  return E_FAIL;
+&#009;}
+&#009;//Opens and automatically creates a filter graph for the specified media file
+&#009;hr = pAMStream-&gt;OpenFile(wFile, 0); 
+&#009;if (FAILED(hr))
+&#009;{   MessageBox(ghWnd, "File format not supported.", "Error", MB_OK);
+&#009;&#009;  return E_FAIL;
+&#009;}
+
+&#009;//save the local stream to the global variable
+&#009;g_pMMStream = pAMStream;&#009;
+&#009;// Add a reference to the file
+&#009;pAMStream-&gt;AddRef();
+
+&#009;return NOERROR;
+}
+
+HRESULT InitDDrawEx()
+{    
+&#009;HRESULT&#009;&#009;&#009;hr=NOERROR;
+&#009;DDSURFACEDESC&#009;ddsd, ddsd2;
+
+&#009;CoInitialize(NULL);
+&#009;
+&#009;//Create a DirectDrawFactory object
+&#009;hr = CoCreateInstance(CLSID_DirectDrawFactory, NULL, CLSCTX_INPROC_SERVER, 
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;IID_IDirectDrawFactory, (void **)&amp;g_pDDF);
+&#009;if (FAILED(hr))
+&#009;{   MessageBox(ghWnd, "Couldn't create DirectDrawFactory", "Error", MB_OK);
+&#009;&#009;  return E_FAIL;
+&#009;}
+
+
+&#009;//Call the IDirectDrawFactory::CreateDirectDraw method to create the 
+&#009;//DirectDraw object, set the cooperative level, and get the address 
+&#009;//of an IDirectDraw interface pointer
+&#009;hr = (g_pDDF-&gt;CreateDirectDraw(NULL, GetDesktopWindow(), DDSCL_NORMAL, 
+&#009;&#009;&#009;&#009;NULL, NULL, &amp;g_pDD));   
+
+&#009;if (FAILED(hr))
+&#009;{   MessageBox(ghWnd, "Couldn't create DirectDraw object", "Error", MB_OK);
+&#009;&#009;  return E_FAIL;
+&#009;}
+&#009;
+&#009;//Now query for the new IDirectDraw3 interface
+&#009;hr =(g_pDD-&gt;QueryInterface(IID_IDirectDraw3, (LPVOID*)&amp;g_pDD3));
+&#009;
+&#009;if (FAILED(hr))
+&#009;{   MessageBox(ghWnd, "Couldn't get IDirectDraw3", "Error", MB_OK);
+&#009;&#009;  return E_FAIL;
+&#009;}
+
+    //Initialize the DDSURFACEDESC structure for the primary surface
+&#009;  ZeroMemory(&amp;ddsd, sizeof(ddsd));
+    ddsd.dwSize = sizeof(ddsd);    
+&#009;  ddsd.dwFlags = DDSD_CAPS;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE; 
+    hr = g_pDD3-&gt;CreateSurface(&amp;ddsd, &amp;g_pPrimarySurface, NULL);
+&#009;
+    if(FAILED(hr))
+    {   MessageBox(ghWnd, "Couldn't create Primary Surface", "Error", MB_OK);
+    &#009;  return E_FAIL;
+&#009;}
+
+
+&#009;// Now, do the same for the offscreen surface.
+
+    // The offscreen surface needs to use the same pixel format as the primary.
+    // Query the primary surface to for its pixel format.
+    hr = g_pPrimarySurface-&gt;GetSurfaceDesc(&amp;ddsd);
+    if(FAILED(hr))
+    {   MessageBox(ghWnd, "Couldn't GetSurfaceDesc", "Error", MB_OK);
+&#009;&#009;    return E_FAIL;
+    }
+
+&#009;// Now, set the info for the offscreen surface, using the primary's pixel format.
+    ZeroMemory(&amp;ddsd2, sizeof(ddsd2));
+&#009;ddsd2.dwSize = sizeof(ddsd2);    
+&#009;ddsd2.dwFlags = DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT;
+    ddsd2.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
+    ddsd2.dwHeight = ddsd.dwHeight;&#009;//set the height of the surfaces equal
+    ddsd2.dwWidth  = ddsd.dwWidth;&#009;//set the width of the surfaces equal
+    ddsd2.ddpfPixelFormat = ddsd.ddpfPixelFormat; //set the pixel formats equal
+
+
+    // Now, create the offscreen surface and query for the latest interface.
+&#009;hr = g_pDD3-&gt;CreateSurface(&amp;ddsd2, &amp;g_pDDSOffscreen, NULL);
+&#009;if(FAILED(hr))
+    {   MessageBox(ghWnd, "Couldn't create Offscreen Surface", "Error", MB_OK);
+&#009;&#009;    return E_FAIL;
+    }
+
+
+&#009;//Add code for Clipper
+&#009;hr = g_pDD3-&gt;CreateClipper(0, &amp;g_pDDClipper, NULL);
+&#009;if(FAILED(hr))
+    {   MessageBox(ghWnd, "Couldn't create Clipper", "Error", MB_OK);
+&#009;&#009;    return E_FAIL;
+    }
+&#009;
+&#009;hr = g_pPrimarySurface-&gt;SetClipper(g_pDDClipper);
+&#009;if(FAILED(hr))
+    {   MessageBox(ghWnd, "Call to SetClipper failed", "Error", MB_OK);
+&#009;&#009;    return E_FAIL;
+    }
+
+&#009;hr = g_pDDClipper-&gt;SetHWnd(0, ghWnd);
+&#009;if(FAILED(hr))
+    {   MessageBox(ghWnd, "Call to SetHWnd failed", "Error", MB_OK);
+&#009;    &#009;return E_FAIL;
+    }
+
+&#009;return NOERROR;&#009;
+}
+
+// Display the open dialog box to retrieve the user-selected movie file
+BOOL GetOpenMovieFile(LPSTR szName)//LPSTR szName
+{
+&#009;OPENFILENAME&#009;ofn;
+&#009;
+&#009;ofn.lStructSize       = sizeof(OPENFILENAME);
+&#009;ofn.hwndOwner         = ghWnd;
+&#009;ofn.lpstrFilter       = NULL;
+&#009;ofn.lpstrFilter       = "Video (*.avi;*.mpg;*.mpeg)\0*.avi;*.mpg;*.mpeg\0All Files (*.*)\0*.*\0";
+&#009;ofn.lpstrCustomFilter = NULL;
+&#009;ofn.nFilterIndex      = 1;
+&#009;*szName = 0;
+&#009;ofn.lpstrFile         = szName;
+&#009;ofn.nMaxFile          = MAX_PATH;
+&#009;ofn.lpstrInitialDir   = NULL;
+&#009;ofn.lpstrTitle        = NULL;
+&#009;ofn.lpstrFileTitle    = NULL;
+&#009;ofn.lpstrDefExt       = NULL;
+&#009;ofn.Flags             = OFN_FILEMUSTEXIST | OFN_READONLY | OFN_PATHMUSTEXIST;
+&#009;return GetOpenFileName((LPOPENFILENAME)&amp;ofn);
+}
+
+LRESULT CALLBACK WndMainProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+
+   {  // WndMainProc //
+
+&#009;int&#009;&#009;&#009;&#009;&#009;&#009;response;
+&#009;HRESULT&#009;&#009;&#009;&#009;&#009;hr;
+&#009;BOOL&#009;&#009;&#009;&#009;&#009;bOpen;
+&#009;static TCHAR&#009;&#009;&#009;szFilename[MAX_PATH];
+&#009;static STREAM_TIME&#009;&#009;StreamTime;&#009;&#009;// Stream time of the movie file
+&#009;&#009;
+&#009;switch(message)
+&#009;{
+&#009;&#009;case WM_COMMAND:
+&#009;&#009;&#009;{
+               switch(wParam)
+&#009;&#009;&#009;   //Program menu option
+&#009;&#009;&#009;   {
+&#009;&#009;&#009;&#009;case IDM_OPEN:
+&#009;&#009;&#009;&#009;&#009;//If a file is already open - call STOP first
+&#009;&#009;&#009;&#009;&#009;if (g_bAppactive &amp;&amp; g_bFileLoaded) {
+&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_STOP);
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;
+&#009;&#009;&#009;&#009;&#009;bOpen = GetOpenMovieFile(szFilename);
+&#009;&#009;&#009;&#009;&#009;if (bOpen) {
+&#009;&#009;&#009;&#009;&#009;&#009;hr = RenderFileToMMStream(szFilename);  
+&#009;&#009;&#009;&#009;&#009;&#009;if (FAILED(hr)) {
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;ExitCode();
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;break;
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;&#009;hr = InitRenderToSurface();
+&#009;&#009;&#009;&#009;&#009;&#009;if (FAILED(hr)) {
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;ExitCode();
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;break;
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;&#009;g_bAppactive = g_bFileLoaded = TRUE;
+&#009;&#009;&#009;&#009;&#009;&#009;g_bPaused = FALSE;&#009;&#009;//Take care of any old pauses
+&#009;&#009;&#009;&#009;&#009;&#009;//Now set the multimedia stream to RUN
+&#009;&#009;&#009;&#009;&#009;&#009;hr = g_pMMStream-&gt;SetState(STREAMSTATE_RUN);
+&#009;&#009;&#009;&#009;&#009;&#009;if (FAILED(hr))
+&#009;&#009;&#009;&#009;&#009;&#009;{   ExitCode();
+&#009;&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;}&#009;
+&#009;&#009;&#009;&#009;&#009;break;
+
+&#009;&#009;&#009;&#009;case IDM_START:
+&#009;&#009;&#009;&#009;&#009;if (g_bAppactive &amp;&amp; g_bFileLoaded)&#009;
+&#009;&#009;&#009;&#009;&#009;{break;&#009;&#009;&#009;&#009;&#009;// If its already playing get out of here
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;else {
+&#009;&#009;&#009;&#009;&#009;&#009;if (g_bPaused) {&#009;// If its in a paused state, seek and run
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;Seek(StreamTime);
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_RUN);
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;g_bAppactive = TRUE;
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;g_bPaused = FALSE;
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;&#009;else {
+
+&#009;&#009;&#009;&#009;&#009;if (g_bFileLoaded) {&#009;// If a file is actually loaded
+&#009;&#009;&#009;&#009;&#009;&#009;hr = RenderFileToMMStream(szFilename);&#009;// Render file to stream
+&#009;&#009;&#009;&#009;&#009;&#009;if (FAILED(hr)) {
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;ExitCode();
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;break;
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;&#009;hr = InitRenderToSurface();&#009;&#009;// Render stream
+&#009;&#009;&#009;&#009;&#009;&#009;if (FAILED(hr)) {
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;ExitCode();
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;break;
+&#009;&#009;&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;&#009;g_bAppactive = g_bFileLoaded = TRUE;
+&#009;&#009;&#009;&#009;&#009;&#009;//Now set the multimedia stream to RUN
+&#009;&#009;&#009;&#009;&#009;&#009;hr = g_pMMStream-&gt;SetState(STREAMSTATE_RUN);
+&#009;&#009;&#009;&#009;&#009;&#009;if (FAILED(hr))
+&#009;&#009;&#009;&#009;&#009;&#009;{   ExitCode();
+&#009;&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;else {
+&#009;&#009;&#009;&#009;&#009;&#009;MessageBox(hWnd, "Please select a movie file first.", "Error", MB_OK);
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;break;
+&#009;&#009;&#009;&#009;&#009;
+&#009;&#009;&#009;&#009;case IDM_PAUSE:
+&#009;&#009;&#009;&#009;&#009;// Pause if not already in a paused state and you have a file loaded
+&#009;&#009;&#009;&#009;&#009;if (!g_bPaused &amp;&amp;g_bFileLoaded) {&#009;
+&#009;&#009;&#009;&#009;&#009;&#009;hr = g_pMMStream-&gt;GetTime(&amp;StreamTime);
+&#009;&#009;&#009;&#009;&#009;&#009;hr = g_pMMStream-&gt;SetState(STREAMSTATE_STOP);
+&#009;&#009;&#009;&#009;&#009;&#009;g_bAppactive = FALSE;
+&#009;&#009;&#009;&#009;&#009;&#009;g_bPaused&#009;= TRUE;
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;break;&#009;&#009;&#009;&#009;// If its already paused, just break
+
+&#009;&#009;&#009;&#009;case IDM_STOP:
+&#009;&#009;&#009;&#009;&#009;if (g_bFileLoaded) {
+&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_STOP);
+&#009;&#009;&#009;&#009;&#009;&#009;StreamTime = 0;&#009;// Reset the stream time to 0
+&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;Seek(StreamTime);&#009;//Run one frame to reset video
+&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_RUN);
+&#009;&#009;&#009;&#009;&#009;&#009;RenderToSurface();
+&#009;&#009;&#009;&#009;&#009;&#009;g_pMMStream-&gt;SetState(STREAMSTATE_STOP); // Stop for real this time
+&#009;&#009;&#009;&#009;&#009;&#009;StreamTime = 0;
+&#009;&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;&#009;&#009;g_bAppactive = FALSE;
+&#009;&#009;&#009;&#009;&#009;break;
+
+&#009;&#009;&#009;&#009;case IDM_ABOUT:
+&#009;&#009;&#009;&#009;&#009;MessageBox(hWnd, "This application uses multimedia streaming to"
+&#009;&#009;&#009;&#009;&#009;&#009;" render a video file to a DirectDraw surface created through DirectDrawEx.",
+&#009;&#009;&#009;&#009;&#009;&#009;"About", MB_OK);
+&#009;&#009;&#009;&#009;&#009;break;
+            
+&#009;&#009;&#009;&#009;case IDM_EXIT:
+&#009;&#009;&#009;&#009;&#009;response = MessageBox(hWnd, "Quit the Program?", "Quit", MB_YESNO);
+&#009;&#009;&#009;&#009;&#009;if (response==IDYES) SendMessage(ghWnd, WM_DESTROY,0,0);
+&#009;&#009;&#009;&#009;&#009;break;
+            }
+&#009;&#009;   break;
+&#009;&#009;&#009;}
+&#009;&#009;break;
+&#009;&#009;&#009;
+        case WM_DESTROY:
+&#009;&#009;   ExitCode();
+           break;
+
+&#009;&#009;case WM_ACTIVATE:
+&#009;&#009;&#009;if((BOOL)LOWORD(wParam) == WA_INACTIVE)
+&#009;&#009;&#009;{
+&#009;&#009;&#009;&#009;//App is not active
+&#009;&#009;&#009;&#009;g_bAppactive = FALSE;&#009;
+&#009;&#009;&#009;}
+&#009;&#009;&#009;else
+&#009;&#009;&#009;{
+&#009;&#009;&#009;&#009;//Set app to active if a file is loaded
+&#009;&#009;&#009;&#009;g_bAppactive = (g_bFileLoaded)?TRUE:FALSE;&#009;
+&#009;&#009;&#009;}
+&#009;&#009;&#009;break;
+&#009;
+        default:
+           return DefWindowProc(hWnd, message, wParam, lParam);
+&#009;
+      }  // Window msgs handling
+
+      return FALSE;
+
+   }  // WndMainProc //
+
+int PASCAL WinMain(HINSTANCE hInstC, HINSTANCE hInstP, LPSTR lpCmdLine, int nCmdShow)
+
+   {  // WinMain //
+&#009;
+      MSG&#009;&#009;msg;
+      WNDCLASS  wc;
+&#009;    HRESULT&#009;hr;
+
+      ZeroMemory(&amp;wc, sizeof wc);
+      wc.lpfnWndProc = WndMainProc;
+      ghInst = wc.hInstance = hInstC;
+&#009;    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+      wc.lpszClassName = CLASSNAME;
+      wc.lpszMenuName = MAKEINTRESOURCE(IDR_MENU);
+      wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+      RegisterClass(&amp;wc);
+
+      ghWnd = CreateWindowEx(WS_EX_WINDOWEDGE,
+&#009;&#009;CLASSNAME,
+        APPLICATIONNAME,
+        WS_VISIBLE |WS_POPUP |WS_OVERLAPPEDWINDOW,
+        150,&#009;
+        150,
+        280,
+        250,
+        0,
+        0,
+        ghInst,
+        0);
+&#009;  if (ghWnd) {&#009;&#009;&#009;&#009;// If the call to create window succeeds,
+&#009;&#009;  hr = InitDDrawEx();&#009;// initialize DirectDrawEx
+&#009;&#009;  if (FAILED(hr)) {
+&#009;&#009;&#009;  ExitCode();
+&#009;&#009;  }
+&#009;  }
+&#009;  else {
+&#009;&#009;  MessageBox(ghWnd, "Couldn't create window.", "Error", MB_OK);
+&#009;&#009;  return 0;
+&#009;  }
+
+
+
+&#009;  ShowWindow(ghWnd, SW_NORMAL);   
+      UpdateWindow(ghWnd);
+
+&#009;  while(1){
+&#009;&#009;//The PeekMessage function checks a thread message queue 
+&#009;&#009;//for a message and places the message (if any) in the specified structure. 
+&#009;&#009;if(PeekMessage(&amp;msg, NULL, 0,0,PM_NOREMOVE)){
+&#009;&#009;&#009;
+&#009;&#009;&#009;// Quit if WM_QUIT found
+&#009;&#009;&#009;if(!GetMessage(&amp;msg,NULL, 0, 0)) return (msg.wParam);
+
+&#009;&#009;&#009;// Otherwise handle the messages
+&#009;&#009;&#009;&#009;TranslateMessage(&amp;msg);&#009;&#009;// Allow input
+&#009;&#009;&#009;&#009;DispatchMessage(&amp;msg);&#009;&#009;// Send to appropriate process.
+&#009;&#009;}
+&#009;&#009;else{
+&#009;&#009;&#009;// If there are no other windows messages...
+&#009;&#009;&#009;// Render frame by frame (but only if the App is the active
+&#009;&#009;&#009;// window and a file is actually loaded)
+&#009;&#009;&#009;if (g_bFileLoaded &amp;&amp; g_bAppactive) {&#009;
+&#009;&#009;&#009;&#009;RenderToSurface();&#009;
+&#009;&#009;&#009;&#009;}
+&#009;&#009;&#009;}
+&#009;&#009;}
+&#009;  return msg.wParam;
+
+      
+
+}  // WinMain //
+</FONT></PRE>
+<P><P><FONT FACE="MS SANS SERIF" SIZE="1" COLOR="BLACK">
+<A CLASS=cpslug HREF="copyrite.htm" TARGET="TEXT">&#169; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A>
+</FONT>
+<BR CLEAR=ALL><P>
+</FONT><P>
+</BODY></HTML>

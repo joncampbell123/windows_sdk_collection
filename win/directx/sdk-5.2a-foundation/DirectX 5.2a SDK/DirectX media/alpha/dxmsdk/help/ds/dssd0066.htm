@@ -1,0 +1,756 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<HTML>
+<HEAD><TITLE>Using Cutlists</TITLE>
+<STYLE>
+<!--
+.tctop {color: blue}
+.cpslug {color: blue; text-decoration: none}
+-->
+</STYLE>
+<SCRIPT LANGUAGE="JAVASCRIPT">
+//<!--
+function ShowButtons() {
+    if (window.top.frames.length!=0 && window.top.frames[0].ShowButtons!=null)
+	window.top.frames[0].ShowButtons('/dssd0065.htm','/dssd0000.htm','/dssd0048.htm','/index.htm','/dssd0067.htm');
+}
+ShowButtons();
+//-->
+</SCRIPT>
+</HEAD>
+<BODY onLoad="ShowButtons()" TOPMARGIN=10 BGPROPERTIES="FIXED" BGCOLOR="#FFFFFF" LINK="#000000" VLINK="#808080" ALINK="#000000">
+<FONT FACE="VERDANA,ARIAL,HELVETICA" SIZE="2">
+<H2><A NAME="usecut_0001040601000000">Using Cutlists</A></H2>
+<BR CLEAR=ALL>
+<P>This article summarizes the steps necessary to create and play a cutlist. It also lists the limitations of the current cutlist implementation and provides sample code for using cutlists in an application. See <A CLASS=TCTOP HREF="dssd0065.htm#cutliapp_0001040501010000" TARGET="TEXT">What Are Cutlists?</A> for an introduction to cutlists.
+
+<P><B>Contents of this article:</B>
+<UL><LI><A CLASS=TCTOP HREF="dssd0066.htm#usecut_0001040601010000" TARGET="TEXT">Cutlist Limitations</A>
+<LI><A CLASS=TCTOP HREF="dssd0066.htm#usecut_0001040601020000" TARGET="TEXT">Creating a Video Cutlist</A>
+<LI><A CLASS=TCTOP HREF="dssd0066.htm#usecut_0001040601030000" TARGET="TEXT">Creating Both Video and Audio Cutlists</A>
+<LI><A CLASS=TCTOP HREF="dssd0066.htm#usecut_0001040601040000" TARGET="TEXT">Cutlist Sample Code (Simplecl)</A>
+</UL>
+<p>To use cutlists, you must first explicitly include the cutlist.h header file in your project. Then you can create cutlist objects and use the interfaces they expose. The following list summarizes the steps for creating and playing back cutlists in your application. <A CLASS=TCTOP HREF="dssd0066.htm#usecut_0001040601020000" TARGET="TEXT">Creating a Video Cutlist</A> presents the example code from this section as one unit rather than many separate fragments.
+
+<OL><LI>Create a standard cutlist object (<A HREF="dssd0402.htm#CLSIDs_00010a0105020003" TARGET="TEXT">CLSID_SimpleCutList</A>) for each cutlist. Each cutlist can contain only one media type, so if you want both audio and video you must create one standard cutlist for all of your video clips, and one standard cutlist for all of your audio clips. 
+
+<PRE><FONT FACE="Courier" SIZE="2">
+CoCreateInstance((REFCLSID)CLSID_SimpleCutList, NULL, CLSCTX_INPROC,
+                  (REFIID)IID_IStandardCutList,(void**)&amp;pVCutList);
+</FONT></PRE>
+<LI>Create a video file clip object (<A HREF="dssd0402.htm#CLSIDs_00010a0105020002" TARGET="TEXT">CLSID_VideoFileClip</A>) or an audio file clip object (<A HREF="dssd0402.htm#CLSIDs_00010a0105020001" TARGET="TEXT">CLSID_AudioFileClip</A>), as appropriate, for each stream in each AVI or WAV file you will use as the source for clips. If you want to play back both video and audio from the same file, you must still create separate video and audio file clip objects because the file clip objects are based upon one stream (either a video stream or an audio stream) within a file.
+
+
+<PRE><FONT FACE="Courier" SIZE="2">
+CoCreateInstance((REFCLSID)CLSID_VideoFileClip, NULL, CLSCTX_INPROC,
+                  (REFIID)IID_IFileClip, (void**)&amp;pVFileClip);
+</FONT></PRE>
+<LI>Tell the file clip object what file and stream in that file to use by calling the <A HREF="dssd0142.htm#If_0001060131030300" TARGET="TEXT">IFileClip::SetFileAndStream</A> method as follows. The first video and audio streams (stream 0) are the only streams that DirectShow supports.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+hr = pVFileClip-&gt;SetFileAndStream(L"jupiter.avi", 0);
+</FONT></PRE>
+<LI>Create one or more cutlist elements (individual clips) from each file clip by calling the <A HREF="dssd0142.htm#If_0001060131030100" TARGET="TEXT">IFileClip::CreateCut</A> method. Each file clip represents a stream of data, and you can create more than one clip from each data stream. For instance, the example in <A CLASS=TCTOP HREF="dssd0065.htm#cutliapp_0001040501010000" TARGET="TEXT">What Are Cutlists?</A> specifies two elements from Venus.avi, and one element from Mars.avi. 
+
+<LI>Add each cutlist element to the cutlist by calling the <A HREF="dssd0182.htm#If_0001060159030100" TARGET="TEXT">IStandardCutList::AddElement</A> method.
+
+<P>The following example creates two cutlist elements from the file clip and adds them to the cutlist. The file clip is the first video stream (stream zero) of Jupiter.avi, as specified previously in <A HREF="dssd0142.htm#If_0001060131030300" TARGET="TEXT">IFileClip::SetFileAndStream</A>. The first element plays seconds 5 through 10 of Jupiter.avi and the second element plays second 0 through 5 of the same file.
+<PRE><FONT FACE="Courier" SIZE="2">
+hr = pVFileClip-&gt;CreateCut(&amp;pVElement1,5*SCALE,10*SCALE,0,5*SCALE,0);
+hr = pVCutList-&gt;AddElement(pVElement1,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+hr = pVFileClip-&gt;CreateCut(&amp;pVElement2,0,5*SCALE,0,5*SCALE,0);
+hr = pVCutList-&gt;AddElement(pVElement2,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+</FONT></PRE>
+<P>The first three parameters of <A HREF="dssd0142.htm#If_0001060131030100" TARGET="TEXT">IFileClip::CreateCut</A> are the important ones. The first, <I>ppElement</I>, specifies the element, and is filled in for you. The second (<I>mtTrimIn</I>) and third (<I>mtTrimOut</I>) specify, respectively, the start and stop times for the clip relative to the original file (Jupiter.avi in this case). The last three parameters must always be zero, <I>mtTrimOut</I> minus <I>mtTrimIn</I>, and zero, respectively. A scale value of 10,000,000 scales the start and stop times to seconds.
+
+<P>The first parameter in the <A HREF="dssd0182.htm#If_0001060159030100" TARGET="TEXT">IStandardCutList::AddElement</A> call, <I>pElement</I>, is the element obtained from the call to <A HREF="dssd0142.htm#If_0001060131030100" TARGET="TEXT">IFileClip::CreateCut</A>. The last two parameters must be CL_DEFAULT_TIME to indicate that the element should be added to the end of the current cutlist, and its duration is the same as its duration in the original file.
+
+<LI>Create a cutlist graph builder object (<A HREF="dssd0402.htm#CLSIDs_00010a0105020004" TARGET="TEXT">CLSID_CutListGraphBuilder</A>) and use it to build a filter graph that will play your cutlists. Give it a standard cutlist object by using the <A HREF="dssd0131.htm#If_0001060126030100" TARGET="TEXT">ICutListGraphBuilder::AddCutList</A> method, and then call the <A HREF="dssd0131.htm#If_0001060126030500" TARGET="TEXT">ICutListGraphBuilder::Render</A> method to build a filter graph that can play the cutlist. The following code fragment illustrates these calls.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+CoCreateInstance((REFCLSID)CLSID_CutListGraphBuilder,NULL,CLSCTX_INPROC,
+
+                  (REFIID)IID_ICutListGraphBuilder,(void**)&amp;pGraphBuilder);
+
+.
+.
+.
+// Give the cutlist to the graph builder
+hr = pGraphBuilder-&gt;AddCutList(pVCutList, NULL);
+
+// Tell the cutlist graph builder to build the graph
+hr = pGraphBuilder-&gt;Render();
+</FONT></PRE>
+<LI>Play the cutlist filter graph and clean up resources as in the following example. Be sure to stop the graph before you remove the cutlist from the graph using <A HREF="dssd0131.htm#If_0001060126030400" TARGET="TEXT">ICutListGraphBuilder::RemoveCutList</A>. 
+
+<PRE><FONT FACE="Courier" SIZE="2">
+// Get the filter graph the builder just made
+hr = pGraphBuilder-&gt;GetFilterGraph(&amp;pGraph);
+
+// Now get some useful graph interfaces
+pGraph-&gt;QueryInterface(IID_IMediaControl,(void**)&amp;pControl);
+pGraph-&gt;QueryInterface(IID_IMediaEvent, (void**)&amp;pEvent);
+pGraph-&gt;Release();
+
+// Run the graph
+pControl-&gt;Run();
+
+// Arbitrarily assumes 10000 millisecond timeout
+pEvent-&gt;WaitForCompletion(10000, &amp;lEventCode);
+pControl-&gt;Stop();
+pEvent-&gt;Release();
+pControl-&gt;Release();
+
+// Cleanup
+hr = pGraphBuilder-&gt;RemoveCutList(pVCutList);
+pVElement1-&gt;Release();
+pVElement2-&gt;Release();
+pVCutList-&gt;Release();
+pVFileClip-&gt;Release();
+pGraphBuilder-&gt;Release();
+</FONT></PRE>
+</OL>
+<P>See the cutlist examples later in this article for more complete sample code illustrating these steps.
+
+<A NAME="usecut_0001040601010000"></A><P><B>Cutlist Limitations</B>
+<P>The following list discusses limitations that you should be aware of when using DirectShow's current cutlist implementation.
+
+<OL><LI>All clips in a cutlist must be the same format (media type). 
+
+<P>For video cutlists, this means that all the video clips must be of the same compression type, size, dimensions, bit depth, and so forth. In other words, all video clips in the cutlist must be represented by the same <A HREF="dssd0080.htm#avispec_0001050502020500" TARGET="TEXT">BITMAPINFOHEADER</A> structure. For audio cutlists, this means they must all use the same compression format, sampling rate, bit depth, and number of channels. In other words all audio clips in the cutlist must be represented by the same <A HREF="dssd0080.htm#avispec_0001050502020600" TARGET="TEXT">WAVEFORMATEX</A> structure. 
+
+<P>The first clip you add to a cutlist determines the cutlist's media type, and the media type required for all other clips you add to the cutlist. The <A HREF="dssd0182.htm#If_0001060159030100" TARGET="TEXT">IStandardCutList::AddElement</A> method returns an invalid media type error (<A HREF="dssd0310.htm#errcodes_0001060a01000028" TARGET="TEXT">VFW_E_INVALIDMEDIATYPE</A>) if you try to add a clip of a different media type to an existing cutlist.
+
+<LI>All cuts must begin on a keyframe. If not, there will be an unwanted "fade in" effect at the cut point, instead of a clean switch from one clip to the next. The biggest limitation is that the first frame of the entire cutlist must be a keyframe. Otherwise, the file will be corrupt if you write the resulting cutlist to a file.
+
+<LI>There is no way to save (persist) a cutlist. Every time your application runs, you must build the cutlist by hand. There is no file format for saving a cutlist you have previously constructed.
+
+<LI>Audio cuts not made during silence might cause an audible "click" sound at the cut point if there is low to moderate volume and sparse audio at the cut point. 
+
+<LI>You can only create file clip objects from either the first video or audio stream of an AVI file. Extra streams in files with multiple video or audio streams are ignored.
+
+<LI>WAV files and AVI files are the only types of files that you can use as source material for a cutlist. DirectShow doesn't support other formats, such as MPEG.
+
+<LI>You can't identify WAV or AVI files used in cutlists by a universal network connection (UNC) network name. For example, the file name "x:\Venus.wav" is valid, but "\\Server\Share\Venus.wav" is not.
+
+<LI>Cutlists with audio NULL elements (gaps in the audio track) can't be written correctly to a file or played properly with the audio renderer included with DirectShow. Unless you have custom filters that can handle gaps in the audio stream, do not use audio NULL elements.
+
+<LI>Cutlists work only with PCM audio, not compressed audio.
+
+<LI>Cutlist support is currently not implemented for RLE compressed files. 
+</OL>
+<A NAME="usecut_0001040601020000"></A><P><B>Creating a Video Cutlist</B>
+<P>The following code creates and plays a cutlist consisting of two video clips from one AVI file. It plays seconds 5 through 10 of the file followed by seconds 0 through 5. The code fragment contains no error checking for the sake of brevity. See <A CLASS=TCTOP HREF="dssd0066.htm#usecut_0001040601040000" TARGET="TEXT">Cutlist Sample Code (Simplecl)</A> for an example that performs error checking. 
+
+<PRE><FONT FACE="Courier" SIZE="2">
+HRESULT              hr;
+ICutListGraphBuilder *pGraphBuilder;
+IMediaControl        *pControl;
+IMediaEvent          *pEvent;
+IGraphBuilder        *pGraph;
+IStandardCutList     *pVCutList;
+IFileClip            *pVFileClip;
+IAMCutListElement      *pVElement1, *pVElement2;
+LONG                 lEventCode=0L;
+
+CoInitialize(NULL);
+// we need these 3 objects
+CoCreateInstance((REFCLSID)CLSID_CutListGraphBuilder,NULL,CLSCTX_INPROC,
+                  (REFIID)IID_ICutListGraphBuilder,(void**)&amp;pGraphBuilder);
+CoCreateInstance((REFCLSID)CLSID_VideoFileClip, NULL, CLSCTX_INPROC,
+                  (REFIID)IID_IFileClip, (void**)&amp;pVFileClip);
+CoCreateInstance((REFCLSID)CLSID_SimpleCutList, NULL, CLSCTX_INPROC,
+                  (REFIID)IID_IStandardCutList,(void**)&amp;pVCutList);
+
+// Tell the clip what file to use as a source file
+hr = pVFileClip-&gt;SetFileAndStream(L"jupiter.avi", 0);
+
+// Create some cutlist elements and add them to the standard cutlist
+// from 5 to 10 seconds, then from 0 to 5 seconds
+hr = pVFileClip-&gt;CreateCut(&amp;pVElement1,5*SCALE,10*SCALE,0,5*SCALE,0);
+hr = pVCutList-&gt;AddElement(pVElement1,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+hr = pVFileClip-&gt;CreateCut(&amp;pVElement2,0,5*SCALE,0,5*SCALE,0);
+hr = pVCutList-&gt;AddElement(pVElement2,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+
+// Give the cutlist to the graph builder
+hr = pGraphBuilder-&gt;AddCutList(pVCutList, NULL);
+
+// Tell the cutlist graph builder to build the graph
+hr = pGraphBuilder-&gt;Render();
+
+// Get the filter graph the builder just made
+hr = pGraphBuilder-&gt;GetFilterGraph(&amp;pGraph);
+
+// Now get some useful graph interfaces
+pGraph-&gt;QueryInterface(IID_IMediaControl,(void**)&amp;pControl);
+pGraph-&gt;QueryInterface(IID_IMediaEvent, (void**)&amp;pEvent);
+pGraph-&gt;Release();
+
+// Run the graph
+pControl-&gt;Run();
+
+// Arbitrarily assumes 10000 millisecond timeout
+pEvent-&gt;WaitForCompletion(10000, &amp;lEventCode);
+pControl-&gt;Stop();
+pEvent-&gt;Release();
+pControl-&gt;Release();
+
+// Cleanup
+hr = pGraphBuilder-&gt;RemoveCutList(pVCutList);
+pVElement1-&gt;Release();
+pVElement2-&gt;Release();
+pVCutList-&gt;Release();
+pVFileClip-&gt;Release();
+pGraphBuilder-&gt;Release();
+
+CoUninitialize();
+
+// Exit
+PostMessage(WM_QUIT, 0, 0);
+</FONT></PRE>
+<P>The preceding example uses video only. The example in the next section uses both audio and video.
+
+<A NAME="usecut_0001040601030000"></A><P><B>Creating Both Video and Audio Cutlists</B>
+<P>The following code takes a file name from the command line and plays five different pieces of that AVI file back to back, with both sound and video synchronized. The code fragment contains no error checking for the sake of brevity. See <A CLASS=TCTOP HREF="dssd0066.htm#usecut_0001040601040000" TARGET="TEXT">Cutlist Sample Code (Simplecl)</A> for an example that performs error checking. 
+
+<PRE><FONT FACE="Courier" SIZE="2">
+HRESULT              hr;
+ICutListGraphBuilder *pGraphBuilder;
+IMediaControl        *pControl;
+IMediaEvent          *pEvent;
+IGraphBuilder        *pGraph;
+IStandardCutList     *pVCutList, *pACutList;
+IFileClip            *pAFileClip1;
+IFileClip            *pVFileClip1;
+IAMCutListElement      *pVElement1;
+IAMCutListElement      *pVElement2;
+IAMCutListElement      *pVElement3;
+IAMCutListElement      *pVElement4;
+IAMCutListElement      *pVElement5;
+IAMCutListElement      *pAElement1;
+IAMCutListElement      *pAElement2;
+IAMCutListElement      *pAElement3;
+IAMCutListElement      *pAElement4;
+IAMCutListElement      *pAElement5;
+LONG                 lEventCode=0L;
+WCHAR                lpwstr[256];
+
+CoInitialize(NULL);
+
+CoCreateInstance((REFCLSID)CLSID_CutListGraphBuilder,NULL,CLSCTX_INPROC,
+                  (REFIID)IID_ICutListGraphBuilder,(void**)&amp;pGraphBuilder);
+
+CoCreateInstance((REFCLSID)CLSID_AudioFileClip, NULL, CLSCTX_INPROC,
+                  (REFIID)IID_IFileClip, (void**)&amp;pAFileClip1);
+
+CoCreateInstance((REFCLSID)CLSID_VideoFileClip, NULL, CLSCTX_INPROC,
+                  (REFIID)IID_IFileClip, (void**)&amp;pVFileClip1);
+
+CoCreateInstance((REFCLSID)CLSID_SimpleCutList, NULL, CLSCTX_INPROC,
+                  (REFIID)IID_IStandardCutList,(void**)&amp;pVCutList);
+CoCreateInstance((REFCLSID)CLSID_SimpleCutList, NULL, CLSCTX_INPROC,
+                  (REFIID)IID_IStandardCutList,(void**)&amp;pACutList);
+
+// Get the Unicode file name to use from the command line
+MultiByteToWideChar(CP_ACP, 0, m_lpCmdLine, strlen(m_lpCmdLine)+1,
+                     lpwstr, sizeof(lpwstr)/sizeof(*lpwstr));
+
+// tell the clips what file they are reading from
+hr = pVFileClip1-&gt;SetFileAndStream(lpwstr, 0);
+hr = pAFileClip1-&gt;SetFileAndStream(lpwstr, 0);
+
+// Create some cuts and add them the cutlist
+
+// from 2 to 6 seconds
+hr = pVFileClip1-&gt;CreateCut(&amp;pVElement1,2*SCALE,6*SCALE,0,4*SCALE,0);
+hr = pVCutList-&gt;AddElement(pVElement1,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+hr = pAFileClip1-&gt;CreateCut(&amp;pAElement1,2*SCALE,6*SCALE,0,4*SCALE,0);
+hr = pACutList-&gt;AddElement(pAElement1,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+
+// from 20 to 24 seconds
+hr = pVFileClip1-&gt;CreateCut(&amp;pVElement2,20*SCALE,24*SCALE,0,4*SCALE,0);
+hr = pVCutList-&gt;AddElement(pVElement2,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+hr = pAFileClip1-&gt;CreateCut(&amp;pAElement2,20*SCALE,24*SCALE,0,4*SCALE,0);
+hr = pACutList-&gt;AddElement(pAElement2,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+
+// from 65 to 69 seconds
+hr = pVFileClip1-&gt;CreateCut(&amp;pVElement3,65*SCALE,69*SCALE,0,4*SCALE,0);
+hr = pVCutList-&gt;AddElement(pVElement3,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+hr = pAFileClip1-&gt;CreateCut(&amp;pAElement3,65*SCALE,69*SCALE,0,4*SCALE,0);
+hr = pACutList-&gt;AddElement(pAElement3,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+
+// from 35 to 39 seconds
+hr = pVFileClip1-&gt;CreateCut(&amp;pVElement4,35*SCALE,39*SCALE,0,4*SCALE,0);
+hr = pVCutList-&gt;AddElement(pVElement4,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+hr = pAFileClip1-&gt;CreateCut(&amp;pAElement4,35*SCALE,39*SCALE,0,4*SCALE,0);
+hr = pACutList-&gt;AddElement(pAElement4,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+
+// from 12 to 16 seconds
+hr = pVFileClip1-&gt;CreateCut(&amp;pVElement5,12*SCALE,16*SCALE,0,4*SCALE,0);
+hr = pVCutList-&gt;AddElement(pVElement5,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+hr = pAFileClip1-&gt;CreateCut(&amp;pAElement5,12*SCALE,16*SCALE,0,4*SCALE,0);
+hr = pACutList-&gt;AddElement(pAElement5,CL_DEFAULT_TIME,CL_DEFAULT_TIME);
+
+// Add the cutlists to the graph
+hr = pGraphBuilder-&gt;AddCutList(pVCutList, NULL);
+hr = pGraphBuilder-&gt;AddCutList(pACutList, NULL);
+
+// Tell the cutlist graph builder to build the graph
+hr = pGraphBuilder-&gt;Render();
+
+// Get the filter graph the builder just made
+hr = pGraphBuilder-&gt;GetFilterGraph(&amp;pGraph);
+
+// Now get some useful graph interfaces
+pGraph-&gt;QueryInterface(IID_IMediaControl,(void**)&amp;pControl);
+pGraph-&gt;QueryInterface(IID_IMediaEvent, (void**)&amp;pEvent);
+pGraph-&gt;Release();
+
+// Run the graph
+pControl-&gt;Run();
+
+// Arbitrarily assumes 10000 millisecond timeout
+pEvent-&gt;WaitForCompletion(10000, &amp;lEventCode);
+
+pControl-&gt;Stop();
+
+pEvent-&gt;Release();
+pControl-&gt;Release();
+
+// cleanup
+
+// Remove the cutlist from the graph
+hr = pGraphBuilder-&gt;RemoveCutList(pVCutList);
+hr = pGraphBuilder-&gt;RemoveCutList(pACutList);
+
+pVElement1-&gt;Release();
+pVElement2-&gt;Release();
+pVElement3-&gt;Release();
+pVElement4-&gt;Release();
+pVElement5-&gt;Release();
+pAElement1-&gt;Release();
+pAElement2-&gt;Release();
+pAElement3-&gt;Release();
+pAElement4-&gt;Release();
+pAElement5-&gt;Release();
+
+pACutList-&gt;Release();
+pVCutList-&gt;Release();
+
+
+pAFileClip1-&gt;Release();
+pVFileClip1-&gt;Release();
+
+pGraphBuilder-&gt;Release();
+
+CoUninitialize();
+
+// Exit
+PostMessage(WM_QUIT, 0, 0);
+</FONT></PRE>
+<P>The preceding example obtains video and audio clips from the same file. The next example adds a user interface and error checking, and it is available in the DirectShow SDK.
+ 
+<A NAME="usecut_0001040601040000"></A><P><B>Cutlist Sample Code (Simplecl)</B>
+<P>The <A CLASS=TCTOP HREF="dssd0369.htm#samples_0001070207020000" TARGET="TEXT">Simplecl Sample (Cutlist Application)</A> (Simplecl) from the DirectShow SDK demonstrates how to create and play back cutlists. By default, the DirectShow setup program installs Simplecl in the DXMedia\Samples\DS\cutlist\simplecl directory. Simplecl provides a File Open dialog box from which the user can chose a file to add to a cutlist. For each file, the user specifies a starting (trimin) position for the clip and an ending (trimout) position for the clip. For every AVI file specified, the sample tries to add the first video stream and the first audio stream to its respective cutlist. The user must add at least two files, and then can run the filter graph and see the clips played sequentially.
+
+<P>The DirectShow SDK also includes a sample that reads a list of cuts from a text file and plays them, much like Simplecl does. That sample, Cltext, is installed in the DXMedia\Samples\DS\cutlist\cltext directory by default.
+
+<P>The following code excerpts are from the Simplecl.h and Simplecl.cpp sample files. The sample includes error checking.
+
+<P>Simplecl.h declares a few global variables, including a ClipDetails structure to manage the user's file and clip start and stop time choices, and a ClipCollection structure to group the clip details. It also defines a SCALE constant to scale all user-specified times in one-second increments. The HELPER_RELEASE macro releases objects only if they exist, and then sets the object pointer to NULL to guard against releasing the same object multiple times. The following example contains fragments from Simplecl.h.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+#define MAX_CLIPS 150
+#define SCALE 10000000   // scale for 1 second of reference time
+
+// Clip (element) details
+struct ClipDetails  
+  {   
+    TCHAR szFilename[MAX_PATH];   // name of file containing clip
+    REFERENCE_TIME start;         // Start (Trim In) position of clip within file
+    REFERENCE_TIME stop;          // Stop (Trim Out) position of clip within file
+  }; 
+
+// Cutlist is a collection of clips (elements)
+struct ClipCollection
+  { 
+    int nNumClips;
+    ClipDetails List[MAX_CLIPS];
+  }; 
+
+#define HELPER_RELEASE(x) { if (x) x-&gt;Release(); x = NULL; }
+
+ClipCollection  gTheSet;            // Cutlist 
+</FONT></PRE>
+<P>The application initializes the user input structure as follows:
+
+<PRE><FONT FACE="Courier" SIZE="2">
+// ... in WinMain ...
+ZeroMemory(&amp;gTheSet, sizeof gTheSet);
+</FONT></PRE>
+<P>Simplecl keeps track of the name of the media file that the user chooses as the source of a clip, tracks the number of files chosen, and displays a dialog box for the user to enter the start and stop times for each clip. The following code fragments relate to tracking the user input for clips:
+
+<PRE><FONT FACE="Courier" SIZE="2">
+// ... in WndMainProc ...
+
+case IDM_ADDFILE:
+
+  if (GetClipFileName(gTheSet.List[gTheSet.nNumClips].szFilename))
+
+    { // Add file
+
+      TCHAR szTitleBar[200];
+
+      DialogBox(ghInst, MAKEINTRESOURCE(wDlgRes = IDD_MEDIATIMES), 
+                                        ghApp, (DLGPROC)DialogProc);
+      gTheSet.nNumClips = gTheSet.nNumClips + 1;
+      wsprintf(szTitleBar, "SimpleCutList - %d clips(s) added.", 
+               gTheSet.nNumClips);
+      SetWindowText(ghApp, szTitleBar);
+
+    } // Add file
+
+.
+.
+.
+// ... in DialogProc ...
+case IDOKTIMES:
+
+  gTheList.List[gTheSet.nNumClips].start = GetDlgItemInt(h, 
+                                           IDC_TRIMIN2, NULL, FALSE);
+  gTheList.List[gTheSet.nNumClips].stop = GetDlgItemInt(h, 
+                                          IDC_TRIMOUT2, NULL, FALSE);
+
+  EndDialog(h,1);
+  break;
+</FONT></PRE>
+<P>The real work of the Simplecl sample is in the SimpleCutList function. If the user has chosen more than one clip, and then chooses Run from the Cutlist menu, then Simplecl builds and plays the cutlist. The following code checks the number of clips chosen, and calls SimpleCutList if more than one clip was chosen.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+case IDM_RUN:
+  if (gTheSet.nNumClips &gt; 1)
+    SimpleCutList();
+  else
+    DialogBox(ghInst, MAKEINTRESOURCE(wDlgRes = IDD_LESSTHAN2), 
+              ghApp, (DLGPROC)DialogProc);
+  break;
+</FONT></PRE>
+<P>After the user has entered the file and clip choices, the SimpleCutList function creates and plays the cutlist as follows:
+
+<PRE><FONT FACE="Courier" SIZE="2">
+  void SimpleCutList ()
+
+    { // SimpleCutList //
+
+      WCHAR wFile[MAX_PATH];  // File name
+
+      // Initialize video and audio file clips and elements to NULL
+      // so we can easily free objects later.
+      for (int x = 0; x &lt; MAX_CLIPS; ++x)
+
+        { 
+          pVidFileClip[x] = NULL; 
+          pAudFileClip[x] = NULL; 
+            pVidCLElem[x] = NULL; 
+            pAudCLElem[x] = NULL; 
+        };
+
+      // Create cutlist graph builder object
+      hr = CoCreateInstance(CLSID_CutListGraphBuilder, NULL, 
+                            CLSCTX_INPROC, IID_ICutListGraphBuilder, 
+                            (void**)&amp;pCLGraphBuilder);
+
+      if (FAILED(hr))
+        { // CoCreateInstance of CutListGraphBuiler failed
+          MessageBox(ghApp, 
+                     "CoCreateInstance of CutListGraphBuiler failed",
+                     APPLICATIONNAME, MB_OK);
+          TearDownTheGraph();
+          return;
+        } // CoCreateInstance of CutListGraphBuiler failed
+
+      // Create simple (standard) cutlist object for video
+      hr = CoCreateInstance(CLSID_SimpleCutList, NULL, 
+                            CLSCTX_INPROC, IID_IStandardCutList, 
+                            (void**)&amp;pVideoCL);
+
+      if (FAILED(hr))
+        { // CoCreateInstance of video SimpleCutList failed
+          MessageBox(ghApp, 
+                     "CoCreateInstance of video SimpleCutList failed",
+                     APPLICATIONNAME, MB_OK);
+          TearDownTheGraph();
+          return;
+        } // CoCreateInstance of video SimpleCutList failed
+
+      // Create simple (standard) cutlist object for audio
+      hr = CoCreateInstance(CLSID_SimpleCutList, NULL, 
+                            CLSCTX_INPROC, IID_IStandardCutList, 
+                            (void**)&amp;pAudioCL);
+
+      if (FAILED(hr))
+        { // CoCreateInstance of audio SimpleCutList failed
+          MessageBox(ghApp, 
+                     "CoCreateInstance of audio SimpleCutList failed",
+                     APPLICATIONNAME, MB_OK);
+          TearDownTheGraph();
+          return;
+        } // CoCreateInstance of audio SimpleCutList failed
+
+      // Create the individual clips and add them to the cutlist
+      nVidElems = nAudElems = 0;
+      for (x = 0; x &lt; gTheSet.nNumClips; ++x)
+
+        { // Individual clips
+
+          MultiByteToWideChar(CP_ACP, 0, 
+                              gTheSet.List[x].szFilename, 
+                              -1, wFile, MAX_PATH );
+
+          // Create a video clip object and give it the file and stream 
+          // to read from.
+          // SetFileAndStream will fail if we call it from a video clip 
+          // object and the clip is not a video clip.
+          hr = CoCreateInstance(CLSID_VideoFileClip, NULL, 
+                                CLSCTX_INPROC, IID_IFileClip, 
+                                (void**)&amp;pVidFileClip[nVidElems]);
+
+          hr = pVidFileClip[nVidElems]-&gt;SetFileAndStream(wFile, 0);
+
+          if (SUCCEEDED(hr))
+
+            { // Create video cut and add the clip (element) to the cutlist
+
+              hr = pVidFileClip[nVidElems]-&gt;CreateCut(&amp;pVidCLElem[nVidElems], 
+                      gTheSet.List[x].start*SCALE, 
+                      gTheSet.List[x].stop*SCALE, 
+                      0, 
+                      (gTheSet.List[x].stop-gTheSet.List[x].start)*SCALE, 
+                      0);
+
+              if (SUCCEEDED(hr))
+
+                { // Add the element to the cutlist
+
+                  hr = pVideoCL-&gt;AddElement(pVidCLElem[nVidElems], CL_DEFAULT_TIME, CL_DEFAULT_TIME);
+
+
+                  if (SUCCEEDED(hr))
+                    ++nVidElems;
+
+                  else
+
+                    { // AddElement failed so release associated objects
+
+                      HELPER_RELEASE(pVidCLElem[nVidElems]);
+                      HELPER_RELEASE(pVidFileClip[nVidElems]);
+                      MessageBox(ghApp, "AddElement (video) failed!", APPLICATIONNAME, MB_OK);
+
+                    } // AddElement failed so release associated objects
+                } // Add the element to the cutlist
+
+              else MessageBox(ghApp, "CreateCut (video) failed!", APPLICATIONNAME, MB_OK);
+
+            } // Create video cut
+
+          else 
+
+            { // Problems creating video stream
+
+              HELPER_RELEASE(pVidFileClip[nVidElems]);
+              MessageBox(ghApp, "SetFileAndStream (video) failed!", APPLICATIONNAME, MB_OK);
+
+            } // Problems creating video stream
+
+          // Create an audio clip object and give it the file and stream 
+          // to read from.
+          // SetFileAndStream will fail if we call it from an audio clip 
+          // object and the clip is not an audio clip
+          hr = CoCreateInstance(CLSID_AudioFileClip, NULL, 
+                                CLSCTX_INPROC, IID_IFileClip, 
+                                (void**)&amp;pAudFileClip[nAudElems]);
+
+          hr = pAudFileClip[nAudElems]-&gt;SetFileAndStream(wFile, 0);
+
+          if (SUCCEEDED(hr))
+
+            { // Create audio cut and add the clip (element) to the cutlist
+
+              hr = pAudFileClip[nAudElems]-&gt;CreateCut(&amp;pAudCLElem[nAudElems], 
+                      gTheSet.List[x].start*SCALE, 
+                      gTheSet.List[x].stop*SCALE, 
+                      0, 
+                      (gTheSet.List[x].stop-gTheSet.List[x].start)*SCALE, 
+                      0);
+
+              if (SUCCEEDED(hr))
+
+                { // Add the element to the cutlist
+
+                  hr = pAudioCL-&gt;AddElement(pAudCLElem[nAudElems],
+                                            CL_DEFAULT_TIME, 
+                                            CL_DEFAULT_TIME);
+
+                  if (SUCCEEDED(hr))
+                    ++nAudElems;
+
+                  else 
+
+                   { // AddElement failed so release associated objects
+
+                      HELPER_RELEASE(pAudCLElem[nAudElems]);
+                      HELPER_RELEASE(pAudFileClip[nAudElems]);
+                      MessageBox(ghApp, "AddElement (audio) failed!", APPLICATIONNAME, MB_OK);
+
+                    } // AddElement failed so release associated objects
+
+                } // Add the element to the cutlist
+
+              else MessageBox(ghApp, "CreateCut (audio) failed!", APPLICATIONNAME, MB_OK);
+
+            } // Create audio cut
+
+          // Problems creating audio stream
+          else 
+
+            { // Problems creating audio stream
+
+              HELPER_RELEASE(pAudFileClip[nAudElems]);
+              MessageBox(ghApp, "SetFileAndStream (audio) failed!", APPLICATIONNAME, MB_OK);
+
+            } // Problems creating audio stream
+
+        } // Individual clips
+
+      // Add the video cutlist to the filter graph
+      hr = pCLGraphBuilder-&gt;AddCutList(pVideoCL, NULL);
+
+      if (FAILED(hr)) // AddCutList (video) failed
+          MessageBox(ghApp, "AddCutList (video) failed", APPLICATIONNAME, MB_OK);
+
+      // Add the audio cutlist to the filter graph
+      hr = pCLGraphBuilder-&gt;AddCutList(pAudioCL, NULL);
+
+      if (FAILED(hr)) // AddCutList (audio) failed
+          MessageBox(ghApp, "AddCutList (audio) failed", APPLICATIONNAME, MB_OK);
+
+      if ((!pVideoCL) &amp;&amp; (!pAudioCL))
+
+        { // Clean up
+
+          TearDownTheGraph();
+          return;
+
+        } // Clean up
+
+      // Let the filter graph manager construct the appropriate graph 
+      // automatically
+      hr = pCLGraphBuilder-&gt;Render();
+
+      if (FAILED(hr))
+        { // Problems rendering the graph
+          if (!AMGetErrorText(hr, gszScratch, 2048))
+            MessageBox(ghApp, "Problems rendering the graph!", APPLICATIONNAME, MB_OK);
+          else 
+            MessageBox(ghApp, gszScratch, APPLICATIONNAME, MB_OK);
+          TearDownTheGraph();
+          return;
+        } // Problems rendering the graph
+
+      // Retrieve the filter graph and useful interfaces
+      hr = pCLGraphBuilder-&gt;GetFilterGraph(&amp;pigb);
+
+      if (FAILED(hr))
+        { // Problems retrieving the graph pointer
+          if (!AMGetErrorText(hr, gszScratch, 2048))
+            MessageBox(ghApp, "Problems retrieving the graph pointer!", APPLICATIONNAME, MB_OK);
+          else 
+            MessageBox(ghApp, gszScratch, APPLICATIONNAME, MB_OK);
+          TearDownTheGraph();
+          return;
+        } // Problems retrieving the graph pointer
+
+      // QueryInterface for some basic interfaces
+      pigb-&gt;QueryInterface(IID_IMediaControl, (void **)&amp;pimc);
+      pigb-&gt;QueryInterface(IID_IMediaEventEx, (void **)&amp;pimex);
+      pigb-&gt;QueryInterface(IID_IVideoWindow, (void **)&amp;pivw);
+
+      // Decrement the ref count on the filter graph
+      pigb-&gt;Release();
+
+      // Prepare to play in the main application window's client area
+
+      RECT rc;
+      GetClientRect(ghApp, &amp;rc);
+      hr = pivw-&gt;put_Owner((OAHWND)ghApp);
+      hr = pivw-&gt;put_WindowStyle(WS_CHILD|WS_CLIPSIBLINGS);
+      hr = pivw-&gt;SetWindowPosition(rc.left, rc.top, rc.right, rc.bottom);
+
+      // Have the graph signal event via window callbacks for performance
+      pimex-&gt;SetNotifyWindow((OAHWND)ghApp, WM_GRAPHNOTIFY, 0);
+
+      // Run the graph if RenderFile succeeded
+      pimc-&gt;Run();
+
+    } // SimpleCutList //
+</FONT></PRE>
+<P>Simplecl's TearDownTheGraph function releases all objects and cleans up as follows.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+ void TearDownTheGraph (void)
+
+    { // TearDownTheGraph //
+
+      if (pimc)
+        pimc-&gt;Stop();
+
+      if (pivw)
+
+        { // Hide the playback window first thing
+
+          pivw-&gt;put_Visible(OAFALSE);
+          pivw-&gt;put_Owner(NULL);
+
+        } //
+
+      HELPER_RELEASE(pimex);
+      HELPER_RELEASE(pimc);
+      HELPER_RELEASE(pivw);
+
+      // Remove the video cutlist from the filter graph to free resources
+      if (pCLGraphBuilder &amp;&amp; pVideoCL)
+        pCLGraphBuilder-&gt;RemoveCutList(pVideoCL);
+
+      // Remove the audio cutlist from the filter graph to free resources
+      if (pCLGraphBuilder &amp;&amp; pAudioCL)
+        pCLGraphBuilder-&gt;RemoveCutList(pAudioCL);
+
+      for (int x = 0; x &lt; nAudElems; ++x)
+
+        { // Release audio objects
+
+          HELPER_RELEASE(pAudCLElem[x]);
+          HELPER_RELEASE(pAudFileClip[x]);
+
+        } // Release audio objects
+
+      for (x = 0; x &lt; nVidElems; ++x)
+
+        { // Release video objects
+
+          HELPER_RELEASE(pVidCLElem[x]);
+          HELPER_RELEASE(pVidFileClip[x]);
+
+        } // Release video objects
+
+      HELPER_RELEASE(pVideoCL);
+      HELPER_RELEASE(pAudioCL);      
+      HELPER_RELEASE(pCLGraphBuilder);
+
+    } // TearDownTheGraph //
+</FONT></PRE>
+<P><P><FONT FACE="MS SANS SERIF" SIZE="1" COLOR="BLACK">
+<A CLASS=cpslug HREF="copyrite.htm" TARGET="TEXT">&#169; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A>
+</FONT>
+<BR CLEAR=ALL><P>
+</FONT><P>
+</BODY></HTML>

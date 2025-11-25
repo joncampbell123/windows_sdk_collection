@@ -1,0 +1,134 @@
+<HTML>
+<HEAD>
+<TITLE>DirectAnimation SDK, VBScript sample</TITLE>
+<SCRIPT LANGUAGE="JScript">
+<!--
+if (window.top.frames.length!=0 && window.top.frames[0].ShowNoButtons!=null)
+    window.top.frames[0].ShowNoButtons();
+//-->
+</SCRIPT>
+</HEAD>
+
+<body bgcolor=black>
+<FONT SIZE=4 FACE="Verdana,Tahoma,Arial" color=white>  
+<H1>Animate 3D objects in a Windowless Controls</H1>
+<P>
+This animation is made up of 3D objects imported from .X files and animated in 3D 
+using DirectAnimation.
+The objects are rendered as a windowless control on top of HTML text.       
+You can still select text below the animate objects.
+Left-click on an object to change its color and start it spinning.  Click again
+to stop it. One of the cubes assumes a time-varying color.
+Right-click to switch between a perspective and a parallel view.
+
+</FONT>
+
+<DIV ID=controlDiv>
+<OBJECT ID="DAControl"
+   STYLE="position:absolute; left:75; top:50;width:300;height:300" 
+   CLASSID="CLSID:B6FFC24C-7E13-11D0-9B47-00C04FC2F51D">
+</OBJECT>
+</DIV>
+
+
+<SCRIPT language="VBScript">
+<!--
+  Set m = DAControl.MeterLibrary
+  Set speed = m.DANumber(0.07)
+  pi = 3.14159265359
+
+Sub window_onLoad
+  Set size = m.Scale3Uniform(0.25)
+   
+  'Import the geometries.
+  Set rawCube = m.ImportGeometry("../../../../media/geometry/cube.x")
+  Set rawCube = rawCube.Transform(size)
+  Set rawCylinder = m.ImportGeometry("../../../../media/geometry/cylinder.x")
+  Set rawCylinder = rawCylinder.Transform(size)
+  Set rawCone = m.ImportGeometry("../../../../media/geometry/cone.x")
+  Set rawCone = rawCone.Transform(size)
+
+  'Make the geometries pickable.
+  Set cone1 = activate(rawCone, m.Green)
+  Set cube1 = activate(rawCube, m.Magenta)
+  Set cube2 = activate(rawCube, m.ColorHslAnim(m.Div(m.LocalTime,  _ 
+    m.DANumber(8)), m.DANumber(1), m.DANumber(0.5)))
+  Set cylinder = activate(rawCylinder, m.ColorRgb(0.8, 0.4, 0.4))
+
+  'Construct the final geometry, scale and rotate it.
+  Set multigeo = m.UnionGeometry(cone1.Transform(m.Translate3(0, 1, 0)), _ 
+    m.UnionGeometry(cube1.Transform(m.Translate3(0, 0, 1)), _ 
+      m.UnionGeometry(cube2.Transform(m.Translate3(0, 0, -1)), cylinder)))
+  Set geo = multigeo.Transform(m.Scale3Anim(m.Add(m.Abs(m.Sin(m.Mul(m.LocalTime, _ 
+    m.DANumber(0.2)))),m.DANumber(0.5)),m.Add(m.Abs(m.Sin(m.Mul(m.LocalTime, _ 
+      m.DANumber(0.26)))),m.DANumber(0.5)),m.Add(m.Abs(m.Sin(m.Mul(m.LocalTime, _
+        m.DANumber(0.14)))),m.DANumber(0.5))))
+
+  Set transform1 = m.Rotate3Anim(m.ZVector3, _ 
+    m.Mul(speed, m.Mul(m.LocalTime, m.DANumber(1.9))))
+
+  Set transform2 = m.Rotate3Anim(m.YVector3, _ 
+    m.Mul(speed, m.Mul(m.LocalTime, m.DANumber(pi))))
+
+  Set movingGeoImg = geometryImage(geo.Transform(m.Compose3(m.Rotate3Anim(m.ZVector3, _ 
+    m.Mul(speed,m.Mul(m.LocalTime,m.DANumber(1.9)))), m.Rotate3Anim(m.YVector3, _ 
+      m.Mul(speed,m.Mul(m.LocalTime,m.DANumber(pi)))))))
+
+  'Display the final image.
+  DAControl.Image = movingGeoImg
+
+  'Set the background in case of a non-windowless browser (like IE3).
+  DAControl.BackgroundImage = m.SolidColorImage(m.Blue)
+
+  'Start the animation.
+  DAControl.Start
+End Sub
+
+Function activate(unpickedGeo,col)
+  Set pickGeo = unpickedGeo.Pickable()
+  Set pickEvent = m.AndEvent(m.LeftButtonDown, pickGeo.pickEvent)
+  
+  Set numcyc = CreateObject("DirectAnimation.DANumber")
+  numcyc.Init(m.Until(m.DANumber(0), _ 
+  pickEvent, m.Until(m.DANumber(1), pickEvent, numcyc)))
+  
+  Set colcyc = CreateObject("DirectAnimation.DAColor")
+  colcyc.Init(m.Until(m.White, pickEvent, m.Until(col, pickEvent, colcyc)))
+
+  Set xf = m.Rotate3Anim(m.XVector3, m.Integral(numcyc))
+
+  Set activate = pickGeo.Geometry.DiffuseColor(colcyc).Transform(xf)
+End Function
+
+Function geometryImage(geo)
+  Set scaleFactor = m.DANumber(0.02)
+
+  Set light = m.UnionGeometry(m.DirectionalLight.Transform(m.Rotate3Anim(m.XVector3, _
+    m.Div(m.DANumber(pi),m.DANumber(2)))), m.DirectionalLight)
+
+  Set perspTransform = CreateObject("DirectAnimation.DATransform3")
+    perspTransform.Init(m.Until(m.Compose3(m.Rotate3Anim(m.XVector3, _ 
+      m.Mul(speed,m.LocalTime)),m.Translate3(0, 0, 0.2)),m.RightButtonDown, _ 
+	    m.Until(m.Rotate3Anim(m.XVector3, m.Mul(speed,m.LocalTime)), _ 
+	      m.RightButtonDown, perspTransform)))
+
+  Set myLight = m.UnionGeometry(m.DirectionalLight.Transform(perspTransform), m.DirectionalLight)
+
+  Set perspectiveCam = (m.PerspectiveCamera(1,0)).Transform(m.Compose3(m.Rotate3Anim(m.XVector3, _ 
+    m.Mul(speed,m.LocalTime)),m.Translate3(0, 0, 0.2)))
+
+  Set parallelCam = (m.ParallelCamera(1)).Transform(m.Rotate3Anim(m.XVector3, _ 
+    m.Mul(speed,m.LocalTime)))
+  
+  Set camera = CreateObject("DirectAnimation.DACamera")
+  camera.Init(m.Until(perspectiveCam, m.RightButtonDown, _ 
+    m.Until(parallelCam, m.RightButtonDown, camera)))
+  
+  Set geometryImage =  m.UnionGeometry(geo.Transform(m.Scale3UniformAnim(scaleFactor)), _
+    myLight).render(camera)
+End Function
+-->
+</SCRIPT>
+</BODY>
+</HTML>
+

@@ -1,0 +1,204 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<HTML>
+<HEAD><TITLE>Write a Video Capture Filter</TITLE>
+<STYLE>
+<!--
+.tctop {color: blue}
+.cpslug {color: blue; text-decoration: none}
+-->
+</STYLE>
+<SCRIPT LANGUAGE="JAVASCRIPT">
+//<!--
+function ShowButtons() {
+    if (window.top.frames.length!=0 && window.top.frames[0].ShowButtons!=null)
+	window.top.frames[0].ShowButtons('/dssd0069.htm','/dssd0000.htm','/dssd0069.htm','/index.htm','/dssd0071.htm');
+}
+ShowButtons();
+//-->
+</SCRIPT>
+</HEAD>
+<BODY onLoad="ShowButtons()" TOPMARGIN=10 BGPROPERTIES="FIXED" BGCOLOR="#FFFFFF" LINK="#000000" VLINK="#808080" ALINK="#000000">
+<FONT FACE="VERDANA,ARIAL,HELVETICA" SIZE="2">
+<H2><A NAME="caprules_0001050101000000">Write a Video Capture Filter</A></H2>
+<BR CLEAR=ALL>
+<P>This article outlines important points to consider when writing a video capture filter. The Microsoft&#174; DirectShow&#153; SDK includes a standard <A CLASS=TCTOP HREF="dssd0358.htm#filteref_000107012f000000" TARGET="TEXT">VFW Video Capture</A> filter.
+
+<P><B>Contents of this article:</B>
+<UL><LI><A CLASS=TCTOP HREF="dssd0070.htm#caprules_0001050101010000" TARGET="TEXT">Capture and Preview Pin Requirements</A>
+<LI><A CLASS=TCTOP HREF="dssd0070.htm#caprules_0001050101020000" TARGET="TEXT">Optimizing Capture Versus Preview (Optional)</A>
+<LI><A CLASS=TCTOP HREF="dssd0070.htm#caprules_0001050101030000" TARGET="TEXT">Registering a Video Capture Filter</A>
+<LI><A CLASS=TCTOP HREF="dssd0070.htm#caprules_0001050101040000" TARGET="TEXT">Producing Data</A>
+<LI><A CLASS=TCTOP HREF="dssd0070.htm#caprules_0001050101050000" TARGET="TEXT">Controlling Individual Streams</A>
+<LI><A CLASS=TCTOP HREF="dssd0070.htm#caprules_0001050101060000" TARGET="TEXT">Time Stamping</A>
+<LI><A CLASS=TCTOP HREF="dssd0070.htm#caprules_0001050101065000" TARGET="TEXT">Frame Rates</A>
+<LI><A CLASS=TCTOP HREF="dssd0070.htm#caprules_0001050101070000" TARGET="TEXT">Necessary Interfaces</A>
+</UL>
+<A NAME="caprules_0001050101010000"></A><P><B>Capture and Preview Pin Requirements</B>
+<P>The capture pin and preview pin (if there is one) of the capture filter must support the <A HREF="dssd0155.htm#If_000106013e000000" TARGET="TEXT">IKsPropertySet</A> interface. Applications call this interface to ask "what category of pin are you?" by getting the <A HREF="dssd0305.htm#propset_0001060704000002" TARGET="TEXT">AMPROPERTY_PIN_CATEGORY</A> value of the <A HREF="dssd0305.htm#propset_0001060704000001" TARGET="TEXT">AMPROPSETID_Pin</A> property set. The value you return is typically either the <A HREF="dssd0305.htm#propset_0001060704000004" TARGET="TEXT">PIN_CATEGORY_CAPTURE</A> or <A HREF="dssd0305.htm#propset_0001060704000008" TARGET="TEXT">PIN_CATEGORY_PREVIEW</A> <A HREF="dssd0414.htm#gloss_00010b0108000001" TARGET="TEXT">GUID</A>. (See <A CLASS=TCTOP HREF="dssd0305.htm#propset_0001060704000000" TARGET="TEXT">Pin Property Set</A> for a complete list of pin categories.) A capture filter must support <B>IKsPropertySet</B> or an application can't tell how to connect the filter in a filter graph. 
+
+<P>You can name the pin anything you want and you can have other output pins for any additional purposes that you want. If your pin name begins with the tilde (~) character, the filter graph will not automatically render that pin when an application calls <A HREF="dssd0153.htm#If_000106013c030400" TARGET="TEXT">IGraphBuilder::RenderFile</A>. For instance, if you have a capture filter with both a capture pin and a preview pin, you might want to name the capture pin "~capture" and the preview pin "preview." Given those names, if an application renders that filter in a graph, the preview pin will be connected to a video renderer, and nothing will be connected to the capture filter, which is probably what you want to happen by default. This can also apply to pins that are just informational and are not meant to be rendered, or need to be enumerated so that their properties can be set. 
+
+<P>The tilde (~) prefix only affects the behavior of <A HREF="dssd0153.htm#If_000106013c030400" TARGET="TEXT">RenderFile</A> and intelligent connect (<A HREF="dssd0153.htm#If_000106013c030200" TARGET="TEXT">IGraphBuilder::Connect</A>). Note that intelligent connect can still be used to connect pins with this property if they implement the <A HREF="dssd0172.htm#If_000106014f030200" TARGET="TEXT">IPin::Connect</A> method. However, output pins of intermediate filters which are being used to complete the connection which have the tilde at the start of their name will not be connected as part of the intelligent connection attempt.
+
+<P>See <A CLASS=TCTOP HREF="dssd0071.htm#audcap_0001050102010000" TARGET="TEXT">Audio Capture Pin Requirements</A> for more details about audio capture filters.
+
+<P>The following sample code demonstrates how to implement <A HREF="dssd0155.htm#If_000106013e000000" TARGET="TEXT">IKsPropertySet</A> on a capture pin.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+//
+// PIN CATEGORIES - let the world know that we are a CAPTURE pin
+//
+
+HRESULT CMyCapturePin::Set(REFGUID guidPropSet, DWORD dwPropID, LPVOID pInstanceData, DWORD cbInstanceData, LPVOID pPropData, DWORD cbPropData)
+{
+    return E_NOTIMPL;
+}
+
+// To get a property, the caller allocates a buffer which the called
+// function fills in. To determine necessary buffer size, call Get with
+// pPropData=NULL and cbPropData=0.
+HRESULT CMyCapturePin::Get(REFGUID guidPropSet, DWORD dwPropID, LPVOID pInstanceData, DWORD cbInstanceData, LPVOID pPropData, DWORD cbPropData, DWORD *pcbReturned)
+{
+    if (guidPropSet != AMPROPSETID_Pin)
+&#009;return E_PROP_SET_UNSUPPORTED;
+
+    if (dwPropID != AMPROPERTY_PIN_CATEGORY)
+&#009;return E_PROP_ID_UNSUPPORTED;
+
+    if (pPropData == NULL &amp;&amp; pcbReturned == NULL)
+&#009;return E_POINTER;
+
+    if (pcbReturned)
+&#009;*pcbReturned = sizeof(GUID);
+
+    if (pPropData == NULL)
+&#009;return S_OK;
+
+    if (cbPropData &lt; sizeof(GUID))
+&#009;return E_UNEXPECTED;
+
+    *(GUID *)pPropData = PIN_CATEGORY_CAPTURE;
+    return S_OK;
+}
+
+
+// QuerySupported must either return E_NOTIMPL or correctly indicate
+// if getting or setting the property set and property is supported.
+// S_OK indicates the property set and property ID combination is
+HRESULT CMyCapturePin::QuerySupported(REFGUID guidPropSet, DWORD dwPropID, DWORD *pTypeSupport)
+{
+    if (guidPropSet != AMPROPSETID_Pin)
+&#009;return E_PROP_SET_UNSUPPORTED;
+
+    if (dwPropID != AMPROPERTY_PIN_CATEGORY)
+&#009;return E_PROP_ID_UNSUPPORTED;
+
+    if (pTypeSupport)
+&#009;*pTypeSupport = KSPROPERTY_SUPPORT_GET;
+    return S_OK;
+}
+</FONT></PRE>
+<A NAME="caprules_0001050101020000"></A><P><B>Optimizing Capture Versus Preview (Optional)</B>
+<P>When your filter is running and capturing data, you must send a copy of the frame from your preview pin as well as from your capture pin. If you can do hardware-assisted preview &#151; through an overlay, for example &#151; and if you have a preview pin, you can use the <A HREF="dssd0170.htm#If_000106014d000000" TARGET="TEXT">IOverlay</A> interface transport for your preview pin instead of the <A HREF="dssd0168.htm#If_000106014b000000" TARGET="TEXT">IMemInputPin</A> interface. Using <B>IOverlay</B> is optional. If you can't do hardware-assisted preview, only send a frame out the preview pin if you have some spare time. Don't do it if it will make you drop any frames &#151; the capture pin has priority.
+
+<P>For example, you might deliver a frame from the preview pin only if you have nothing to send from the capture pin right now and the downstream filter has released all buffers previously delivered from the capture pin.
+
+<P>If you can capture only one format of data, and the preview and capture pins must therefore produce the same media type, or if you want information about how to properly reconnect pins, read on. Otherwise, skip this section.
+
+<P>Send data of the same format from the preview and capture pins. If the filter graph manager reconnects your capture pin with a different format, you must reconnect your preview pin with the same format to make it work. If your capture pin is connected but your preview pin is not, you must allow only your preview pin to connect with the same media type as the capture pin. They must match.
+
+<P><B>Note:</B>  If your preview pin is producing 8-bit RGB and must reconnect using 16-bit RGB, the reconnect might fail. This failure might occur if you are connected to a video renderer, because the renderer might need a color converter filter inserted between the filters to convert the 16-bit RGB to 8-bit RGB. In this case, calling the <A HREF="dssd0147.htm#If_0001060136030600" TARGET="TEXT">IFilterGraph::Reconnect</A> method will fail. You must do a full-fledged connect again (with <A HREF="dssd0210.htm#Lib_0001060214060900" TARGET="TEXT">CBasePin::Connect</A>). If you only change between different sizes of motion JPEG, don't worry; a simple reconnect will always work.<P>The following sample code shows how the more complicated reconnection would work.
+<PRE><FONT FACE="Courier" SIZE="2">
+// Capture pin is being told to use a certain media type
+//
+CCapturePin::SetMediaType(CMediaType *pmt);
+{
+    if (m_pMyPreviewPin-&gt;IsConnected()) {
+
+&#009;// We need to reconnect our preview pin with this media type
+  &#009;if (m_pMyPreviewPin-&gt;GetConnected()-&gt;QueryAccept(pmt) == NOERROR) {
+
+&#009;&#009;// The other filter that the preview pin is connected to
+&#009;&#009;// can accept this new media type, so we simple reconnect
+&#009;&#009;m_pGraph-&gt;Reconnect(m_pMyPreviewPin);
+&#009;} else {
+&#009;&#009;// The other filter WON'T accept this new time. Time to do
+&#009;&#009;// the connection all over again, possibly pulling in new
+&#009;&#009;// filters to help connect them
+&#009;&#009;IPin *pPin = m_pMyPreviewPin-&gt;GetConnected();
+&#009;&#009;m_pGraph-&gt;Disconnect(pPin);&#009;// disconnect upstream first
+&#009;&#009;m_pGraph-&gt;Disconnect(m_pMyPreviewPin);
+&#009;&#009;// The sample code below will make sure the new connection
+&#009;&#009;// happens with the same media type as we are using
+&#009;&#009;hr = m_pGraph-&gt;Connect(m_pMyPreviewPin, pPin);
+&#009;&#009;if (FAILED(hr))
+&#009;&#009;&#009;; // UH OH !!!
+&#009;}
+    }
+}
+
+CPreviewPin::CheckMediaType(CMediaType *pmt)
+{
+&#009;CMediaType cmt = m_pMyCapturePin-&gt;m_mt;
+ &#009;if (m_pMyCapturePin-&gt;IsConnected() &amp;&amp; *pmt != cmt)
+&#009;&#009;// Sorry, our preview pin is only allowed to connect with
+&#009;&#009;// the same format as the capture pin
+&#009;&#009;return E_INVALIDARG;
+
+&#009;else if (!m_pMyCapturePin-&gt;IsConnected())
+&#009;&#009;// You decide if you like this media type or not, maybe by
+&#009;&#009;// knowing what the capture pin will connect with. But don't
+&#009;&#009;// worry, when the capture pin is connected, we will be 
+&#009;&#009;// reconnected to use the same format
+
+&#009;// if our capture pin is connected, and this is the same media type,
+&#009;// we are OK.
+&#009;return NOERROR;
+}
+</FONT></PRE>
+<A NAME="caprules_0001050101030000"></A><P><B>Registering a Video Capture Filter</B>
+<P>You must register your filter in the video capture filter category. See <A HREF="dssd0275.htm#fmutil_0001060307000300" TARGET="TEXT">AMovieDllRegisterServer2</A> for more information. 
+
+<A NAME="caprules_0001050101040000"></A><P><B>Producing Data</B>
+<P>Produce data on capture and preview pins only when the filter graph is in a running state. You do not send data from your pins when the filter graph is paused. This will confuse the filter graph unless you return <A HREF="dssd0310.htm#errcodes_0001060a01000087" TARGET="TEXT">VFW_S_CANT_CUE</A> from the <A HREF="dssd0204.htm#Lib_000106020e080a00" TARGET="TEXT">CBaseFilter::GetState</A> function, warning the filter graph that you do not send data when paused. The following code shows you what to do.
+
+<PRE><FONT FACE="Courier" SIZE="2">
+CMyVidcapFilter::GetState(DWORD dw, FILTER_STATE *State)
+{
+&#009;*State = m_State;
+&#009;if (m_State == State_Paused)
+&#009;&#009;return VFW_S_CANT_CUE;
+&#009;else
+&#009;&#009;return S_OK;
+}
+</FONT></PRE>
+<A NAME="caprules_0001050101050000"></A><P><B>Controlling Individual Streams</B>
+<P>All output pins should support the <A HREF="dssd0111.htm#If_0001060112000000" TARGET="TEXT">IAMStreamControl</A> interface, so an application can turn each pin on or off individually (for instance, to preview without capturing). <B>IAMStreamControl</B> enables you to switch between preview and capture without rebuilding a different graph.
+
+<A NAME="caprules_0001050101060000"></A><P><B>Time Stamping</B>
+<P>When you capture a frame and are sending it, time stamp the frame with the time the graph's clock says it is when the frame is captured. The end time is the start time plus the duration. For example, if you are capturing at 10 frames per second, and the graph's clock says 200,000,000 units at the time the frame is captured, the sample is stamped (200000000, 201000000) (there are 10,000,000 units per second).
+
+<P>A preview frame should have no time stamp because of latency problems. The latency is due to the fact that, if the time of the sample is the graph's time when it leaves the preview pin, by the time the sample gets to the renderer, it will be late. Therefore the renderer may choose not to draw the sample in order to save time and "catch up", which can't happen for a live stream. Implementing <A HREF="dssd0111.htm#If_0001060112000000" TARGET="TEXT">IAMStreamControl</A> requires time stamps, so you can choose not to implement stream control on the preview pin, only time stamp the preview pin sample when there are outstanding requests to start or stop, or live with the latency problem. See the source code for the <A CLASS=TCTOP HREF="dssd0365.htm#samples_0001070203040000" TARGET="TEXT">VidCap Sample (Video Capture Filter)</A> sample for details.
+
+<P>You should set the media time of the sample you deliver; also set the regular time stamp for your capture pin. The media time is the frame number of the sample. For example, if you are capturing and sending frames and frame 3 gets dropped, you would set the media time values to be (0,1) (1,2) (2,3) (4,5) (5,6) and so on. This informs the downstream filters if any video frames were dropped even when the regular time stamps are a little random because the clock being used is not the video digitizing clock.
+
+<P>Also, if you are in a running state, and then pause, and then run again, you must not send a sample with a time stamp less than the last one you sent before pausing. Time stamps can never go back in time, not even back to before a pause occurred.
+
+<A NAME="caprules_0001050101065000"></A><P><B>Frame Rates</B>
+<p>The frame rate at which your filter should produce data is determined by the <A HREF="dssd0300.htm#structs_0001060501001e05">AvgTimePerFrame</A> field of the <A HREF="dssd0300.htm#structs_0001060501001e00">VIDEOINFOHEADER</A> of the media type your output pin is connected with. You may not be able to capture at any arbitrary frame rate, but only certain rates. If your pin is connected with a media type that asks for a frame rate you can't provide, you should provide frames at the next lowest frame rate possible.  For instance, if your media type has <B>AvgTimePerFrame</B>=333333 (approx 1/30 of a second, meaning 30 frames per second), and you can only capture 29.97 or 35 frames per second, you should provide frames at 29.97 frames per second, since that is the closest value lower than 30 that you can provide. You can provide a higher frame rate than asked if the frame rate you provide does not create frame durations more than 1 microsecond shorter than requested, since the <B>AvgTimePerFrame</B> may simply have rounding errors. If the <B>AvgTimePerFrame</B> field is 0, you can supply frames at any default frame rate that you like.
+
+
+<A NAME="caprules_0001050101070000"></A><P><B>Necessary Interfaces</B>
+<P>Read about the following interfaces and consider implementing them. You should implement these interfaces to provide functionality that applications might rely on, so these interfaces are strongly recommended.
+
+<UL><LI>Implement <A HREF="dssd0104.htm#If_000106010b000000" TARGET="TEXT">IAMDroppedFrames</A> on your filter or on each output pin that sends data.
+<LI>Implement <A HREF="dssd0110.htm#If_0001060111000000" TARGET="TEXT">IAMStreamConfig</A> on each output pin that sends video data.
+<LI>Implement <A HREF="dssd0111.htm#If_0001060112000000" TARGET="TEXT">IAMStreamControl</A> on each output pin that sends data.
+<LI>Implement <A HREF="dssd0119.htm#If_000106011a000000" TARGET="TEXT">IAMVideoCompression</A> on each output pin that sends video data.
+</UL>
+<P><P><FONT FACE="MS SANS SERIF" SIZE="1" COLOR="BLACK">
+<A CLASS=cpslug HREF="copyrite.htm" TARGET="TEXT">&#169; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A>
+</FONT>
+<BR CLEAR=ALL><P>
+</FONT><P>
+</BODY></HTML>

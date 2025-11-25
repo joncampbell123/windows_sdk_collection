@@ -1,0 +1,166 @@
+<HTML> 
+<HEAD>
+<TITLE>DirectAnimation SDK, JScript sample</TITLE>
+<SCRIPT LANGUAGE="JScript">
+<!--
+if (window.top.frames.length!=0 && window.top.frames[0].ShowNoButtons!=null)
+    window.top.frames[0].ShowNoButtons();
+//-->
+</SCRIPT>
+</HEAD>	 
+
+<BODY BGCOLOR=Black TOPMARGIN=15 LEFTMARGIN=40>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE=4> 
+<CENTER>
+<H1>Dancing Lights</H1>
+</CENTER>
+<OBJECT ID="DAControl"        
+   STYLE="position:absolute;left=0;top=0;width=900;height=700;z-index:-1"
+   CLASSID="CLSID:B6FFC24C-7E13-11D0-9B47-00C04FC2F51D">
+</OBJECT>
+<P>
+This animated background is synthetically generated
+and rendered under HTML text as a windowless control. 
+The media used is 6.3KBs in size. 
+The JScript is under 100 lines long.
+<P>
+Four spot lights are animated using 2D paths and are pointed at an open room that is viewed
+with a perspective camera and a static, purple, pointlight source. 
+The spot lights tilt gently
+towards the wall as they approach them. Lastly, the result of the 3D rendering
+is tiled to produce the final background.
+<P>
+Pressing the <B>left mouse button</B> first halts and then restarts the animation.
+ 
+<SCRIPT LANGUAGE="JScript">
+<!--
+  // This sample is a meter-based counterpart to CoordsAndPaths, which is in pixels.
+  // As a consequence, this sample is resolution-independent while CoordsAnd path is not.
+    
+  // The DirectAnimation library in meter mode
+  m = DAControl.MeterLibrary;      
+
+  // constants
+  cm = 0.01;      // a conversion factor from centimeters to meters
+  dim = 3*cm;     // all coordinates are specified in meters
+  halfDepth = 0.75*dim;  // depth of the room
+  speed = 3/4;          // speed of travelling objects
+  spread = 2.5;     // spread factor for spot lights
+  pi = Math.PI;     // for specifying angles in radian.
+  zeroNum = m.DANumber(0);  // for convenience
+
+  // Constructs a uniform cubic BSpline with standard end conditions
+  // based on a given list of control points. It hides the details
+  // of the knot vector from the developer.
+  function SimpleSpline(pts) {
+    numPts = pts.length/2;
+    knts = new Array(numPts + 2);
+    for (i=2; i<numPts; i++) knts[i] = i;
+    knts[0] = knts[1] = knts[2];
+    knts[numPts+1] = knts[numPts] = knts[numPts-1];
+    return(m.cubicBSplinePath(pts, knts));
+  }
+
+  // construct a rendering of the given path with a given image
+  // travelling back and forth on the path in dur time each way.
+  // SlowInSlowOut and FastInFastOut are used for going forward and backward,
+  // respectively. This function also returns the travelling point along the path,
+  // and a coincident 3D spot light that travels along the trajectory and 
+  // tilts towards the wall.
+  function SpotLight(path, dur, clr) {    
+    rate = m.Cond(m.LeftButtonState, zeroNum, m.DANumber(1)); 
+    eval = m.Sequence(m.SlowInSlowOut(0, 1, dur/speed, 0), 
+                      m.SlowInSlowOut(1, 0, dur/speed, 0)).RepeatForever();
+    evaluator = eval.SubstituteTime(m.Integral(rate));
+    tf = m.FollowPathEval(path, evaluator);
+    posPt2 = m.Origin2.Transform(tf);
+    ptLength = posPt2.PolarCoordLength;
+    // perpendicular to the vec to posPt2 in ccw direction
+    rotVec = m.Vector3Anim(posPt2.X, posPt2.Y, zeroNum).
+                Transform(m.Rotate3(m.ZVector3, -pi/2));
+    // spot light is facing -Z and gradually tilts outwards 
+    return m.SpotLight(m.DANumber(spread*pi/4), 1.5*spread*pi/4).
+                  LightColor(clr).
+                  Transform(m.Compose3(
+                    m.Translate3Anim(posPt2.X, posPt2.Y, zeroNum),
+                    m.Rotate3Anim(rotVec, m.Div(ptLength, m.DANumber(1*dim)))));
+  } 
+   
+  // constructs a five faced cubic room 
+  function OpenRoom() {
+    // quad is a [-1, 1] square on XY plane
+    quadGeo = m.ImportGeometry(geoBase + "quad5x10.x").
+                    Transform(m.Scale3Uniform(dim));
+    backGeo = quadGeo.Transform(m.Translate3(0, 0, -dim)); 
+    leftGeo = quadGeo.Transform(m.Compose3(
+				                m.Translate3(-dim, 0, 0),
+                        m.Rotate3(m.YVector3, pi/2)));    
+    rightGeo = quadGeo.Transform(m.Compose3(
+				                m.Translate3(dim, 0, 0),
+                        m.Rotate3(m.YVector3, -pi/2)));    
+    topGeo = quadGeo.Transform(m.Compose3(
+				                m.Translate3(0, dim, 0),
+                        m.Rotate3(m.XVector3, pi/2)));    
+    bottomGeo = quadGeo.Transform(m.Compose3(
+				                m.Translate3(0, -dim, 0),
+                        m.Rotate3(m.XVector3, -pi/2)));
+    return m.UnionGeometry(bottomGeo,
+             m.UnionGeometry(topGeo,
+               m.UnionGeometry(rightGeo,
+                 m.UnionGeometry(leftGeo, backGeo))));
+  }     
+
+  // import the needed media files
+  mediaBase = "..\\..\\..\\..\\media\\";
+  geoBase = mediaBase + "geometry\\";
+
+  // stretch the cubed room in the depth direction
+  roomGeo = OpenRoom().Transform(m.Compose3(
+                                   m.Translate3(0, 0, -halfDepth),
+                                   m.Scale3(1.5, 1.5, halfDepth/dim))).
+                       DiffuseColor(m.ColorRGB(0.7,0.7,0.7));
+                                                    
+  // an X and Y axis
+  xAxis = m.Line(m.Point2(-dim, 0), m.Point2(dim, 0));
+  yAxis = m.Line(m.Point2(0, -dim), m.Point2(0, dim));
+
+  // 8 control points for an "S" figure spline
+  splinePts = new Array(-3,3, -3.8,1.5, -2.4,0.3, -0.6,0.9, 
+						0.6,3, 3,3.9, 3.9,2.7, 3,1.2);                      
+  qDim = dim/4;   // quarter of dimension 
+  // make the spline's size proportional to dim   
+  spline = SimpleSpline(splinePts).Transform(m.Scale2Uniform(qDim));
+
+  // an arc: X and Y parameters are in meters.
+  // specifying angles in radians goes well with the meter construction mode.
+  arc = m.ArcRadians(-pi/6, -5*pi/6, 7*qDim, 7*qDim);
+                                                     
+  // construct four motion paths with travelling images and lights
+  xLight = SpotLight(xAxis, 2.5,  m.Green);
+  yLight = SpotLight(yAxis, 4, m.Green);
+  aLight = SpotLight(arc, 1.5, m.Red); 
+  sLight = SpotLight(spline, 3, m.Blue);  
+
+  camera = m.PerspectiveCamera(dim, dim - 1*cm);
+  // render the open room with the four travelling spot lights and a point light
+  pntLight = m.PointLight.
+                 LightColor(m.ColorRGB(0.81, 0.7, 1)).
+                 Transform(m.Translate3(2*dim/3, dim/3, 1.5*halfDepth));
+  bgImg = m.UnionGeometry(roomGeo, 
+            m.UnionGeometry(xLight, 
+              m.UnionGeometry(yLight, 
+                m.UnionGeometry(aLight, 
+                  m.UnionGeometry(sLight, pntLight))))).Render(camera);
+
+  // These images are composited in left-on-top order
+  finalImg = bgImg.Tile();
+
+  DAControl.Image = finalImg;     
+     
+  // start the animation       
+  DAControl.Start()
+//-->
+</SCRIPT>
+</FONT>
+</BODY>
+</HTML>

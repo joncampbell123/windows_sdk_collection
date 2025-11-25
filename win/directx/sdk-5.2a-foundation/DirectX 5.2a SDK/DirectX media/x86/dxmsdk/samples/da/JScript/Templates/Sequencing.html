@@ -1,0 +1,137 @@
+<HTML> 
+<HEAD>
+<TITLE>DirectAnimation SDK, JScript sample</TITLE>
+<SCRIPT LANGUAGE="JScript">
+<!--
+if (window.top.frames.length!=0 && window.top.frames[0].ShowNoButtons!=null)
+    window.top.frames[0].ShowNoButtons();
+//-->
+</SCRIPT>
+</HEAD>	 
+
+<BODY BGCOLOR=WHITE TOPMARGIN=15 LEFTMARGIN=20>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE=2> 
+<CENTER>
+<H1>Sequencing</H1>
+</CENTER>
+          
+<OBJECT ID="DAControl"
+  WIDTH=450 HEIGHT=300 ALIGN=LEFT
+  CLASSID="CLSID:B6FFC24C-7E13-11D0-9B47-00C04FC2F51D">
+</OBJECT>
+<P>
+This sample demonstrates the time line and sequencing capabilities in DirectAnimation. 
+It includes: 
+<UL>
+<li> Giving behaviors a finite duration.</LI>
+<li> Repeating behaviors.</LI>
+<li> Sequencing behaviors.</LI>
+<li> Sequential and parallel composition of transform behaviors.</LI>
+<li> Specifying animation parameters to facilitate modifiability.</LI>
+</UL>
+<P>
+View source for further details.
+
+<SCRIPT LANGUAGE="JScript">
+<!--
+   m = DAControl.PixelLibrary;
+
+   // Time line parameters for the choreography. 
+   // By using named variables rather than the numbers directly,
+   // it ieasy to tweak the parameters of the animation
+   // while maintaining its coherency. This is a good example of how DA
+   // leverages off the host language for constructing the media-animation graph.
+   // Try and see how easy it is to modify some of these parameters.
+   tDur = 2;        // tumble duration
+   tNum = 2;        // number of tumbles
+   sDur = 1.5;  // scale duration
+   p1 = 3;      // first pause
+   p2 = 1.5;    // second pause
+
+   labels = new Array("First Red Tumbling", "Second Red Tumbling",
+                           "Pause at Origin", "Scale Up", "Pause",
+                           "First Blue Tumbling", "Second Blue Tumbling",
+                           "Pause in Place", "Scale Down", "Pause", 
+                           "Repeat the Sequence Forever");
+   // The last value of 1 sec is for the last string, 
+   // which will stay forever because it is the end of the sequence
+   durations = new Array(tDur, tDur, p1, sDur, p2, tDur, tDur, p1, sDur, p2, 1);
+
+   // Construct a sequence of labels that corresponds to the animation below.
+   // Notice how sequencing constructs apply to all behavior types uniformly.
+   // Here they're applied to strings, and below to transforms. They could
+   // also be applied to images, geometry, sound, and so on.
+   len = labels.length;
+   label = m.DAString("").Duration(0);
+   for (i=0; i<len; i++) 
+     label = m.Sequence(label, m.DAString(labels[i]).Duration(durations[i])); 
+
+   // Construct a 3D rotation around the first bisector that is 325 degrees per second.
+   // Extract its 2D counter part.
+   rotXf  = m.Rotate3RateDegrees(m.Vector3(1,1,1), 325).ParallelTransform2();
+
+   // rotates first (around the origin) and then moves to the right by 100 pixels per second 
+   transRotXf = m.Compose2Array(new Array(m.Translate2Rate(100, 0), 
+                                          m.Translate2(-50, 0), rotXf));
+
+   // Scale up by 30% per second. Notice that the scale factor is independent
+   // of whether we're in pixel or meter mode.
+   scale1Xf = m.Scale2Rate(0.30, 0.30);
+   // scale down by 50% per second
+   scale2Xf = m.Scale2Rate(-0.50, -0.50);  
+   pauseXf = m.IdentityTransform2;   
+
+   // Unlike compose, where the right operand is applied first, with sequence
+   // the left operand is applied first. So, here we rotate while moving to 
+   // the right for 2 secs, we repeat this twice, then we pause for
+   // 1 second, then we scale for 1.5 seconds.
+   seqXf1 = m.Sequence(transRotXf.Duration(tDur).Repeat(tNum), 
+              m.Sequence(pauseXf.Duration(p1), scale1Xf.Duration(sDur)));
+
+   // Rotates while moving right for 2 secs, repeats 2 times; 
+   // then pauses for 1 second, then scales for 1.5 secs.
+   // The difference with seqXf1 is that Compose gives us parallel
+   // composition while Sequence gives us sequential composition.
+   // This is why the pause duration that we use here is 5 seconds, while
+   // above it is 1 second. One consequence of parallel combination vs.
+   // sequential combination is that, in the former, the second operand
+   // resumes from where the first left off, while in the latter the
+   // second operand applies independently from where the first left off.
+   seqXf2 = m.Compose2(transRotXf.Duration(tDur).Repeat(tNum), 
+              m.Sequence(pauseXf.Duration(tDur*tNum + p1), scale2Xf.Duration(sDur)));
+
+   // Here we combine the two sequences together with a pause of 2 secs
+   // in between.This shows the difference between parallel and sequential 
+   // composition. In the first sequence the scale is relative to the original
+   // position of the Oval, while in the second sequence the scale is relative
+   // to where the Oval is when the scale starts.
+   // Also notice that when you compose two behaviors, the longer duration
+   // of the two is the duration of the result. So seqXf1 and seqXf2 are both
+   // of duration 12.
+   sDur = tDur*tNum + p1 + sDur + p2;       // duration of subsequence
+   finalXf = m.Sequence(
+               m.Compose2(seqXf1, pauseXf.Duration(sDur)),  // result is of duration 8
+               m.Compose2(seqXf2, pauseXf.Duration(sDur))); // ditto
+               
+   // Construct a solid filled oval, whose color changes with the particular
+   // sequence.
+   clr = m.Sequence(m.Red.Duration(sDur), m.Blue.Duration(sDur)).RepeatForever();
+
+   font = m.DefaultFont.Color(clr).Size(16);
+   textImg = m.StringImageAnim(label, font).
+                Transform(m.Translate2(0, 130));
+
+   fill = m.SolidColorImage(clr);
+   ovalImg = m.Oval(150,150).Fill(m.DefaultLineStyle, fill);
+
+   // construct an animate image based on the oval and the sequence
+   finalImg = m.Overlay(textImg, ovalImg.Transform(finalXf.RepeatForever()));
+
+   DAControl.Image = finalImg;
+   DAControl.Start()
+
+//-->
+</SCRIPT>
+</FONT>
+</BODY>
+</HTML>
