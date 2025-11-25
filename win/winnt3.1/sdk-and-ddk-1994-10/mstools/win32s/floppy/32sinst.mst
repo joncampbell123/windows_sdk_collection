@@ -1,0 +1,428 @@
+'**************************************************************************
+'*                       MSSetup Toolkit Sample 1
+'**************************************************************************
+
+'' $DEFINE DEBUG  ''Define for script development/debugging
+
+'$INCLUDE 'setupapi.inc'
+'$INCLUDE 'msdetect.inc'
+
+''Dialog ID's
+CONST WELCOME       = 100
+CONST ASKQUIT       = 200
+CONST DESTPATH      = 300
+CONST EXITFAILURE   = 400
+CONST EXITQUIT      = 600
+CONST EXITSUCCESS   = 700
+CONST OPTIONS       = 800
+CONST BADPATH       = 6400
+
+CONST HELPWELCOME   = 1000
+CONST VERPATH       = 1100
+CONST EXITFAILNOTWIN31 = 1200
+CONST EXITFAILNOTENH = 1300
+CONST EXITFAILNOTPAGING = 1325
+CONST EXITFAILNOTINTEL = 1350
+CONST FREECELLINST  = 1400
+CONST FREECELLINSTNOWIN32S = 1450
+CONST FREECELLPATH  = 1500
+CONST HELPFREECELL  = 1600
+
+
+''Bitmap ID
+CONST LOGO = 1
+
+GLOBAL DESTSYS$      ''Windows\System directory.
+GLOBAL DEST32S$      ''Windows\System\Win32s directory
+GLOBAL DESTFREE$     ''Freecell directory
+
+DECLARE SUB Install
+DECLARE SUB UpdateSystemIni
+DECLARE SUB RebootSystem
+DECLARE FUNCTION MakePath (szDir$, szFile$) AS STRING
+DECLARE FUNCTION MakeSystemIni LIB "INIUPD.DLL" (arg1$, arg2$) AS INTEGER
+DECLARE FUNCTION RestartWindows LIB "INIUPD.DLL" AS INTEGER
+DECLARE FUNCTION OnWindowsNT LIB "INIUPD.DLL" AS INTEGER
+DECLARE FUNCTION PagingEnabled LIB "INIUPD.DLL" AS INTEGER
+DECLARE FUNCTION ShareEnabled LIB "INIUPD.DLL" AS INTEGER
+DECLARE FUNCTION IsWin32sLoaded LIB "INIUPD.DLL" (arg1$) AS INTEGER
+DECLARE FUNCTION ExitWindowsExec LIB "USER.EXE" (arg1$, arg2$) AS INTEGER
+
+INIT:
+    CUIDLL$ = "mscuistf.dll"            ''Custom user interface dll
+    HELPPROC$ = "FHelpDlgProc"		''Help dialog procedure
+    szOldVer$ ="1.00.000     "		''Reserve space in string for version
+    WIN32ENABLED% = 0
+    GLOBAL AlwaysCopy%
+    AlwaysCopy% = 0
+    ON ERROR GOTO ERRNORMAL
+
+    SrcDir$ = GetSymbolValue("STF_SRCDIR")
+
+    SetBitmap CUIDLL$, LOGO
+    SetTitle "Microsoft Win32s Setup Program"
+
+    szInf$ = GetSymbolValue("STF_SRCINFPATH")
+    IF szInf$ = "" THEN
+	szInf$ = GetSymbolValue("STF_CWDDIR") + "32sinst.inf"
+    END IF
+    ReadInfFile szInf$
+
+    DESTSYS$ = GetWindowsSysDir()
+    DEST32S$ = DESTSYS + "WIN32S\"
+
+'$IFDEF DEBUG
+    i% = SetSizeCheckMode(scmOnIgnore)    '' could use scmOff; def = scmOnFatal
+    WinDrive$ = MID$(GetWindowsDir, 1, 1)
+    IF IsDriveValid(WinDrive$) = 0 THEN
+	i% = DoMsgBox("Windows drive ('"+WinDrive$+"') is not a valid drive.", "DEBUG", MB_TASKMODAL+MB_ICONHAND+MB_OK)
+	GOTO QUIT
+    END IF
+'$ENDIF ''DEBUG
+
+CHECK:
+    IF GetWindowsMajorVersion < 3 THEN
+	ExitCode% = EXITFAILNOTWIN31
+	GOTO QUIT
+    END IF
+    IF GetWindowsMajorVersion = 3 AND GetWindowsMinorVersion < 1 THEN
+	ExitCode% = EXITFAILNOTWIN31
+	GOTO QUIT
+    END IF
+    IF GetWindowsMajorVersion >= 4 THEN
+	ExitCode% = EXITSUCCESS
+	WIN32ENABLED% = 1
+	GOTO FREECELL
+    END IF
+    IF GetWindowsMode < 2  THEN
+	IF OnWindowsNT() THEN
+	   ExitCode% = EXITFAILNOTINTEL	'' Running on Windows NT (on RISC)
+	ELSE
+	   ExitCode% = EXITFAILNOTENH	'' Standard Mode Windows
+	END IF
+	GOTO QUIT
+    END IF
+    IF OnWindowsNT() THEN
+	ExitCode% = EXITSUCCESS
+	WIN32ENABLED% = 1
+	GOTO FREECELL
+    END IF
+    ExitCode% = EXITSUCCESS
+
+    '' Get version of Win32s to be installed from version info in file
+    szNewVer$ = GetVersionOfFile( GetSymbolValue("STF_SRCDIR") + "WIN32S16.DLL" )
+
+    '' Check if Win32s is partially installed
+    sz$ = GetIniKeyString (DESTSYS$ + "WIN32S.INI", "Win32s", "Setup")
+    '' If WIN32S.INI specifies Setup=0, then force complete Win32s file overwrite
+    IF sz$ = "0" THEN
+	AlwaysCopy% = 1
+	GOTO WELCOME
+    END IF
+    '' If WIN32S.INI is missing, try and reinstall Win32s files/recreate WIN32S.INI
+    IF sz$ <> "1" THEN
+	GOTO WELCOME
+    END IF
+
+    '' If Win32s is already installed, get running version number
+    i% = DoesFileExist( DESTSYS$ + "W32SYS.DLL", femExists )
+    IF i% = 1 THEN
+	i% = IsWin32sLoaded( szOldVer$ )
+    ENDIF
+
+    IF i% = 0 THEN
+	GOTO WELCOME
+    END IF
+    IF szNewVer$ > szOldVer$ THEN
+	GOTO WELCOME
+    END IF
+    WIN32ENABLED% = 1
+    GOTO FREECELL
+
+WELCOME:
+    sz$ = UIStartDlg(CUIDLL$, WELCOME, "FInfoDlgProc", HELPWELCOME, HELPPROC$)
+    IF sz$ = "CONTINUE" THEN
+	UIPop 1
+    ELSE
+	GOSUB ASKQUIT
+	GOTO WELCOME
+    END IF
+
+
+GETWIN32SPATH:
+    IF PagingEnabled() = 0 THEN
+	i% = DoMsgBox("Use the Control Panel 386 Enhanced icon and configure Windows using the Virtual Memory option.", "Win32s requires Virtual Memory", MB_TASKMODAL+MB_ICONHAND+MB_OK)
+	ExitCode% = EXITFAILURE '' Enhanced mode but not paging
+	GOTO QUIT
+    END IF
+
+    IF ShareEnabled() = 0 THEN
+	i% = DoMsgBox( "File-sharing must be enabled. Run SHARE.EXE before starting Windows or add SHARE.EXE to your AUTOEXEC.BAT file.", "Win32s Setup: SHARE.EXE is not loaded", MB_TASKMODAL+MB_ICONEXCLAMATION+MB_OK)
+    END IF
+
+    SetSymbolValue "EditTextIn", DESTSYS$
+    SetSymbolValue "EditFocus", "END"
+
+GETPATHL1:
+    sz$ = UIStartDlg(CUIDLL$, VERPATH, "FDispDlgProc", HELPWELCOME, HELPPROC$)
+
+    IF sz$ = "CONTINUE" THEN
+	IF IsDirWritable(DESTSYS$) = 0 THEN
+	    GOSUB BADPATH
+	    GOTO GETPATHL1
+	END IF
+	UIPop 1
+    ELSEIF sz$ = "REACTIVATE" THEN
+	GOTO GETPATHL1
+    ELSEIF sz$ = "BACK" THEN
+	UIPop 1
+	GOTO WELCOME
+    ELSE
+	GOSUB ASKQUIT
+	GOTO GETPATHL1
+    END IF
+
+COPYFILES:
+    CreateIniKeyValue DESTSYS$ + "WIN32S.INI", "Win32s", "Setup", "0", cmoOverwrite
+
+    '' Indicate Win32s install failure until all files known to be copied.
+    ExitCode% = EXITFAILURE
+    ERR = 0
+    CreateDir DEST32S$, cmoNone
+    Install
+    UpdateSystemIni
+    '' Terminate if unhandled fatal error
+    IF ERR <> 0 THEN
+	GOTO QUIT
+    END IF
+
+    CreateIniKeyValue DESTSYS$ + "WIN32S.INI", "Win32s", "Setup", "1", cmoOverwrite
+    CreateIniKeyValue DESTSYS$ + "WIN32S.INI", "Win32s", "Version", szNewVer$, cmoOverwrite
+    CreateIniKeyValue DESTSYS$ + "WIN32S.INI", "Nls", "AnsiCP", "1252", cmoOverwrite
+
+    i% = DoMsgBox("Win32s files successfully installed.", "Microsoft Win32s Setup", MB_OK+MB_TASKMODAL)
+    '' Indicate Win32s correctly copied and installed.
+    ExitCode% = EXITSUCCESS
+
+FREECELL:
+    IF WIN32ENABLED% = 1 THEN
+	sz$ = UIStartDlg(CUIDLL$, FREECELLINSTNOWIN32S, "FInfoDlgProc",0, "")
+    ELSE
+	sz$ = UIStartDlg(CUIDLL$, FREECELLINST, "FInfoDlgProc",0, "")
+    END IF
+    IF sz$ = "CONTINUE" THEN
+	UIPop 1
+    ELSE
+	GOTO QUIT
+    END IF
+
+GETFREEPATH:
+    DESTFREE$ = MID$(DESTSYS$,1,3) + "WIN32APP\FREECELL\"
+    SetSymbolValue "EditTextIn", DESTFREE$
+    SetSymbolValue "EditFocus", "END"
+
+GETFREEPATHL1:
+    sz$ = UIStartDlg(CUIDLL$, FREECELLPATH, "FEditDlgProc", HELPFREECELL, HELPPROC$)
+
+    IF sz$ = "CONTINUE" THEN
+	DESTFREE$ = GetSymbolValue("EditTextOut")
+
+	IF MID$(DESTFREE$, LEN(DESTFREE$), 1) <> "\" THEN
+	    DESTFREE$ = DESTFREE$ + "\"
+	END IF
+	''Validate new path.
+	IF IsDirWritable(DESTFREE$) = 0 THEN
+		GOSUB BADPATH
+		GOTO GETFREEPATHL1
+	END IF
+	UIPop 1
+
+	GOTO COPYFREECELL
+    ELSEIF sz$ = "REACTIVATE" THEN
+	GOTO GETFREEPATHL1
+    ELSEIF sz$ = "EXIT" THEN
+	UIPop 1
+	GOTO QUIT
+    END IF
+
+COPYFREECELL:
+    ClearCopyList
+    CreateDir DESTFREE$, cmoNone
+
+    SrcDir$ = GetSymbolValue("STF_SRCDIR")
+
+    ERR = 0
+    AddSectionFilesToCopyList "Win32appFreecell", SrcDir$, DESTFREE$
+    CopyFilesInCopyList
+    '' If error copying FreeCell, not a fatal error. Win32s is already installed.
+    IF ERR <> 0 THEN
+	ERR = 0
+	GOTO QUIT
+    END IF
+    ERR = 0
+
+    IF DoesFileExist( DESTSYS$ + "WIN32S.INI", femExists ) THEN
+	CreateIniKeyValue DESTSYS$ + "WIN32S.INI", "Freecell", "Setup", "1", cmoOverwrite
+	CreateIniKeyValue DESTSYS$ + "WIN32S.INI", "Freecell", "Version", szNewVer$, cmoOverwrite
+    END IF
+
+    ERR = 0
+    CreateProgmanGroup "Win32 Applications", "", cmoNone
+    ShowProgmanGroup   "Win32 Applications", 1, cmoNone
+    CreateProgmanItem  "Win32 Applications", "Freecell", DESTFREE$ + "FREECELL.EXE", "", cmoOverwrite
+    '' Only put up success dialog if icon added to group
+    IF ERR = 0 THEN
+	i% = DoMsgBox("Freecell was successfully installed.", "Freecell Setup", MB_OK+MB_TASKMODAL)
+    END IF
+    ERR = 0
+
+QUIT:
+    '' Install error handler for final message box routines
+    ON ERROR GOTO ERRQUIT
+    IF ERR = 0 THEN
+	dlg% = ExitCode%
+    ELSEIF ERR = STFQUIT THEN
+	dlg% = EXITQUIT
+	ExitCode% = EXITQUIT
+    ELSE
+	dlg% = EXITFAILURE
+	ExitCode% = EXITQUIT
+    END IF
+
+QUITL1:
+    IF WIN32ENABLED% = 1 THEN
+	UIPop 1
+	END
+    END IF
+
+    sz$ = UIStartDlg(CUIDLL$, dlg%, "FInfo0DlgProc", 0, "")
+    IF sz$ = "REACTIVATE" THEN
+	GOTO QUITL1
+    END IF
+    UIPop 1
+
+    IF ExitCode% = EXITSUCCESS THEN
+	RebootSystem
+	CreateIniKeyValue DESTSYS$ + "WIN32S.INI", "Win32s", "Setup", "0", cmoOverwrite
+	i% = DoMsgBox("Win32s is not properly configured and Win32s Setup must be run again.", "Unable to Restart Windows", MB_ICONEXCLAMATION+MB_OK+MB_TASKMODAL)
+    ENDIF
+
+    END
+
+'' Fatal error handler for error message routine
+ERRQUIT:
+    i% = DoMsgBox("Setup sources were corrupted!", "Setup Message", MB_OK+MB_TASKMODAL+MB_ICONHAND)
+    END
+
+'' Bypass run-time errors. Let final dialog box display fatal error message.
+ERRNORMAL:
+    '' Check if user cancelled setup
+    IF ERR = STFQUIT THEN
+	GOTO QUIT
+    END IF
+    RESUME NEXT
+
+
+BADPATH:
+    sz$ = UIStartDlg(CUIDLL$, BADPATH, "FInfo0DlgProc", 0, "")
+    IF sz$ = "REACTIVATE" THEN
+	GOTO BADPATH
+    END IF
+    UIPop 1
+    RETURN
+
+  ASKQUIT:
+    sz$ = UIStartDlg(CUIDLL$, ASKQUIT, "FQuitDlgProc", 0, "")
+
+    IF sz$ = "EXIT" THEN
+	UIPopAll
+	ERROR STFQUIT
+    ELSEIF sz$ = "REACTIVATE" THEN
+	GOTO ASKQUIT
+    ELSE
+	UIPop 1
+    END IF
+    RETURN
+
+
+
+'**
+'** Purpose:
+'**     Builds the copy list and performs all installation operations.
+'** Arguments:
+'**     none.
+'** Returns:
+'**     none.
+'*************************************************************************
+SUB Install STATIC
+
+    SrcDir$ = GetSymbolValue("STF_SRCDIR")
+
+    '' Check if overwrite required.
+    IF AlwaysCopy% = 1 THEN
+	'' Use file layout sections that specify ALWAYS overwrite files
+	AddSectionFilesToCopyList "_WindowsSystem", SrcDir$, DESTSYS$
+	AddSectionFilesToCopyList "_WindowsSystemWin32s", SrcDir$, DESTSYS$ + "WIN32S\"
+    ELSE
+	'' Use file layout sections that specify OLDER file version/time check
+	AddSectionFilesToCopyList "WindowsSystem", SrcDir$, DESTSYS$
+	AddSectionFilesToCopyList "WindowsSystemWin32s", SrcDir$, DESTSYS$ + "WIN32S\"
+    END IF
+    SetRestartDir GetWindowsDir()
+
+    CopyFilesInCopyList
+
+END SUB
+
+SUB UpdateSystemIni STATIC
+
+    VxDPath$ = DEST32S$ + "W32S.386"
+    SystemIniPath$ = GetWindowsDir()
+
+    t% = MakeSystemIni(SystemIniPath$, VxdPath$)
+
+END SUB
+
+SUB RebootSystem STATIC
+
+'   Check if any files were locked during install.  If the RestartList
+'   is not empty, ExitExecRestart() will restart Windows, cleanup setup
+'   files, and copy over locked files before Windows restarts.
+    i% = RestartListEmpty()
+    IF i% = 0 THEN
+'      ExitExecRestart() only returns if applications refuse to be shutdown.
+'      Win32s is installed but will not operate until Windows is restarted
+'      and the Win32s VxD is loaded.
+       i% = ExitExecRestart()
+     ELSE
+'      If the RestartList list is empty, it is necessary to restart windows
+'      directly.  The MSSETUP program creates _MSRSTRT.EXE and _MSSETUP.BAT
+'      in the restart directory.  This program should be exec'd to handle
+'      proper MSSETUP cleanup (temp files) and restart Windows.
+       i% = ExitWindowsExec( GetWindowsDir() + "_MSRSTRT.EXE", "_MSSETUP.BAT" )
+     ENDIF
+
+END SUB
+
+
+'**
+'** Purpose:
+'**     Appends a file name to the end of a directory path,
+'**     inserting a backslash character as needed.
+'** Arguments:
+'**     szDir$  - full directory path (with optional ending "\")
+'**     szFile$ - filename to append to directory
+'** Returns:
+'**     Resulting fully qualified path name.
+'*************************************************************************
+FUNCTION MakePath (szDir$, szFile$) STATIC AS STRING
+    IF szDir$ = "" THEN
+	MakePath = szFile$
+    ELSEIF szFile$ = "" THEN
+	MakePath = szDir$
+    ELSEIF MID$(szDir$, LEN(szDir$), 1) = "\" THEN
+	MakePath = szDir$ + szFile$
+    ELSE
+	MakePath = szDir$ + "\" + szFile$
+    END IF
+END FUNCTION

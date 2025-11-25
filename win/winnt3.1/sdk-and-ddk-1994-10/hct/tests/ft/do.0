@@ -1,0 +1,112 @@
+@rem ************************************************************************
+@rem Copyright (c) 1991 Microsoft Corporation
+@rem
+@rem Module Name:
+@rem   do.0   
+@rem
+@rem Abstract:
+@rem   This is the first do command script.  It is run before any test varation.
+@rem   This script performs the following:
+@rem     - runs smash.exe to enable autologon
+@rem     - runs querydsk.exe and which records the current disk configuration
+@rem     - runs nextscen.exe which determines if any test scenarios still need
+@rem       to be run.  If not nextscen.exe returns and errorlevel of 1, 
+@rem       otherwise the passed in file (scendat.cmd) is created containing 
+@rem       the next scenario's parameter file, logfile and do script.  
+@rem     - calls scendat.cmd to get the above mentioned info
+@rem     - runs scenario.exe with the appropate parameter file determined in the
+@rem       previous two steps.  Scenario returns errorlevel of 1 if the current
+@rem       scenario has no moew valid varations otherwise it creates create.dat.
+@rem     - runs crgetdat.exe which reads the create.dat file and creates 
+@rem       getdat.cmd to be used in later scripts.
+@rem     - copies the next do<testname>.* script to donext.
+@rem     - runs the create.mst script to create the first ft componet and reboot
+@rem       the system with the donext file copied to do.cmd.
+@rem
+@rem Author:
+@rem   Kenieth Peery (t-kenpe) 12-9-92
+@rem
+@rem Revision History:
+@rem *************************************************************************
+
+@rem
+@rem Query the disks to find out the unsed portions of them.  This program
+@rem will write config.ini which contains this info, and set the errorlevel
+@rem if it fails.
+@rem
+
+querydsk.exe
+if errorlevel 1 goto fatal_qdisk
+
+:try_again
+
+@rem
+@rem Find the next .ini file we're not done with yet
+@rem
+
+nextscen.exe scendat.cmd
+if errorlevel 2 goto fatal_nextscen
+if errorlevel 1 goto no_more_tests
+
+@rem
+@rem Set the parmfile, logfile  and nexttodo vars as determined by nextscen
+@rem
+
+call scendat.cmd parmfile logfile nexttodo
+
+@rem
+@rem Find the next runnable variation.
+@rem
+
+scenario %parmfile% >> %logfile% 
+
+if errorlevel 2 goto fatal_variation
+if errorlevel 1 goto try_again
+
+@rem
+@rem reads the create.dat file and creates a script to bind some bat vars
+@rem
+
+crgetdat getdat.cmd
+
+@rem
+@rem copy over the next script to be exec'd after the boot
+@rem
+
+copy %nexttodo%.1 donext
+
+@rem
+@rem Create the ftComponet based on create.dat.  Note that the .mst scripts
+@rem will nuke do.cmd by copying donext over the top for the next boot
+@rem (which they intiate)
+@rem
+
+testdrvr create.mst /run
+exit
+
+:fatal_qdisk
+echo BLOCKED: query disk failed
+pause
+goto done
+
+:fatal_nextscen
+echo BLOCKED: fatal error trying to find next scenario
+pause
+goto done
+
+:fatal_variation
+echo BLOCKED: fatal error finding next variation
+pause
+goto done
+
+:no_more_tests
+echo No more tests to run
+copy donothin.0 donext
+if not "%_run_forever%" == "" goto shut_it_down
+goto done
+
+:shut_it_down
+shutdown -f -r -t 0
+goto shut_it_down
+
+:done

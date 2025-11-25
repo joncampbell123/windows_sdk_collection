@@ -1,0 +1,132 @@
+'*****************************************************************************
+' Copyright (c) 1991 Microsoft Corporation
+'
+' Module Name:
+'   break.mst
+'
+' Abstract:
+'   Uses windisk.exe to break a mirror pair.
+'   The specified mirror to be broken is described in the file create.dat.
+'
+' Author:
+'   Kenieth Peery (t-kenpe) 12-9-92
+'
+' Revision History:
+'
+'*****************************************************************************
+
+'$DEFINE TESTEVNT
+'$DEFINE TESTCTRL
+
+'$INCLUDE 'MSTEST.INC'
+
+'$INCLUDE 'common.inc'
+
+
+DIM ftType$         '*** the type of ft componet to create
+DIM fileSystem$     '*** the desire fileSystem of the created partition
+DIM szMB$           '*** the desire space of the created partition
+DIM driveLet$       '*** the available drive letters to be assigned
+DIM numRegions%     '*** the number of sected regions
+
+GetConfig "create.dat",ftType,fileSystem,szMB,driveLet,numRegions
+
+'*** Here we go
+RUN "windisk", NOWAIT
+WndWait "Disk Administrator"
+
+AvoidLeadingPopups
+
+winHandle = WGetActWnd(0)      '*** get the handle to the main window
+WMaxWnd wnHandle
+
+PRINT driveLet$
+PRINT MID$(driveLet$,1,1)
+
+IF ftType=MIRROR OR ftType=CPBT_MIRROR THEN
+  QuePause 1000
+  SelectRegion disk(0), pos(0)  '*** select the mirror
+  QuePause 1000
+
+  '
+  '*** break the mirror
+  '
+
+  QueKeys "%(){RIGHT}{ENTER}{DOWN}{ENTER}"
+  QuePause 1000
+  QueKeys "{ENTER}"             '*** confirm the break
+  QueFlush 1
+  gPos=0                        '*** select moves
+
+  '
+  '*** select shadow and assign it the next drive letter
+  '
+
+  QuePause 1000
+  SelectRegion disk(1), pos(1)
+  QuePause 1000
+
+  QueKeys "%(){ENTER}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{ENTER}"
+  QuePause 1000
+  QueKeys  MID$(driveLet$,2,1)
+  QuePause 1000
+  QueKeys "{ENTER}"
+  QuePause 1000
+  QueFlush 1
+
+  '
+  '*** select primary and re-assign it the first drive letter.
+  '*** this is necessary in the case the primary is orphaned.
+  '*** note also that this must be done after doing the shadow,
+  '*** because if the primary was orphaned, the shadow will get
+  '*** z:, and the assign here would fail.
+  '
+
+  QuePause 1000
+  SelectRegion disk(0), pos(0)
+  DoKeys " "                   ' *** Only select this region
+  QuePause 1000
+
+  QueKeys "%(){ENTER}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{ENTER}"
+  QuePause 1000
+  QueKeys  MID$(driveLet$,1,1)
+  QuePause 1000
+  QueKeys "{ENTER}"
+  QuePause 1000
+  QueFlush 1
+
+                                '*** change the ft componet field for delete.mst
+  CreateNewConfig "create.dat","create.dat",BROKEN_MIRROR
+  QuePause 1000
+END IF
+
+QueFlush 1
+
+QueKeys "%(){ENTER}{UP}{ENTER}" '*** Exit stage right
+QuePause 1000
+QueKeys "{ENTER}"               '*** Save Changes?
+QuePause 1000
+QueKeys "{ENTER}"               '*** Disks Updated succesfully
+                                '*** need something conditional
+                                '*** here if not
+QuePause 1000
+
+'
+' This code is commented out to prevent windisk from sending the
+' shutdown request.  We are doing it ourselves with the force
+' flag below to workaround these shutdown problems.
+'
+'QueKeys "{ENTER}"               '*** Reboot
+'
+
+QuePause 1000
+QueFlush 1
+
+WHILE 1
+    SHELL "shutdown -f -r -t 0"
+WEND
+
+WaitForShutdown                '*** Prevents the premature execution of the
+                               '*** next do script.
+
+END '*** end of Main program

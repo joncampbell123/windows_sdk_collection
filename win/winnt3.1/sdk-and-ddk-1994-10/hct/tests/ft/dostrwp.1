@@ -1,0 +1,106 @@
+@rem ************************************************************************
+@rem Copyright (c) 1991 Microsoft Corporation
+@rem
+@rem Module Name:
+@rem   dostrwp.1   
+@rem
+@rem Abstract:
+@rem   This is the command script responsible for the strip with parity test.
+@rem   This script performs the following:
+@rem     - runs smash.exe to enable the autologon featuren
+@rem     - calls getdat.cmd to get the ft componet info  
+@rem     - calls scendat.cmd to get the name of the logfile
+@rem     - calls formatft.cmd to format the previously created ft componet
+@rem     - performs some tests
+@rem     - copies the next do<testname>.* script to donext.
+@rem     - runs the break.mst script to break the mirror for the next stage of
+@rem       tests.  The system will reboot with donext copied to do.cmd.
+@rem
+@rem Author:
+@rem   Kenieth Peery (t-kenpe) 12-9-92
+@rem
+@rem Revision History:
+@rem *************************************************************************
+
+call doinit
+
+@rem
+@rem Wait for stripe with parity to become healthy
+@rem
+
+call dofstate %logfile%
+
+call doformat %label% %fileSystem% %driveLetter1% %logfile%
+
+if "%_options1%" == "badsectors" call dobadsec %driveLetter1% 128 %logfile%
+
+if "%_options1%" == "orphan_writes" call doorph %driveLetter1% %sizeMB% 0.2 %logfile%
+
+@rem
+@rem If we are doing orphaning, then only fill half the disk so that there
+@rem is free space on boot2 to do writes while the regeneration is ocurring.
+@rem
+
+if "%_options1%" == "%_orphan_writes%" goto fill_disk_now
+if "%_options1%" == "%_orphan_reads%"  goto fill_disk_now
+echo.                                                            >> %logfile%
+echo TRACE: Write while regen is enabled, fill half the disk now >> %logfile%
+echo.                                                            >> %logfile%
+call dosetmap %driveLetter1%:\foo.bin 50 %logfile% 
+goto continue1
+:fill_disk_now
+call dosetmap %driveLetter1%:\foo.bin %_fill_percent% %logfile% 
+:continue1
+
+if "%_options1%" == "orphan_writes" call dochorph %logfile%
+if "%_options1%" == "orphan_writes" call dogetlog %logfile%
+
+@rem
+@rem Do a dir for info in the logfile
+@rem
+
+call dodir %driveLetter1% %logfile%
+
+@rem
+@rem Simulate more bad sectors (if requested)
+@rem
+
+if "%_options1%" == "badsectors" call dobadsec %driveLetter1% 128 %logfile%
+
+if "%_options1%" == "orphan_reads" call doorph %driveLetter1% %sizeMB% 0.075 %logfile%
+
+call doendmd %driveLetter1%:\foo.bin %logfile% 
+
+if "%_options1%" == "orphan_reads" call dochorph %logfile%
+if "%_options1%" == "orphan_reads" call dogetlog %logfile%
+
+call dochkdsk %driveLetter1% %logfile% 
+
+@rem
+@rem If we did any orphaning, then collect the logfile from the
+@rem orphan that already ocurred.  And check that an orphaning
+@rem did in fact ocurr.
+@rem
+
+if "%_options1%" == "orphan_writes" goto orphaning_on
+if "%_options1%" == "orphan_reads"  goto orphaning_on
+goto no_orphaning
+
+:orphaning_on
+
+echo.                                        >> %logfile%
+echo TRACE: About to regenerate and SHUTDOWN >> %logfile%
+echo.                                        >> %logfile%
+
+copy dostrwp.11 donext
+testdrvr regen.mst /run
+exit
+
+@rem
+@rem Otherwise (no orphaning), finished.
+@rem
+
+:no_orphaning
+copy do.0 donext
+testdrvr delete.mst /run
+exit

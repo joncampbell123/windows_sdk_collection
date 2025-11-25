@@ -1,0 +1,12 @@
+ReadScript \tps\scripts\2\1\1\16\srv\1.tps
+ReadScript \tps\scripts\2\1\1\16\srv\2.tps
+ReadScript \tps\scripts\2\1\1\16\srv\3.tps
+ReadScript \tps\scripts\2\1\1\16\srv\4.tps
+ReadScript \tps\scripts\2\1\1\16\srv\5.tps
+ReadScript \tps\scripts\2\1\1\16\srv\6.tps
+ReadScript \tps\scripts\2\1\1\16\srv\10.tps
+ReadScript \tps\scripts\2\1\1\16\srv\11.tps
+ReadScript \tps\scripts\2\1\1\16\srv\12.tps
+ReadScript \tps\scripts\2\1\1\16\srv\13.tps
+ReadScript \tps\scripts\2\1\1\16\srv\14.tps
+ReadScript \tps\scripts\2\1\1\16\srv\15.tps

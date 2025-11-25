@@ -1,0 +1,281 @@
+'*********************************************************************
+'
+'                   N T B A C K U P   T E S T   S C R I P T
+'
+'   Name:       Erase.mst
+'   Creator:    venkat
+'
+'   Description:
+'       This script tests the ntbackup utility.  Currently, this
+'       script takes the command line argument /c <directory> for
+'       the driectory to restore a backup set.
+'
+'*********************************************************************
+
+
+'$DEFINE    W_MENU
+'$DEFINE    W_EDIT
+'$DEFINE    W_CHECK
+'$DEFINE    W_OPTION
+'$DEFINE    W_BUTTON
+'$DEFINE    W_COMBO
+
+'$INCLUDE   'INCLUDE\MSTEST.INC'
+
+
+DECLARE SUB InitAltKeys
+declare SUB SetAltKeys (MenuNum, ItemNum, AltKey$)
+DECLARE Function UWndWait (Title$)
+DECLARE SUB SelectMenu(Menu%, Item%)
+DECLARE Function SelectWindow (Title$)
+DECLARE Function SelectWindowFullTitle (Title$)
+DECLARE Sub MessageProc (hWnd, Message$, Title$, Style)
+DECLARE Function MessageBox (hWnd, Message$, Title$, Style)
+DECLARE Function MessageBoxA lib "user32" alias "MessageBoxA" (hwnd%, message$, caption$, style%)
+DECLARE Function GetWindowThreadProcessID lib "user32" alias "GetWindowThreadProcessId" (hWnd, ProcessID)
+DECLARE Function GetCurrentThreadId lib "kernel32" alias "GetCurrentThreadId" (void)
+DECLARE Function AttachThreadInput lib "user32" alias "AttachThreadInput" (ThreadID, AttchID, Attach)
+
+
+
+'$INCLUDE 'COMMON.INC'
+
+
+
+
+
+GLOBAL  ghNtbackup
+GLOBAL  gRestoreDrive$
+GLOBAL  gRestorePath$
+GLOBAL  gWaitCount
+GLOBAL  gMenuAltKey$(100)
+GLOBAL  gUseAltKeySelect
+
+
+    '**** setup globals ****
+    gRestorePath$ = command$
+    If MID$ (gRestorePath$, 2, 1) = ":" Then
+        gRestoreDrive$ = MID$ (gRestorePath$, 1, 1)
+        gRestorePath$  = MID$ (gRestorePath$, 3)
+    Else
+        gRestoreDrive$ = ""
+    End If
+
+    gUseAltKeySelect = TRUE
+
+    InitAltKeys
+
+
+
+    '**** start ntbackup ****
+
+    Run "ntbackup.exe", nowait
+    ghNtbackup = UWndWait (TitleNtbackup$)
+    If ghNtbackup = 0 Then
+        MessageProc ghNtBackup, "Can't find ntbackup window", "NTBACKUP.MST", 0
+        End
+        End If
+
+
+
+
+    gWaitCount = 0
+    While ( gWaitCount < MAX_TAPE_READY_WAIT )
+         If SelectWindow(TitleForeignTape$) Or SelectWindow(TitleDrives$) OR SelectWindow(TitleTapes$) Then
+              gWaitCount=MAX_TAPE_READY_WAIT
+         End If
+         gWaitCount = gWaitCount+1
+     Sleep MIN_SLEEP_TIME*3
+    WEnd
+
+
+'***** Get rid of Foreign tape dialog box*******
+
+    gWaitCount = 0
+    While ( gWaitCount < MAX_TAPE_FOREIGN_TAPE )
+        If  SelectWindow (TitleForeignTape$)  Then
+            WButtonClick ButtonOK$
+            gWaitCount=MAX_TAPE_READY_WAIT
+        End if
+        gWaitCount = gWaitCount+1
+        Sleep MIN_SLEEP_TIME
+    WEND
+
+'**** find Tapes window ****
+
+    SelectMenu MENU_WINDOW, MENU_2
+    Print MENU_WINDOW, MENU_2
+    'DoKeys "%(w)"
+    'DoKeys "2"
+    If Not SelectWindow (TitleTapes$) Then
+        MessageProc ghNtBackup, "Can't find window '"+TitleTapes$+"'", "NTBACKUP.MST", 0
+        SelectMenu MENU_OPERATIONS, MENU_EXIT
+        End
+    End If
+    Sleep 5
+'**** Erase the tape ***
+    DoKeys " "
+    gWaitCount = 0
+    SelectMenu MENU_OPERATIONS, MENU_ERASE
+    'Print   MENU_OPERATIONS, MENU_ERASE
+    Sleep 5
+    'DoKeys "ENTER"
+
+     '   If SelectWindow (TitleForeignTape2$) Then
+     '       WButtonClick Continue$
+     '  End If
+
+    While (gWaitCount < MAX_TAPE_READY_WAIT)
+       If SelectWindow (TitleBackupErase$) Then
+            gWaitCount = MAX_TAPE_READY_WAIT
+       End If
+       Sleep 5
+       gWaitCount = gWaitCount +1
+    WEND
+
+    If Not SelectWindow (TitleBackupErase$) Then
+        MessageProc ghNtbackup, "Can't find dialog '"+TitleBackupErase$+"'", "ERASE.MST", 0
+        SelectMenu MENU_OPERATIONS, MENU_EXIT
+        End
+    End If
+
+
+    WButtonClick Continue$
+
+
+'**** wait till Erase is done ****
+    gWaitCount =0
+    Sleep 5
+    If  SelectWindow (TitleBackupErase$) or SelectWindow (TitleBackupEraseStatus$) or SelectWindow (TitleBackupEraseWindow$) Then
+        While (gWaitCount < MAX_ERASE_WAIT) and (Not WButtonEnabled (ButtonOK$))
+            If SelectWindow (TitleForeignTape2$) Then
+                  WButtonClick Continue$
+            End If
+
+            If  SelectWindowFullTitle (TitleBackupEraseWindow$)  Then
+                WButtonClick Continue$
+
+            End if
+            gWaitCount = gWaitCount+1
+            Sleep MIN_SLEEP_TIME
+        WEND
+        Print gWaitCount
+    Else
+
+        MessageProc ghNtbackup, "Erase Window not focused in time '"+TitleBackupErase$+"'", "ERASE.MST", 0
+        SelectMenu MENU_OPERATIONS, MENU_EXIT
+    End If
+
+    If  SelectWindow (TitleBackupErase$) Then
+         MessageProc ghNtbackup, "Erase is done for more than 20*300 secs '"+TitleBackupErase$+"'", "ERASE.MST", 0
+    Endif
+    WButtonClick ButtonOK$
+    Sleep MIN_SLEEP_TIME
+    SelectMenu MENU_OPERATIONS, MENU_EXIT
+
+    End
+
+
+
+
+Static Sub InitAltKeys
+
+    SetAltKeys MENU_OPERATIONS, 0,              ALT_OPERATION
+    SetAltKeys MENU_OPERATIONS, MENU_RESTORE,   ALT_RESTORE
+    SetAltKeys MENU_OPERATIONS, MENU_EXIT,      ALT_EXIT
+    SetAltKeys MENU_OPERATIONS, MENU_ERASE,      ALT_ERASE
+
+    SetAltKeys MENU_WINDOW,     0,              ALT_WINDOW
+    SetAltKeys MENU_WINDOW,     MENU_2,         ALT_2
+
+End Sub
+
+
+
+Static Sub SetAltKeys (MenuNum, ItemNum, AltKey$)
+    gMenuAltKey$(MenuNum*10+ItemNum) = AltKey$
+End Sub
+
+
+
+Static Function UWndWait (Title$)
+DIM hWnd, ErrMsg$, dummy
+
+    hWnd = WFndWndWait (Title$, FW_PART, 5)
+    If hWnd = 0 Then
+        ErrMsg$ = "ERROR, Window '" + Title$ + "'could not be found!"
+        dummy = MessageBoxA (0, ErrMsg$, "NTBACKUP.MST", 0)
+        End
+        End If
+
+    UWndWait = hWnd
+
+End Function
+
+
+
+Static Sub MessageProc (hWnd, Msg$, Title$, Style)
+DIM ThreadID, AttachID, ProcessID, dwR
+
+    ThreadID = GetCurrentThreadId (0)
+    AttachID = GetWindowThreadProcessId (hWnd, ProcessID)
+    If AttachThreadInput (ThreadID, AttachID, 1) Then
+        dwR = MessageBoxA (hWnd, Msg$, Title$, Style)
+        dwR = AttachThreadInput (ThreadID, AttachID, 0)
+        End If
+
+End Sub
+
+
+
+Static Function MessageBox (hWnd, Msg$, Title$, Style)
+DIM ThreadID, AttachID, ProcessID, dwR, dummy
+
+    ThreadID = GetCurrentThreadId (0)
+    AttachID = GetWindowThreadProcessId (hWnd, ProcessID)
+    If AttachThreadInput (ThreadID, AttachID, 1) Then
+        dwR = MessageBoxA (hWnd, Msg$, Title$, Style)
+        dummy = AttachThreadInput (ThreadID, AttachID, 0)
+        End If
+
+    MessageBox = dwR
+
+End Function
+
+
+
+
+Static Sub SelectMenu (Menu%, Item%)
+    Print Menu%, Item%
+    If gUseAltKeySelect Then
+        DoKeys gMenuAltKey$(Menu%*10)
+        DoKeys gMenuAltKey$(Menu%*10+Item%)
+    Else
+        WMenuX (Menu%)
+        WMenuX (Item%)
+    End If
+
+    Sleep MIN_SLEEP_TIME
+
+End Sub
+
+
+                         Print
+
+Static Function SelectWindow (Title$)
+    Print Title$
+    If WFndWnd (Title$, FW_PART+FW_FOCUS) <> 0 Then
+        SelectWindow = TRUE
+    Else
+        SelectWindow = FALSE
+    End If
+End Function
+
+Static Function SelectWindowFullTitle (Title$)
+    Print Title$
+    If WFndWnd (Title$, FW_FULL+FW_FOCUS) <> 0 Then
+        SelectWindowFullTitle = TRUE
+    Else
+        SelectWindowFullTitle = FALSE
+    End If
+End Function

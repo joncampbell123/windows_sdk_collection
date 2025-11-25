@@ -1,0 +1,392 @@
+     AXP(TM) PC Specific Notes for the Microsoft(R) Windows NT(TM) DDK
+     =================================================================
+
+
+
+Table of Contents
+-----------------
+
+
+0.0  General Information
+
+1.0  Hardware Abstraction Layer Notes
+
+     1.1  HalTranslateBusAddress Routine
+     1.2  HAL Access Routines
+     1.3  Using AddressSpace to Check an Address
+
+2.0  S3 Display Driver Notes
+
+     2.1  Device Extension (DRIVER.H)
+     2.2  S3 Definitions (S3.H)
+     2.3  S3 Support Routines (S3SUP.C)
+     2.4  DrvEnableSurface (ENABLE.C)
+     2.5  bInitSURF (SCREEN.C)
+     2.6  DrvBitBlt, DrvCopyBits (BITBLT.C)
+
+3.0  ALPHAKD Kernel Debugger Notes
+
+     3.1  !setbus <bustype> <number>
+     3.2  !inp<type> <port>
+     3.3  !inm<type> <ioaddr>
+     3.4  !outp<type> <port> <value>
+     3.5  !outm<type> <ioaddr> <value>
+     
+
+--------------------------------------------------------------------------------
+0.0  GENERAL INFORMATION
+--------------------------------------------------------------------------------
+
+Welcome to the Windows NT DDK for Digital AXP PCs.  The following
+document provides additional information specific to developing
+drivers for the AXP platform.
+
+In general, the AXP platform is a very similar architecture to the
+MIPS(R) R4000 family, as they are both RISC platforms.  As such, if
+you have already done the work required to go from Intel(R) platforms
+to one of these RISC platforms, the subsequent port to the other RISC
+platform is relatively simple.
+
+Keep these similarities in mind when reading the other documentation
+distributed in the Windows NT DDK.  In general, when something is
+referred to as being MIPS specific, it will often apply to the AXP
+platform as well, since the documentation was written originally with
+only Intel and MIPS in mind.
+
+
+--------------------------------------------------------------------------------
+1.0  Hardware Abstraction Layer Notes
+--------------------------------------------------------------------------------
+
+
+1.1  HalTranslateBusAddress Routine
+
+On the Alpha AXP PC, the use of the AddressSpace argument in the
+HalTranslateBusAddress call has additional meaning.  Normally, the
+AddressSpace argument can have one of two values on input to a
+HalTranslateBusAddress call:
+
+  Value Explanation
+     
+    0   The address to be translated is in memory space.
+        
+    1   The address to be translated is in I/O space.
+        
+On Alpha AXP systems, an AddressSpace argument to a
+HalTranslateBusAddress call can have one of four possible values:
+
+  Value Explanation
+     
+    0   The address to be translated is in memory space
+        and is needed for kernel mode access.
+        
+    1   The address to be translated is in I/O space and
+        is needed for kernel mode access.
+        
+    2   The address to be translated is in memory space
+        and is needed for user mode access. This is
+        needed for drivers that map adapter buffers for
+        user-mode access, such as user-mode Video
+        drivers.
+        
+    3   The address to be translated is in I/O space and
+        is needed for user mode access. This is needed
+        for drivers that map adapter buffers for user-
+        mode access, such as user-mode Video drivers.
+        
+The AddressSpace argument has the standard meaning on output from the
+routine call.  Remember not to call the MmMapIoSpace routine if the
+return value for the AddressSpace argument is 1.
+
+
+1.2  HAL Access Routines
+
+The HAL access routines should be used whenever an access is made to
+an EISA IO or EISA memory location.  The address supplied as the
+pointer to the EISA port or register will normally be the translated
+address returned from HalTranslateBusAddress.  (Sometimes the
+translated address returned is not mapped, so you must then call
+MmMapIoSpace to map the translated address.)
+
+There is a subtle distinction between PORT access routines and
+REGISTER access routines in Windows NT.  The PORT access routines are
+used when accessing device CSRs, such as the floppy at PORT 3F0h.  On
+the other hand, you would use the REGISTER routines if you were going
+to access device memory buffers such as a video frame buffer on a
+graphics card.
+
+Note: The REGISTER access routines advance the register pointer for
+each byte read, but the PORT access routines read from the same port
+count number of times.  For example if the REGISTER pointer is 100h
+and the count is 10, the values stored at addresses 100h-109h will be
+read.  If the PORT is 100h and the count is 10, port 100h will be read
+from 10 times.
+
+
+1.3  Using AddressSpace to Check an Address
+
+The following code example shows how to use the AddressSpace argument
+to determine if an address is mapped, and how to map the address if it
+is not currently mapped.  The example shows how to translate
+addresses, and how to use the READ_REGISTER_UCHAR and
+WRITE_REGISTER_UCHAR routines.
+
+VOID
+Test( VOID )
+{
+    PHYSICAL_ADDRESS BusAddress;
+    PHYSICAL_ADDRESS XlatedAddress;
+    ULONG AddressSpace;
+    ULONG DeviceBase;
+    UCHAR Data;
+    UCHAR WriteData;
+
+    BusAddress.LowPart = 0xC08;              // Hi base Register address
+    BusAddress.HighPart = 0;
+    AddressSpace = 1;         // in EISA IO space
+
+    if ( !HalTranslateBusAddress(
+      Eisa,                   // EISA bus address
+      0,                      //    bus 0
+      BusAddress,
+      &AddressSpace,
+      &XlatedAddress) )
+   {
+      DbgPrint( "Failure on call to HalTranslateBusAddress for C08\n" );
+      return;
+    }
+
+    //
+    // If translated address is mapped, then use the LowPart of the
+    // translated address. Else, we will have to map the translated address
+    // using MmMapIoSpace.
+    //
+
+    if ( !AddressSpace ) {
+      DbgPrint( "Translated address was not mapped, call MmMapIoSpace\n" );
+      DeviceBase = (ULONG) MmMapIoSpace(
+                          XlatedAddress,
+                          0x10,         // Length of Registers
+                          FALSE );      // Not cached
+    } else {
+      DeviceBase = XlatedAddress.LowPart;
+    }
+      DbgPrint( "Translated Address = %x\n", DeviceBase );
+
+    //
+    // Check if the base address for the memory buffer is correct
+    //
+    Data = READ_REGISTER_UCHAR( DeviceBase );
+    if ( Data != 8 ) {
+      DbgPrint ( "The buffer was not at the correct address, Base = %x\n",
+          Data );
+      WRITE_REGISTER_UCHAR( DeviceBase, 8 );
+    }
+
+    BusAddress.LowPart = 0x80E8000;     // Buffer address for EISA memory buf
+    BusAddress.HighPart = 0;
+    AddressSpace = 0;         // EISA memory space
+
+    if ( !HalTranslateBusAddress(
+      Eisa,
+      0,
+      BusAddress,
+      &AddressSpace,
+      &XlatedAddress) )
+   {
+      DbgPrint("Failure calling HalTranslateBusAddress for memory buf\n");
+      return;
+    }
+
+    //
+    // If translated address is mapped, then use the LowPart of the
+    // translated address. Else, we will have to map the translated address
+    // using MmMapIoSpace.
+    //
+
+    if ( !AddressSpace ) {
+      DbgPrint( "Translated address was not mapped, call MmMapIoSpace\n" );
+      DeviceBase = (ULONG) MmMapIoSpace(
+                          XlatedAddress,
+                          0x2000,       // Length of buffer
+                          FALSE );      // Not cached
+    } else {
+      DeviceBase = XlatedAddress.LowPart;
+    }
+    DbgPrint( "Translated Address = %x\n", DeviceBase );
+
+    WriteData = 0xA5;
+    WRITE_REGISTER_UCHAR ( DeviceBase, WriteData );  // Write a pattern
+    Data = READ_REGISTER_UCHAR ( DeviceBase );    // Read the pattern
+    DbgPrint( "Data read = %x, data written = %x\n", Data,WriteData );
+
+}
+
+
+--------------------------------------------------------------------------------
+2.0  S3 Display Driver Notes
+--------------------------------------------------------------------------------
+
+The only Alpha AXP PC video driver supplied with the DDK is the S3
+Driver.  The other video drivers are for reference purposes.
+
+
+2.1  Device Extension (DRIVER.H)
+
+The physical device (PDEV) has been augmented to include the virtual
+address pucCsrBase representing the I/O ports mapped by the
+IOCTL_QUERY_PUBLIC_ACCESS_RANGES control code.
+
+
+2.2  S3 Definitions (S3.H)
+
+The header file (VIDEO/INC/IOACCESS.H) defining I/O port and video
+memory access routines that must be used on Alpha AXP platforms is
+included here.  Appropriate redefinitions of the INP, INPW, OUTP, and
+OUTPW macros are defined, and must be used to access I/O ports on
+Alpha AXP platforms.  (Likewise, note that the READ_REGISTER_ and
+WRITE_REGISTER_ routines in IOACCESS.H must be used to read from and
+write to video memory.  Since the S3 driver never directly reads from
+or writes to video memory, these macros are not used in the sample S3
+driver.)
+
+
+2.3  S3 Support Routines (S3SUP.C)
+
+To read and write from the S3 Pixel Transfer Register (also called the
+Image Read/Write Register) on Alpha AXP platforms, the READ_PORT_ and
+WRITE_PORT_ routines from VIDEO\INC\IOACCESS.H are used.
+
+Implementations of routines to support copying from and to the screen
+(vPuntGetBits, PuntPutBits) are provided.  Additional information is
+included in the section that explains the DrvBitBlt driver.
+
+
+2.4  DrvEnableSurface (ENABLE.C)
+
+The host-memory bitmap is created to match the size of the screen.
+The bitmap prepares for copies from and copies to the screen using the
+vPuntGetBits and vPuntPutBits routines respectively.
+
+
+2.5  bInitSURF (SCREEN.C)
+
+S3 adapter I/O ports are mapped to user mode using the
+IOCTL_QUERY_PUBLIC_ACCESS_RANGES control code.
+
+
+2.6  DrvBitBlt, DrvCopyBits (BITBLT.C)
+
+The S3 display driver is modified so that the graphics device
+interface (GDI) never directly reads from or writes to the screen.
+Bit block transfers not handled by the DrvBitBlt routine are forwarded
+to the Windows NT Graphics Engine by first copying the destination
+rectangle from the screen to a host-memory bitmap (using
+vPuntGetBits), performing the operation in host memory (using
+EngBitBlt), and then copying the result back to the screen (using
+vPuntPutBits).  The DrvCopyBits routine is similarly modified.
+
+
+--------------------------------------------------------------------------------
+3.0  ALPHAKD Kernel Debugger Notes
+--------------------------------------------------------------------------------
+
+The ALPHAKD kernel debugger for Microsoft Windows NT on Alpha AXP PCs
+has some additional commands for accessing I/O space.
+
+The ALPHAKD debugger treats the I<type>, and O<type> commands as
+access to I/O space ports.  So, for example, to perform a read of the
+floppy status register at port address 3f4, enter the following
+command:
+
+  IB 3f4
+  
+This literally translates to "read a byte at ISA bus 0 port address
+3f4."  The valid types are: B (byte), W (word), and D (doubleword/longword).
+
+Similarly, you can output data to the floppy status port register by
+entering the following command:
+
+  OB 3f4 0
+  
+This literally translates to "write a byte of 0 to ISA bus 0 port
+address 3f4."
+
+The I<type> and O<type> commands, however, are not sufficient to
+access other buses (if such a system exists), or memory addresses
+located in I/O space.  The following commands, which are architecture
+specific, can be used to access additional buses, I/O space memory,
+and I/O space ports.
+
+
+3.1  !setbus <bustype> <number>
+
+The !setbus command sets the default bus type and number.  The !setbus
+command takes two parameters: the first is the bus type, and the
+second is the bus number.  For example, you can enter the following
+command:
+
+   !setbus eisa 0
+  
+The <bustype> argument is case insensitive and can be any one of the
+following: eisa, internal, isa, turbochannel, or microchannel.  Note,
+however, that the Alpha AXP PC has only the first two bus types.  The
+<number> argument can be any number from 0 to 63 and is read as a hex
+value.  For Alpha AXP PCs, always set the bus number to 0.  This is
+because the Alpha AXP PC has only one EISA (which can be treated as
+ISA) and one internal bus.
+
+The default bus type is isa and the default bus number is 0.
+
+
+3.2  !inp<type> <port>
+
+The !inp<type> command is similar to the I<type> command.  The
+!inp<type> command uses the values generated from the last
+!setbus command to more fully describe the access. The data
+returned is also qualified by the bus type and bus number. For
+example, entering !inpb 3f4 results in a display of the
+following information:
+
+  Isa0\000003f4: 0c
+  
+This example assumes that the bus is set to isa and number is
+set to 0 (the default settings).
+
+
+3.3  !inm<type> <ioaddr>
+
+The !inm<type> command is similar to the !inp<type> command, except
+that it takes an I/O space memory address instead of a port address.
+For example, to examine the contents of a DE422 (Digital Lance adapter
+card) ring buffer at location 0xD0000 on the EISA bus, enter the
+following command:
+
+  !inmd d0000
+  
+The returned data might look similar to the following:
+
+  Isa0\000D0000: 00008000
+  
+
+3.4  !outp<type> <port> <value>
+
+The !outp<type> command is similar to the !inp<type> command, except
+that it allows you to write data to the specified port.  For example,
+to write a zero to the floppy status register at port address 3f4,
+enter the following command:
+
+  !outpb 3f4 0
+  
+
+3.5  !outm<type> <ioaddr> <value>
+
+The !outm<type> command is similar to the !outp<type> command, except
+that it takes an I/O space memory address instead of a port address.
+For example, you could change the first doubleword of the DE422 ring
+buffer at location 0xD0000 by entering the following command:
+
+  !outmd d0000 0
+  
+This writes a zero to the doubleword at location 0xD0000 on the DE422
+card in EISA memory space.

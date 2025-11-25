@@ -1,0 +1,446 @@
+                                   AXPNOTES.TXT
+
+	    AXP(TM) PC Specific Notes for the Microsoft(R) Win32(TM) SDK
+
+TABLE OF CONTENTS
+
+0.0 GENERAL INFORMATION
+1.0 PORTING CONSIDERATIONS
+	1.1  Variable Argument Lists
+	1.2  Uninitialized Variables
+	1.3  Data Alignment and the UNALIGNED Keyword
+	1.4  Structure Packing
+	1.5  Exception Codes
+	1.6  Floating Point Behavior
+	1.7  Imprecise Exceptions
+	1.8  Machine Specific #ifdef Statments
+	1.9  Context-Structure Definition
+	1.10 Page-Size Assumptions
+	1.11 LARGE_INTEGER and Quadword Types
+	1.12 Multi-Threaded Granularity of Access
+	1.13 The setjmp/longjmp Functions 
+2.0 CLAXP COMPILER REFERENCE INFORMATION
+	2.1  Compiler Files
+	2.2  Using the Compiler
+	2.3  Currently Implemented Promotion Rules for Constant Expressions
+3.0 ACC COMPILER REFERENCE INFORMATION
+4.0 DEBUGGERS
+	4.1  NTSD
+	4.2  WINDBG
+5.0 MICROSOFT FOUNDATION CLASSES (MFC) 2.0 FOR ALPHA
+6.0 WINDOWS NT ASSEMBLER FOR AXP PCs
+
+
+--------------------------------------------------------------------------------
+0.0 GENERAL INFORMATION
+--------------------------------------------------------------------------------
+Welcome to the Win32 SDK v3.1 for Digital AXP PCs. The following document 
+describes most of the areas which need to be addressed when porting applications
+from other Windows NT platforms to the AXP platform.
+
+In general, the AXP platform is a very similar architecture to the MIPS(R) R4000
+family, as they are both RISC platforms.  As such, if you have already done
+the work required to go from Intel(R) platforms to one of these RISC platforms,
+the subsequent port to the other RISC platform is relatively simple.
+
+Keep these similarities in mind when reading the other documentation distributed
+in the Win32 SDK.  In general, when something is referred to as being MIPS 
+specific, it will often apply to the AXP platform as well, since the document-
+ation was written originally with only Intel and MIPS in mind.
+
+
+--------------------------------------------------------------------------------
+1.0 PORTING CONSIDERATIONS
+--------------------------------------------------------------------------------
+
+1.1 Variable Argument Lists
+*	The C compilers for AXP support both the ANSI standard <stdarg.h> and 
+	the traditional <varargs.h> definitions for using variable argument 
+	lists in a portable manner.
+	The macros provided in these include files hide all machine-dependent 
+	details of variable argument usage.  All programs properly using the 
+	varargs macros for variable argument list processing will port 
+	unchanged to Windows NT/AXP systems.
+	However, not all code ported to Windows NT or Windows NT/AXP uses the 
+	portable varargs macros, or uses them correctly.  Depending on the type 
+	of varargs misuse (although the code may have worked on other systems), 
+	the result on Windows NT/AXP is either code that will not compile, or 
+	code that compiles but does not execute as expected.
+	Such non-portable code must be fixed.  To locate possible misuses of 
+	variable argument lists, look for the following:
+
+--	Any function not prototyped with ellipses (ANSI varargs) and called 
+	with more or less arguments than it was prototyped for.
+--	Any function that takes the address of one of its arguments and 
+	then uses that address as if it is the base of array of values on 
+	the stack, or uses that address as a pointer to a structure 
+	containing other arguments on the stack.
+--	Any attempt to use a (va_list) cast.  For example, vap = 
+	(va_list)&arg is not legal.
+--	Any attempt to initialize the value of a va_list variable, except 
+	as an argument to va_start() or as an assignment from another 
+	va_list variable.
+--	Any comparison involving a va_list variable.  For example, if (vap 
+	== NULL) is illegal.
+--	Any function that takes the address of one of its arguments and 
+	then passes that address to some other function that misuses it in 
+	one of the above ways.
+
+
+1.2 Uninitialized Variables
+*	A number of instances where code behaved differently when ported to 
+	Windows NT/AXP turned out to be simple cases of uninitialized 
+	variables.
+
+	This can happen because each compiler has its own conventions for local 
+	variable placement in the stack frame.  The uninitialized "garbage" 
+	values may differ when code is ported from one system to another, or 
+	even between two different compilers on the same system, resulting in 
+	obscure behavior.
+
+
+1.3 Data Alignment and the UNALIGNED Keyword
+*	On RISC architectures, such as MIPS and AXP, access to unaligned data 
+	typically causes an operating-system trap.  For this reason, RISC 
+	compilers take care to allocate each variable at its own natural, or 
+	preferred alignment. For example, a 4-byte integer is usually allocated 
+	at an address that is a multiple of 4 bytes.
+
+	If unaligned access of data is required, it is much better to instruct 
+	the compiler of this intent than to let the operating system deal with 
+	it.
+
+	The Windows NT system include files define an UNALIGNED pointer 
+	qualifier for this purpose.  When used, it is portable across all 
+	Windows NT platforms, regardless of whether the machine has alignment 
+	restrictions or not.
+
+	For this release, the kernel implicitly fixes all unaligned data 
+	references.  Thus applications should not notice any alignment 
+	problems.  Please note however that this causes a significant 
+	performance penalty, and will also cause incompatibilities when porting
+	to other RISC Architectures.  It is strongly recommended that you use
+	the UNALIGNED keyword wherever necessary to eliminate this problem.
+
+
+1.4 Structure Packing
+*	If you use the #pragma pack directive, the compiler generates the 
+	proper code for all direct access to unaligned members of the 
+	structure.  If, however, you take the address of a member of a packed 
+	structure, the pointer variable holding the address must be declared 
+	with the UNALIGNED type qualifier.
+
+1.5 Exception Codes
+*	By default, integer division by zero is reported as an exception with 
+	AXP.  Consequently, when an application is ported to AXP, a division by 
+	zero exception may occur on AXP but not on X86 or MIPS.  This is 
+	considered a latent bug in the original code and must be corrected.
+
+1.6 Floating Point Behavior
+*	All Windows NT platforms use identical IEEE floating point formats.
+	For finite floating point values, AXP floating point behavior is 
+	identical to MIPS and X86.  For non-finite floating point values (for 
+	example, infinity, denormals, and NaNs), the AXP behavior is affected 
+	by the options used when the code was compiled.
+
+	The default AXP compiler behavior is to generate code that will raise a 
+	floating point exception when non-finite floating point values are 
+	encountered or when division by zero or overflow occurs.  The default 
+	X86 and MIPS behavior is to create an IEEE masked result and raise no 
+	exception.
+	
+	A practical consequence of this is that all instances of floating point 
+	overflow, underflow, and division by zero go unreported in most Windows 
+	NT applications.
+	
+	If the identical IEEE masked response to exceptions is required with 
+	AXP, the 
+	acc -ieee_with_no_inexact option should be used when compiling the 
+	module. This will result in slightly slower floating point performance, 
+	but will allow the kernel and runtime to produce IEEE-compliant 
+	exception behavior compatible with MIPS and X86 by default.
+
+	If such a floating point exception does occur with AXP, the status code 
+	will be one of the following:
+		STATUS_FLOAT_DIVIDE_BY_ZERO      0xC000008E
+		STATUS_FLOAT_INVALID_OPERATION   0xC0000090
+		STATUS_FLOAT_OVERFLOW            0xC0000091
+		STATUS_FLOAT_UNDERFLOW           0xC0000093
+		STATUS_FLOAT_INEXACT_RESULT      0xC000008F
+	
+	If the acc -ieee_with_no_inexact option is used, the imprecise 
+	exception is converted into a precise exception and the exception PC 
+	points to the actual instruction that caused the trap.
+	There is no corresponding claxp compiler option for this feature in 
+	this release.
+
+	Note also that this option has not been enabled to date for any Windows 
+	NT source code ported to date because very few applications expect 
+	IEEE-compliant, masked-response handling of non-finite operands; for 
+	example, generating the IEEE infinity value for division by zero, or 
+	adding one to infinity, or dividing one by infinity to produce zero.
+
+
+1.7 Imprecise Exceptions
+*	For normal compile modes, if one of the exceptions listed in the 
+	previous section does occur, it is likely that the exception PC does 
+	not point to the instructions that actually cause the trap.  If using a 
+	debugger, look for the offending floating point instruction a few 
+	instructions prior to the Fir (continuation address).  Or, if you are 
+	looking near the beginning of a function, look at the last few 
+	instructions in the calling frame.
+
+
+1.8 Machine-Specific #ifdef Statements
+*	Beware of #ifdef _MIPS_ statements that really mean #ifndef _IX86_.
+
+
+1.9 Context-Structure Definition
+*	One architecture-dependent data structure is the CONTEXT structure.  
+	Code that accesses fields in this structure will likely have to be 
+	changed for the port to Windows NT/AXP.
+
+	Windows NT for AXP systems, like Windows NT for MIPS systems, use the 
+	Fir member to hold the continuation address.  For faults on AXP, this 
+	is the address of the faulting instruction. For traps and exceptions, 
+	this is the continuation address; the trapping or exception address is 
+	Fir - 4, or, in some cases, more than one instruction before the Fir 
+	address.
+	
+	Note the fields in the context structure are quadwords.  When setting a 
+	longword value into a quadword element of the context record, make sure 
+	longwords, whether signed or unsigned, are properly sign-extended.
+
+
+1.10 Page-Size Assumptions
+*	Although the page size for Windows NT is not provided as a defined 
+	symbol in the system include files, references to a 4-KB page size 
+	exist in various publications.  This value is not correct because the 
+	page size for Windows NT is architecture dependent.  For Windows NT on 
+	AXP systems the required page size is currently 8 KB.
+
+	Application code should not depend on a hard-coded page size.  Windows 
+	NT code that somehow depends on a 4-KB page size may not work correctly 
+	on Windows NT/AXP.
+
+*	When linking an image on Windows NT/AXP, you can specify the section 
+	alignment with align:value.  If you are linking a user-mode image, then 
+	the value must be greater than 8192 bytes (hex 2000). If you specify a 
+	value less than 8192, your image will not be loaded.  The default 
+	section alignment is 64Kb (65535 bytes).
+
+
+1.11 LARGE_INTEGER and Quadword Types
+*	Windows NT defines a LARGE_INTEGER data type that is a 64-bit integer 
+	created from an array of two longwords.  Do not redefine the 
+	LARGE_INTEGER type.  Use the definition provided in the system header 
+	files.  A LARGE_INTEGER type is not the same as an AXP quadword.  The 
+	latter is a true, non-portable, 64-bit integer data type; the former is 
+	a structure that is 8 bytes in size, appears to be a 64-bit integer, 
+	but is usable as a 64-bit integer only in conjunction with a set of 
+	runtime library functions.
+
+
+1.12 Multi-Threaded Granularity of Access
+*	In Windows NT, multi-threaded access to shared data structures must be 
+	protected with locks (for example, EnterCriticalSection, 
+	LeaveCriticalSection) unless both the alignment and size of the shared 
+	data matches an atomic load/store unit of the underlying machine 
+	architecture.  For AXP systems this is 4, or 8 bytes. For X86 and MIPS 
+	this is 1, 2, or 4 bytes.  To ensure portability, it is recommended 
+	that you assume 4-byte granularity, or avoid the problem and use locks.
+	
+	For example, it is possible to manage a byte array, indexed by thread 
+	number, without explicit multi-threaded locking on X86 and MIPS 
+	systems. When ported to Windows NT/AXP, this code may fail.  Thus, for 
+	Windows NT/AXP, either locks must be added, or the element size of the 
+	array must be changed from 1 byte to 4 bytes.
+
+
+1.13 The setjmp/longjmp Functions
+*	The contents of the jump buffer are not portable across Windows NT 
+	platforms nor across AXP compilers.  The header files take care of 
+	these details.  Do not intermix claxp compiler objects that call 
+	the setjmp with acc compiler objects that call the longjmp 
+	function.
+
+
+--------------------------------------------------------------------------------
+2.0 CLAXP Compiler Reference Information
+--------------------------------------------------------------------------------
+
+2.1 Compiler Files
+The claxp compiler consists of the following files in the mstools\bin\alpha 
+directory:
+claxp.txt	Plain text specification for claxp compiler.
+claxp.exe	The Compile/Link driver program (enter claxp -help).
+c1n32.exe	C frontend to do syntactic and semantic analysis.
+c1xx32.exe	C++ frontend (just prints a message and exits)
+c2n32.exe	claxp backend generates Alpha_AXP code and listings.
+CL.err		Command line error message text for claxp driver.
+C1.err		Frontend error message text.
+cl32.msg	Help text output by claxp /help.
+
+
+2.2 Using the Compiler
+The file claxp.txt in the mstools\bin\alpha directory is a brief 
+specification for the claxp compiler.  Because it was a goal to provide 
+close compatibility with the Microsoft C/C++ compilers on other Windows NT 
+platforms, the specification document deals primarily with the differences 
+between this compiler and the Microsoft compilers for Windows NT for X86 
+platforms.
+
+While even small applications will likely use the makefile approaches shown 
+in the samples directory to keep their builds portable across the different 
+Windows NT platforms, it is sometimes convenient to have a compiler that 
+can easily compile and link simple programs without having to use nmake.  
+The claxp driver recognizes the INCLUDE and CL environment variables and, 
+in conjunction with the LIB environment variable used by the linker, it is 
+easy to compile and link a few .c files in one step.  For example, with 
+PATH, LIB, and INCLUDE set appropriately for using the SDK, you can set CL 
+as follows:
+
+CL=/link libc.lib kernel32.lib
+
+This allows simple console applications to be compiled and linked in one 
+step.  For example, the following command compiles the two .c files into 
+.obj files and links them into hello.exe:
+
+claxp hello.c goodbye.c
+
+Adding the -Zi option to generate debug information for the windbg debugger 
+also causes the CVPACK program to be run.
+
+
+2.3 Currently Implemented Promotion Rules for Constant Expressions
+Each integer constant is given a type based on a combination of its 
+appearance and its value.  The type of a constant expression is then 
+determined according to the rules for promotions and conversions for the 
+operators applied, just as an expression involving variables having the 
+types of the constants would be evaluated.  For a given constant "style" 
+(decimal, hexadecimal, or octal, with/without L or U suffixes), the type is 
+determined by choosing the first type in the appropriate list that is 
+capable of representing the value.  Note, however, that the constant -1, 
+for example, is formally an expression consisting of a unary "-" applied to 
+the constant 1.  It is in this formal sense that the type of a constant 
+expression is determined.  Also note that since int and long have the same 
+representation in this compiler, numbers lacking an L suffix never have the 
+formal type long or unsigned long.
+1.	Unsuffixed decimal: int, unsigned int, __int64, unsigned __int64
+2.	Unsuffixed hex and octal: int, unsigned int, __int64, unsigned __int64
+3.	Suffixed by U or u: unsigned int, unsigned __int64
+4.	Suffixed by L or l: long, unsigned long, __int64, unsigned __int64
+5.	Suffixed by U or u and L or L: unsigned long, unsigned __int64 
+
+
+-------------------------------------------------------------------------------
+3.0 ACC Compiler Reference Information
+-------------------------------------------------------------------------------
+
+Name
+acc - C compiler
+
+Synopsis
+acc [option] ... file ...
+
+Description
+The acc command invokes the Windows NT/AXP compiler and produces object 
+files and assembler source listings. For complete details, see the accnotes.txt
+file in \mstools\bin.
+
+
+--------------------------------------------------------------------------------
+4.0 DEBUGGER
+--------------------------------------------------------------------------------
+
+4.1 NTSD
+*	The ntsd debugger can be used for programs that have been compiled with 
+	the acc compiler and linked with the debugtype:coff and debug:partial 
+	options with the link32 command.
+
+*	Source debugging with the acc compiler is limited to global, non-static 
+	symbols.  It will not work if you use the debugtype:both option to the 
+	link32 command.
+
+*	There are two commands available on Windows NT for AXP that are not 
+	available on X86.  These commands enable you to examine large integers 
+	and floating point registers.
+
+	1.	The rL command examines 64-bit registers. Without arguments, it 
+		prints all thirty-two 64-bit integer registers. With an argument
+		it prints the specified 64-bit register.  If you use just the r 
+		command to print registers, the ntsd debugger appends an 
+		asterisk (*) to the register value if the 64-bit value is not a
+	 	canonical sign extension of the low-order 32 bits.  When the r 
+		command is used to set a register, the 32-bit value given is 
+		sign-extended and then written to the 64-bit register.
+
+	2.	The rF command examines the floating point registers. When given
+		alone, it displays all 32 floating point registers, 7 digits of 
+		mantissa, and 3 digits of exponent.  If an argument is supplied 
+		with rF, 19 digits of mantissa and 3 digits of exponent are 
+		given, and the hex value of the register is also reported.
+
+*	The ntsd debugger assembly support is limited to integer, floating 
+	point memory, floating point branch instructions, and unprivileged PAL 
+	calls.
+
+
+4.2 WINDBG
+*	When compiling for the windbg debugger with the claxp compiler, you 
+	should use the /Zi, and /Od options on the compiler, and the debug:full 
+	and debugtype:cv options on the linker.  For the coff option, any 
+	debugtype can be used, but only global, non-static symbols are found.  
+	If optimization other than -Od is used, the line number information is 
+	wrong.
+
+*	When compiling for the windbg debugger with the acc compiler, you are 
+	limited to global, nonstatic symbols, and the debug:full and 
+	debugtype:cv options on the linker.
+
+*	64-bit support.  There is full 64-bit support in registers, as well as 
+	in watch and local windows.  You can enter a full 64-bit value in any 
+	window.  However, general expression manipulation for 64-bit values is 
+	not yet available.
+
+*	Register types.  There are two known problems with register-type 
+	variables:
+	1.	In contexts other than the current context, the value currently
+		in the register is reported. This affects old frames in stack 
+		traces and local variables when using calls or goto statements.
+
+	2.	Primitive and direct variables that live in registers are fully 
+		supported by the windbg debugger.  Also, arrays that reside in 
+		registers print out in watch and local windows.  However, other 
+		complex types (such as unions and structures) that reside in 
+		memory are not supported. If such a variable is used, you can 
+		work around this problem by taking its address in your program.
+		You can determine how a variable has been allocated by running 
+		the cvdump command.  The cvdump -s command gives information 
+		just on symbols and includes a line for each variable, indicat-
+		ing which register is being used and whether it is Register 
+		or Register Relative.
+
+
+--------------------------------------------------------------------------------
+5.0 Microsoft Foundation Classes (MFC) 2.0 for AXP PCs
+--------------------------------------------------------------------------------
+The Microsoft Win32 SDK contains the patches needed to develop with MFC 2.0
+for AXP Platforms.  You must first have purchased Microsoft Visual C++ 1.0 for
+Windows NT to obtain the full suite of MFC 2.0 development files for Intel
+platforms before applying this patch.  Please see the \mstools\mfc\mfc.txt file
+on the CD for complete details.
+
+
+--------------------------------------------------------------------------------
+6.0 Windows NT Assembler for AXP PCs
+--------------------------------------------------------------------------------
+
+The SDK includes the Windows NT Assembler for AXP, which converts assembly 
+language statements into AXP machine code. The assembler is located in the 
+\mstools\bin directory and the file name is ASAXP.EXE.
+
+There is a brief summary of the assembler in the \mstools\bin\asaxp.txt 
+file. Request further documentation for the Windows NT Assembler for AXP 
+through the Compuserve support forum.
+

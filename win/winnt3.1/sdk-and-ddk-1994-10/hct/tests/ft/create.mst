@@ -1,0 +1,184 @@
+'*****************************************************************************
+' Copyright (c) 1991 Microsoft Corporation
+'
+' Module Name:
+'   create.mst
+'
+' Abstract:
+'   Uses windisk.exe to create partitions/stripes/volumes/mirrors.
+'   The specified ft componet to be created is described in the file
+'   create.dat
+'
+' Author:
+'   Kenieth Peery (t-kenpe) 12-9-92
+'
+' Revision History:
+'   12-19-92 added the create extended regins code 
+'*****************************************************************************
+
+'$DEFINE TESTEVNT
+'$DEFINE TESTCTRL
+'$DEFINE W_WINDOW
+
+'$INCLUDE 'MSTEST.INC'
+
+'$INCLUDE 'common.inc'
+
+
+DIM ftType$         '*** the type of ft componet to create
+DIM fileSystem$     '*** the desire file system type of the created partition
+DIM szMB$           '*** the desire space of the created partition
+DIM driveLet$       '*** the desire drive letter to be assigned to the partition
+DIM numRegions%     '*** the number of sected regions
+
+DIM winTitle$       '*** The title of the active window
+DIM winHandle%      '*** The handle to the main window
+DIM limit%          '*** The limit on certain timing loops
+
+GetConfig "create.dat",ftType,fileSystem,szMB,driveLet,numRegions
+
+'*** Here we go
+RUN "windisk.exe", NOWAIT
+WndWait "Disk Administrator"          '*** wait for windisk to come up
+
+winTitle$=GetText(WGetActWnd(0))
+
+OpenLog "foo.log",LOG_DISK
+
+AvoidLeadingPopups
+                                '*** should now be just Disk Manager
+winHandle = WGetActWnd(0)       '*** this gets the handle to Parent Window
+WMaxWnd winHandle               '*** maximize the main window
+
+
+i=0                             '*** create extended regions 
+WHILE i < numRegions    
+  IF toExtend(i) <> 0 THEN
+    QuePause 1000
+    SelectRegion disk(i), pos(i)
+    QueKeys "%(){ENTER}{DOWN}{ENTER}"            
+    QuePause 1000
+    QueKeys "{ENTER}"
+    QueFlush 1
+    gPos%=0
+  END IF
+  i=i+1
+WEND
+
+IF ftType=MIRROR OR ftType=CPBT_MIRROR OR ftType=PARTITION THEN
+  SelectRegion disk(0), pos(0)
+  QueFlush 1
+  QuePause 1000
+  QueKeys "%(){ENTER}{ENTER}"      '*** create primary parition
+  QuePause 1000
+  QueFlush 1
+  winTitle$=GetText(WGetActWnd(0))
+  WriteLog winTitle$
+
+  IF WFndWndWait("Confirm",FW_PART,2) <> 0 THEN
+    QueKeys "{ENTER}"
+    WriteLog "In 1st Confirm"
+  END IF
+  QueFlush 1
+
+  IF WFndWndWait("Create",FW_PART,2) <> 0 THEN
+    winTitle$=GetText(WGetActWnd(0))
+    WriteLog winTitle$
+    QuePause 1000
+    QueKeys szMB$               '*** specifiy the size
+    QuePause 1000
+    QueKeys "{ENTER}"
+    QuePause 1000
+    gPos=0                      '*** After creating partition the select moves
+    WriteLog "in Create"
+    WriteLog szMB$
+  END IF
+  QueFlush 1
+
+  IF WFndWndWait("Confirm",FW_PART,2) <> 0 THEN
+    QueKeys "{ENTER}"
+    WriteLog "in 2nd Confirm"
+  END IF
+
+END IF
+QueFlush 1
+
+IF ftType=MIRROR THEN
+  SelectRegion disk(0), pos(0)       '*** reslect prim region
+  SelectRegion disk(1), pos(1)       '*** select shdw
+  QueKeys "%(){RIGHT}{ENTER}{ENTER}" '*** establish mirror
+END IF
+QueFlush 1
+
+IF ftType=STRWOP OR ftType=STRWP OR ftType=VOLUME THEN
+  i=0
+  WHILE i < numRegions          '*** select the regions
+    SelectRegion disk(i), pos(i)
+    i=i+1
+  WEND
+  QueFlush 1
+
+  '
+  '*** create stripe without parity
+  '
+
+  IF ftType=STRWOP THEN
+    QueKeys "%(){ENTER}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{ENTER}"
+  END IF
+
+  '
+  '*** create stripe with parity
+  '
+
+  IF ftType=STRWP THEN
+    QueKeys "%(){RIGHT}{ENTER}{DOWN}{DOWN}{ENTER}"
+  END IF
+
+  '
+  '*** create volume
+  '
+
+  IF ftType=VOLUME THEN
+    QueKeys "%(){ENTER}{DOWN}{DOWN}{DOWN}{ENTER}"
+  END IF
+                                '*** specifiy the size
+  QueKeys STR$(numRegions * VAL(szMB))
+  QueKeys "{ENTER}"
+  gPos=0                        '*** After creating partition the select moves
+END IF
+
+SelectRegion disk(0), pos(0)    '*** assign a drive letter for the next stage
+QueKeys "%(){ENTER}{UP}{UP}{UP}{ENTER}"
+QuePause 1000
+QueKeys  MID$(driveLet$,1,1)
+QueKeys "{ENTER}"
+QueFlush 1
+
+CloseLog
+
+QueKeys "%(){ENTER}{UP}{ENTER}" '*** Exit stage right
+QuePause 1000
+QueKeys "{ENTER}"               '*** save changes
+QuePause 1000
+QueKeys "{ENTER}"               '*** Disks Updated succesfully
+                                '*** need something conditional
+                                '*** here if not
+'
+' This code is commented out to prevent windisk from sending the
+' shutdown request.  We are doing it ourselves with the force
+' flag below to workaround these shutdown problems.
+'
+'QueKeys "{ENTER}"               '*** Reboot
+'
+
+QuePause 1000
+QueFlush 1
+
+WHILE 1
+    SHELL "shutdown -f -r -t 0"
+WEND
+
+WaitForShutdown
+
+END
+'*** end of Main program

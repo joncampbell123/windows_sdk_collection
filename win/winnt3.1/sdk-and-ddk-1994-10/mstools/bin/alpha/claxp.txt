@@ -1,0 +1,914 @@
+                       CLAXP Compiler Specifications
+
+			     10 September 1993
+
+
+     This document presents the specifications for the CLAXP compiler
+     on Windows NT for Alpha AXP.  This compiler is also referred to
+     as the MSCGEM or GEM compiler, identifying the frontend as a port
+     of the Microsoft C frontend, and the backend as a port of the GEM
+     backend used in Digital's production compilers on other Alpha AXP
+     platforms.  The CLAXP compiler is highly compatible with the
+     Microsoft C and C++ compilers on Windows NT for x86 and Windows
+     NT for MIPS platforms.  Accordingly, this document describes the
+     CLAXP compiler primarily in terms of its differences from the x86
+     compiler in particular.  (See the "Tools", "C Language
+     Reference", and "C++ Language Reference" books in the Microsoft
+     Win32 Software Development Kit for Windows NT, July 1992 and
+     October 1992.)
+
+
+     The CLAXP compiler consists of three major components:
+
+           .  A  Microsoft  frontend  that  performs   syntactic   and
+              semantic  processing and writes it's results to a set of
+              intermediate  language  (IL)  files.   The  frontend  is
+              sometimes  informally  referred to as the P1 part of the
+              compiler.  There are separate frontends for C and C++.
+
+           .  A  Digital  backend  that  itself  has  two  parts:    a
+              translator that converts the Microsoft IL to GEM IL, and
+              the GEM backend that completes the compilation to object
+              module   form.   The  backend  is  sometimes  informally
+              referred to as the P2 part of the compiler.  There is  a
+              common backend for C and C++.
+
+           .  A Microsoft driver that implements  the  CLAXP  command,
+              processes  command  options and invokes the frontend and
+              backend transparently.  There is a common driver  for  C
+              and C++.
+
+     The Microsoft frontend and driver have generally been modified as
+     little as possible consistent with porting them to the Alpha AXP
+     environment and adding the few AXP specific features and options
+     that are described here.
+
+
+     A Quick Comparison
+
+     There are just a few language related aspects of CLAXP  that  are
+     known  to  differ  compared  to  the "C8" compiler in Visual C++.
+
+
+     Compared to the CL386 compiler:
+
+           .  CLAXP handles type 'long double' as  a  64-bit  floating
+              point type (rather than an 80-bit type).
+
+           .  CLAXP does not support any kind of asm statement.
+
+           .  Various predefined macros are adjusted to be appropriate
+              to the Alpha AXP environment.
+
+           .  CLAXP does not support P-Code.
+
+	   .  CLAXP does not produce assembler source files (it does
+              produce assembly listings with assembled code bytes).
+
+
+     CLAXP adds these Alpha AXP specific characteristics:
+
+           .  64-bit integer support.
+
+           .  Several hardware specific intrinsic functions.
+
+
+     CLAXP adds support for these known C8 features:
+
+           .  structured exception handling
+
+           .  __unaligned type qualifier
+
+	   .  Thread Local Storage
+
+
+     1  CLAXP COMMAND OPTIONS
+
+     The CLAXP command invokes the Microsoft C frontend, Digital's GEM
+     backend, and optionally the linker.
+
+
+     The next section describes the options that are supported by the
+     CLAXP command.  For a description of these options, see Chapter 1
+     in the "Tools User's Guides" for the Win32 SDK.    The following
+     section includes additional notes regarding options that are new
+     or different compared to that document.
+
+
+
+     1.1  Supported Options
+
+
+     /?        Equivalent to /help (list compiler options)
+     /batch    Compile in Batch Mode
+     /c        Compile without Linking
+     /C        Preserve Comments During Preprocessing
+     /D        Define Constants and Macros
+     /E,/EP    Copy Preprocessor Output to Standard Output
+     /F        Set Stack Size
+     /Fa{file} Set Alternate Output for listing (content controlled by
+               /FA, see notes)
+     /FA{s}{c} Set listing content (see notes) CLAXP treats  /FAa  the
+               same as /FAc.
+     /Fd       Specify program database
+     /Fc,/Fl   Set Alternate Output File for code  listing  (COD,  see
+               notes) [being phased out by MS but still accepted]
+     /Fe       Set Alternate Output File for executable (EXE)
+     /FI{file} Do include of file at line 0 (see notes)
+     /Fm       Set Alternate Output File for linker map (MAP)
+     /Fo       Set Alternate Output File for object (OBJ)
+     /Fp       Set Alternate Output File for Precompiled header (PCH)
+     /FR,/Fr   Set Alternate Output File for PWB Source Browser (SBR)
+     /Ge,/Gs   Turn Stack Checking On/Off
+     /Gf       Enable string pooling
+     /Gt{num}  Data size  threshold  (global  pointer  threshold,  see
+               notes)
+     /Gz       Choose the Default Calling Convention
+     /H        Max external name length
+     /HELP,/help
+               List Compiler Options
+     /I        Set Search Directory for Include Files
+     /J        Change Default char Type to unsigned
+     /link     Remainder of command line passed to the linker
+     /nologo   Suppress Display of Sign-On Banner
+     /O        Optimize (for Speed) - same as /O2
+     /O1       Minimum space optimization (see notes)
+     /O2       Maximum (/Ox) optimization, plus auto inlining (see notes)
+     /Ob{num}  Inlining controls
+     /Od       Turn Off All Optimization (default if -Zi or -Z7 specified
+               and no explicit optimization options specified)
+     /Oi-      Disable Intrinsic Functions (default)
+     /Oi       Enable Intrinsic Functions
+     /Op       Floating point operations sensitive to precision loss (default)
+     /Op-      Allow floating point optimization that may affect precision
+               (e.g. use reciprocals to avoid divides)
+     /Ox       Maximum Optimization (see notes)
+     /P        Create Preprocessor-Output File
+     /Q{str}   CLAXP specific options (see notes)
+     /Tc,/Tp   Specify C/C++ Source File
+     /U,/u     Remove Predefined Names
+     /V        Set Version String
+     /vd0,/vd1,/vmb,/vmg,/vmm,/vms,/vmv
+               Control C++ details.
+     /w,/W{num}
+               Set warning level
+     /WX       Treat all warnings as errors
+     /X        Ignore standard include directory search path
+     /Yc,/Yd,/Yu
+               Precompiled Header Options
+     /YX       Use automatic precompiled headers
+     /Za,/Ze   ANSI vs Extended Language Features
+     /Zg       Generate Function Prototypes
+     /Zh       Home All Arguments (see notes)
+     /Zi       Compile for Debugging (include Codeview information for
+               Windbg)
+     /Zd       Compile for Debugging (include line number info)
+     /Zp[num]  Pack Structure Members (default is /Zp8, /Zp is treated
+               as /Zp1)
+     /Zn       Turn Off SBRPACK Utility
+     /Zs       Check Syntax Only
+     /Z7       Create  C7  style  Codeview  information (Same as -Zi)
+
+
+     1.2  Supplementary Notes
+
+     The following sections contain notes on selected options that
+     deserve  further  discussion  as they are new to Microsoft C
+     (since C7) and/or have some slight variation for the Alpha
+     AXP  platform.
+
+
+     1.2.1 /Fa, /FA, /Fc And /Fl - Microsoft has extended the C7 /Fa,
+     /Fc, /Fl assembly listing functionality by deprecating /Fc and /Fl,
+     and adding /FA*.  The idea is that /Fa names the assembly listing
+     file, and /FA describes what should be in it in addition to the
+     basic assembly text.
+
+
+     /FA takes a string argument, which may contain the  letters  'a',
+     'c', or 's'.
+
+     'a'     turns on assembler  code  representation;  it  is  always
+             implied and is thus a no-op.
+
+     'c'     turns on code-bytes, and causes the default extension  to
+             be .COD instead of .ASM.
+
+     's'     turns on source code.
+
+     CLAXP does not produce an assemblable listing -- only options
+     that create a .COD file are valid.  In effect, the default is
+     .COD because that is the only form of listing supported.
+
+
+     While /Fc and /Fl are still silently accepted, they aren't  being
+     documented.  Comparison of old and new formats:
+
+             old             new
+             ---             ---
+             /Fa             /FA and/or /Fa
+             /Fc             /FAcs (with or without /Fa)
+             /Fl             /FAc  (with or without /Fa)
+             /Fa<file>       /Fa<file> (with or without /FA)
+             /Fc<file>       /Fa<file> /FAcs
+             /Fl<file>       /Fa<file> /FAs
+
+     The overrides are set up in such a way that /Fc, /Fl and /FA  are
+     mutually overriding, as are /Fc /Fl and /Fa, while /Fa and /FA do
+     not override.
+
+
+     An alternative description for  CLAXP  presents  the  options  in
+     these groups:
+
+         Option              Interpretation
+         ------              --------------
+
+     Group 1:
+
+         /Fa                 Unsupported, but treated as if /FAc specified
+         /Fa<file>           Unsupported, but treated as if /FAc specified
+         /Fc                 Undocumented, but equivalent to /Fa /FAc
+         /Fc<file>           Undocumented, but equivalent to /Fa<file> /FAc
+         /Fl                 Undocumented, but equivalent to /Fa /FAcs
+         /Fl<file>           Undocumented, but equivalent to /Fa<file> /FAcs
+
+
+     Group 2:
+
+         /FA                 Unsupported (same as /FAa), but forced to /FAc
+         /FAa                Unsupported (.ASM), but forced to /FAc (.COD)
+         /FAc  or /FAac      Create listing with code bytes (.COD)
+         /FAcs or /FAacs     Create listing with code bytes and source (.COD)
+         /FAs  or /FAas      Unsupported (same as /FAas), but forced to /FAcs
+
+     Group 3:
+
+         /Fa or /Fa<file> can be added in combination with any of the
+         Group 2 options. The effect is only to determine the name of
+         the file created. Whether the requested file can be created or
+         not is determined solely by the associated /FA form. As noted
+         above, the erroneous forms requesting a .ASM file are forced
+         to request a .COD file with code bytes.  So while
+
+             /Fa /FAs
+             /Fa<file> /FA
+
+         specify .ASM files, they are treated as if they were written
+
+             /Fa /FAcs
+             /Fa<file> /FAc
+
+         respectively.
+
+
+
+     1.2.2 /Gs - CLAXP supports the /Gs option to turn-off stack limit
+     checking, but does not support the form /Gs{num} to specify the
+     stack-limit checking value.  In particular, use /Ge to enable
+     stack limit checking (the default), not /Gs0.
+
+
+     When stack limit checking is enabled, it is assumed that there
+     may only be a single guard page for a thread.  For the Alpha AXP
+     architecture, a hardware page may have a size of 8, 16, 32 or 64K
+     bytes, depending on the implementation.  The CLAXP stack checking
+     logic is thus based on the minimum allowed page size of 8K bytes.
+
+
+
+     1.2.3 /Gt - /Gt specifies the maximum size of data objects that
+     can be included in the shared global section.  Such objects can
+     be addressed using faster code sequences because they are
+     addressed relative to a fixed global pointer (which is always
+     available in the Alpha AXP register R29).
+
+
+     A global section can only be used in a main program.  Object
+     modules that are included in a DLL (dynamic-link library) can
+     neither use nor modify the global pointer register established
+     for the main program.  Such modules must be compiled using /Gt0
+     (which is the default).  Object modules that define initialized
+     storage for global variables and are linked into an executable
+     image rather than a DLL must generally be compiled with a /Gt
+     value at least as large as the /Gt value used when compiling
+     modules that refer to the global data.  For this reason,
+     compiling even with very small non-zero /Gt can sometimes cause
+     link errors when linking with object module libraries rather than
+     DLL's (e.g.  if the library was compiled with /Gt0).
+
+
+     At most 64K bytes of object storage can be allocated in the
+     global section.  If more that this amount of storage is detected
+     during linking, then some of the modules involved must be
+     re-compiled using a smaller threshold, typically /Gt0.  It
+     follows that no single object module can require more than 64K
+     bytes by itself; this error is detected during compilation.
+
+
+
+     1.2.4 /FI - There is a new option to allow a file to be prepended
+     at the beginning of a compilation (without needing to add an
+     #include directive at the beginning of the source). The option
+     syntax is
+
+         /FI{filename}
+
+     The given file is included in the compilation prior to the  first
+     line.  Multiple /FI options are allowed.
+
+
+
+     1.2.5 /Op And /Op- - The /Op- option indicates that the CLAXP
+     compiler is allowed to use certain optimizations that favor speed
+     at the possible loss of some accuracy.  For example, division of
+     a floating-point value by another can be performed using
+     multiplication by the inverse of that value.  Similarly, various
+     reorderings and transformations of an expression may be
+     mathematically equivalent and faster, but may lose some accuracy
+     compared to the original formulation.
+
+
+     The default is /Op.  That is, modules are considered to be
+     accuracy sensitive, as required by the ANSI C rules, by default.
+     Note that on x86 platforms, the default of /Op- allows the
+     compiler to use excess precision when evaluating intermediate
+     results, which is allowed by ANSI C rules but can often lead to
+     unexpected final results in numeric applications.  So on both
+     platforms /Op means to compute floating point values with maximum
+     fidelity to the way the source code is written, but the default
+     is different since excess precision calculations are allowed by
+     ANSI C while reciprocals and other transformations are not.
+
+
+     1.2.6  /O, /O1, /O2, /Od  And  /Ox - CLAXP  provides  four  basic
+     levels of optimization:
+
+     /Od     Perform no optimization.  This choice is  recommended  in
+             combination  with the /Zd or /Zi option when debugging is
+             intended.  It is the default if /Zi or /Z7 is specified
+             and there are no explicit optimization options.
+
+     /O1     Perform  optimizations  that  are  consistent   with
+             keeping  the resulting code small.  This implies the /Ob1
+             and /Oi- options by default, but these can be overridden.
+
+     /Ox     Perform the optimizations that benefit speed even if  the
+             code  requires  somewhat more  space.  For example, loop
+             unrolling may occur.  The /Ob1 option is assumed by default
+             to give the user more control over inlining,  but this can
+             be overridden.  /Oi is also implied.
+
+     /O2     Perform  all   optimizations,   including   automatic
+             inlining  by  the  compiler.  /Ob2 is assumed by default,
+             but this can be overridden.  /Oi is also implied.
+
+
+     The default if no explicit optimization option is given is /Ox /Oi-
+     unless /Zi or /Z7 is specified (in which case the default is /Od).
+     
+
+     /O is equivalent to /O2.
+
+
+     /Ox and O2 (similarly, /O) include all of the optimizations that
+     are implied by the Microsoft /Oc (block subexpression), /Og
+     (global subexpression), /Oi (enable intrinsics), /Ol (loop
+     optimization), and /Oo (peephole optimization) options in some
+     prior C compilers.  However, CLAXP does not allow independent
+     control of these optimizations (other than /Oi).
+
+     Note that /Os and /Ot, which express a preferred bias in the
+     trade-offs performed for other optimizations, are not supported.
+
+
+
+     1.2.7 /Q - Microsoft has selected the /Q option as a means for
+     compilers on the various hardware platforms to provide options
+     that are not generally common with other Windows NT compilers.
+     /QA has been chosen as the common prefix for Alpha/AXP options.
+
+
+     At present, no such Alpha-specific options are defined.
+
+
+     1.2.8 /Zh - /Zh directs the compiler to "home" all arguments to
+     their canonical location on the stack, just as though each formal
+     parameter name had been used in a context where it's address is
+     taken (such as the operand of the & operator).  This homing can
+     facilitate debugging, even in the absence of symbol table
+     information.  /Zh is implied by /Zi or /Z7 if optimization is
+     disabled.
+
+     2  CLAXP IMPLEMENTATION-SPECIFIC BEHAVIOR
+
+     2.1  Predefined Macros
+
+     In addition to the five predefined macros specified  for  ANSI  C
+     (__DATE__,  __FILE__,  __LINE__,  __STDC__,  and  __TIME__),  the
+     following macros are predefined in CLAXP:
+
+
+     Identifier      Function
+     -----------------------------------------------------------------
+     __Alpha_AXP     Always   defined.     Identifies    the    target
+                     architecture as Digital's Alpha AXP architecture.
+
+                                           NOTE
+
+                         The identifiers __alpha  or  __ALPHA  are
+                         also   defined   for   this  purpose  for
+                         compatibility with the  identifiers  used
+                         in  other Digital operating environments.
+                         However, __Alpha_AXP is  preferred  where
+                         suitable.
+
+     _ALPHA_         Always   defined.     Identifies    the    target
+                     architecture  for  use  in  the Windows NT header
+                     files.
+
+     _M_ALPHA	     Always defined.  Matches _M_MRX000 and _M_X386
+		     on MIPS and Intel platforms.
+
+     _WIN32          Always defined, as it is by the other Microsoft
+                     compilers for Win32 platforms.
+
+
+     The following predefined macros are  also  defined  according  to
+     Microsoft conventions:
+
+
+     Identifier      Function
+     -----------------------------------------------------------------
+
+     _MSC_VER        Defines the compiler version in the  form:   ddd.
+                     Defined as 800.
+
+     _CHAR_UNSIGNED  Defined only when the /J option is given to  make
+                     char unsigned by default.
+
+     __TIMESTAMP__   The date and time of the last modification of the
+                     source file.
+
+     __cplusplus__   Reserved by Microsoft to  assist  in  portability
+                     between C and C++.
+
+     2.2  Pragmas
+
+     There are no CLAXP-specific pragmas.
+
+
+     The following Microsoft C pragmas are supported in CLAXP:
+
+	      data_seg
+              function
+              hdrstop
+              intrinsic
+              message
+              pack
+              setlocale
+              warning
+
+
+
+     The following Microsoft C pragmas are recognized and checked  for
+     syntax but are otherwise ignored by CLAXP:
+
+              auto_inline
+              check_stack
+              code_seg
+              comment
+              inline_depth, inline_recursion
+              linesize, page, pagesize, subtitle, title
+              native_caller
+
+
+
+     The following Microsoft C pragmas are not recognized and cause  a
+     warning message to be printed:
+
+              alloc_text
+              check_pointer
+              skip
+
+     See the Microsoft "C Language Reference" book,  Section  7.8  for
+     details.
+
+
+
+     2.3  64-Bit Integer Support
+
+     2.3.1  64-Bit Integer Types - The integral type __int64, in  both
+     signed and unsigned forms, is supported.  This type can be freely
+     used as any other integral type with these qualifications:
+
+           .  An __int64 object is 64 bits (8 bytes) in size.
+
+           .  An __int64 object is 8-byte aligned by default.
+
+
+     2.3.2  64-Bit  Constants - No  special  notation  is  needed  for
+     for 64-bit integer constants.  The type of a constant integer literal
+     is determined by its form and value.  The type of a constant
+     expression is then determined by the usual rules of integral promotion
+     and the usual arithmetic conversions.  For each form of integer
+     literal constant shown below, the type of a constant of that form is
+     the first type listed for that form which can correctly represent
+     the value of the literal.  The type sequence for each form of literal
+     is as follows:
+
+
+     unsuffixed decimal:
+        int, unsigned long int, __int64, unsigned __int64
+
+     unsuffixed hex and octal:
+        int, unsigned int, __int64, unsigned __int64
+
+     suffixed by u or U:
+        unsigned int, unsigned __int64
+
+     suffixed by l or L:
+        long int, unsigned long int, __int64, unsigned __int64
+
+     suffixed by u or U and l or L:
+        unsigned long int, unsigned __int64
+
+     No special integer suffix is defined to cause a constant that  is
+     representable  as a long or int value to instead be considered an
+     __int64 value.  The recommended way to achieve this effect is  to
+     use a type cast.  For example:
+
+         #define longlong __int64
+
+         longlong LL = ((longlong) 1) << 53;
+
+     Note that without the type cast, the expression 1 << 53 would  be
+     considered undefined by the ANSI C rules since it is shifted by
+     an amount greater than the number of bits in an int.
+
+
+
+     2.3.3  64-Bit Formatted Input/Output - 64-bit values can be input
+     and output using format strings that use 'L' as the prefix to one
+     of the following conversion specifiers:
+
+         d, i, o, u, x and X
+
+     For example:
+
+         printf("A big number: %Lx", ((longlong) 1) << 53);
+
+     will output
+
+         A big number: 0020000000000000
+
+
+     Note that this usage of L is an extension to the ANSI C standard.
+     It   provides   a   useful  interpretation  for  combinations  of
+     conversion specifiers that are otherwise undefined.   It  follows
+     that  use  of  L  in  this  way  may  not  be  portable  to other
+     environments.  (The standard defined usage of L as a prefix to e,
+     E, f, g and G is not affected.)
+
+     The C libraries also support the conversion functions strtoq and
+     strtouq.
+     
+
+     2.3.4  Special Considerations - The following restrictions  apply
+     to the use of 64-bit values:
+
+           .  The constant expression of an array declarator must  not
+              be of type __int64 (either signed or unsigned).
+
+           .  The constant expression of a case label must not  be  of
+              type __int64 (either signed or unsigned).
+
+
+
+     2.4  Intrinsic Functions
+
+     In the function descriptions below,  assume  that  the  following
+     type definitions apply:
+
+             typedef signed   __int64    int64;
+             typedef unsigned __int64   uint64;
+
+
+
+     CLAXP supports the following intrinsic functions.   All  of  them
+     correspond   one-for-one   with   corresponding  instructions  or
+     PALcalls in the Alpha AXP architecture.
+
+
+
+
+     Unsigned Quadword Multiply High (UMULH)
+
+             uint64 __UMULH(uint64 operand1, uint64 operand2);
+
+
+     Trap Barrier (TRAPB)
+
+             void __TRAPB(void);
+
+
+     Read Cycle Counter (RCC)
+
+             unsigned int __RCC(void);
+
+
+     Halt Processor (HALT)
+
+             void __PAL_HALT(void);
+
+
+     Generate Trap (GENTRAP)
+
+             void __PAL_GENTRAP(uint64 trap_code);
+
+
+     Memory Barrier (MB)
+
+             void __MB(void);
+
+
+     Instruction Memory Barrier
+
+             void __PAL_IMB(void);
+
+
+     The following intrinsics are intended for  use  in  stdarg.h  and
+     varargs.h only:
+
+             int __builtin_isfloat(type-name);
+
+             void * __builtin_va_start(
+                        va_list, last-fixed-formal-name, bool);
+
+
+     The following intrinsic is intended for use in setjmp.h only:
+
+             int _setjmp(jmp_buf buffer);
+
+
+     CLAXP has intrinsic support to  generate  special  code  for  the
+     following Microsoft C functions:
+
+                 _alloca
+                 abs         fabs       labs
+                 _lrotl      _lrotr     _rotl       _rotr
+                 memcpy      memset
+                 strcmp      strcpy     strlen
+
+
+
+     For the other Microsoft C intrinsics, normal  external  calls  to
+     the  standard  library functions are generated whether or not the
+     intrinsic forms are enabled by command line options or pragmas.
+
+
+     3  NEW MICROSOFT C/C++ FEATURES SUPPORTED IN CLAXP
+
+     This section  notes  some new  features  that  have  been  added
+     to Microsoft  C/C++  since C7 and  are  not  described in C7
+     documentation.  They are further described in the NT and Visual C++
+     documentation.
+
+
+     3.1  __unaligned Type Qualifier
+
+
+         __unaligned
+
+         Is a qualifier that may be used in the same way as the
+         ANSI C "const" and "volatile" qualifiers.  It tells the
+         compiler that accesses to memory through an l-value with
+         this qualifier on it are not known to be on a properly aligned
+         boundary, so the compiler needs to generate somewhat
+         longer code to avoid getting an alignment trap at runtime.
+
+
+
+     3.2  Structured Exception Handling
+
+     The try/except/finally/leave constructs are supported.
+
+
+     4  CLAXP IMPLEMENTATION-DEFINED BEHAVIOR
+
+     This section details the CLAXP implementation-defined behavior as
+     required  by  the  ANSI  C  Standard,  Appendix  F.3.   Where the
+     behavior is defined as the "same as Microsoft C", refer to the "C
+     Language Reference Manual", Appendix B (Version 7.0).
+
+     4.1  Translation
+
+     Diagnostics - Same as Microsoft C.
+
+     4.2  Environment
+
+     Arguments to main - Same as Microsoft C.
+
+     Interactive Devices - Same as Microsoft C.
+
+     4.3  Identifiers
+
+     Significant  Characters  Without   External   Linkage - Same   as
+     Microsoft C.
+
+     Significant Characters With External Linkage - Same as  Microsoft
+     C.
+
+     Uppercase and Lowercase - Same as Microsoft C,  except  that  the
+     __pascal options (/Gc and /Zc) do not apply because there is only
+     one calling convention used for the  Alpha  AXP  architecture  on
+     Windows NT.
+
+     4.4  Characters
+
+     The ASCII Character Set - Same as Microsoft C.
+
+     Multibyte Characters - Same as Microsoft C.
+
+     Bits per Character - Same as Microsoft C.
+
+     Character Sets - Same as Microsoft C.
+
+     Unrepresented Character Constants - Same as Microsoft C.
+
+     Wide Characters - Same as Microsoft C.
+
+     Converting Multibyte Characters - Same as Microsoft C.
+
+     Range of char Values - Same as Microsoft C.
+
+
+     4.5  Integers
+
+     Range of Integer Values - The integer types of  Microsoft  C  are
+     supplemented with these additional integral types:
+
+
+     Type                        Minimum and Maximum
+     -----------------------------------------------------------------
+
+     unsigned __int64            0 to (2^64)-1
+
+     signed __int64              -(2^63) to (2^63)-1
+
+     Demotion of Integers - Same as Microsoft C.  In particular, if an
+     __int64  integer  is  cast  to  a  long  (or  an  int), the least
+     significant bytes are retained.
+
+     Signed Bitwise Operations - Same as Microsoft C.
+
+     Remainders - Same as Microsoft C.
+
+     Right Shifts - Same as Microsoft C.
+
+     4.6  Floating-Point Math
+
+     Values - Same as Microsoft C, except that CLAXP supports the long
+     double  type  using  the  same  representation as the double type
+     (64-bits).
+
+     Casting Integers to Floating-Point Values - Same as Microsoft C.
+
+     Truncation of Floating-Point Values - Same as Microsoft C.
+
+     4.7  Arrays and Pointers
+
+     Largest Array Size - size_t is defined as unsigned int (32 bits).
+     However, the constant expression of an array declarator must  not
+     be of type __int64 (either signed or unsigned).
+
+     Casting Pointers - sizeof(void *) is 4.  All  pointers  are  this
+     size.
+
+     Pointer Subtraction - ptrdiff_t is defined as int (32 bits).
+
+
+     4.8  Registers
+
+     Availability of Registers - A number of registers are available
+     for holding objects with the register storage-class specifier.
+     See the "Windows NT for Alpha AXP Calling Standard" for details
+     on register usage conventions.  The CLAXP compiler backend
+     currently ignores the register storage-class specifier.  The
+     frontend does check that the usage conforms to ANSI standard
+     (i.e. it is an error to take the address of a register variable).
+
+     4.9  Structures, Unions, Enumerations, and Bit Fields
+
+     Improper Access to a Union - Same as Microsoft C.
+
+     Padding and Alignment of Structure Members - Same as Microsoft C,
+     except that the default packing size is 8 (/Zp8).
+
+     Sign of Bit Fields - Same as Microsoft C.  (Plain bit fields  are
+     signed.)
+
+     Storage of Bit Fields - Same as Microsoft  C.   (Bit  fields  are
+     allocated within a 32-bit integer.)
+
+     Alignment of Bit Fields - Same as Microsoft C.  (Bit  fields  are
+     allocated within a four-byte aligned (int sized) frame.)
+
+     The enum Type - Same as Microsoft C.
+
+     4.10  Qualifiers
+
+     Access to Volatile Objects - Same as Microsoft C.
+
+     4.11  Declarators
+
+     Maximum Number - Same as Microsoft C.
+
+     4.12  Statements
+
+     Limits on Switch Statements - Same as Microsoft C.  However,  the
+     constant  expression  of a case label must not be of type __int64
+     (either signed or unsigned).
+
+     4.13  Preprocessing Directives
+
+     Character Constants and Conditional Inclusion - Same as Microsoft
+     C.
+
+     Including Bracketed Filenames - Same as Microsoft C.
+
+     Including Quoted Filenames - Same as Microsoft C.
+
+     Character Sequences - Same as Microsoft C.
+
+     Pragmas - See Section 2.2, Pragmas, above.
+
+     Default Data and Time - Same as Microsoft C.
+
+     4.14  Library Functions
+
+     NULL Macro - Same as Microsoft C.
+
+     Diagnostic Printed by the assert Function - Same as Microsoft C.
+
+     Character Testing - Same as Microsoft C.
+
+     Domain Errors - Same as Microsoft C.
+
+     Underflow of Floating-Point Values - Same as Microsoft C.
+
+     The fmod Function - Same as Microsoft C.
+
+     The signal Function - Same as Microsoft C.
+
+     Default Signals - Same as Microsoft C.
+
+     The SIGILL Signal - Same as Microsoft C.
+
+     Terminating Newline Characters - Same as Microsoft C.
+
+     Blank Lines - Same as Microsoft C.
+
+     Null Characters - Same as Microsoft C.
+
+     File Position in Append Mode - Same as Microsoft C.
+
+     Truncation of Text Files - Same as Microsoft C.
+
+     File Buffering - Same as Microsoft C.
+
+     Zero-Length Files - Same as Microsoft C.
+
+     Filenames - Same as Microsoft C.
+
+     File Access Limits - Same as Microsoft C.
+
+     Deleting Open Files - Same as Microsoft C.
+
+     Renaming With a Name That Exists - Same as Microsoft C.
+
+     Printing Pointer Values - Same as Microsoft C.
+
+     Reading Pointer Values - Same as Microsoft C.
+
+     Reading Ranges - Same as Microsoft C.
+
+     File Position Errors - Same as Microsoft C.
+
+     Messages Generated by the perror Function - Same as Microsoft C.
+
+     Allocating Zero Memory - Same as Microsoft C.
+
+     The abort Function - Same as Microsoft C.
+
+     The atexit Function - Same as Microsoft C.
+
+     Environment Names - Same as Microsoft C.
+
+     The system Function - Same as Microsoft C.
+
+     The strerror Function - Same as Microsoft C.
+
+     The Time Zone - Same as Microsoft C.
+
+     The clock Function - Same as Microsoft C.

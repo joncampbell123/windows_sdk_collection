@@ -1,0 +1,121 @@
+'*****************************************************************************
+' Copyright (c) 1991 Microsoft Corporation
+'
+' Module Name:
+'   delete.mst
+'
+' Abstract:
+'   Uses windisk.exe to delete partitions/stripes/volumes/mirrors
+'   The specified ft componet to be deleted is described in the file
+'   create.dat
+'
+' Author:
+'   Kenieth Peery (t-kenpe) 12-9-92
+'
+' Revision History:
+'   12-19-92 added the delete exended regions code
+'*****************************************************************************
+
+'$DEFINE TESTEVNT
+'$DEFINE TESTCTRL
+
+'$INCLUDE 'MSTEST.INC'
+
+'$INCLUDE 'common.inc'
+
+
+DIM ftType$         '*** the type of ft componet to create
+DIM fileSystem$     '*** the desire fileSystem of the created partition
+DIM szMB$           '*** the desire space of the created partition
+DIM driveLet$       '*** the desire drive letter to be assigned to the partition
+DIM numRegions%     '*** the number of sected regions
+
+GetConfig "create.dat",ftType,fileSystem,szMB,driveLet,numRegions
+
+'*** Here we go
+RUN "windisk", NOWAIT
+WndWait "Disk Administrator"
+
+AvoidLeadingPopups
+
+winHandle = WGetActWnd(0)       '*** get the handle to the main window
+WMaxWnd wnHandle
+
+SelectRegion disk(0), pos(0)    '*** select the ft componte to delete
+
+IF ftType=MIRROR THEN
+  QuePause 1000
+  QueKeys "%(){RIGHT}{ENTER}{DOWN}{ENTER}"  '*** break the mirror
+  QuePause 1000
+  QueKeys "{ENTER}"             '*** confirm the break
+  gPos=0                        '*** After breaking mirror the select moves
+  QuePause 1000
+  SelectRegion disk(0), pos(0)  '*** select the prim partition
+END IF
+
+IF ftType=MIRROR OR ftType=BROKEN_MIRROR THEN
+  QuePause 1000
+  QueKeys "%(){ENTER}{DOWN}{DOWN}{ENTER}"  '*** delete the 1st partition
+  QuePause 1000
+  QueKeys "{ENTER}"             '*** confirm the delete
+  gPos=0                        '*** After delete the select moves
+  QuePause 1000
+
+  SelectRegion disk(1), pos(1)  '*** select shdw
+  QuePause 1000
+  QueKeys "%(){ENTER}{DOWN}{DOWN}{ENTER}"  '*** delete the second partition
+  QuePause 1000
+  QueKeys "{ENTER}"             '*** confirm the delete
+  gPos=0                        '*** After delete the select moves
+  QuePause 1000
+END IF
+
+                                '*** delete one of the other ft/nonft partitions
+IF ftType=STRWOP OR ftType=STRWP OR ftType=VOLUME OR ftType=PARTITION THEN
+  QueKeys "%(){ENTER}{DOWN}{DOWN}{ENTER}"
+  QueKeys "{ENTER}"             '*** confirm the delete
+  gPos=0                        '*** After delete the select moves
+  QuePause 1000
+END IF
+
+i=0                             '*** delete extended regions 
+WHILE i < numRegions    
+  IF toExtend(i) <> 0 THEN
+    QuePause 1000
+    SelectRegion disk(i), pos(i)
+    QueKeys "%(){ENTER}{DOWN}{DOWN}{ENTER}"            
+    QuePause 1000
+    QueKeys "{ENTER}"
+    QueFlush 1
+    gPos%=0
+  END IF
+  i=i+1
+WEND
+
+QuePause 1000
+QueKeys "%(){ENTER}{UP}{ENTER}" '*** Exit stage right
+QuePause 1000
+QueKeys "{ENTER}"               '*** Save Changes?
+QuePause 1000
+QueKeys "{ENTER}"               '*** Disks Updated succesfully
+                                '*** need something conditional
+                                '*** here if not
+'
+' This code is commented out to prevent windisk from sending the
+' shutdown request.  We are doing it ourselves with the force
+' flag below to workaround these shutdown problems.
+'
+'QueKeys "{ENTER}"               '*** Reboot
+'
+
+QuePause 1000
+QueFlush 1
+
+WHILE 1
+    SHELL "shutdown -f -r -t 0"
+WEND
+
+WaitForShutdown                '*** Prevents the premature execution of the
+                               '*** next do script.
+
+END '*** end of Main program

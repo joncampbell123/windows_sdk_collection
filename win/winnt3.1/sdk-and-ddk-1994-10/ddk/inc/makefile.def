@@ -1,0 +1,2986 @@
+!IF 0
+
+Copyright (c) 1989  Microsoft Corporation
+
+Module Name:
+
+    makefile.def
+
+Abstract:
+
+    This is the standard makefile for the components of the NT project.
+    It includes the following files:
+
+        .\sources.      - developer supplies this file.  It defines the
+                          required TARGETNAME, TARGETPATH, TARGETTYPE and
+                          SOURCES as well as optional macros that control
+                          the behavior of the compiler and linker:
+
+        obj\_objects.mac  - built by BUILD.EXE from .\sources.
+
+
+Targets:
+
+    all       - Builds all targets in this make file
+
+    clean     - Erase all targets that can be produced by this make
+                file, ignoring errors.  Also rebuilds the depend target.
+
+    depend    - Rebuilts source file dependencies, using BUILD.EXE tool
+
+
+Useful Variables Set:
+
+    CPUTYPE={I386|MIPS|ALPHA}
+
+Optional Controls Variables (partial list), these are environment variables,
+remember they can be set with env=value on the command line as well:
+
+NOTE:  xxx_... is {MSC|386|mips|alpha} where MSC_ applies to the C8 compiler
+       independent of the cpu type.  Specific cpu_ will take precedence
+       over the equivalent MSC_ variable.
+
+EXAMPLE:  To compile with codeview symbols for windbg:
+
+          set NTDEBUG=NTSD
+          set NTDEBUGTYPE=WINDBG
+          set MSC_OPTIMIZATION=/Od
+
+
+    nttest=filename
+
+    umtest=filename
+
+    umappl=filename
+
+    NT_UP
+            Define as 0 in environment to turn on MP.
+            If undefined or equal to 1, you get UP.
+
+    HalType
+            SystemPro, MCA, Wyse7000i
+
+    ABIOS   Enable kernel abios support
+
+    xxx_warning_level
+
+    xxx_optimization
+
+    xxx_STDCALL = 1 use _stdcall calling convention
+                  0 use _cdecl calling convention
+
+    ntdebug
+
+    browser_info
+
+    xxx_cppflags
+
+    ntcppflags
+
+    NT_INST - set to turn on instrumentation
+
+    BASEDIR - \nt or \ntrel (default \nt)
+
+    SGI
+
+    COMPAQ
+
+!ENDIF
+
+#
+# Determine which targets are being built for (i386, Mips or Alpha)
+# Make sure all target variables are defined.
+#
+
+# mods for n386 build {
+
+N386_TCFLG      = /Tc
+
+# }
+
+
+!IFNDEF NTSDK
+NTSDK=0
+!ENDIF
+
+!IFNDEF 386
+386=0
+!ENDIF
+
+!IFNDEF MIPS
+MIPS=0
+!ENDIF
+
+!IFNDEF ALPHA
+ALPHA=0
+!ENDIF
+
+!IFNDEF _AXPACC_
+_AXPACC_=0
+!ENDIF
+
+#
+# Default to building for i386 target, if no targets specified.
+#
+
+!IF !$(386)
+!   IF !$(MIPS)
+!       IF !$(ALPHA)
+!           IFDEF NTMIPSDEFAULT
+MIPS=1
+!               IFNDEF TARGETCPU
+TARGETCPU=MIPS
+!               ENDIF
+!           ELSE
+!               IFDEF NTALPHADEFAULT
+ALPHA=1
+!                   IFNDEF TARGETCPU
+TARGETCPU=ALPHA
+!                   ENDIF
+!               ELSE
+386=1
+!                   IFNDEF TARGETCPU
+TARGETCPU=I386
+!                   ENDIF
+!               ENDIF
+!           ENDIF
+!       ENDIF
+!   ENDIF
+!ENDIF
+
+#
+# specify where to get incs and libs from
+#
+
+!IFNDEF _NTDRIVE
+_NTDRIVE=c:
+!ENDIF
+
+!IFNDEF _NTROOT
+_NTROOT=\nt
+!ENDIF
+
+!IFNDEF BASEDIR
+BASEDIR=$(_NTDRIVE)$(_NTROOT)
+!ENDIF
+
+#
+# Include the developer supplied file that defines the TARGETNAME, TARGETPATH,
+# TARGETTYPE and SOURCES macros.  Make sure it defines them.
+#
+
+!INCLUDE .\sources.
+
+!IFNDEF TARGETNAME
+!ERROR Your .\sources. file must define the TARGETNAME= macro
+!ENDIF
+
+!IFNDEF TARGETPATH
+!ERROR Your .\sources. file must define the TARGETPATH= macro
+!ENDIF
+
+!IFNDEF TARGETTYPE
+!ERROR Your .\sources. file must define the TARGETTYPE= macro
+!ENDIF
+
+!IFNDEF SOURCES
+!ERROR Your .\sources. file must define the SOURCES= macro
+!ENDIF
+
+MIP2COFF=mip2coff $(MIP2COFF_SWITCHES)
+A2COFF=a2coff $(A2COFF_SWITCHES)
+
+!IFNDEF UMTYPE
+UMTYPE=nt
+!ENDIF
+
+!IFNDEF UMLIBS
+UMLIBS=
+!ENDIF
+
+!IFNDEF UMRES
+UMRES=
+!ENDIF
+
+!IFNDEF NTRES
+NTRES=
+!ENDIF
+
+!IFNDEF UMBASE
+!   IFDEF COFFBASE
+UMBASE=@$(BASEDIR)\LIB\coffbase.txt,$(COFFBASE)
+!   ELSE
+UMBASE=@$(BASEDIR)\LIB\coffbase.txt,usermode
+!   ENDIF
+!ENDIF
+
+!IFNDEF 386_UMBASE
+386_UMBASE=$(UMBASE:*=i386)
+!ENDIF
+
+!IFNDEF MIPS_UMBASE
+MIPS_UMBASE=$(UMBASE:*=mips)
+!ENDIF
+
+!IFNDEF ALPHA_UMBASE
+ALPHA_UMBASE=$(UMBASE:*=alpha)
+!ENDIF
+
+386_UMOBJS=$(UMOBJS:*=i386)
+MIPS_UMOBJS=$(UMOBJS:*=mips)
+ALPHA_UMOBJS=$(UMOBJS:*=alpha)
+
+386_UMLIBS=$(UMLIBS:*=i386)
+MIPS_UMLIBS=$(UMLIBS:*=mips)
+ALPHA_UMLIBS=$(UMLIBS:*=alpha)
+
+386_UMRES=$(UMRES:*=i386)
+MIPS_UMRES=$(UMRES:*=mips)
+ALPHA_UMRES=$(UMRES:*=alpha)
+
+386_NTRES=$(NTRES:*=i386)
+MIPS_NTRES=$(NTRES:*=mips)
+ALPHA_NTRES=$(NTRES:*=alpha)
+
+386_LINKLIBS=$(LINKLIBS:*=i386) $(PERFLIBS:*=i386)
+MIPS_LINKLIBS=$(LINKLIBS:*=mips) $(PERFLIBS:*=mips)
+ALPHA_LINKLIBS=$(LINKLIBS:*=alpha) $(PERFLIBS:*=alpha)
+
+!IFDEF 386_USE_LIBCMT
+USE_LIBCMT=1
+!ENDIF
+
+!IFDEF USE_CRTDLL
+
+LIBC_LIB=crtdll.lib
+LIBC_DEFINES=-D_DLL=1 -D_MT=1
+
+!ELSE
+
+!   IFDEF USE_LIBCMT
+LIBC_LIB=libcmt.lib
+LIBC_DEFINES=-D_MT=1
+
+!   ELSE
+
+LIBC_LIB=libc.lib
+LIBC_DEFINES=
+
+!   ENDIF
+!ENDIF
+
+!IFDEF NTLIBPATH
+CRT_LIBS=$(NTLIBPATH)\*\lib\libcnt.lib
+NT_LIBS=$(NTLIBPATH)\*\lib\ntdll.lib
+NT_CRT=$(NTLIBPATH)\*\lib\nt.lib
+WIN32_LIBS=$(NTLIBPATH)\*\lib\kernel32.lib \
+           $(NTLIBPATH)\*\lib\advapi32.lib \
+           $(NTLIBPATH)\*\lib\$(LIBC_LIB) \
+           $(NT_LIBS)
+GUI32_LIBS=$(NTLIBPATH)\*\lib\gdi32.lib \
+           $(NTLIBPATH)\*\lib\user32.lib
+!ELSE
+CRT_LIBS=$(BASEDIR)\lib\*\$(DDKBUILDENV)\libcnt.lib
+NT_LIBS=$(BASEDIR)\lib\*\$(DDKBUILDENV)\ntdll.lib
+NT_CRT=$(BASEDIR)\lib\*\$(DDKBUILDENV)\nt.lib
+WIN32_LIBS=$(BASEDIR)\lib\*\$(DDKBUILDENV)\kernel32.lib \
+           $(BASEDIR)\lib\*\$(DDKBUILDENV)\advapi32.lib \
+           $(BASEDIR)\lib\*\$(DDKBUILDENV)\$(LIBC_LIB) \
+           $(NT_LIBS)
+GUI32_LIBS=$(BASEDIR)\lib\*\$(DDKBUILDENV)\gdi32.lib \
+           $(BASEDIR)\lib\*\$(DDKBUILDENV)\user32.lib
+!ENDIF
+
+NTSS_LIBS=$(NT_LIBS) $(NT_CRT) $(BASEDIR)\lib\*\$(DDKBUILDENV)\smdll.lib
+
+OS2_LIBS=$(NT_LIBS)  $(BASEDIR)\lib\*\$(DDKBUILDENV)\os2dll.lib \
+                     $(CRT_LIBS)
+
+POSIX_LIBS=$(NT_LIBS) $(BASEDIR)\lib\*\$(DDKBUILDENV)\libcpsx.lib \
+                      $(BASEDIR)\lib\*\$(DDKBUILDENV)\psxdll.lib \
+                      $(BASEDIR)\lib\*\$(DDKBUILDENV)\psxrtl.lib
+
+!IF "$(UMTYPE)" == "nt"
+SUBSYSTEM=native
+UMINCL=$(BASEDIR)\inc\crt
+
+386_UMENTRY=-entry:NtProcessStartup@4
+MIPS_UMENTRY=-entry:NtProcessStartup
+ALPHA_UMENTRY=-entry:NtProcessStartup
+
+386_UMLIBS=$(386_UMLIBS)   $(NT_LIBS:*=i386) $(NT_CRT:*=i386) $(CRT_LIBS:*=i386)
+MIPS_UMLIBS=$(MIPS_UMLIBS) $(CRT_LIBS:*=mips) $(NT_LIBS:*=mips) $(NT_CRT:*=mips)
+ALPHA_UMLIBS=$(ALPHA_UMLIBS) $(CRT_LIBS:*=alpha) $(NT_LIBS:*=alpha) $(NT_CRT:*=alpha)
+
+!ELSE
+!   IF "$(UMTYPE)" == "windows"
+SUBSYSTEM=windows
+UMINCL=$(BASEDIR)\inc\crt
+
+!       IF "$(UMENTRY)" == "winmain"
+386_UMENTRY=-entry:WinMainCRTStartup
+MIPS_UMENTRY=-entry:WinMainCRTStartup
+ALPHA_UMENTRY=-entry:WinMainCRTStartup
+!       ELSE
+386_UMENTRY=-entry:mainCRTStartup
+MIPS_UMENTRY=-entry:mainCRTStartup
+ALPHA_UMENTRY=-entry:mainCRTStartup
+!       ENDIF
+
+386_UMLIBS=$(386_UMLIBS)   $(WIN32_LIBS:*=i386) $(GUI32_LIBS:*=i386)
+MIPS_UMLIBS=$(MIPS_UMLIBS) $(WIN32_LIBS:*=mips) $(GUI32_LIBS:*=mips)
+ALPHA_UMLIBS=$(ALPHA_UMLIBS) $(WIN32_LIBS:*=alpha) $(GUI32_LIBS:*=alpha)
+
+!   ELSE
+!       IF "$(UMTYPE)" == "console"
+SUBSYSTEM=console
+UMINCL=$(BASEDIR)\inc\crt
+
+!           IF "$(UMENTRY)" == "winmain"
+386_UMENTRY=-entry:WinMainCRTStartup
+MIPS_UMENTRY=-entry:WinMainCRTStartup
+ALPHA_UMENTRY=-entry:WinMainCRTStartup
+!           ELSE
+386_UMENTRY=-entry:mainCRTStartup
+MIPS_UMENTRY=-entry:mainCRTStartup
+ALPHA_UMENTRY=-entry:mainCRTStartup
+!           ENDIF
+
+386_UMLIBS=$(386_UMLIBS)   $(WIN32_LIBS:*=i386)
+MIPS_UMLIBS=$(MIPS_UMLIBS) $(WIN32_LIBS:*=mips)
+ALPHA_UMLIBS=$(ALPHA_UMLIBS) $(WIN32_LIBS:*=alpha)
+
+!       ELSE
+!           IF "$(UMTYPE)" == "ntss"
+SUBSYSTEM=native
+UMINCL=$(BASEDIR)\inc\crt
+
+386_UMENTRY=-entry:NtProcessStartup@4
+MIPS_UMENTRY=-entry:NtProcessStartup
+ALPHA_UMENTRY=-entry:NtProcessStartup
+
+386_UMLIBS=$(386_UMLIBS)   $(NTSS_LIBS:*=i386) $(CRT_LIBS:*=i386)
+MIPS_UMLIBS=$(MIPS_UMLIBS) $(NTSS_LIBS:*=mips) $(CRT_LIBS:*=mips)
+ALPHA_UMLIBS=$(ALPHA_UMLIBS) $(NTSS_LIBS:*=alpha) $(CRT_LIBS:*=alpha)
+
+!           ELSE
+!               IF "$(UMTYPE)" == "os2"
+SUBSYSTEM=os2
+UMINCL=$(BASEDIR)\inc\os2;$(BASEDIR)\inc\crt
+
+386_UMENTRY=-entry:NtProcessStartup@4
+MIPS_UMENTRY=-entry:NtProcessStartup
+ALPHA_UMENTRY=-entry:NtProcessStartup
+
+386_UMLIBS=$(386_UMLIBS)   $(OS2_LIBS:*=i386)
+MIPS_UMLIBS=$(MIPS_UMLIBS) $(OS2_LIBS:*=mips)
+ALPHA_UMLIBS=$(ALPHA_UMLIBS) $(OS2_LIBS:*=alpha)
+
+!               ELSE
+!                   IF "$(UMTYPE)" == "posix"
+SUBSYSTEM=posix
+UMINCL=$(BASEDIR)\inc\posix;$(BASEDIR)\inc\crt
+
+386_UMENTRY=-entry:__PosixProcessStartup
+MIPS_UMENTRY=-entry:__PosixProcessStartup
+ALPHA_UMENTRY=-entry:__PosixProcessStartup
+
+386_UMLIBS=$(386_UMLIBS)   $(POSIX_LIBS:*=i386)
+MIPS_UMLIBS=$(MIPS_UMLIBS) $(POSIX_LIBS:*=mips)
+ALPHA_UMLIBS=$(ALPHA_UMLIBS) $(POSIX_LIBS:*=alpha)
+
+!                   ELSE
+!                       ERROR Invalid UMTYPE value - $(UMTYPE)
+!                   ENDIF # UMTYPE == posix
+!               ENDIF # UMTYPE == os2
+!           ENDIF # UMTYPE == ntss
+!       ENDIF # UMTYPE == console
+!   ENDIF # UMTYPE == windows
+!ENDIF # UMTYPE == nt
+
+
+#
+# Define BINPLACE flags as needed if separate .DBG file requested.
+#
+
+!IFDEF NTDBGFILES
+!   IF $(386)
+BINPLACE_FLAGS=-s $(_NT386TREE)\Symbols
+!   ELSE
+!       IF $(MIPS)
+BINPLACE_FLAGS=-s $(_NTMIPSTREE)\Symbols
+!       ELSE
+!           IF $(ALPHA)
+BINPLACE_FLAGS=-s $(_NTALPHATREE)\Symbols
+!           ENDIF
+!       ENDIF
+!   ENDIF
+!ELSE
+BINPLACE_FLAGS=
+!ENDIF
+
+#
+# If you edit this line you need to modify $(BASEDIR)\private\sdktools\build\build.c
+#
+
+!IFDEF NTINCPATH
+!   IF $(386)
+NTINCLUDES=$(BASEDIR)\inc;$(NTINCPATH)\i386\inc
+!   ELSE
+!       IF $(MIPS)
+NTINCLUDES=$(BASEDIR)\inc;$(NTINCPATH)\mips\inc
+!       ELSE
+!           IF $(ALPHA)
+NTINCLUDES=$(BASEDIR)\inc;$(NTINCPATH)\alpha\inc
+!           ENDIF
+!       ENDIF
+!   ENDIF
+!ELSE
+NTINCLUDES=$(BASEDIR)\inc;$(BASEDIR)\inc
+!ENDIF
+
+!IFDEF USER_INCLUDES
+USER_INCL0=-I$(USER_INCLUDES:;= -I)
+USER_INCL1=-I $(USER_INCLUDES:;= -I )
+!ELSE
+USER_INCL0=
+USER_INCL1=
+!ENDIF
+
+!IFDEF INCLUDES
+
+INCL=$(INCLUDES)
+INCPATH0=-I$(INCL:;= -I) -I$(NTINCLUDES:;= -I) -I$(UMINCL:;= -I) $(USER_INCL0)
+INCPATH1=-I $(INCL:;= -I ) -I $(NTINCLUDES:;= -I ) -I $(UMINCL:;= -I ) $(USER_INCL1)
+!ELSE
+INCPATH0=-I$(NTINCLUDES:;= -I) -I$(UMINCL:;= -I) $(USER_INCL0)
+INCPATH1=-I $(NTINCLUDES:;= -I ) -I $(UMINCL:;= -I ) $(USER_INCL1)
+!ENDIF
+
+!IFNDEF RELATIVE_DEPTH
+RELATIVE_DEPTH=..
+!ENDIF
+
+!IFNDEF TARGETLIBS
+TARGETLIBS=
+!ENDIF
+
+!IFNDEF DLLENTRY
+DLLENTRY=
+!   IF $(386)
+!       IF !$(NTSDK)
+DLLENTRY=-noentry
+!       ENDIF
+!   ENDIF
+!ELSE
+!   IF $(386)
+DLLENTRY=-entry:$(DLLENTRY)@12
+!   ELSE
+DLLENTRY=-entry:$(DLLENTRY)
+!   ENDIF
+!ENDIF
+
+!IFNDEF DLLBASE
+DLLBASE=@$(BASEDIR)\LIB\coffbase.txt,$(TARGETNAME)
+!ENDIF
+
+!IFNDEF 386_DLLBASE
+386_DLLBASE=$(DLLBASE:*=i386)
+!ENDIF
+
+!IFNDEF MIPS_DLLBASE
+MIPS_DLLBASE=$(DLLBASE:*=mips)
+!ENDIF
+
+!IFNDEF ALPHA_DLLBASE
+ALPHA_DLLBASE=$(DLLBASE:*=alpha)
+!ENDIF
+
+!IFNDEF DLLDEF
+DLLDEF=$(@B).def
+!ENDIF
+
+!IFNDEF 386_DLLDEF
+386_DLLDEF=$(DLLDEF:*=i386)
+!ENDIF
+
+!IFNDEF MIPS_DLLDEF
+MIPS_DLLDEF=$(DLLDEF:*=mips)
+!ENDIF
+
+!IFNDEF ALPHA_DLLDEF
+ALPHA_DLLDEF=$(DLLDEF:*=alpha)
+!ENDIF
+
+!IFNDEF BOOTBASE
+!   IFDEF FRAZZLE
+BOOTBASE=0xd0100000,0xd0104000
+!   ELSE
+BOOTBASE=0xd0ff0000,0xd0ff4000
+!   ENDIF
+!ENDIF
+
+DRIVERBASE=0x10000
+HALBASE=0x80400000
+!IFNDEF 386_BOOTBASE
+386_BOOTBASE=$(BOOTBASE)
+!ENDIF
+
+!IFNDEF MIPS_BOOTBASE
+MIPS_BOOTBASE=$(BOOTBASE)
+!ENDIF
+
+!IFNDEF ALPHA_BOOTBASE
+ALPHA_BOOTBASE=$(BOOTBASE)
+!ENDIF
+
+#
+# Map lower case to upper case for variables that can be specified from the
+# command line.
+#
+
+!IFDEF nttest
+NTTEST=$(nttest)
+!ENDIF
+
+!IFDEF makedll
+MAKEDLL=$(makedll)
+!ENDIF
+
+!IFDEF umtest
+UMTEST=$(umtest)
+!ENDIF
+
+
+#
+# Include the list of object files (defined as the OBJECTS macro) that was
+# built by BUILD program, using the SOURCES= macro defined in the sources.
+# file.  Use macro substitution to build the supported target objects.
+#
+
+!INCLUDE obj\_objects.mac
+
+
+#
+# BUILD.EXE defines the NOLINK variable to disable the building of any
+# test executables when it is recursing on a dirs. file to build components
+# in subdirectories.
+#
+
+!IF "$(BUILDMSG)" != "Stop."
+!   IFDEF NOLINK
+!       UNDEF NTTEST
+!       UNDEF MAKEDLL
+!   ELSE
+!       IFDEF nolink
+!           UNDEF NTTEST
+!           UNDEF MAKEDLL
+!       ENDIF
+!   ENDIF # DEF NOLINK
+!ENDIF # BUILDMSG != "Stop."
+
+
+
+#
+# If NTTEST is not defined, then define it as the empty string to make
+# the conditionals easier to write.
+#
+
+!IFNDEF NTTEST
+NTTEST=
+!ENDIF
+
+#
+# If UMAPPL is not defined, then define it as the empty string to make
+# the conditionals easier to write.
+#
+
+!IFNDEF UMAPPL
+UMAPPL=
+!ENDIF
+
+#
+# If UMTEST is not defined, then define it as the empty string to make
+# the conditionals easier to write.
+#
+
+!IFNDEF UMTEST
+UMTEST=
+!ENDIF
+
+#
+# If MAKEDLL is not defined, then define it as the empty string to make
+# the conditionals easier to write.
+#
+
+!IFNDEF MAKEDLL
+MAKEDLL=
+!ENDIF
+
+
+#
+# If BUILDMSG is not defined, the define it as the empty string to make
+# the conditionals easier to write.
+#
+
+!IFNDEF BUILDMSG
+BUILDMSG=
+!ENDIF
+
+
+#
+# Determine type of target link we are doing
+#
+!IF "$(TARGETTYPE)" == "PROGLIB"
+TARGETEXT=exe
+TARGETLIB=
+!ELSE
+!   IF "$(TARGETTYPE)" == "PROGRAM"
+TARGETEXT=exe
+TARGETLIB=
+!   ELSE
+!       IF "$(TARGETTYPE)" == "DYNLINK"
+!           IF "$(MAKEDLL)" != ""
+!               IF "$(TARGETEXT)" == ""
+TARGETEXT=dll
+!               ENDIF
+!               IF "$(UMTYPE)" == "os2"
+TARGETLIB=$(BASEDIR)\lib\*\$(DDKBUILDENV)\ntdll.lib
+!               ELSE
+!                   IF "$(UMTYPE)" == "posix"
+TARGETLIB=$(BASEDIR)\lib\*\$(DDKBUILDENV)\libcpsx.lib $(BASEDIR)\lib\*\$(DDKBUILDENV)\libcnt.lib $(BASEDIR)\lib\*\$(DDKBUILDENV)\ntdll.lib
+!                   ELSE
+!                       IF "$(TARGETNAME)" == "ntdll"
+TARGETLIB=$(BASEDIR)\lib\*\$(DDKBUILDENV)\libcnt.lib
+!                       ELSE
+!                           IFDEF USE_CRTDLL
+TARGETLIB=$(BASEDIR)\lib\*\$(DDKBUILDENV)\crtdll.lib $(BASEDIR)\lib\*\$(DDKBUILDENV)\ntdll.lib
+!                           ELSE
+TARGETLIB=$(BASEDIR)\lib\*\$(DDKBUILDENV)\libcnt.lib $(BASEDIR)\lib\*\$(DDKBUILDENV)\ntdll.lib
+!                           ENDIF
+!                       ENDIF
+!                   ENDIF
+!               ENDIF
+!           ELSE
+TARGETEXT=lib
+TARGETLIB=
+!           ENDIF
+!       ELSE
+!           IF "$(TARGETTYPE)" == "LIBRARY"
+TARGETEXT=lib
+TARGETLIB=
+!           ELSE
+!               IF "$(TARGETTYPE)" == "DRIVER"
+TARGETEXT=sys
+TARGETLIB=$(BASEDIR)\lib\*\$(DDKBUILDENV)\ntoskrnl.lib $(BASEDIR)\lib\*\$(DDKBUILDENV)\libcnt.lib  $(BASEDIR)\lib\*\$(DDKBUILDENV)\hal.lib
+!               ELSE
+!                   IF "$(TARGETTYPE)" == "EXPORT_DRIVER"
+!                       IF "$(MAKEDLL)" != ""
+TARGETEXT=sys
+TARGETLIB=$(BASEDIR)\lib\*\$(DDKBUILDENV)\ntoskrnl.lib $(BASEDIR)\lib\*\$(DDKBUILDENV)\libcnt.lib  $(BASEDIR)\lib\*\$(DDKBUILDENV)\hal.lib
+!                       ELSE
+TARGETEXT=lib
+TARGETLIB=
+!                       ENDIF
+!                   ELSE
+!                       IF "$(TARGETTYPE)" == "HAL"
+!                           IF "$(MAKEDLL)" != ""
+TARGETEXT=dll
+TARGETLIB=$(BASEDIR)\lib\*\$(DDKBUILDENV)\ntoskrnl.lib $(BASEDIR)\lib\*\$(DDKBUILDENV)\libcnt.lib
+!                           ELSE
+TARGETEXT=lib
+TARGETLIB=
+!                           ENDIF
+!                       ELSE
+!                           IF "$(TARGETTYPE)" == "BOOTPGM"
+TARGETEXT=sys
+!                               IFDEF MIPS
+TARGETLIB=
+!                               ELSE
+!                                   IFDEF ALPHA
+TARGETLIB=
+!                                   ELSE
+TARGETLIB=$(NT_LIBS)
+!                                   ENDIF
+!                               ENDIF
+!                           ENDIF # TARGETTYPE == BOOTPGM
+!                       ENDIF # TARGETTYPE == HAL
+!                   ENDIF # TARGETTYPE == EXPORT_DRIVER
+!               ENDIF # TARGETTYPE == DRIVER
+!           ENDIF # TARGETTYPE == LIBRARY
+!       ENDIF # TARGETTYPE == DYNLINK
+!   ENDIF # TARGETTYPE == PROGRAM
+!ENDIF # TARGETTYPE == PROGLIB
+
+386TARGET=
+MIPSTARGET=
+ALPHATARGET=
+!IF "$(TARGETTYPE)" != "UMAPPL_NOLIB"
+
+!   IF "$(386_OBJECTS)" != ""
+386TARGET=$(TARGETPATH)\i386\$(DDKBUILDENV)\$(TARGETNAME).$(TARGETEXT)
+!   ENDIF
+
+!   IF "$(MIPS_OBJECTS)" != ""
+MIPSTARGET=$(TARGETPATH)\mips\$(DDKBUILDENV)\$(TARGETNAME).$(TARGETEXT)
+!   ENDIF
+
+!   IF "$(ALPHA_OBJECTS)" != ""
+ALPHATARGET=$(TARGETPATH)\alpha\$(DDKBUILDENV)\$(TARGETNAME).$(TARGETEXT)
+!   ENDIF
+!ENDIF # TARGETTYPE != UMAPPL_NOLIB
+
+!IFNDEF 386_TARGETLIBS
+386_TARGETLIBS=$(TARGETLIB:*=i386) $(TARGETLIBS:*=i386)
+!ENDIF
+
+!IFNDEF MIPS_TARGETLIBS
+MIPS_TARGETLIBS=$(TARGETLIB:*=mips) $(TARGETLIBS:*=mips)
+!ENDIF
+
+!IFNDEF ALPHA_TARGETLIBS
+ALPHA_TARGETLIBS=$(TARGETLIB:*=alpha) $(TARGETLIBS:*=alpha)
+!ENDIF
+
+!IF $(386)
+TARGETOBJFILES=$(TARGETOBJFILES) $(386_OBJECTS)
+!ENDIF
+
+!IF $(MIPS)
+TARGETOBJFILES=$(TARGETOBJFILES) $(MIPS_OBJECTS)
+!ENDIF
+
+!IF $(ALPHA)
+TARGETOBJFILES=$(TARGETOBJFILES) $(ALPHA_OBJECTS)
+!ENDIF
+
+!IF "$(NOLINK)" == "" ||                                     \
+    ("$(NOLINK)" != "" && ("$(TARGETTYPE)"=="LIBRARY" ||     \
+                        (   ("$(TARGETTYPE)"=="DYNLINK" ||   \
+                         "$(TARGETTYPE)"=="EXPORT_DRIVER" || \
+                         "$(TARGETTYPE)"=="HAL")    &&       \
+                            "$(MAKEDLL)" == "")              \
+                           )                                 \
+    )
+
+!   IF $(386)
+!       IF "$(NOLINK)" != ""
+TARGETLIBFILES=$(TARGETLIBFILES) $(TARGETPATH)\i386\$(DDKBUILDENV)\$(TARGETNAME).lib
+!       ELSE
+TARGETEXEFILES=$(TARGETEXEFILES) $(386TARGET)
+!       ENDIF
+!   ENDIF
+
+!   IF $(MIPS)
+TARGETEXEFILES=$(TARGETEXEFILES) $(MIPSTARGET)
+!   ENDIF
+
+!   IF $(ALPHA)
+TARGETEXEFILES=$(TARGETEXEFILES) $(ALPHATARGET)
+!   ENDIF
+!ENDIF # NOLINK == "" || building .lib file for dll
+
+!IF "$(NTTEST)" != ""
+
+!   IF $(386)
+TARGETOBJFILES=$(TARGETOBJFILES) obj\i386\$(NTTEST).obj
+!   ENDIF
+
+!   IF $(MIPS)
+TARGETOBJFILES=$(TARGETOBJFILES) obj\mips\$(NTTEST).obj
+!   ENDIF
+
+!   IF $(ALPHA)
+TARGETOBJFILES=$(TARGETOBJFILES) obj\alpha\$(NTTEST).obj
+!   ENDIF
+
+!   IFNDEF NOLINK
+!       IF $(386)
+TARGETEXEFILES=$(TARGETEXEFILES) obj\i386\$(NTTEST).exe
+!       ENDIF
+
+!       IF $(MIPS)
+TARGETEXEFILES=$(TARGETEXEFILES) obj\mips\$(NTTEST).exe
+!       ENDIF
+
+!       IF $(ALPHA)
+TARGETEXEFILES=$(TARGETEXEFILES) obj\alpha\$(NTTEST).exe
+!       ENDIF
+!   ENDIF # NDEF NOLINK
+!ENDIF # NTTEST != ""
+
+386_UMOBJFILES=
+386_UMEXEFILES=
+386_UMCOMFILES=
+
+MIPS_UMOBJFILES=
+MIPS_UMEXEFILES=
+MIPS_UMCOMFILES=
+
+ALPHA_UMOBJFILES=
+ALPHA_UMEXEFILES=
+ALPHA_UMCOMFILES=
+
+!IF "$(UMAPPLEXT)" == ""
+!   IFDEF _DOT_COM_FILE
+UMAPPLEXT=.com
+!   ELSE
+UMAPPLEXT=.exe
+!   ENDIF
+!ENDIF
+
+!IF "$(UMAPPL)" != ""
+!   IF $(386)
+386_UMOBJFILES=obj\i386\$(UMAPPL:*=.obj obj\i386\).obj
+!   ENDIF
+
+!   IF $(MIPS)
+MIPS_UMOBJFILES=obj\mips\$(UMAPPL:*=.obj obj\mips\).obj
+!   ENDIF
+
+!   IF $(ALPHA)
+ALPHA_UMOBJFILES=obj\alpha\$(UMAPPL:*=.obj obj\alpha\).obj
+!   ENDIF
+
+!   IF "$(UMAPPLEXT)" == ".com"
+!       IFNDEF NOLINK
+!           IF $(386)
+386_UMEXEFILES=obj\i386\$(UMAPPL:*=.com obj\i386\).com
+!           ENDIF
+
+!           IF $(MIPS)
+MIPS_UMEXEFILES=obj\mips\$(UMAPPL:*=.com obj\mips\).com
+!           ENDIF
+
+!           IF $(ALPHA)
+ALPHA_UMEXEFILES=obj\alpha\$(UMAPPL:*=.com obj\alpha\).com
+!          ENDIF
+!       ENDIF
+
+!   ELSE
+!       IF "$(UMAPPLEXT)" == ".exe"
+!           IFNDEF NOLINK
+!               IF $(386)
+386_UMEXEFILES=obj\i386\$(UMAPPL:*=.exe obj\i386\).exe
+!               ENDIF
+
+!               IF $(MIPS)
+MIPS_UMEXEFILES=obj\mips\$(UMAPPL:*=.exe obj\mips\).exe
+!               ENDIF
+
+!               IF $(ALPHA)
+ALPHA_UMEXEFILES=obj\alpha\$(UMAPPL:*=.exe obj\alpha\).exe
+!               ENDIF
+!           ENDIF
+
+!       ELSE
+
+!           IF "$(UMAPPLEXT)" == ".scr"
+!               IFNDEF NOLINK
+!                   IF $(386)
+386_UMEXEFILES=obj\i386\$(UMAPPL:*=.scr obj\i386\).scr
+!                   ENDIF
+
+!                   IF $(MIPS)
+MIPS_UMEXEFILES=obj\mips\$(UMAPPL:*=.scr obj\mips\).scr
+!                   ENDIF
+
+!                   IF $(ALPHA)
+ALPHA_UMEXEFILES=obj\alpha\$(UMAPPL:*=.scr obj\alpha\).scr
+!                   ENDIF
+!               ENDIF
+
+!           ELSE
+
+!               ERROR Unsupport UMAPPLEXT = $(UMAPPLEXT)
+
+!           ENDIF # UMAPPLEXT == .scr
+!       ENDIF # UMAPPLEXT == .exe
+!   ENDIF # UMAPPLEXT == .com
+!ENDIF # UMAPPL != ""
+
+!IF "$(UMTEST)" != ""
+!   IF $(386)
+386_UMOBJFILES=$(386_UMOBJFILES) obj\i386\$(UMTEST:*=.obj obj\i386\).obj
+!   ENDIF
+
+!   IF $(MIPS)
+MIPS_UMOBJFILES=$(MIPS_UMOBJFILES) obj\mips\$(UMTEST:*=.obj obj\mips\).obj
+!   ENDIF
+
+!   IF $(ALPHA)
+ALPHA_UMOBJFILES=$(ALPHA_UMOBJFILES) obj\alpha\$(UMTEST:*=.obj obj\alpha\).obj
+!  ENDIF
+
+!   IFNDEF NOLINK
+!       IF $(386)
+386_UMEXEFILES=$(386_UMEXEFILES) obj\i386\$(UMTEST:*=.exe obj\i386\).exe
+!       ENDIF
+
+!       IF $(MIPS)
+MIPS_UMEXEFILES=$(MIPS_UMEXEFILES) obj\mips\$(UMTEST:*=.exe obj\mips\).exe
+!       ENDIF
+
+!       IF $(ALPHA)
+ALPHA_UMEXEFILES=$(ALPHA_UMEXEFILES) obj\alpha\$(UMTEST:*=.exe obj\alpha\).exe
+!       ENDIF
+!   ENDIF
+!ENDIF
+
+#
+# Define NT_UP as 0 in environment to turn on MP.
+# If undefined or equal to 1, you get UP.
+#
+
+!IFNDEF NT_UP
+NT_UP=1
+!ENDIF
+
+!IF "$(NT_UP)"=="0"
+NT_UP_DEFINES=
+!ELSE
+NT_UP_DEFINES=-DNT_UP=1
+!ENDIF
+
+!IFNDEF NT_INST
+NT_INST=0
+!ENDIF
+
+#
+# User defined variables (environment variables or command line).
+# A cpu specific definition will take precedence over the MSC definition.
+#
+# xxx_WARNING_LEVEL
+# xxx_OPTIMIZATION
+# xxx_STDCALL
+# xxx_CPPFLAGS
+#
+
+!IF "$(386_STDCALL)" == "0"
+MSC_CALL_TYPE=/Gd
+MSC_CALL_DEFINE=
+!ELSE
+MSC_CALL_TYPE=/Gz
+MSC_CALL_DEFINE=-DSTD_CALL
+!ENDIF
+
+!IF $(386)
+!   IFDEF 386_WARNING_LEVEL
+MSC_WARNING_LEVEL=$(386_WARNING_LEVEL)
+!   ENDIF
+!   IFDEF 386_OPTIMIZATION
+MSC_OPTIMIZATION=$(386_OPTIMIZATION)
+!   ENDIF
+!   IF "$(386_STDCALL)" == "0"
+MSC_CALL_TYPE=/Gd
+MSC_CALL_DEFINE=
+!   ELSE
+!      IF "$(386_STDCALL)" == "1"
+MSC_CALL_TYPE=/Gz
+MSC_CALL_DEFINE=-DSTD_CALL
+!      ENDIF
+!   ENDIF
+!   IFDEF MIPS_CPPFLAGS
+MSC_CPPFLAGS=$(MIPS_CPPFLAGS)
+!   ENDIF
+!ELSE
+!   IF $(MIPS)
+!      IFNDEF MIPS_CC
+# MS_MIPS is for historical reasons only.
+MS_MIPS=1
+!         IFDEF MIPS_WARNING_LEVEL
+MSC_WARNING_LEVEL=$(MIPS_WARNING_LEVEL)
+!         ENDIF
+!         IFDEF MIPS_OPTIMIZATION
+MSC_OPTIMIZATION=$(MIPS_OPTIMIZATION)
+!         ENDIF
+!         IFDEF MIPS_CPPFLAGS
+MSC_CPPFLAGS=$(MIPS_CPPFLAGS)
+!         ENDIF
+!      ENDIF
+!      IF "$(MIPS_STDCALL)" == "0"
+MSC_CALL_TYPE=/Gd
+MSC_CALL_DEFINE=
+!      ELSE
+!         IF "$(MIPS_STDCALL)" == "1"
+MSC_CALL_TYPE=/Gz
+MSC_CALL_DEFINE=-DSTD_CALL
+!         ENDIF
+!      ENDIF
+!   ELSE
+!      IF $(ALPHA)
+!         IFDEF ALPHA_WARNING_LEVEL
+MSC_WARNING_LEVEL=$(ALPHA_WARNING_LEVEL)
+!         ENDIF
+!         IFDEF ALPHA_OPTIMIZATION
+MSC_OPTIMIZATION=$(ALPHA_OPTIMIZATION)
+!         ENDIF
+!         IFDEF ALPHA_CPPFLAGS
+MSC_CPPFLAGS=$(ALPHA_CPPFLAGS)
+!         ENDIF
+!      ENDIF
+!   ENDIF
+!ENDIF
+
+!IFNDEF MSC_WARNING_LEVEL
+MSC_WARNING_LEVEL=/W3
+!ENDIF
+
+!IFNDEF MSC_OPTIMIZATION
+MSC_OPTFLAGS=/Ox
+!IF "$(MIPS)" == "1"
+MSC_OPTFLAGS=/Ox /QmipsOb2000
+!ENDIF
+!ELSE
+MSC_OPTFLAGS=$(MSC_OPTIMIZATION)
+!ENDIF
+
+!IFNDEF MSC_CALL_TYPE
+!   IF "$(MSC_STDCALL)" == "0"
+MSC_CALL_TYPE=/Gd
+MSC_CALL_DEFINE=
+!   ELSE
+!      IF "$(MSC_STDCALL)" == "1"
+MSC_CALL_TYPE=/Gz
+MSC_CALL_DEFINE=-DSTD_CALL
+!      ENDIF
+!   ENDIF
+!ENDIF
+
+#
+# End of user defined variables.
+#
+
+#
+# 386 option control
+#
+
+386_ENV_DEFINES= $(MSC_CPPFLAGS) $(NTCPPFLAGS)
+
+!IF "$(HALTYPE)" == ""
+HALDEF=
+!ELSE
+HALDEF=-D$(HALTYPE)=1
+!ENDIF
+
+!IFNDEF ABIOS
+ABIOS=0
+!ENDIF
+
+!IFNDEF SCSIBOOT
+SCSIBOOT=0
+!ENDIF
+
+!IF "$(ABIOS)" == "0"
+ABIOS_DEFINE=
+!ELSE
+ABIOS_DEFINE= -DABIOS=1
+!ENDIF
+
+!IF "$(SCSIBOOT)" == "0"
+SCSIBOOT_DEFINE=
+!ELSE
+SCSIBOOT_DEFINE= -DSCSIBOOT=1
+!ENDIF
+
+386_MACHINE_TYPE= $(HALDEF) $(ABIOS_DEFINE) $(SCSIBOOT_DEFINE)
+
+!IF "$(NT_UP)" == "0"
+386_STD_DEFINES= -D_X86_=1 -Di386=1 -DCONDITION_HANDLING=1 -DWIN32_LEAN_AND_MEAN=1 -DNT_INST=$(NT_INST) $(386_MACHINE_TYPE) $(MSC_CALL_DEFINE)
+!ELSE
+386_STD_DEFINES= -D_X86_=1 -Di386=1 -DCONDITION_HANDLING=1 -DWIN32_LEAN_AND_MEAN=1 $(NT_UP_DEFINES) -DNT_INST=$(NT_INST) $(386_MACHINE_TYPE) $(MSC_CALL_DEFINE)
+!ENDIF
+
+!IFDEF NTPROFILEINPUT
+386_PROFLAGS= /Gy
+386_CBSTRING=
+!ELSE
+!IFDEF EXEPROFILEINPUT
+386_PROFLAGS= /Gy
+386_CBSTRING=
+!ELSE
+!IFNDEF 386_CBSTRING
+!IF "$(MAJORCOMP)" == "ntos" || "$(MAJORCOMP)" == "NTOS"
+386_CBSTRING=-cbstring
+!ELSE
+386_CBSTRING=
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+
+!IFNDEF MAX_ID_LENGTH
+MAX_ID_LENGTH=-H63
+!ENDIF
+
+386_STDFLAGS= /c /Zel /Zp8 $(386_CBSTRING) $(386_PROFLAGS) $(MSC_WARNING_LEVEL) $(MSC_CALL_TYPE) $(MAX_ID_LENGTH) /G4
+386_LINKFLAGS=$(386_LNKFLAGS)
+
+!IFDEF MIPS_CC
+# MIPS_DBGFLAGS ???
+!ELSE
+MIPS_STDFLAGS= /c $(MSC_WARNING_LEVEL)
+!ENDIF
+
+!IF !$(_AXPACC_)
+ALPHA_STDFLAGS= /c $(MSC_WARNING_LEVEL)
+!ELSE
+ALPHA_STDFLAGS= -std
+!ENDIF
+
+!IF "$(NTDEBUG)" == "retail"
+!   IFDEF NTNOFPO
+386_DBG_DEFINES= -DDBG=0 -DDEVL=1 -DBETA=0 -DNOFIREWALLS -DFPO=0
+386_DBGFLAGS=$(MSC_OPTFLAGS) /Oy-
+!   ELSE
+386_DBG_DEFINES= -DDBG=0 -DDEVL=1 -DBETA=0 -DNOFIREWALLS -DFPO=1
+386_DBGFLAGS=$(MSC_OPTFLAGS) /Oy
+!   ENDIF
+MIPS_DBG_DEFINES= -DDBG=0 -DDEVL=1 -DBETA=0 -DNOFIREWALLS
+MIPS_DBGFLAGS=$(MSC_OPTFLAGS)
+ALPHA_DBG_DEFINES= -DDBG=0 -DDEVL=1 -DBETA=0 -DNOFIREWALLS
+ALPHA_DBGFLAGS=$(MSC_OPTFLAGS)
+!ELSE
+!   IF "$(NTDEBUG)" == ""
+!      IFDEF NTNOFPO
+386_DBG_DEFINES= -DDBG=0 -DDEVL=1 -DBETA=0 -DNOFIREWALLS -DFPO=0
+386_DBGFLAGS=$(MSC_OPTFLAGS) /Oy-
+!      ELSE
+386_DBG_DEFINES= -DDBG=0 -DDEVL=1 -DBETA=0 -DNOFIREWALLS -DFPO=1
+386_DBGFLAGS=$(MSC_OPTFLAGS) /Oy
+!      ENDIF
+MIPS_DBG_DEFINES= -DDBG=0 -DDEVL=1 -DBETA=0 -DNOFIREWALLS
+MIPS_DBGFLAGS=$(MSC_OPTFLAGS)
+ALPHA_DBG_DEFINES= -DDBG=0 -DDEVL=1 -DBETA=0 -DNOFIREWALLS
+ALPHA_DBGFLAGS=$(MSC_OPTFLAGS)
+!   ELSE
+386_DBG_DEFINES= -DDBG=1 -DDEVL=1 -DBETA=1 -DFPO=0
+MIPS_DBG_DEFINES= -DDBG=1 -DDEVL=1 -DBETA=1
+ALPHA_DBG_DEFINES= -DDBG=1 -DDEVL=1 -DBETA=1
+!      IF "$(NTDEBUG)" == "ntsd"
+386_DBGFLAGS=$(MSC_OPTFLAGS) /Oy- /Z7
+MIPS_DBGFLAGS=$(MSC_OPTFLAGS) /Zi
+ALPHA_DBGFLAGS=$(MSC_OPTFLAGS) /Zi
+!      ELSE
+!         IF "$(NTDEBUG)" == "cvp"
+386_DBGFLAGS=$(MSC_OPTFLAGS) /Oy- /Zd
+MIPS_DBGFLAGS=$(MSC_OPTFLAGS) /Zd
+ALPHA_DBGFLAGS=$(MSC_OPTFLAGS) /Zd
+!         ELSE
+!            IF "$(NTDEBUG)" == "sym"
+386_DBGFLAGS=$(MSC_OPTFLAGS) /Oy- /Zd
+MIPS_DBGFLAGS=$(MSC_OPTFLAGS) /Zd
+ALPHA_DBGFLAGS=$(MSC_OPTFLAGS) /Zd
+!            ELSE
+!               ERROR NTDEBUG macro can be either "retail", "", "ntsd", "cvp" or "sym"
+!            ENDIF
+!         ENDIF # NTDEBUG == sym
+!      ENDIF # NTDEBUG == cvp
+!   ENDIF # NTDEBUG == ""
+!ENDIF # NTDEBUG == retail
+
+!IF "$(NTDEBUGTYPE)" == "windbg"
+LINKER_DBG_TYPE = -debugtype:cv
+!   IFDEF MIPS_CC
+MIP2COFF_SWITCHES=-c
+!      IFNDEF MIPS_OPTIMIZATION
+MIPS_OPTIMIZATION=-g2
+!      ENDIF
+!   ENDIF
+!ELSE
+!   IF "$(NTDEBUGTYPE)" == "ntsd" || "$(NTDEBUGTYPE)" == "coff"
+LINKER_DBG_TYPE = -debugtype:coff
+!   ELSE
+!      IF "$(NTDEBUGTYPE)" == "both"
+LINKER_DBG_TYPE = -debugtype:both
+!      ELSE
+!         IF "$(NTDEBUGTYPE)" == ""
+LINKER_DBG_TYPE = -debugtype:coff
+!         ELSE
+!            ERROR NTDEBUGTYPE macro can one of "", "ntsd", "coff", "windbg" or "both"
+!         ENDIF
+!      ENDIF
+!   ENDIF
+!ENDIF
+
+
+!IF "$(BROWSER_INFO)" == "yes"
+386_BROWSER= -FR$*.sbr
+ALPHA_BROWSER= -FR$*.sbr
+!ELSE
+386_BROWSER=
+ALPHA_BROWSER=
+!ENDIF
+
+!IF $(386)
+!IF "$(PRECOMPILED_INCLUDE)" != ""
+386_PRECOMPILED=/Yu$(PRECOMPILED_INCLUDE)
+386_PRECOMPILED_TARGET=$(PRECOMPILED_INCLUDE:.h=.pch)
+!ELSE
+!IF "$(GLOBAL_PRECOMPILED_INCLUDE)" != ""
+386_PRECOMPILED=/Yu$(GLOBAL_PRECOMPILED_INCLUDE)
+!ENDIF
+!ENDIF
+!ELSE
+!   IF $(ALPHA)
+!       IF "$(PRECOMPILED_INCLUDE)" != ""
+ALPHA_PRECOMPILED=/Yu$(PRECOMPILED_INCLUDE)
+ALPHA_PRECOMPILED_TARGET=$(PRECOMPILED_INCLUDE:.h=.pch)
+!       ELSE
+!           IF "$(GLOBAL_PRECOMPILED_INCLUDE)" != ""
+ALPHA_PRECOMPILED=/Yu$(GLOBAL_PRECOMPILED_INCLUDE)
+!           ENDIF
+!       ENDIF
+!   ENDIF
+!ENDIF
+
+!IF $(386)
+!   IF !$(NTSDK)
+386_CRTAPI_DEFINES=-D_CRTAPI1=__cdecl -D_CRTAPI2=__cdecl -Ditoa=_itoa -Dstricmp=_stricmp
+386_SEH_DEFINES=-Dtry=__try -Dleave=__leave -Dexcept=__except -Dfinally=__finally
+!   ELSE
+386_CRTAPI_DEFINES=
+386_SEH_DEFINES=
+!   ENDIF
+!ENDIF
+
+386_CDEFINES=$(386_STD_DEFINES) $(386_SEH_DEFINES) $(386_CRTAPI_DEFINES) $(386_DBG_DEFINES) $(386_ENV_DEFINES) $(LIBC_DEFINES) $(C_DEFINES) $(NET_C_DEFINES)
+386_CFLAGS=$(386_FLAGS) $(NT386FLAGS) $(386_STDFLAGS) $(386_DBGFLAGS) $(386_BROWSER) $(386_PERFFLAGS)
+
+!IFDEF WIMPMASM
+!   IF "$(NT_UP)"=="0"
+386_ASMFLAGS=-D_X86_=1 -Di386=1 -DNT_INST=$(NT_INST) $(MSC_CALL_DEFINE) $(386_DBG_DEFINES) $(386_ENV_DEFINES) $(ASM_DEFINES)
+!   ELSE
+386_ASMFLAGS=-D_X86_=1 -Di386=1 -DNT_INST=$(NT_INST) $(NT_UP_DEFINES) $(MSC_CALL_DEFINE) $(386_DBG_DEFINES) $(386_ENV_DEFINES) $(ASM_DEFINES)
+!   ENDIF
+!ELSE
+!   IFDEF WIMPYMASM
+!       IF "$(NT_UP)"=="0"
+386_ASMFLAGS=-DNT_INST=$(NT_INST) $(MSC_CALL_DEFINE) $(386_DBG_DEFINES) $(386_ENV_DEFINES) $(ASM_DEFINES)
+!       ELSE
+386_ASMFLAGS=-DNT_INST=$(NT_INST) $(NT_UP_DEFINES) $(MSC_CALL_DEFINE) $(386_DBG_DEFINES) $(386_ENV_DEFINES) $(ASM_DEFINES)
+!       ENDIF
+!   ELSE
+386_ASMFLAGS=$(386_STD_DEFINES) $(386_DBG_DEFINES) $(386_ENV_DEFINES) $(ASM_DEFINES)
+!   ENDIF
+!ENDIF
+
+386_CRTLIBS=
+
+386_COMPILER=cl386 -nologo -I i386\ -I . $(INCPATH1) $(386_CDEFINES) $(386_PRECOMPILED) $(386_CFLAGS)
+386_CPP=cl386 -nologo /EP -I i386\ -I . $(INCPATH1) $(386_CDEFINES) $(386_CFLAGS) -Tc
+386_ASSEMBLER=masm386 -Mx $(INCPATH0) $(386_ASMFLAGS)
+
+386_LIBRARIAN_FLAGS=-out:$@
+
+!IF "$(NTDEBUG)" == "ntsd"
+386_LINKER_FLAGS=-out:$@ -debug:FULL
+!ELSE
+!   IF "$(NTDEBUG)" == "retail"
+386_LINKER_FLAGS=-out:$@ -debug:NONE
+!   ELSE
+386_LINKER_FLAGS=-out:$@ -debug:MINIMAL
+!   ENDIF # NTDEBUG == retail
+!ENDIF # NTDEBUG == ntsd
+
+!IF "$(NTLEANANDMEAN)" == "leanandmean"
+!   IF "$(NTDEBUGTYPE)" == "coff" || "$(NTTEST)"=="ntoskrnl" || "$(TARGETTYPE)"=="DRIVER" || "$(TARGETTYPE)"=="EXPORT_DRIVER" || "$(TARGETTYPE)"=="HAL"
+386_LINKER_FLAGS=-out:$@ -debug:minimal
+!   ELSE
+386_LINKER_FLAGS=-out:$@ -debug:none
+!   ENDIF # NTDEBUGTYPE != coff || TARGETTYPE
+!ENDIF # NTLEANANDMEAN == leanandmean
+
+!IFDEF IMAGE_TYPE_COFF
+386_LIBRARIAN=lib32 $(386_LIBRARIAN_FLAGS) $(LIBRARIAN_FLAGS) $(LINKER_DBG_TYPE)
+!ELSE
+386_LIBRARIAN=lib32 $(386_LIBRARIAN_FLAGS) $(LIBRARIAN_FLAGS) $(LINKER_DBG_TYPE)
+!ENDIF
+
+!IF $(386)
+!   IF !$(NTSDK)
+LINKER_CHECKSUMS=/release
+!   ELSE
+LINKER_CHECKSUMS=
+!   ENDIF
+!ENDIF
+
+386_LINKER=link32 $(386_LINKER_FLAGS) $(LINKER_FLAGS) $(LINKER_DBG_TYPE) $(LINKER_CHECKSUMS)
+
+
+#
+# Mips option control
+#
+
+!IF "$(MIPS_HOST)" == ""
+MIPS_HOST=decsoft6
+!ENDIF
+
+MIPS_ENDIAN=MIPSEL
+
+!IF "$(MIPS_F77)" == ""
+
+MIPS_F77=f772.20
+
+!ENDIF
+
+!IFDEF SABLE
+MIPS_ENDIAN=MIPSEL
+MIPS_R4000=1
+MIPS_SABLE=1
+!ENDIF
+
+!IF "$(MIPS_HOST)" == "decsoft6"
+MIPS_ENDIAN=MIPSEL
+!ENDIF
+
+!IF "$(MIPS_ENDIAN)" == ""
+!ERROR Invalid MIPS_HOST $(MIPS_HOST)
+!ENDIF
+
+!IFNDEF GPSIZE
+GPSIZE= 0
+!ENDIF
+
+!IFDEF MIPS_CC
+!   IFNDEF MIPS_WARNINGS
+MIPS_WARNINGS=-std
+!   ENDIF
+!   IFNDEF MIPS_OPTIMIZATION
+MIPS_OPTIMIZATION=-g0
+!   ENDIF
+!   IFNDEF MIPS_OPTIONS
+!      IFDEF MIPS_R4000
+MIPS_OPTIONS=-nodwalign
+!      ELSE
+MIPS_OPTIONS=
+!      ENDIF
+!   ENDIF
+!ENDIF
+
+NTPATH=/usr/staff/$(USER)/nt
+
+#
+# Now a bunch of MIPS stuff
+#
+
+!IF $(MIPS)
+
+!IFDEF MIPS_R4000
+MIPS_CPU=-DR4000 -D_M_MRX000=4000
+MIPS_TRAP_FILE=x4trap.obj
+!ELSE
+MIPS_CPU=-DR3000 -D_M_MRX000=3000
+MIPS_TRAP_FILE=x3trap.obj
+!ENDIF
+
+MIPS_ASM_DEFINES=$(MIPS_ASMCPP)
+MIPS_ENV_DEFINES=$(LIBC_DEFINES) $(C_DEFINES) $(NET_C_DEFINES) $(MSC_CPPFLAGS) $(NTCPPFLAGS)
+
+MIPS_STD_DEFINES=-DMIPS=1 -D_MIPS_=1 -DNO_EXT_KEYS -DWIN32_LEAN_AND_MEAN=1 -D$(MIPS_ENDIAN) -DCONDITION_HANDLING=1 -DNT_INST=$(NT_INST) $(NT_UP_DEFINES)
+
+!IFDEF MIPS_CC
+
+#
+# Use the MIPS CC compiler
+#
+
+MIPS_C_COMPILER_NAME=cc
+
+MIPS_DBGFLAGS=
+!IF "$(NTDEBUG)" == ""
+MIPS_DBG_DEFINES=-DDBG=0 -DDEVL=1 -DBETA=0
+!ELSE
+!IF "$(NTDEBUG)" == "retail"
+MIPS_DBG_DEFINES=-DDBG=0 -DDEVL=1 -DBETA=0
+!ELSE
+MIPS_DBG_DEFINES=-DDBG=1 -DDEVL=1 -DBETA=1
+!ENDIF
+!ENDIF
+
+!IFDEF MIPS_R4000
+MIPS_CPU_SWITCHES=-Wab,-mips2 -Wab,-diag
+!ELSE
+MIPS_CPU_SWITCHES=
+!ENDIF
+
+MIPS_CDEFINES=$(MIPS_STD_DEFINES) $(MIPS_CPU) $(MIPS_DBG_DEFINES) $(MIPS_ENV_DEFINES)
+MIPS_CFLAGS=$(MIPS_FLAGS) $(NTMIPSFLAGS) $(MIPS_STDFLAGS) $(MIPS_DBGFLAGS)
+
+MIPS_CPP=$(MIPS_C_COMPILER_NAME) $(MIPS_WARNINGS) -E -Imips\ -I. $(INCPATH0) $(MIPS_CDEFINES) $(MIPS_CFLAGS) -D_LANGUAGE_C
+C_COMPILER=$(MIPS_C_COMPILER_NAME) $(MIPS_WARNINGS) $(MIPS_OPTIONS) -G $(GPSIZE) -checkstack 2048 -excpt $(MIPS_OPTIMIZATION) -O -EL -c $(MIPS_CPU_SWITCHES) -Imips\ -I. $(INCPATH0) $(MIPS_CDEFINES) $(MIPS_CFLAGS) -D_LANGUAGE_C
+MIPS_FORTRAN_COMPILER=$(MIPS_F77) $(MIPS_WARNINGS) $(MIPS_OPTIONS) -G $(GPSIZE) -excpt -G0 $(MIPS_OPTIMIZATION) -O -EL -c $(MIPS_CPU_SWITCHES) -Imips\ -I. $(INCPATH0) $(MIPS_CDEFINES) $(MIPS_CFLAGS)
+MIPS_ASSEMBLER=$(MIPS_C_COMPILER_NAME) $(MIPS_WARNINGS) $(MIPS_OPTIONS) -G $(GPSIZE) -checkstack 2048 -excpt $(MIPS_OPTIMIZATION) -O -EL -c $(MIPS_CPU_SWITCHES) -Imips\ -I. $(INCPATH0) $(MIPS_CDEFINES) $(MIPS_CFLAGS) -D_LANGUAGE_ASSEMBLY
+MIPS_PASCAL=$(MIPS_C_COMPILER_NAME) $(MIPS_OPTIONS) -G $(GPSIZE) -excpt $(MIPS_OPTIMZATION) -O -EL -c $(MIPS_CPU_SWITCHES) -Imips\ -I. $(INCPATH0) $(MIPS_CDEFINES) $(MIPS_CFLAGS) -DLANGUAGE_PASCAL -D_LANGUAGE_PASCAL
+
+!ELSE
+
+#
+# Use the Microsoft Mips compiler, aka Centaur
+#
+
+MSC_C_COMPILER_NAME=mcl
+# MIPS_CL is for historical reasons only.
+MIPS_CL=$(MSC_C_COMPILER_NAME)
+
+MSC_CDEFINES=$(MIPS_STD_DEFINES) $(MIPS_CPU) $(MIPS_DBG_DEFINES) $(MIPS_ENV_DEFINES)
+MSC_CFLAGS=$(MIPS_FLAGS) $(NTMIPSFLAGS) $(MIPS_STDFLAGS) $(MIPS_DBGFLAGS)
+
+MIPS_CPP=$(MSC_C_COMPILER_NAME) -nologo /EP -I mips\ -I. $(INCPATH0) $(MSC_CDEFINES) $(MSC_CFLAGS) -D__stdcall= -D__cdecl=
+C_COMPILER=$(MSC_C_COMPILER_NAME) -nologo -I mips\ -I. $(INCPATH0) $(MSC_CDEFINES) $(MSC_CFLAGS) -Gt$(GPSIZE) -D__stdcall= -D__cdecl=
+MIPS_FORTRAN_COMPILER=$(MIPS_F77) $(MSC_WARNINGS) $(MIPS_OPTIONS) -G $(GPSIZE) -excpt -G0 $(MSC_OPTIMIZATION) -O -EL -c
+MIPS_CRFILTER=echo SHOULDN'T NEED TO CRFILTER THIS!
+
+#
+# Use Mips CC for this as MS doesn't have an assembler yet.
+#
+
+MIPS_C_COMPILER_NAME=cc
+!IFDEF MIPS_R4000
+MIPS_CPU_SWITCHES=-Wab,-mips2 -Wab,-diag
+!ELSE
+MIPS_CPU_SWITCHES=
+!ENDIF
+MIPS_CDEFINES=$(MIPS_STD_DEFINES) $(MIPS_CPU) $(MIPS_DBG_DEFINES) $(MIPS_ENV_DEFINES)
+MIPS_CFLAGS=$(MIPS_FLAGS) $(NTMIPSFLAGS) $(MIPS_STDFLAGS) $(MIPS_DBGFLAGS)
+MIPS_ASSEMBLER=$(MIPS_C_COMPILER_NAME) -std -nodwalign -G $(GPSIZE) -checkstack 2048 -excpt -g0 -O -EL -c $(MIPS_CPU_SWITCHES) -Imips\ -I. $(INCPATH0) $(MIPS_CDEFINES) $(MIPS_CFLAGS) -D_LANGUAGE_ASSEMBLY
+
+!ENDIF
+!ENDIF
+
+#
+# For historical reasons...
+#
+
+MIPS_COMPILER=$(C_COMPILER)
+
+#
+# Set linker options
+#
+
+!IF "$(NTDEBUG)" == "ntsd"
+MIPS_LINKER_FLAGS=-out:$@ -debug:FULL
+!ELSE
+!   IF "$(NTDEBUG)" == "retail"
+MIPS_LINKER_FLAGS=-out:$@ -debug:NONE
+!   ELSE
+MIPS_LINKER_FLAGS=-out:$@ -debug:MINIMAL
+!   ENDIF # NTDEBUG == retail
+!ENDIF # NTDEBUG == ntsd
+
+!IF "$(NTLEANANDMEAN)" == "leanandmean"
+!   IF "$(NTDEBUGTYPE)" == "coff" || "$(NTTEST)"=="ntoskrnl" || "$(TARGETTYPE)"=="DRIVER" || "$(TARGETTYPE)"=="EXPORT_DRIVER" || "$(TARGETTYPE)"=="HAL"
+MIPS_LINKER_FLAGS=-out:$@ -debug:minimal
+!   ELSE
+MIPS_LINKER_FLAGS=-out:$@ -debug:none
+!   ENDIF # NTDEBUGTYPE != coff || TARGETTYPE
+!ENDIF # NTLEANANDMEAN == leanandmean
+
+MIPS_LINKFLAGS=$(MIPS_LNKFLAGS)
+MIPS_LIBRARIAN=lib32 -out:$@ $(LIBRARIAN_FLAGS) $(LINKER_DBG_TYPE)
+MIPS_LINKER=link32 $(MIPS_LINKER_FLAGS) $(LINKER_FLAGS) $(LINKER_DBG_TYPE)
+
+!IF "$(GPSIZE)" == "0"
+MIPS_CRTLIBS=
+!ELSE
+MIPS_CRTLIBS=$(BASEDIR)\lib\mips\$(DDKBUILDENV)\small.lib
+LINKGPSIZE=-gpsize:$(GPSIZE)
+!ENDIF
+
+#
+# Alpha option control
+#
+
+!IFDEF ALPHA
+
+ALPHA_AS=acc
+ALPHA_DIS=adis
+ALPHA_AS_WARNINGS=-std
+
+ALPHA_START_FILE=start.obj
+
+!IFNDEF GPSIZE
+GPSIZE= 0
+!ENDIF
+
+ALPHA_ENV_DEFINES=$(LIBC_DEFINES) $(C_DEFINES) $(NET_C_DEFINES) $(MSC_CPPFLAGS) $(NTCPPFLAGS)
+
+ALPHA_STD_DEFINES=-DALPHA=1 -D_ALPHA_=1 -DNO_EXT_KEYS -DWIN32_LEAN_AND_MEAN=1 -DCONDITION_HANDLING=1 -DNT_INST=$(NT_INST) $(NT_UP_DEFINES)
+
+ALPHA_CDEFINES=$(ALPHA_STD_DEFINES) $(ALPHA_DBG_DEFINES) $(ALPHA_ENV_DEFINES)
+ALPHA_CFLAGS=$(ALPHA_FLAGS) $(NTALPHAFLAGS) $(ALPHA_STDFLAGS) $(ALPHA_DBGFLAGS)
+
+!IF $(_AXPACC_)
+
+ALPHA_CC = acc
+
+ALPHA_ASM_DEFINES=$(ALPHA_ASMCPP)
+!IF "$(NTDEBUG)" == ""
+!IFNDEF ALPHA_OPTIMIZATION
+ACC_OPTIMIZATION=-O2
+!ENDIF
+ALPHA_DBGFLAGS=$(ACC_OPTIMIZATION)
+!ELSE
+!IF "$(NTDEBUG)" == "retail"
+!IFNDEF ALPHA_OPTIMIZATION
+ACC_OPTIMIZATION=-O2
+!ENDIF
+ALPHA_DBGFLAGS=$(ACC_OPTIMIZATION)
+!ELSE
+!IFNDEF ALPHA_OPTIMIZATION
+ACC_OPTIMIZATION=-O0
+!ENDIF
+ALPHA_DBGFLAGS=$(ACC_OPTIMIZATION)
+!ENDIF
+!ENDIF
+
+ALPHA_CPP=$(ALPHA_CC) -E -Ialpha\ -I. $(INCPATH0) $(ALPHA_CDEFINES) $(ALPHA_CFLAGS) -D_LANGUAGE_C
+
+ALPHA_COMPILER=$(ALPHA_CC) $(ALPHA_OPTIONS) -G $(GPSIZE) -checkstack 4096 -excpt -Olimit 2000 -EL -c $(ALPHA_CPU_SWITCHES) -Ialpha\ -I. $(INCPATH0) $(ALPHA_CDEFINES) $(ALPHA_CFLAGS) -D_LANGUAGE_C
+
+ALPHA_ASSEMBLER=$(ALPHA_AS) $(ALPHA_AS_WARNINGS) $(ALPHA_OPTIONS) -G $(GPSIZE) -checkstack 4096 -excpt -Olimit 2000 -EL -c $(ALPHA_CPU_SWITCHES) -Ialpha\ -I. $(INCPATH0) $(ALPHA_CDEFINES) $(ALPHA_CFLAGS) -D_LANGUAGE_ASSEMBLY
+
+!ELSE
+
+ALPHA_CC = claxp
+
+ALPHA_COMPILER=$(ALPHA_CC) -nologo -Ialpha\ -I. $(INCPATH0) $(ALPHA_CDEFINES) $(ALPHA_OPTIONS) $(ALPHA_CFLAGS) -D__stdcall= -D_cdecl= -D__cdecl= -Dcdecl= -d2"switch no*check*" -d2"switch mscdev"
+
+ALPHA_CPP=$(ALPHA_CC) -nologo -EP -Ialpha\ -I. $(INCPATH0) $(ALPHA_CDEFINES) $(ALPHA_OPTIONS) $(ALPHA_CFLAGS) -Gt$(GPSIZE) -D__stdcall= -D_cdecl= -D__cdecl= -Dcdecl=
+
+ALPHA_ASSEMBLER=$(ALPHA_AS) $(ALPHA_AS_WARNINGS) $(ALPHA_OPTIONS) -G $(GPSIZE) -checkstack 4096 -excpt $(ACC_OPTIMIZATION) -Olimit 2000 -EL $(ALPHA_CPU_SWITCHES) -Ialpha\ -I. $(INCPATH0) $(ALPHA_CDEFINES) $(ALPHA_FLAGS) $(NTALPHAFLAGS) /c -D_LANGUAGE_ASSEMBLY
+
+!ENDIF
+
+!IF "$(NTDEBUG)" == "ntsd"
+!   IF !$(_AXPACC_)
+ALPHA_LINKER_FLAGS=-out:$@ -debug:FULL
+!   ELSE
+ALPHA_LINKER_FLAGS=-out:$@ -debug:MINIMAL
+!   ENDIF
+!ELSE
+!   IF "$(NTDEBUG)" == "retail"
+ALPHA_LINKER_FLAGS=-out:$@ -debug:NONE
+!   ELSE
+ALPHA_LINKER_FLAGS=-out:$@ -debug:MINIMAL
+!   ENDIF # NTDEBUG == retail
+!ENDIF # NTDEBUG == ntsd
+
+!IF "$(NTLEANANDMEAN)" == "leanandmean"
+!   IF "$(NTDEBUGTYPE)" == "coff" || "$(NTTEST)"=="ntoskrnl" || "$(TARGETTYPE)"=="DRIVER" || "$(TARGETTYPE)"=="EXPORT_DRIVER" || "$(TARGETTYPE)"=="HAL"
+ALPHA_LINKER_FLAGS=-out:$@ -debug:minimal
+!   ELSE
+ALPHA_LINKER_FLAGS=-out:$@ -debug:none
+!   ENDIF # NTDEBUGTYPE != coff || TARGETTYPE
+!ENDIF # NTLEANANDMEAN == leanandmean
+
+ALPHA_LINKFLAGS=$(ALPHA_LNKFLAGS)
+ALPHA_LIBRARIAN=lib32 -out:$@ -machine:alpha $(LIBRARIAN_FLAGS) $(LINKER_DBG_TYPE)
+ALPHA_LINKER=link32 $(ALPHA_LINKER_FLAGS) -machine:alpha $(LINKER_FLAGS) $(LINKER_DBG_TYPE)
+
+!IF "$(GPSIZE)" == "0"
+ALPHA_CRTLIBS=
+!ELSE
+# ALPHA_CRTLIBS=$(BASEDIR)\lib\alpha\$(DDKBUILDENV)\small.lib
+ALPHA_CRTLIBS=
+LINKGPSIZE=-gpsize:$(GPSIZE)
+!ENDIF
+
+!ENDIF	# ALPHA
+
+#
+#   C++ definitions
+#
+
+!IFNDEF CXXTMP
+CXXTMP  = $(TMP)
+CXXDEL  = @del $(CXXTMP)\$(@B).ixx $(CXXTMP)\$(@B).c
+CXXDEL_ALPHA  = @del $(CXXTMP)\$(@B).ixx $(CXXTMP)\$(@B).i
+!ENDIF # CXXTMP
+
+
+!IFDEF DEBUG
+CXXDEBUG =-D$(DEBUG)
+!ELSE
+CXXDEBUG =
+!ENDIF
+
+!IF $(386)
+CXXCPP=cl386 -nologo $(MAX_ID_LENGTH) -D_CFRONT_PASS_
+CXXCPP_FLAGS    = $(CXXCPP_OPTIONS) -E -DNO_EXT_KEY -D_X86_=1 -Di386=1 $(CXXDEBUG) -Dfar= -Dnear= -Dhuge= -Dpascal= $(386_CDEFINES) > $(CXXTMP)\$(@B).ixx $<
+!ENDIF
+
+!IF $(MIPS)
+!IFDEF MIPS_CC
+CXXCPP=cc -D_CFRONT_PASS_
+CXXCPP_FLAGSMIPS= $(CXXCPP_OPTIONS) -E $(MIPS_WARNINGS) -Wp,-XdA -DMIPS=1 -D_MIPS_=1 $(CXXDEBUG) -Dfar= -Dnear= -Dhuge= -Dpascal= $(MIPS_CDEFINES) > $(CXXTMP)\$(@B).ixx $<
+!ELSE
+CXXCPP=$(MSC_C_COMPILER_NAME) -D_CFRONT_PASS_
+CXXCPP_FLAGSMIPS= $(CXXCPP_OPTIONS) -E -DMIPS=1 -D_MIPS_=1 $(CXXDEBUG) -D_cdecl= -Dcdecl= -Dfar= -Dnear= -Dhuge= -Dpascal= -D_syscall= -D__stdcall= -D__cdecl= $(MIPS_CDEFINES) > $(CXXTMP)\$(@B).ixx $<
+!ENDIF
+!ENDIF
+
+!IF $(ALPHA)
+!   IF !$(_AXPACC_)
+CXXCPP=claxp -D_CFRONT_PASS_ -D_CFRONT -nologo $(MAX_ID_LENGTH)
+CXXCPP_FLAGSALPHA= $(CXXCPP_OPTIONS) -E -DNO_EXT_KEY $(MSC_WARNING_LEVEL) -DALPHA=1 -D_ALPHA_=1 $(CXXDEBUG) -Dcdecl= -D__cdecl= -Dcdecl= -Dfar= -Dnear= -Dhuge= -Dpascal= -D_syscall= -D__stdcall= $(ALPHA_CDEFINES) -Tc > $(CXXTMP)\$(@B).ixx $<
+!   ELSE
+CXXCPP=acc -D_CFRONT_PASS_ -D_CFRONT
+CXXCPP_FLAGSALPHA= $(CXXCPP_OPTIONS) -E -std -Wp,-XdA -DALPHA=1 -D_ALPHA_=1 $(CXXDEBUG) -D_cdecl= -Dcdecl= -Dfar= -Dnear= -Dhuge= -Dpascal= -D_syscall= -D_stdcall= $(ALPHA_CDEFINES) > $(CXXTMP)\$(@B).ixx $<
+!   ENDIF
+!ENDIF
+
+!IFNDEF CXXCPP_OPTIONS
+CXXCPP_OPTIONS=
+!ENDIF
+
+CXX             = cfront
+MIPSXCPT        = +E$(BASEDIR)\inc\mipsxcpt.tab
+ALPHAXCPT       = +E$(BASEDIR)\inc\alphxcpt.tab
+
+!IFNDEF CXX_OPTIONS
+CXX_OPTIONS=+m7 +H63
+!ENDIF
+
+CXX_FLAGS       = +x$(BASEDIR)\inc\386align.tab $(CXX_OPTIONS) +L +f$(<) <$(CXXTMP)\$(@B).ixx >$(CXXTMP)\$(@B).c
+CXX_FLAGSMIPS   = +x$(BASEDIR)\inc\mipsalgn.tab $(CXX_OPTIONS) +L $(MIPSXCPT) +M +f$(<) <$(CXXTMP)\$(@B).ixx >$(CXXTMP)\$(@B).c
+CXX_FLAGSALPHA   = +x$(BASEDIR)\inc\alphalgn.tab $(CXX_OPTIONS) +L $(ALPHAXCPT) +M +f$(<) <$(CXXTMP)\$(@B).ixx >$(CXXTMP)\$(@B).i
+
+#
+# Define this macro so including make files can supply a yes prompt
+# as appropriate.  Put the "yes." file in a visible place for OEM's
+# so they can make too.
+#
+
+YESRESP=$(BASEDIR)\INC\yes.
+
+#
+# Standard inference rules for C files that produce object files.
+#
+
+.SUFFIXES: .cxx .c .f .rc .s .asm .obj .exe .res .p
+
+#
+# Default language ID to US English (0x0409)
+#
+
+#
+# Default language ID to US English (0x0409)
+#
+
+RC_COMPILER=rc -l 409
+
+# !IF "$(LINKONLY)" != "1"
+
+!IFDEF BLDCRT
+{}.cxx{obj\i386\}.obj:
+    $(386_COMPILER) -Fo$@ $(MAKEDIR)\$(<F)
+
+{i386\}.cxx{obj\i386\}.obj:
+    $(386_COMPILER) -Fo$@ $(MAKEDIR)\$<
+
+!ELSE
+{}.cxx{obj\i386\}.obj:
+    $(CXXCPP) $(INCPATH0) $(CXXCPP_FLAGS)
+    $(CXX) $(CXX_FLAGS)
+    $(386_COMPILER) -Fo$@ $(CXXTMP)\$(@B).c
+    @$(CXXDEL)
+
+{i386\}.cxx{obj\i386\}.obj:
+    $(CXXCPP) $(INCPATH0) $(CXXCPP_FLAGS)
+    $(CXX) $(CXX_FLAGS)
+    $(386_COMPILER) -Fo$@ $(CXXTMP)\$(@B).c
+    @$(CXXDEL)
+
+!ENDIF
+
+{i386\}.c{obj\i386\}.obj:
+    $(386_COMPILER) -Fo$@ $(MAKEDIR)\$<
+
+{}.c{obj\i386\}.obj:
+    $(386_COMPILER) -Fo$@ $(MAKEDIR)\$(<F)
+
+{}.rc{obj\i386\}.res:
+!IF !$(NTSDK)
+    $(RC_COMPILER) -r -fo $(@R).res $(386_CDEFINES) $(INCPATH0) $<
+!ELSE
+    $(RC_COMPILER) -r -fo $(@R).tmp $(386_CDEFINES) $(INCPATH0) $<
+    @cvtres -i386 $(@R).tmp -r -o $@
+!   IF "$(NTKEEPRESOURCETMPFILES)" == ""
+       @-erase $(@R).tmp
+!   ENDIF
+!ENDIF
+
+!IF $(386)
+{}.c{}.cod:
+    $(386_COMPILER) /Fc $(MAKEDIR)\$(<F)
+
+{i386\}.c{}.cod:
+    $(386_COMPILER) /Fc $(MAKEDIR)\$<
+
+{}.c{}.pp:
+    $(386_COMPILER) /E $(MAKEDIR)\$< > $@
+
+{i386\}.c{}.pp:
+    $(386_COMPILER) /E $(MAKEDIR)\$< > $@
+
+{i386\}.asm{}.lst:
+    $(386_ASSEMBLER) $<,obj\i386\$(@B).obj,$@;
+
+!IFDEF BLDCRT
+{}.cxx{}.cod:
+    $(386_COMPILER) /Fc $(MAKEDIR)\$(<F)
+
+{}.cxx{}.pp:
+    $(386_COMPILER) /E $(MAKEDIR)\$< > $@
+
+!ELSE
+{}.cxx{}.cod:
+    $(CXXCPP) $(INCPATH0) $(CXXCPP_FLAGS)
+    $(CXX) $(CXX_FLAGS)
+    $(386_COMPILER) /Fc$(MAKEDIR)\$(<B).cod $(CXXTMP)\$(@B).c
+    @$(CXXDEL)
+
+{}.cxx{}.pp:
+    $(CXXCPP) $(INCPATH0) $(CXXCPP_FLAGS)
+    $(CXX) $(CXX_FLAGS)
+    $(386_COMPILER) /E $(CXXTMP)\$(@B).c > $@
+    @$(CXXDEL)
+
+!ENDIF
+
+
+!ELSE
+
+!IF $(MIPS)
+{}.c{}.pp:
+    $(MIPS_CPP) $< > $(<B).pp
+
+{mips\}.c{}.pp:
+    $(MIPS_CPP) $< > $(<B).pp
+
+
+!IFNDEF MIPS_CC
+{}.c{}.cod:
+    @-erase $@ >nul 2>&1
+    @echo ClMips -S $<            " $(C_COMPILER) "
+    @$(C_COMPILER) -Fc $<
+
+{mips\}.c{}.cod:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<            " $(C_COMPILER) "
+    @$(C_COMPILER) -Fc $<
+
+!ELSE
+
+{}.c{}.cod:
+    @-erase $@ >nul 2>&1
+    @echo ClMips  $<            " $(C_COMPILER) "
+    @$(C_COMPILER) -o obj\mips\$(<B).o $(MAKEDIR)\$(<F)
+    @dis -S obj\mips\$(<B).o >$(<B).cod
+    @del obj\mips\$(<B).o
+
+{mips\}.c{}.cod:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<            " $(C_COMPILER) "
+    @$(C_COMPILER) -o obj\mips\$(<B).o $(MAKEDIR)\mips\$(<F)
+    @dis -S obj\mips\$(<B).o >$(<B).cod
+    @del obj\mips\$(<B).o
+
+!ENDIF
+
+!ENDIF
+!ENDIF
+
+
+!IFNDEF MIPS_CC
+!IFDEF BLDCRT
+
+{}.cxx{obj\mips\}.obj:
+    $(C_COMPILER) -Fo$@ $(MAKEDIR)\$(<F)
+
+{mips\}.cxx{obj\mips\}.obj:
+    $(C_COMPILER) -Fo$@ $(MAKEDIR)\$<
+
+!ELSE
+
+{}.cxx{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<           " $(C_COMPILER) "
+    @$(CXXCPP) $(INCPATH0) $(CXXCPP_FLAGSMIPS)
+    @$(CXX) $(CXX_FLAGSMIPS)
+    @$(C_COMPILER) -Fo$@ $(CXXTMP)\$(@B).c
+    @$(CXXDEL)
+
+{mips\}.cxx{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<            " $(C_COMPILER) "
+    @$(CXXCPP) $(INCPATH0) $(CXXCPP_FLAGSMIPS)
+    @$(CXX) $(CXX_FLAGSMIPS)
+    @$(C_COMPILER) -Fo$@ $(CXXTMP)\$(@B).c
+    @$(CXXDEL)
+!ENDIF
+!ELSE
+
+{}.cxx{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<            " $(C_COMPILER) "
+    @$(CXXCPP) $(INCPATH0) $(CXXCPP_FLAGSMIPS)
+    @$(CXX) $(CXX_FLAGSMIPS)
+    @$(C_COMPILER) $(CXXTMP)\$(@B).c
+    @$(MIP2COFF) $(CXXTMP)\$(@B).o
+    @copy $(CXXTMP)\$(@B).o $@ >NUL
+    @$(CXXDEL)
+    @del $(CXXTMP)\$(@B).o
+
+{mips\}.cxx{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<            " $(C_COMPILER) "
+    @$(CXXCPP) $(INCPATH0) $(CXXCPP_FLAGSMIPS)
+    @$(CXX) $(CXX_FLAGSMIPS)
+    @$(C_COMPILER) $(CXXTMP)\$(@B).c
+    @$(MIP2COFF) $(CXXTMP)\$(@B).o
+    @copy $(CXXTMP)\$(@B).o $@ >NUL
+    @$(CXXDEL)
+    @del $(CXXTMP)\$(@B).o
+
+!ENDIF
+
+!IFNDEF MIPS_CC
+{}.c{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<            " $(C_COMPILER) "
+    @$(C_COMPILER) -Fo$@ $(MAKEDIR)\$<
+
+{mips\}.c{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<            " $(C_COMPILER) "
+    @$(C_COMPILER) -Fo$@ $(MAKEDIR)\mips\$(<F)
+
+!ELSE
+
+{}.c{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<            " $(C_COMPILER) "
+    @$(C_COMPILER) -o $@ $(MAKEDIR)\$(<F)
+    @$(MIP2COFF) $@
+
+{mips\}.c{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<            " $(C_COMPILER) "
+    @$(C_COMPILER) -o $@ $(MAKEDIR)\mips\$(<F)
+    @$(MIP2COFF) $@
+
+{}.p{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<            " $(MIPS_PASCAL) "
+    @$(MIPS_PASCAL) -o $@ $(MAKEDIR)\$(<F)
+    @$(MIP2COFF) $@
+
+{mips\}.p{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClMips $<            " $(MIPS_PASCALL) "
+    @$(MIPS_PASCAL) -o $@ $(MAKEDIR)\mips\$(<F)
+    @$(MIP2COFF) $@
+
+!ENDIF
+
+{}.f{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo F77Mips $<            " $(MIPS_FORTRAN_COMPILER) "
+    $(MIPS_FORTRAN_COMPILER) -o $@ $(MAKEDIR)\$(<F)
+    @$(MIP2COFF) $@
+
+
+{mips\}.f{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo F77Mips $<            " $(MIPS_FORTRAN_COMPILER) "
+    $(MIPS_FORTRAN_COMPILER)  -o $@ $(MAKEDIR)\mips\$(<F)
+    @$(MIP2COFF) $@
+
+{}.rc{obj\mips\}.res:
+    $(RC_COMPILER) -r -fo $(@R).tmp $(MIPS_CDEFINES) $(INCPATH0) $<
+    @cvtres -mips $(@R).tmp -r -o $@
+!IF "$(NTKEEPRESOURCETMPFILES)" == ""
+    @-erase $(@R).tmp
+!ENDIF
+
+!IF $(ALPHA)
+{}.c{}.pp:
+    $(ALPHA_CPP) $< > $(<B).pp
+
+{alpha\}.c{}.pp:
+    $(ALPHA_CPP) $< > $(<B).pp
+
+{}.rc{obj\alpha\}.res:
+    $(RC_COMPILER) -r -fo $(@R).tmp $(ALPHA_CDEFINES) $(INCPATH0) $<
+    @cvtres -alpha $(@R).tmp -r -o $@
+!IF "$(NTKEEPRESOURCETMPFILES)" == ""
+    @-erase $(@R).tmp
+!ENDIF
+
+!IF !$(_AXPACC_)
+
+{}.c{}.cod:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha  $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -FAacs -Fa$(<B).cod -Foobj\alpha\$(<B).o $(MAKEDIR)\$(<F)
+    @del obj\alpha\$(<B).o
+
+{alpha\}.c{}.cod:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -FAacs -Fa$(<B).cod -Foobj\alpha\$(<B).o $(MAKEDIR)\alpha\$(<F)
+    @del obj\alpha\$(<B).o
+
+!ELSE
+
+{}.c{}.cod:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha  $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -o obj\alpha\$(<B).o $(MAKEDIR)\$(<F)
+    @$(ALPHA_DIS) -S obj\alpha\$(<B).o >$(<B).cod
+    @del obj\alpha\$(<B).o
+
+{alpha\}.c{}.cod:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -o obj\alpha\$(<B).o $(MAKEDIR)\alpha\$(<F)
+    @$(ALPHA_DIS) -S obj\alpha\$(<B).o >$(<B).cod
+    @del obj\alpha\$(<B).o
+
+!ENDIF
+
+!IF !$(_AXPACC_)
+
+!IFDEF BLDCRT
+
+{}.cxx{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -Fo$@ $(MAKEDIR)\$(<F)
+
+{alpha\}.cxx{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -Fo$@ $(MAKEDIR)\alpha\$(<F)
+
+!ELSE
+
+{}.cxx{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(CXXCPP) -I. -Ialpha $(INCPATH0) $(CXXCPP_FLAGSALPHA)
+    @$(CXX) $(CXX_FLAGSALPHA)
+    @sed -e "s/builtin_alignof/builtin_isfloat/;/extern int __builtin_va_start/d" -e "s/typedef unsigned int size_t ;/& void * memset(void *, int, size_t); void * memcpy(void *, const void *, size_t); int memcmp(const void *, const void *, size_t);/" $(CXXTMP)\$(@B).i > $(CXXTMP)\$(@B).i2
+    @del $(CXXTMP)\$(@B).i > nul 2>&1
+    @ren $(CXXTMP)\$(@B).i2 $(@B).i > nul 2>&1
+    @$(ALPHA_COMPILER) -Dcdecl= -D_syscall= -Tc $(CXXTMP)\$(@B).i -Fo$@
+    @$(CXXDEL_ALPHA)
+
+{alpha\}.cxx{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(CXXCPP) -I. -Ialpha $(INCPATH0) $(CXXCPP_FLAGSALPHA)
+    @$(CXX) $(CXX_FLAGSALPHA)
+    @sed -e "s/builtin_alignof/builtin_isfloat/;/extern int __builtin_va_start/d" -e "s/typedef unsigned int size_t ;/& void * memset(void *, int, size_t); void * memcpy(void *, const void *, size_t); int memcmp(const void *, const void *, size_t);/" $(CXXTMP)\$(@B).i > $(CXXTMP)\$(@B).i2
+    @del $(CXXTMP)\$(@B).i > nul 2>&1
+    @ren $(CXXTMP)\$(@B).i2 $(@B).i > nul 2>&1
+    @$(ALPHA_COMPILER) -Dcdecl= -D_syscall= -Tc $(CXXTMP)\$(@B).i -Fo$@
+    @$(CXXDEL_ALPHA)
+
+!ENDIF
+
+!ELSE
+
+{}.cxx{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(CXXCPP) -I. -Ialpha $(INCPATH0) $(CXXCPP_FLAGSALPHA)
+    @$(CXX) $(CXX_FLAGSALPHA)
+    @sed -e "s/builtin_alignof/builtin_isfloat/;/extern int __builtin_va_start/d" $(CXXTMP)\$(@B).i > $(CXXTMP)\$(@B).i2
+    @del $(CXXTMP)\$(@B).i > nul 2>&1
+    @ren $(CXXTMP)\$(@B).i2 $(@B).i > nul 2>&1
+    @$(ALPHA_COMPILER) -Dcdecl= -D_syscall= $(CXXTMP)\$(@B).i -o $@
+    @$(A2COFF) $@
+    @$(CXXDEL_ALPHA)
+
+{alpha\}.cxx{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(CXXCPP) -I. -Ialpha $(INCPATH0) $(CXXCPP_FLAGSALPHA)
+    @$(CXX) $(CXX_FLAGSALPHA)
+    @sed -e "s/builtin_alignof/builtin_isfloat/;/extern int __builtin_va_start/d" $(CXXTMP)\$(@B).i > $(CXXTMP)\$(@B).i2
+    @del $(CXXTMP)\$(@B).i > nul 2>&1
+    @ren $(CXXTMP)\$(@B).i2 $(@B).i > nul 2>&1
+    @$(ALPHA_COMPILER) -Dcdecl= -D_syscall= $(CXXTMP)\$(@B).i -o $@
+    @$(A2COFF) $@
+    @$(CXXDEL_ALPHA)
+
+!ENDIF
+
+!IF !$(_AXPACC_)
+
+{}.c{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -Fo$@ $(MAKEDIR)\$(<F)
+
+{alpha\}.c{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -Fo$@ $(MAKEDIR)\alpha\$(<F)
+
+.SUFFIXES: .il
+
+{}.il{}.cod:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -FAac -Fa$(<B).cod -B1..\bootbin\null.exe -Bk$(<B). -Foobj\alpha\$(<B).o $(MAKEDIR)\$(<B).c
+    @del obj\alpha\$(<B).o
+
+{}.il{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -B1..\bootbin\null.exe -Bk$(<B). -Fo$@ $(MAKEDIR)\$(<B).c
+
+!ELSE
+
+{}.c{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -o $@ $(MAKEDIR)\$(<F)
+    @$(A2COFF) $@
+
+{alpha\}.c{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo ClAlpha $<            " $(ALPHA_COMPILER) "
+    @$(ALPHA_COMPILER) -o $@ $(MAKEDIR)\alpha\$(<F)
+    @$(A2COFF) $@
+
+!ENDIF
+
+!ENDIF ALPHA
+
+#
+# Standard inference rule for Assembler files that produce object files
+# NOTE: assembler files MUST be in a subdirectory.
+#
+
+{i386\}.asm{obj\i386\}.obj:
+    $(386_ASSEMBLER) $<,$@;
+
+{mips\}.s{obj\mips\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo AsMips $<            " $(MIPS_ASSEMBLER) "
+    @$(MIPS_ASSEMBLER) -o $@ $(MAKEDIR)\mips\$(<F)
+    @$(MIP2COFF) $@
+
+{alpha\}.s{obj\alpha\}.obj:
+    @-erase $@ >nul 2>&1
+    @echo AsAlpha $<            " $(ALPHA_ASSEMBLER) "
+    @$(ALPHA_ASSEMBLER) -o $@ $(MAKEDIR)\alpha\$(<F)
+    @$(A2COFF) $@
+
+# !ENDIF   # !IF LINKONLY
+
+#
+# Standard inference rule for User Mode object files that produce User Mode
+# image files
+#
+
+!IFDEF EXEPROFILEINPUT
+EXEORDER=-order:@$(@B).prf
+!ENDIF
+
+{obj\i386\}.obj{obj\i386\}$(UMAPPLEXT):
+    $(386_LINKER) @<<
+-machine:i386
+$(EXEORDER)
+-base:$(386_UMBASE)
+-align:0x1000
+-subsystem:$(SUBSYSTEM)
+$(386_UMENTRY)
+$(386_LINKFLAGS)
+$(386_UMRES)
+$<
+$(386_UMOBJS)
+$(386_UMLIBS)
+$(386_CRTLIBS)
+$(386_LINKLIBS)
+<<
+!IFDEF _NT386TREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+
+
+{obj\mips\}.obj{obj\mips\}$(UMAPPLEXT):
+    $(MIPS_LINKER) @<<
+-machine:mips
+$(LINKGPSIZE)
+-base:$(MIPS_UMBASE)
+-align:0x1000
+-subsystem:$(SUBSYSTEM)
+$(MIPS_UMENTRY)
+$(MIPS_LINKFLAGS)
+$(MIPS_UMRES)
+$<
+$(MIPS_UMOBJS)
+$(MIPS_CRTLIBS)
+$(MIPS_UMLIBS)
+$(MIPS_LINKLIBS)
+<<
+!IFDEF _NTMIPSTREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+
+
+{obj\alpha\}.obj{obj\alpha\}$(UMAPPLEXT):
+    $(ALPHA_LINKER) @<<
+$(LINKGPSIZE)
+-base:$(ALPHA_UMBASE)
+-subsystem:$(SUBSYSTEM)
+$(ALPHA_UMENTRY)
+$(ALPHA_LINKFLAGS)
+$(ALPHA_UMRES)
+$<
+$(ALPHA_UMOBJS)
+$(ALPHA_CRTLIBS)
+$(ALPHA_UMLIBS)
+$(ALPHA_LINKLIBS)
+<<
+!IFDEF _NTALPHATREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+
+
+
+#
+# Standard list of targets: all, clean and loc.  all is the default target.
+#
+
+all:  obj\_objects.mac $(386_PRECOMPILED_TARGET) \
+        $(ALPHA_PRECOMPILED_TARGET) \
+        $(NTTARGETFILE0)  \
+        $(TARGETOBJFILES) \
+        $(TARGETLIBFILES) \
+        $(NTTARGETFILE1)  \
+        $(TARGETEXEFILES) \
+        $(386_UMOBJFILES) $(MIPS_UMOBJFILES) $(ALPHA_UMOBJFILES) \
+        $(386_UMEXEFILES) $(MIPS_UMEXEFILES) $(ALPHA_UMEXEFILES) \
+        $(NTTARGETFILES)
+!IF "$(BUILDMSG)" != ""
+    @ech ; $(BUILDMSG) ;
+!ENDIF
+
+update:
+    @ech Updating library. ;
+
+obj\_objects.mac: .\sources
+    @echo Rebuilding obj\_objects.mac from SOURCES.
+    @build -O >nul 2>&1
+    @echo obj\_objects.mac was rebuilt, please reinvoke NMAKE
+    @md \ >nul 2>nul
+
+loc:
+    @-loc *.h $(SOURCES)
+
+print:
+    @-ppr *.h $(SOURCES)
+
+!IFDEF NTTARGETFILES
+!INCLUDE .\makefile.inc
+!ELSE
+!IFDEF NTTARGETFILE0
+!INCLUDE .\makefile.inc
+!ELSE
+!IFDEF NTTARGETFILE1
+!INCLUDE .\makefile.inc
+!ENDIF
+!ENDIF
+!ENDIF
+
+!IF $(386)
+!IF "$(PRECOMPILED_INCLUDE)" != ""
+$(386_PRECOMPILED_TARGET): $(PRECOMPILED_INCLUDE)
+    cl386 -nologo -I i386\ -I . $(INCPATH1) $(386_CDEFINES) /Yc$(PRECOMPILED_INCLUDE) $(386_CFLAGS) /Tc<<
+#include "$(PRECOMPILED_INCLUDE)"
+<<
+#   erase xxx001.c
+!ENDIF
+!ENDIF
+
+!IFNDEF NOLINK
+
+!IF "$(UMTEST)" != "" || "$(UMAPPL)" != ""
+
+!IF $(386)
+$(386_UMEXEFILES): $(386_UMLIBS) $(386_CRTLIBS) $(386_LINKLIBS)
+
+!ENDIF
+
+!IF $(MIPS)
+$(MIPS_UMEXEFILES): $(MIPS_UMLIBS) $(MIPS_CRTLIBS) $(MIPS_LINKLIBS)
+
+!ENDIF
+
+!IF $(ALPHA)
+$(ALPHA_UMEXEFILES): $(ALPHA_UMLIBS) $(ALPHA_CRTLIBS) $(ALPHA_LINKLIBS)
+
+!ENDIF
+
+!ENDIF
+!ENDIF
+
+#
+# These dependencies produce the target binaries from the object files.
+# These will trigger the sources to object inference rules to generate the
+# object files.
+#
+
+!IF $(386)
+!IF "$(386TARGET)" != ""
+!IF "$(TARGETTYPE)"=="PROGLIB"
+$(386TARGET:.exe=.lib) $(386TARGET:.exe=.exp): $(386_DLLDEF) $(386_LINKLIBS) $(386_OBJECTS)
+    -lib32 -out:$(@R).lib @<<
+-machine:i386
+-def:$(386_DLLDEF)
+$(386_LINKLIBS)
+$(386_OBJECTS)
+<<
+$(386TARGET): $(386_OBJECTS) $(TARGETPATH)\i386\$(DDKBUILDENV)\$(TARGETNAME).exp $(386_UMRES) $(386_UMLIBS) $(386_CRTLIBS) $(386_TARGETLIBS) $(386_LINKLIBS)
+    $(386_LINKER) @<<
+-machine:i386
+$(EXEORDER)
+-align:0x1000
+-subsystem:$(SUBSYSTEM)
+-base:$(386_UMBASE)
+$(386_UMENTRY)
+$(386_LINKFLAGS)
+$**
+<<
+!IFDEF _NT386TREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+!ELSE
+!IF "$(TARGETTYPE)"=="PROGRAM"
+$(386TARGET): $(386_UMRES) $(386_OBJECTS) $(386_CRTLIBS) $(386_UMLIBS) $(386_TARGETLIBS) $(386_LINKLIBS)
+    $(386_LINKER) @<<
+-machine:i386
+-subsystem:$(SUBSYSTEM)
+-align:0x1000
+-base:$(386_UMBASE)
+$(386_UMENTRY)
+$(386_LINKFLAGS)
+$**
+<<
+!IFDEF _NT386TREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="DYNLINK"
+!IF "$(MAKEDLL)" == ""
+
+!IF "$(NTNOFUZZYLOOKUP)"=="1"
+$(386TARGET) $(386TARGET:.lib=.exp): $(386_DLLDEF)
+    -lib32 -out:$(@R).lib @<<
+-machine:i386
+-def:$(386_DLLDEF)
+<<
+!ELSE
+$(386TARGET) $(386TARGET:.lib=.exp): $(386_DLLDEF) $(386_OBJECTS) $(386_LINKLIBS)
+    -lib32 -out:$(@R).lib @<<
+-machine:i386
+-def:$(386_DLLDEF)
+$(386_OBJECTS)
+$(386_LINKLIBS)
+<<
+!ENDIF
+!ELSE
+
+!IF "$(TARGETEXT)" == "dll"
+386COPYDST=
+$(386TARGET:.dll=.lib) $(386TARGET:.dll=.exp): $(386_DLLDEF) $(386_OBJECTS) $(386_LINKLIBS)
+    -lib32 -out:$(@R).lib @<<
+-machine:i386
+-def:$(386_DLLDEF)
+$(386_OBJECTS)
+$(386_LINKLIBS)
+<<
+!ELSE
+!IF "$(TARGETEXT)" == "cpl"
+386COPYDST=
+$(386TARGET:.cpl=.lib) $(386TARGET:.cpl=.exp): $(386_DLLDEF) $(386_OBJECTS) $(386_LINKLIBS)
+    -lib32 -out:$(@R).lib @<<
+-machine:i386
+-def:$(386_DLLDEF)
+$(386_OBJECTS)
+$(386_LINKLIBS)
+<<
+!ELSE
+!IF "$(TARGETEXT)" == "fon"
+386COPYDST=
+$(386TARGET:.fon=.lib) $(386TARGET:.fon=.exp): $(386_DLLDEF) $(386_OBJECTS) $(386_LINKLIBS)
+    -lib32 -out:$(@R).lib @<<
+-machine:i386
+-def:$(386_DLLDEF)
+$(386_OBJECTS)
+$(386_LINKLIBS)
+<<
+!ELSE
+!IF "$(TARGETEXT)" == "drv"
+386COPYDST=
+$(386TARGET:.drv=.lib) $(386TARGET:.drv=.exp): $(386_DLLDEF) $(386_OBJECTS) $(386_LINKLIBS)
+    -lib32 -out:$(@R).lib @<<
+-machine:i386
+-def:$(386_DLLDEF)
+$(386_OBJECTS)
+$(386_LINKLIBS)
+<<
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!IF "$(TARGETPATH)" == "\nt\lib"
+!IFDEF _NT386LIBS
+    @nti386cp.cmd $@ $(@B) LIBS >nul
+!ENDIF
+!ENDIF
+
+!IFDEF DLLORDER
+XXXORDER=-order:@$(DLLORDER)
+!ENDIF
+
+!IFDEF NTPROFILEINPUT
+XXXORDER=-order:@$(386_DLLDEF:.def=.prf)
+XXXORDER=$(XXXORDER:obj\i386\=)
+!ENDIF
+
+$(386TARGET): $(TARGETPATH)\i386\$(DDKBUILDENV)\$(TARGETNAME).exp $(386_OBJECTS) $(386_LINKLIBS) $(386_CRTLIBS) $(386_TARGETLIBS)
+    $(386_LINKER) @<<
+-dll
+-machine:i386
+$(XXXORDER)
+-align:0x1000
+-base:$(386_DLLBASE)
+-subsystem:$(SUBSYSTEM)
+$(DLLENTRY)
+$**
+<<
+!IFDEF _NT386TREE
+    binplace $(BINPLACE_FLAGS) $(386COPYDST) $@
+!ENDIF
+!IFDEF _NTDUMPAMAP
+    link32 -dump -map $@ | sort /R /+62 > $(_NTDUMPAMAP)\$(@B).srt
+!ENDIF
+
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="LIBRARY"
+$(386TARGET): $(386_OBJECTS)
+    @-erase $@ >nul 2>nul
+    -$(386_LIBRARIAN) @<<
+$**
+<<
+!IF "$(TARGETPATH)" == "\nt\lib"
+!IFDEF _NT386LIBS
+    @nti386cp.cmd $@ $(@B) LIBS >nul
+!ENDIF
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="DRIVER"
+
+!IFDEF NTPROFILEINPUT
+ORDER=-order:@$(@B).prf
+!ENDIF
+
+$(386TARGET): $(386_OBJECTS) $(386_TARGETLIBS)
+    $(386_LINKER) @<<
+-machine:i386
+$(ORDER)
+-align:0x200
+-subsystem:$(SUBSYSTEM)
+-debug:notmapped
+-base:$(DRIVERBASE)
+-entry:DriverEntry@8
+-out:$(386TARGET)
+$**
+<<
+!IFDEF _NT386TREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+!IFDEF _NTDUMPAMAP
+    link32 -dump -map $@ | sort /R /+62 > $(_NTDUMPAMAP)\$(@B).srt
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="EXPORT_DRIVER"
+
+!IFDEF NTPROFILEINPUT
+ORDER=-order:@$(@B).prf
+!ENDIF
+
+!IF "$(MAKEDLL)" == ""
+$(386TARGET) $(386TARGET:.lib=.exp): $(386_DLLDEF) $(386_OBJECTS) $(386_LINKLIBS)
+    -lib32 -out:$(@R).lib -machine:i386 -def:$(386_DLLDEF) $(386_OBJECTS) $(386_LINKLIBS)
+!ELSE
+$(386TARGET:.sys=.lib) $(386TARGET:.sys=.exp): $(386_DLLDEF) $(386_OBJECTS) $(386_LINKLIBS)
+    -lib32 -out:$(@R).lib -machine:i386 -def:$(386_DLLDEF) $(386_OBJECTS) $(386_LINKLIBS)
+$(386TARGET): $(TARGETPATH)\i386\$(DDKBUILDENV)\$(TARGETNAME).exp $(386_OBJECTS) $(386_CRTLIBS) $(386_TARGETLIBS) $(386_LINKLIBS)
+    $(386_LINKER) @<<
+-machine:i386
+$(ORDER)
+-align:0x200
+-subsystem:$(SUBSYSTEM)
+-debug:notmapped
+-base:$(DRIVERBASE)
+-entry:DriverEntry@8
+-out:$(386TARGET)
+$**
+<<
+!IFDEF _NT386TREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+!ENDIF
+
+!ELSE
+
+!IF "$(TARGETTYPE)"=="HAL"
+!IF "$(MAKEDLL)" == ""
+$(386TARGET) $(386TARGET:.lib=.exp): $(386_DLLDEF) obj\i386\*.obj
+    -lib32 -out:$(@R).lib -machine:i386 -def:$(386_DLLDEF) obj\i386\*.obj
+!ELSE
+$(386TARGET:.dll=.lib) $(386TARGET:.dll=.exp): $(386_DLLDEF) obj\i386\*.obj
+    -lib32 -out:$(@R).lib -machine:i386 -def:$(386_DLLDEF) obj\i386\*.obj
+!IF "$(TARGETPATH)" == "\nt\lib"
+!IFDEF _NT386LIBS
+    @nti386cp.cmd $@ $(@B) LIBS >nul
+!ENDIF
+!ENDIF
+
+$(386TARGET): $(TARGETPATH)\i386\$(DDKBUILDENV)\$(TARGETNAME).exp $(386_OBJECTS) $(386_CRTLIBS) $(386_TARGETLIBS) $(386_LINKLIBS)
+    $(386_LINKER) @<<
+-machine:i386
+-align:0x1000
+-subsystem:$(SUBSYSTEM)
+-debug:notmapped
+-base:$(HALBASE)
+-dll
+-entry:HalInitSystem@8
+-out:$(386TARGET)
+$**
+<<
+!IFDEF _NT386TREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+!IFDEF _NTDUMPAMAP
+    link32 -dump -map $@ | sort /R /+62 > $(_NTDUMPAMAP)\$(@B).srt
+!ENDIF
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="BOOTPGM"
+$(386TARGET): $(386_OBJECTS) $(386_CRTLIBS) $(386_TARGETLIBS) $(386_LINKLIBS)
+    $(386_LINKER) @<<
+-machine:i386
+-subsystem:$(SUBSYSTEM)
+-base:$(386_BOOTBASE)
+-entry:_start
+-map:$(@R).map
+$(386_LINKFLAGS)
+$**
+<<
+
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+
+!IF $(MIPS)
+!IF "$(MIPSTARGET)" != ""
+!IF "$(TARGETTYPE)"=="PROGLIB"
+$(MIPSTARGET:.exe=.lib) $(MIPSTARGET:.exe=.exp): $(MIPS_DLLDEF)
+    -lib32 -out:$(@R).lib -machine:mips -def:$(MIPS_DLLDEF)
+$(MIPSTARGET): $(MIPS_OBJECTS) $*.exp $(MIPS_UMRES) $(MIPS_TARGETLIBS) $(MIPS_CRTLIBS) $(MIPS_UMLIBS) $(MIPS_LINKLIBS)
+    $(MIPS_LINKER) @<<
+-machine:mips
+$(LINKGPSIZE)
+-subsystem:$(SUBSYSTEM)
+-base:$(MIPS_UMBASE)
+-align:0x1000
+$(MIPS_UMENTRY)
+$(MIPS_LINKFLAGS)
+$**
+<<
+!IFDEF _NTMIPSTREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+!ELSE
+!IF "$(TARGETTYPE)"=="PROGRAM"
+$(MIPSTARGET): $(MIPS_OBJECTS) $(MIPS_CRTLIBS) $(MIPS_UMLIBS) $(MIPS_TARGETLIBS) $(MIPS_LINKLIBS)
+    $(MIPS_LINKER) @<<
+-machine:mips
+$(LINKGPSIZE)
+-subsystem:$(SUBSYSTEM)
+-base:$(MIPS_UMBASE)
+-align:0x1000
+$(MIPS_UMENTRY)
+$(MIPS_LINKFLAGS)
+$(MIPS_UMRES)
+$**
+<<
+!IFDEF _NTMIPSTREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="DYNLINK"
+!IF "$(MAKEDLL)" == ""
+$(MIPSTARGET) $(MIPSTARGET:.lib=.exp): $(MIPS_DLLDEF)
+    -lib32 -out:$(@R).lib -machine:mips -def:$(MIPS_DLLDEF)
+!ELSE
+
+!IF "$(TARGETEXT)" == "dll"
+MIPSCOPYDST=
+$(MIPSTARGET:.dll=.lib) $(MIPSTARGET:.dll=.exp): $(MIPS_DLLDEF)
+    -lib32 -out:$(@R).lib -machine:mips -def:$(MIPS_DLLDEF)
+!ELSE
+!IF "$(TARGETEXT)" == "cpl"
+MIPSCOPYDST=
+$(MIPSTARGET:.cpl=.lib) $(MIPSTARGET:.cpl=.exp): $(MIPS_DLLDEF)
+    -lib32 -out:$(@R).lib -machine:mips -def:$(MIPS_DLLDEF)
+!ELSE
+!IF "$(TARGETEXT)" == "fon"
+MIPSCOPYDST=
+$(MIPSTARGET:.fon=.lib) $(MIPSTARGET:.fon=.exp): $(MIPS_DLLDEF)
+    -lib32 -out:$(@R).lib -machine:mips -def:$(MIPS_DLLDEF)
+!ELSE
+!IF "$(TARGETEXT)" == "drv"
+MIPSCOPYDST=
+$(MIPSTARGET:.drv=.lib) $(MIPSTARGET:.drv=.exp): $(MIPS_DLLDEF)
+    -lib32 -out:$(@R).lib -machine:mips -def:$(MIPS_DLLDEF)
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!IF "$(TARGETPATH)" == "\nt\lib"
+!IFDEF _NTMIPSLIBS
+    @ntmipscp.cmd $@ $(@B) LIBS >nul
+!ENDIF
+!ENDIF
+
+$(MIPSTARGET): $*.exp $(MIPS_OBJECTS) $(MIPS_LINKLIBS) $(MIPS_CRTLIBS) $(MIPS_TARGETLIBS)
+    $(MIPS_LINKER) @<<
+-dll
+-machine:mips
+-subsystem:$(SUBSYSTEM)
+-base:$(MIPS_DLLBASE)
+-align:0x1000
+$(DLLENTRY)
+$**
+<<
+!IFDEF _NTMIPSTREE
+    binplace $(BINPLACE_FLAGS) $(MIPSCOPYDST) $@
+!ENDIF
+
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="LIBRARY"
+$(MIPSTARGET): $(MIPS_OBJECTS)
+    @-erase $@ >nul 2>nul
+    -$(MIPS_LIBRARIAN) @<<
+$**
+<<
+!IF "$(TARGETPATH)" == "\nt\lib"
+!IFDEF _NTMIPSLIBS
+    @ntmipscp.cmd $@ $(@B) LIBS >nul
+!ENDIF
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="DRIVER"
+$(MIPSTARGET): $(MIPS_OBJECTS) $(MIPS_TARGETLIBS)
+    $(MIPS_LINKER) @<<
+-machine:mips
+-align:0x200
+-subsystem:$(SUBSYSTEM)
+-debug:notmapped
+-base:$(DRIVERBASE)
+-entry:DriverEntry
+-out:$(MIPSTARGET)
+$**
+<<
+!IFDEF _NTMIPSTREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="EXPORT_DRIVER"
+!IF "$(MAKEDLL)" == ""
+$(MIPSTARGET) $(MIPSTARGET:.lib=.exp): $(MIPS_DLLDEF)
+    -lib32 -out:$(@R).lib -machine:mips -def:$(MIPS_DLLDEF)
+!ELSE
+$(MIPSTARGET:.sys=.lib) $(MIPSTARGET:.sys=.exp): $(MIPS_DLLDEF)
+    -lib32 -out:$(@R).lib -machine:mips -def:$(MIPS_DLLDEF)
+$(MIPSTARGET): $*.exp $(MIPS_OBJECTS) $(MIPS_CRTLIBS) $(MIPS_TARGETLIBS) $(MIPS_LINKLIBS)
+    $(MIPS_LINKER) @<<
+-machine:mips
+-align:0x200
+-subsystem:$(SUBSYSTEM)
+-debug:notmapped
+-base:$(DRIVERBASE)
+-entry:DriverEntry
+-out:$(MIPSTARGET)
+$**
+<<
+!IFDEF _NTMIPSTREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+!ENDIF
+
+!ELSE
+
+!IF "$(TARGETTYPE)"=="HAL"
+
+!IF "$(MAKEDLL)" == ""
+$(MIPSTARGET) $(MIPSTARGET:.lib=.exp): $(MIPS_DLLDEF)
+    -lib32 -out:$(@R).lib -machine:mips -def:$(MIPS_DLLDEF)
+!ELSE
+$(MIPSTARGET:.dll=.lib) $(MIPSTARGET:.dll=.exp): $(MIPS_DLLDEF)
+    -lib32 -out:$(@R).lib -machine:mips -def:$(MIPS_DLLDEF)
+!IF "$(TARGETPATH)" == "\nt\lib"
+!IFDEF _NTMIPSLIBS
+    @ntmipscp.cmd $@ $(@B) LIBS >nul
+!ENDIF
+!ENDIF
+
+$(MIPSTARGET): $*.exp $(MIPS_OBJECTS) $(MIPS_CRTLIBS) $(MIPS_TARGETLIBS) $(MIPS_LINKLIBS)
+    $(MIPS_LINKER) @<<
+-machine:mips
+-align:0x1000
+-subsystem:$(SUBSYSTEM)
+-debug:notmapped
+-base:$(HALBASE)
+-dll
+-entry:HalInitSystem
+-out:$(MIPSTARGET)
+$**
+<<
+!IFDEF _NTMIPSTREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="BOOTPGM"
+$(MIPSTARGET): $(MIPS_OBJECTS) $(MIPS_CRTLIBS) $(MIPS_TARGETLIBS) $(MIPS_LINKLIBS)
+    $(MIPS_LINKER) @<<
+-machine:mips
+-subsystem:$(SUBSYSTEM)
+-base:$(MIPS_BOOTBASE)
+-entry:_start
+-map:$(@R).map
+$(MIPS_LINKFLAGS)
+$**
+<<
+
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+
+!IF $(ALPHA)
+!IF "$(ALPHATARGET)" != ""
+!IF "$(TARGETTYPE)"=="PROGLIB"
+$(ALPHATARGET:.exe=.lib) $(ALPHATARGET:.exe=.exp): $(ALPHA_DLLDEF)
+    lib32 -out:$(@R).lib -machine:alpha -def:$(ALPHA_DLLDEF)
+$(ALPHATARGET): $(ALPHA_OBJECTS) $*.exp $(ALPHA_UMRES) $(ALPHA_TARGETLIBS) $(ALPHA_UMLIBS) $(ALPHA_CRTLIBS) $(ALPHA_LINKLIBS)
+    $(ALPHA_LINKER) @<<
+-subsystem:$(SUBSYSTEM)
+-base:$(ALPHA_UMBASE)
+$(ALPHA_UMENTRY)
+$(ALPHA_LINKFLAGS)
+$**
+<<
+!IFDEF _NTALPHATREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+!ELSE
+!IF "$(TARGETTYPE)"=="PROGRAM"
+$(ALPHATARGET): $(ALPHA_OBJECTS) $(ALPHA_CRTLIBS) $(ALPHA_UMLIBS) $(ALPHA_TARGETLIBS) $(ALPHA_LINKLIBS)
+    $(ALPHA_LINKER) @<<
+-subsystem:$(SUBSYSTEM)
+-base:$(ALPHA_UMBASE)
+$(ALPHA_UMENTRY)
+$(ALPHA_LINKFLAGS)
+$(ALPHA_UMRES)
+$**
+<<
+!IFDEF _NTALPHATREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="DYNLINK"
+!IF "$(MAKEDLL)" == ""
+$(ALPHATARGET) $(ALPHATARGET:.lib=.exp): $(ALPHA_DLLDEF)
+    lib32 -out:$(@R).lib -machine:alpha -def:$(ALPHA_DLLDEF)
+!ELSE
+
+!IF "$(TARGETEXT)" == "dll"
+ALPHACOPYDST=
+$(ALPHATARGET:.dll=.lib) $(ALPHATARGET:.dll=.exp): $(ALPHA_DLLDEF)
+    lib32 -out:$(@R).lib -machine:alpha -def:$(ALPHA_DLLDEF)
+!ELSE
+!IF "$(TARGETEXT)" == "cpl"
+ALPHACOPYDST=
+$(ALPHATARGET:.cpl=.lib) $(ALPHATARGET:.cpl=.exp): $(ALPHA_DLLDEF)
+    lib32 -out:$(@R).lib -machine:alpha -def:$(ALPHA_DLLDEF)
+!ELSE
+!IF "$(TARGETEXT)" == "fon"
+ALPHACOPYDST=
+$(ALPHATARGET:.fon=.lib) $(ALPHATARGET:.fon=.exp): $(ALPHA_DLLDEF)
+    lib32 -out:$(@R).lib -machine:alpha -def:$(ALPHA_DLLDEF)
+!ELSE
+!IF "$(TARGETEXT)" == "drv"
+ALPHACOPYDST=
+$(ALPHATARGET:.drv=.lib) $(ALPHATARGET:.drv=.exp): $(ALPHA_DLLDEF)
+    lib32 -out:$(@R).lib -machine:alpha -def:$(ALPHA_DLLDEF)
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!IF "$(TARGETPATH)" == "\nt\lib"
+!IFDEF _NTALPHALIBS
+    @ntalphcp.cmd $@ $(@B) LIBS >nul
+!ENDIF
+!ENDIF
+
+$(ALPHATARGET): $*.exp $(ALPHA_OBJECTS) $(ALPHA_LINKLIBS) $(ALPHA_CRTLIBS) $(ALPHA_TARGETLIBS)
+    $(ALPHA_LINKER) @<<
+-dll
+-base:$(ALPHA_DLLBASE)
+$(DLLENTRY)
+$**
+<<
+!IFDEF _NTALPHATREE
+    binplace $(BINPLACE_FLAGS) $(ALPHACOPYDST) $@
+!ENDIF
+
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="LIBRARY"
+$(ALPHATARGET): $(ALPHA_OBJECTS)
+    @-erase $@ >nul 2>nul
+    $(ALPHA_LIBRARIAN) @<<
+$**
+<<
+!IF "$(TARGETPATH)" == "\nt\lib"
+!IFDEF _NTALPHALIBS
+    @ntalphcp.cmd $@ $(@B) LIBS >nul
+!ENDIF
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="DRIVER"
+$(ALPHATARGET): $(ALPHA_OBJECTS) $(ALPHA_TARGETLIBS)
+    $(ALPHA_LINKER) @<<
+-align:0x200
+-debug:notmapped
+-base:$(DRIVERBASE)
+-entry:DriverEntry
+-out:$(ALPHATARGET)
+$**
+<<
+!IFDEF _NTALPHATREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+
+!ELSE
+!IF "$(TARGETTYPE)"=="EXPORT_DRIVER"
+!IF "$(MAKEDLL)" == ""
+$(ALPHATARGET) $(ALPHATARGET:.lib=.exp): $(ALPHA_DLLDEF)
+    lib32 -out:$(@R).lib -machine:alpha -def:$(ALPHA_DLLDEF)
+!ELSE
+$(ALPHATARGET:.sys=.lib) $(ALPHATARGET:.sys=.exp): $(ALPHA_DLLDEF)
+    lib32 -out:$(@R).lib -machine:alpha -def:$(ALPHA_DLLDEF)
+$(ALPHATARGET): $*.exp $(ALPHA_OBJECTS) $(ALPHA_CRTLIBS) $(ALPHA_TARGETLIBS) $(ALPHA_LINKLIBS)
+    $(ALPHA_LINKER) @<<
+-align:0x200
+-debug:notmapped
+-base:$(DRIVERBASE)
+-entry:DriverEntry
+-out:$(ALPHATARGET)
+$**
+<<
+!IFDEF _NTALPHATREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+!ENDIF
+
+!ELSE
+
+!IF "$(TARGETTYPE)"=="HAL"
+!IF "$(MAKEDLL)" == ""
+$(ALPHATARGET) $(ALPHATARGET:.lib=.exp): $(ALPHA_DLLDEF)
+    lib32 -out:$(@R).lib -machine:alpha -def:$(ALPHA_DLLDEF)
+!ELSE
+$(ALPHATARGET:.dll=.lib) $(ALPHATARGET:.dll=.exp): $(ALPHA_DLLDEF)
+    lib32 -out:$(@R).lib -machine:alpha -def:$(ALPHA_DLLDEF)
+!IF "$(TARGETPATH)" == "\nt\lib"
+!IFDEF _NTALPHALIBS
+    @ntalphcp.cmd $@ $(@B) LIBS >nul
+!ENDIF
+!ENDIF
+
+$(ALPHATARGET): $*.exp $(ALPHA_OBJECTS) $(ALPHA_CRTLIBS) $(ALPHA_TARGETLIBS) $(ALPHA_LINKLIBS)
+    $(ALPHA_LINKER) @<<
+-align:0x200
+-debug:notmapped
+-base:$(HALBASE)
+-dll
+-entry:HalInitSystem
+-out:$(ALPHATARGET)
+$**
+<<
+!IFDEF _NTALPHATREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+!ENDIF
+!ELSE
+!IF "$(TARGETTYPE)"=="BOOTPGM"
+$(ALPHATARGET): $(ALPHA_OBJECTS) $(ALPHA_CRTLIBS) $(ALPHA_TARGETLIBS) $(ALPHA_LINKLIBS)
+    $(ALPHA_LINKER) @<<
+-base:$(ALPHA_BOOTBASE)
+-entry:_start
+-map:$(@R).map
+$(ALPHA_LINKFLAGS)
+$**
+<<
+
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+!ENDIF
+
+
+!IFNDEF NOLINK
+
+!IF "$(NTTEST)" != ""
+
+!IF $(386)
+
+!IFDEF NTPROFILEINPUT
+ORDER=-order:@$(@B).prf
+!ENDIF
+
+obj\i386\$(NTTEST).exe: $(386_NTRES) obj\i386\$(NTTEST).obj  \
+                        $(RELATIVE_DEPTH)\obj\i386\*.lib     \
+                        $(386_LINKLIBS)                      \
+                        $(BASEDIR)\lib\i386\$(DDKBUILDENV)\hal.lib \
+                        $(BASEDIR)\lib\i386\$(DDKBUILDENV)\ntoskrnl.exp \
+                        $(BASEDIR)\lib\i386\$(DDKBUILDENV)\lsadll.lib \
+                        $(BASEDIR)\lib\i386\$(DDKBUILDENV)\libcnt.lib
+    $(386_LINKER) @<<
+-machine:i386
+$(ORDER)
+-base:0x80100000
+-align:0x1000
+-subsystem:$(SUBSYSTEM)
+-debug:notmapped
+-fixed
+-entry:main
+$(386_LINKFLAGS)
+$**
+<<
+!IFDEF _NT386TREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+!IFDEF _NTDUMPAMAP
+    link32 -dump -map $@ | sort /R /+62 > $(_NTDUMPAMAP)\$(@B).srt
+!ENDIF
+
+!ENDIF
+
+!IF $(MIPS)
+
+obj\mips\$(NTTEST).exe: $(RELATIVE_DEPTH)\ke\obj\mips\$(MIPS_TRAP_FILE)  \
+                        $(MIPS_NTRES) obj\mips\$(NTTEST).obj    \
+                        $(RELATIVE_DEPTH)\obj\mips\*.lib        \
+                        $(MIPS_LINKLIBS)                        \
+                        $(BASEDIR)\lib\mips\$(DDKBUILDENV)\hal.lib  \
+                        $(BASEDIR)\lib\mips\$(DDKBUILDENV)\ntoskrnl.exp \
+                        $(BASEDIR)\lib\mips\$(DDKBUILDENV)\lsadll.lib \
+                        $(BASEDIR)\lib\mips\$(DDKBUILDENV)\libcnt.lib
+    $(MIPS_LINKER) @<<
+-machine:mips
+-align:0x1000
+-subsystem:$(SUBSYSTEM)
+-debug:notmapped
+$(LINKGPSIZE)
+-base:0x10000
+-entry:KiSystemStartup
+$(MIPS_LINKFLAGS)
+$**
+<<
+
+!IFDEF _NTMIPSTREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+
+!ENDIF
+
+!IF $(ALPHA)
+
+obj\alpha\$(NTTEST).exe: $(RELATIVE_DEPTH)\ke\obj\alpha\$(ALPHA_START_FILE)  \
+                         $(ALPHA_NTRES) obj\alpha\$(NTTEST).obj    \
+                         $(RELATIVE_DEPTH)\obj\alpha\*.lib        \
+                         $(ALPHA_LINKLIBS)                        \
+                         $(BASEDIR)\lib\alpha\$(DDKBUILDENV)\hal.lib  \
+                         $(BASEDIR)\lib\alpha\$(DDKBUILDENV)\ntoskrnl.exp \
+                         $(BASEDIR)\lib\alpha\$(DDKBUILDENV)\lsadll.lib \
+                         $(BASEDIR)\lib\alpha\$(DDKBUILDENV)\libcnt.lib
+    $(ALPHA_LINKER) @<<
+-align:0x200
+-debug:notmapped
+-fixed
+$(LINKGPSIZE)
+-base:0x80080000
+-entry:KiSystemStartup
+$(ALPHA_LINKFLAGS)
+$(ALPHA_NTRES)
+$**
+<<
+
+!IFDEF _NTALPHATREE
+    binplace $(BINPLACE_FLAGS) $@
+!ENDIF
+
+!ENDIF
+
+!ENDIF
+
+!ENDIF
