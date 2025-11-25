@@ -1,0 +1,870 @@
+[Shell Commands]
+    set-title "Microsoft Visual C++ Enterprise SQL Server Debugging Setup"
+    set-subst LF = "\n"
+    set Exit_Code = $(!SETUP_ERROR_GENERAL)
+
+    install LoadSetupLibrary
+
+    StartWait
+
+
+    read-syms GeneralConstants
+    read-syms LanguageVar
+    detect    LanguageVar
+
+    read-syms UiVars
+    detect    UiVars
+
+    read-syms WindowsNT$(!STF_LANGUAGE)
+
+    EndWait
+
+
+    read-syms SetupInit$(!STF_LANGUAGE)
+    shell "" DoWelcome
+    ifstr(i) $($R0) != "STATUS_SUCCESSFUL"
+        goto SetupDone
+    endif
+
+    set !SQLPath = ""
+
+    LibraryProcedure !SQLSetupModule, $(!DLLSQL), SQLDLLInit $(STF_HWND)
+    LibraryProcedure !ComputerName, $(!DLLSQL), GetMachineName
+    set !ServerName = $(!ComputerName)
+
+    set !SystemDirectory = $(!STF_WINDOWSSYSPATH)
+
+    shell "" DoAdminCheck
+    ifstr(i) $($R0) != "STATUS_SUCCESSFUL"
+        goto SetupDone
+    endif
+
+    LibraryProcedure Key, $(!DLLSQL), RegOpen "\\"$(!ComputerName), $(!RegSQLSetup)
+    ifstr(i) $(Key) != "KEY_ERROR"
+        LibraryProcedure !SQLPath, $(!DLLSQL), RegRead $(Key), $(!RegValSQLPath)
+        LibraryProcedure Result, $(!DLLSQL), RegClose $(Key)
+    endif
+
+    ifstr(i) $(!SQLPath) == ""
+        read-syms SQLNotInstalled$(!STF_LANGUAGE)
+        goto SetupDone
+    endif
+
+    LibraryProcedure Key, $(!DLLSQL), RegOpen "\\"$(!ComputerName), $(!RegSQLServerServer)"\"$(!RegSQLServerVer)
+    ifstr(i) $(Key) != "KEY_ERROR"
+        LibraryProcedure !InstalledVersion, $(!DLLSQL), RegRead $(Key), $(!RegValVersion)
+        LibraryProcedure Result, $(!DLLSQL), RegClose $(Key)
+    endif
+
+    shell "" DoTestUpgradeVersion $(!InstalledVersion), $(!gMinSQLVersion)
+    ifstr(i) $($R0) != "STATUS_SUCCESSFUL"
+        read-syms WrongSQLVersion$(!STF_LANGUAGE)
+        goto SetupDone
+    endif
+
+	shell "" InvalidOSVersion
+	ifstr(i) $($R0) != "STATUS_SUCCESSFUL"
+        goto SetupDone
+	endif
+
+    
+    StartWait
+
+    shell "" StopService $(!SQLServerService)
+    shell "" StopService $(!SQLSchedulerService)
+
+    shell "" InitFileVersionInfo
+
+    LibraryProcedure Result, $(!DLLSQL), Sleepy "15"
+
+    read-syms ProgressCopyVars
+    install InstallSvcPackFiles
+    ifstr(i) $(STF_INSTALL_OUTCOME) != "STF_SUCCESS"
+        read-syms FileCouldNotBeCopied$(!STF_LANGUAGE)
+        goto SetupDone
+    endif
+    EndWait
+
+    shell "" DoVCRegistration
+	shell "" InvalidServiceStartup
+
+
+    ifstr(i) $(!gfRunScripts) == "TRUE"
+
+        shell "" DoGetSAPassword
+        ifstr(i) $($R0) != "STATUS_SUCCESSFUL"
+            goto SetupDone
+        endif
+
+        StartWait
+
+        shell "" StartService $(!SQLServerService)
+        ifstr(i) $($R0) != "STATUS_SUCCESSFUL"
+            goto SetupDone
+        endif
+
+	LibraryProcedure Result, $(!DLLSQL), Sleepy "5"
+
+        LibraryProcedure Result, $(!DLLSQL), SQLLogin $(!LoginSleepPeriod),$(!LoginSleepRetrys),$(!ServerName),$(!SALogin),$(!SAPassword)
+	ifstr(i) $(Result) == "NO_SERVER"
+            read-syms NoLoginToSQLServer$(!STF_LANGUAGE)
+            LibraryProcedure !MsgText, $(!DLLSQL), AppendToString $(!MsgText),$(!AddlText)
+            goto SetupDone
+        endif
+
+        LibraryProcedure Result, $(!DLLSQL), SQLLogout
+
+	ForListDo $(!FixedScriptsList)
+            StartWait
+            LibraryProcedure Before, $(!DLLSQL), StrBeforeAndAfter $($),"BEFORE","."
+            ProcessExecute Result,"WAIT",$(!SQLPath)"\"$(!Binaries)"\"$(!ISQL)" /n /dmaster /b /S"$(!ServerName)" /Usa /i"$(!SQLPath)"\"$(!InstallDir)"\"$($)" /o"$(!SQLPath)"\"$(!InstallDir)"\"$(Before)".OUT /P"$(!SAPassword)
+            EndWait
+            ifstr(i) $(Result) == "PROCESS_ERROR"
+                read-syms ProcessExecError$(!STF_LANGUAGE)
+                LibraryProcedure !MsgText, $(!DLLSQL), AppendToString $(!MsgText),$(!ISQL)" "$(!AddlText)
+                goto SetupDone
+            endif
+            EndWait
+        EndForListDo
+
+        shell "" StopService $(!SQLServerService)
+        ifstr(i) $($R0) != "STATUS_SUCCESSFUL"
+            goto SetupDone
+        endif
+
+        EndWait
+    endif
+
+    ifstr(i) $(!gDelFiles) == "TRUE"
+        ForListDo $(!DelBinnFileList)
+            LibraryProcedure Result, $(!DLLSQL), Delnode "FILE_DELETE",$(!SQLPath)"\"$(!Binaries)"\"$($)
+        EndForListDo
+        LibraryProcedure Result, $(!DLLSQL), Delnode "FILE_DELETE",$(!SQLPath)"\"$(!InstallDir)"\"$(!Proc651)
+    endif
+
+    set Exit_Code = $(!SETUP_ERROR_SUCCESS)
+
+    read-syms UpdatedTag$(!STF_LANGUAGE)
+    ifstr(i) $(!gfCopyPending) == "FALSE"
+        read-syms UpdateCompleted$(!STF_LANGUAGE)
+    else
+        read-syms UpdateCompdCopyPending$(STF_LANGUAGE)
+    endif
+
+    goto DisplayFinalDlg
+
+
+SetupDone =+
+    read-syms SetupDoneDlg$(!STF_LANGUAGE)
+
+
+DisplayFinalDlg =+
+    LibraryProcedure DlgDone, $(!DLLSQL), SQLDlgDisplay $(STF_HWND),$(DlgTemplate),"",$(!SQLDlgNames),"",""
+FinalDlgLoop =+
+    LibraryProcedure DLGEVENT, $(!DLLSQL), WaitEvent
+    ifstr(i) $(DLGEVENT) == "DLGBUTTON1"
+        LibraryProcedure Result, $(!DLLSQL), CloseDialog $(DlgDone)
+        goto NoShutDownEnd
+    else-ifstr(i) $(DLGEVENT) == "DLGBUTTON2"
+        LibraryProcedure Result, $(!DLLSQL), CloseDialog $(DlgDone)
+        goto ShutDownEnd
+    else
+        goto FinalDlgLoop
+    endif
+
+ShutDownEnd =+
+    install ShutdownSystem
+
+NoShutDownEnd =+
+    LibraryProcedure Result, $(!DLLSQL), SQLDLLFinish
+    install FreeSetupLibrary
+    exit
+
+[DoWelcome]
+    set Status = "STATUS_FAILED"
+    read-syms WelcomeDlg$(!STF_LANGUAGE)
+    LibraryProcedure DlgWelcome, $(!DLLSQL), SQLDlgDisplay $(STF_HWND),$(DlgTemplate),"",$(!SQLDlgNames),"MODAL",""
+Welcome = +
+    LibraryProcedure DLGEVENT, $(!DLLSQL), WaitEvent
+    ifstr(i) $(DLGEVENT) == "CONTINUE"
+        set Status = "STATUS_SUCCESSFUL"
+    else-ifstr(i) $(DLGEVENT) == "EXIT"
+        shell "" QueryUserQuit $(!STF_LANGUAGE)
+        ifstr(i) $($R1) == "OK"
+            set Status = "STATUS_USERQUIT"
+        else
+            goto Welcome
+        endif
+    endif
+    LibraryProcedure Result, $(!DLLSQL), CloseDialog $(DlgWelcome)
+    Return $(Status)
+
+[QueryUserQuit]
+    set Status = "STATUS_FAILED"
+    set UserAction = "CANCEL"
+    read-syms ExitWarningDlg$(!STF_LANGUAGE)
+    ui start "ExitWarning"
+    ifstr(i) $(DLGEVENT) == "YES"
+        set Status = "STATUS_SUCCESSFUL"
+        set UserAction = "OK"
+        read-syms FailedUserQuit$(!STF_LANGUAGE)
+        set !MsgText = $(!AddlText)
+        set !AddlText = ""
+    else-ifstr(i) $(DLGEVENT) == "NO"
+        set Status = "STATUS_SUCCESSFUL"
+        set UserAction = "CANCEL"
+    endif
+    Return $(Status) $(UserAction)
+
+[DoAdminCheck]
+    set Status = "STATUS_FAILED"
+    LibraryProcedure Result, $(!DLLSQL), IsAdmin
+    ifstr(i) $(Result) == "ACCESS_DENIED"
+        read-syms InsufficientPriv
+        goto EndAdminCheck
+    endif
+    set Status = "STATUS_SUCCESSFUL"
+EndAdminCheck =+
+    Return $(Status)
+
+[DoTestUpgradeVersion]
+    set Status = "STATUS_FAILED"
+    set CompVal = ""
+    set CurVersion = $($0)
+    set MinVersion = $($1)
+
+    LibraryProcedure MainVer, $(!DLLSQL), StrBeforeAndAfter $(CurVersion),"BEFORE","."
+    ifstr(i) $(MainVer) != "6"
+        goto endDoTestVers
+    endif
+
+    LibraryProcedure CompVal $(!DLLSQL), CompareVersions, $(MinVersion), $(CurVersion)
+    ifstr(i) $(CompVal) == "<"
+        set Status = "STATUS_SUCCESSFUL"
+    else-ifstr(i) $(CompVal) == "="
+        set Status = "STATUS_SUCCESSFUL"
+    endif
+
+endDoTestVers =+
+    return $(Status)
+
+[DoGetSAPassword]
+    set !AllowExit = "YES"
+    set Status = "STATUS_FAILED"
+    ifstr(i) $(!DlgEdit) == ""
+        read-syms GetSAPasswordDlg$(!STF_LANGUAGE)
+        set !SAPassword = ""
+        LibraryProcedure !DlgEdit, $(!DLLSQL), SQLDlgDisplay $(STF_HWND),$(DlgTemplate),"",$(!SQLDlgNames),"",""
+    endif
+getsapass = +
+    LibraryProcedure DLGEVENT, $(!DLLSQL), WaitEvent
+    ifstr(i) $(DLGEVENT) == "EXIT"
+        ifstr(i) $(!AllowExit) == "YES"
+            shell "" QueryUserQuit $(!STF_LANGUAGE)
+            ifstr(i) $($R1) == "OK"
+                set Status = "STATUS_USERQUIT"
+            else
+                goto getsapass
+            endif
+        else
+            set Status = STATUS_CANCEL
+        endif
+    else-ifstr(i) $(DLGEVENT) == "BACK"
+        set Status = "STATUS_BACK"
+    else-ifstr(i) $(DLGEVENT) == "CONTINUE"
+        LibraryProcedure EditTextOut1, $(!DLLSQL), DlgGetEditText $(!DlgEdit),"EDIT1"
+        LibraryProcedure EditTextOut2, $(!DLLSQL), DlgGetEditText $(!DlgEdit),"EDIT2"
+        ifstr(i) $(EditTextOut1) != $(EditTextOut2)
+            read-syms PasswordsDontMatch$(!STF_LANGUAGE)
+            shell "" MessageError
+            goto getsapass
+        endif
+        set Status = "STATUS_SUCCESSFUL"
+        set !SAPassword = $(EditTextOut1)
+    endif
+    ifstr(i) $(!AutoPopoff) == "YES"
+        LibraryProcedure Result, $(!DLLSQL), CloseDialog $(!DlgEdit)
+        set !DlgEdit = ""
+    endif
+    Return $(Status)
+
+[StartService]
+    set Status = "STATUS_FAILED"
+    set Svc = $($0)
+    ifstr(i) $(Svc) == $(!SQLServerService)
+        set Delay = "15"
+    else
+        set Delay = "10"
+    endif
+    StartWait
+
+restart_service =+
+    LibraryProcedure Result, $(!DLLSQL), DoServiceOp "\\"$(!ComputerName),"SERVICE_START",$(Svc),"",""
+
+    ifstr(i) $(Result) == ""
+        set Status = "STATUS_SUCCESSFUL"
+        goto donestart
+	endif
+
+	LibraryProcedure Result, $(!DLLSQL), Sleepy $(Delay)
+    set PollTime = "0"
+pollstate =+
+    LibraryProcedure Result, $(!DLLSQL), GetServiceState "\\"$(!ComputerName),$(Svc)
+    ifstr(i) $(Result) == "SERVICE_LIMBO"
+        ifint $(PollTime) > "120"
+        goto endStartServ
+        endif
+        LibraryProcedure Result, $(!DLLSQL), Sleepy "5"
+        set-add PollTime = $(PollTime),5
+        goto pollstate
+    endif
+    ifstr(i) $(Result) == "SERVICE_RUNNING"
+        set Status = "STATUS_SUCCESSFUL"
+		goto donestart
+    endif
+endStartServ =+
+    ifstr(i) $($1) == "TestCreate"
+        ifstr(i) $(Result) == "SVC_NO_PATH"
+        set Status = "STATUS_SUCCESSFUL"
+        goto donestart
+        endif
+    endif
+    ifstr(i) $(Result) == "CANNOT_LOGON_SERVICE"
+        set Status = "STATUS_FAILED"
+        goto donestart
+    endif
+donestart =+
+    ifstr(i) $(Status) != "STATUS_SUCCESSFUL"
+        read-syms NetStartError$(!STF_LANGUAGE)
+        LibraryProcedure Err, $(!DLLSQL), GetLastSetupError
+        LibraryProcedure !MsgText, $(!DLLSQL), AppendToString $(!MsgText),$(Svc)" - "$(!AddlText)" - "$(Err)
+    endif
+
+	EndWait
+
+    Return $(Status) $(Result)
+
+[StopService]
+    set Status = "STATUS_FAILED"
+    set Svc = $($0)
+    StartWait
+    LibraryProcedure Result, $(!DLLSQL), DoServiceOp "\\"$(!ComputerName),"SERVICE_STOP",$(Svc),"",""
+
+
+
+	set IsSQLServer = ""
+    ifstr(i) $(Svc) == $(!SQLServerService)
+        set IsSQLServer = "1"
+	endif
+
+
+	ifstr(i) $(!RemoteComputer) != ""
+		set IsSQLServer = ""
+	endif
+
+
+	ifstr(i) $(Result) == "SERVICE_NOT_EXIST"
+        set Status = "STATUS_SUCCESSFUL"
+	else-ifstr(i) $(Result) == ""
+        set Status = "STATUS_SUCCESSFUL"
+	endif
+
+
+
+	ifstr $(Status) == "STATUS_SUCCESSFUL"
+        ifstr $(IsSQLServer) == "1"
+            LibraryProcedure Result, $(!DLLSQL), Sleepy $(Delay)
+			set Retries = "0"
+            goto try_local_stop
+		else
+			goto endStopSQL
+		endif
+	endif
+
+
+pollstate =+
+    ifstr(i) $(Svc) == $(!SQLServerService)
+        set Delay = "10"
+    else
+        set Delay = "5"
+    endif
+	
+    set PollTime = "0"
+	LibraryProcedure Result, $(!DLLSQL), GetServiceState "\\"$(!ComputerName),$(Svc)
+
+
+	ifstr(i) $(Result) == "SERVICE_LIMBO"
+		ifint $(PollTime) > "120"
+			goto endStopSQL
+        endif
+        LibraryProcedure Result, $(!DLLSQL), Sleepy $(Delay)
+        set-add PollTime = $(PollTime), $(Delay)
+        goto pollstate
+    endif
+
+
+    ifstr(i) $(Result) == "SERVICE_STOPPED"
+        set Status = "STATUS_SUCCESSFUL"
+		goto endStopSQL
+    endif
+
+    set Retries = "0"
+try_local_stop =+
+
+    ifstr(i) $(IsSQLServer) == "1"
+        LibraryProcedure SemPresent, $(!DLLSQL), IsSQLSemaphoreActive ""
+        ifstr(i) $(SemPresent) == "SEMAPHORE_PRESENT"
+            LibraryProcedure Result, $(!DLLSQL), SQLLogin "0","1",$(!ServerName),$(!SALogin),$(!SAPassword)
+            ifstr(i) $(Result) != "NO_SERVER"
+                LibraryProcedure Result, $(!DLLSQL), SQLExecute $(!SQLShutdown)
+                ifstr(i) $(Result) == ""
+                    set Status = "STATUS_SUCCESSFUL"
+                endif
+            else
+                set-add Retries = $(Retries), "1"
+                LibraryProcedure Result, $(!DLLSQL), Sleepy "3"
+
+                ifint $(Retries) < "6"
+                    goto try_local_stop
+                else
+                    goto endStopSQL
+                endif
+            endif
+        else
+            set Status = "STATUS_SUCCESSFUL"
+        endif
+    endif
+
+endStopSQL =+
+    EndWait
+	ifstr(i) $(Status) != "STATUS_SUCCESSFUL"
+        read-syms NetStopError$(!STF_LANGUAGE)
+        LibraryProcedure Err, $(!DLLSQL), GetLastSetupError
+        LibraryProcedure !MsgText, $(!DLLSQL), AppendToString $(!MsgText),$(Svc)" -  "$(!AddlText)" - "$(Err)
+    endif
+    Return $(Status)
+
+[ExecNReturnSQLCmd]
+    set Status = "STATUS_FAILED"
+    set Data   = ""
+    LibraryProcedure Result, $(!DLLSQL), SQLAddtoCmdBuff $($0)
+    LibraryProcedure Result, $(!DLLSQL), SQLExecuteCmdBuff
+    ifstr(i) $(Result) == "BAD_SQL_EXEC"
+        read-syms SQLExecError$(!STF_LANGUAGE)
+        LibraryProcedure !MsgText, $(!DLLSQL), AppendToString $(!MsgText),$(!AddlText)$(!LF)
+        LibraryProcedure !AddlText, $(!DLLSQL), SQLGetErrorMsg
+        LibraryProcedure !MsgText, $(!DLLSQL), AppendToString $(!MsgText),$(!AddlText)$(!LF)
+        set Status = "STATUS_FAILED"
+        goto finish_sqlexec
+    endif
+    LibraryProcedure Result, $(!DLLSQL), SQLGetNextResultSet
+    ifstr(i) $(Result) != "BAD_RESULTS"
+        LibraryProcedure Result, $(!DLLSQL), SQLBindColumn $($1), "1"
+        LibraryProcedure Result, $(!DLLSQL), SQLNextRow $(!OneNextRow)
+        LibraryProcedure Data, $(!DLLSQL), SQLGetBindingData "1"
+        LibraryProcedure Result, $(!DLLSQL), SQLNextRow $(!PurgeRows)
+    endif
+    set Status = "STATUS_SUCCESSFUL"
+finish_sqlexec =+
+    Return $(Status) $(Data)
+
+[Popup]
+    set tmpvar = $($0)
+    read-syms PopupInfo
+    ui start $(DlgTemplate)
+    ui pop 1
+    return "STATUS_SUCCESSFUL"
+
+[MessageError]
+        set Status = "STATUS_FAILED"
+        read-syms InfoMessage$(!STF_LANGUAGE)
+        ui start $(DlgTemplate)
+        Return $(Status)
+
+[MessageWarn]
+        set Status = "STATUS_SUCCESS"
+        read-syms InfoMessage$(!STF_LANGUAGE)
+        ui start $(DlgTemplate)
+        Return $(Status)
+
+[InitFileVersionInfo]
+    LibraryProcedure !DBLibFileVersion, $(!DLLSQL), GetProductFileVersion $(!STF_CWDDIR)$(!DBLibModule)
+	LibraryProcedure !NetLibFileVersion, $(!DLLSQL), GetProductFileVersion $(!STF_CWDDIR)$(!NetLibModule)
+    LibraryProcedure !ODBCFileVersion, $(!DLLSQL), GetProductFileVersion $(!STF_CWDDIR)$(!ODBCModule)
+    LibraryProcedure !DtcCfgFileVersion, $(!DLLSQL), GetProductFileVersion $(!STF_CWDDIR)$(!DtcCfgModule)
+    LibraryProcedure !DacDllFileVersion, $(!DLLSQL), GetProductFileVersion $(!STF_CWDDIR)$(!DacDllModule)
+    LibraryProcedure !XoleHlpFileVersion, $(!DLLSQL), GetProductFileVersion $(!STF_CWDDIR)$(!XoleHlpModule)
+    LibraryProcedure !MsDtcPrxFileVersion, $(!DLLSQL), GetProductFileVersion $(!STF_CWDDIR)$(!MsDtcPrxModule)
+	LibraryProcedure !AutMgrFileVersion, $(!DLLSQL), GetProductFileVersion $(!STF_CWDDIR)$(!AutMgr32Exe)
+	LibraryProcedure !AutPrxFileVersion, $(!DLLSQL), GetProductFileVersion $(!STF_CWDDIR)$(!AutPrx32Dll)
+	LibraryProcedure !SdiFileVersion, $(!DLLSQL), GetProductFileVersion $(!STF_CWDDIR)$(!SDIDll)
+    LibraryProcedure !DtcCmFileVersion, $(!DLLSQL), GetProductFileVersion $(!STF_CWDDIR)$(!DtcCmModule)
+    return
+
+[InstallSvcPackFiles]
+    AddSectionFilesToCopyList "SvcPack", $(!STF_CWDDIR), $(!SQLPath)"\"$(!Binaries)
+    AddSectionFilesToCopyList "SvcPackInstall", $(!STF_CWDDIR), $(!SQLPath)"\"$(!InstallDir)
+    AddSectionFilesToCopyList "SvcPackSys", $(!STF_CWDDIR), $(!SystemDirectory)
+    AddSectionFilesToCopyList "SvcPackBin", $(!STF_CWDDIR), $(!SQLPath)"\"$(!BinDir)
+    AddSectionFilesToCopyList "SvcPackSymbolsExe", $(!STF_CWDDIR), $(!SQLPath)"\"$(!SymbolsExeDir)
+    AddSectionFilesToCopyList "SvcPackSymbolsBinn", $(!STF_CWDDIR), $(!SQLPath)"\"$(!SymbolsBinnDir)
+    AddSectionFilesToCopyList "VCFiles", $(!STF_CWDDIR), $(!STF_WINDOWSSYSPATH)
+	AddSectionFilesToCopyList "VCFilesSQLBinn", $(!STF_CWDDIR), $(!SQLPath)"\"$(!Binaries)
+    CopyFilesInCopyList
+    exit
+
+[DoVCRegistration]
+    set VCCmdLine = $(!SystemDirectory)"\autmgr32 /regserver"
+    ProcessExecute Result,"WAIT",$(VCCmdLine)
+    ifstr(i) $(Result) == "PROCESS_ERROR"
+;       autmgr32 returns 1 on success in this case
+        set Status = "STATUS_SUCCESSFUL"
+    else-ifstr(i) $(Result) == "0"
+        read-syms ProcessExecError$(!STF_LANGUAGE)
+        LibraryProcedure !MsgText, $(!DLLSQL), AppendToString $(!MsgText),$(!ISQL)" "$(!AddlText)
+        Status = "STATUS_FAILED"
+        Return $(Status)
+    endif
+    
+    LibraryProcedure Result, $(!DLLSQL), DoOleRegistration $(!SystemDirectory)"\"$(AutPrx32DLL),"REGISTER"
+    ifstr(i) $(Result) != "TRUE"
+        set !MsgText = $(Results)
+        set Status = "STATUS_FAILED"
+    endif
+
+    Return $(Status)
+
+[InvalidServiceStartup]
+	set VCCmdLine = "checksrv.exe"
+    ProcessExecute Result,"WAIT",$(VCCmdLine)	
+    ifstr(i) $(Result) == "PROCESS_ERROR"
+        set Status = "STATUS_FAILED"
+    else-ifstr(i) $(Result) == "0"
+        set Status = "STATUS_SUCCESSFUL"
+    else-ifstr(i) $(Result) == "2"
+        read-syms InvalidServiceStartup$(!STF_LANGUAGE)
+		shell "" MessageWarn
+		set Status = "STATUS_SUCCESSFUL"
+    endif
+
+    Return $(Status)
+
+[InvalidOSVersion]
+	set Status = "STATUS_FAILED"
+	set VCCmdLine = "checkos.exe"
+    ProcessExecute Result,"WAIT",$(VCCmdLine)	
+    ifstr(i) $(Result) == "PROCESS_ERROR"
+    else-ifstr(i) $(Result) == "0"
+        set Status = "STATUS_SUCCESSFUL"
+    else-ifstr(i) $(Result) == "2"
+        read-syms InvalidOSVersion$(!STF_LANGUAGE)
+    endif
+
+    Return $(Status)
+
+[LoadSetupLibrary]
+    LoadLibrary "y" $(!STF_CWDDIR)sqlsetup.dll !DLLSQL
+    exit
+
+[FreeSetupLibrary]
+    FreeLibrary $(!DLLSQL)
+    exit
+
+[ShutdownSystem]
+    LibraryProcedure STATUS,$(!DLLSQL),ShutdownSystem "\\"$(!ComputerName)
+    exit
+
+[LanguageVar]
+    STF_LANGUAGE    =       "" ? $(!DLLSQL) GetLanguage
+    LanguageList    =       ^(LanguageID, 1)
+
+[GeneralConstants]
+    Radio1          = "1"
+    Radio2          = "2"
+    Radio3          = "3"
+    Radio4          = "4"
+    Radio5          = "5"
+    Radio6          = "6"
+    Radio7          = "7"
+    Radio8          = "8"
+    Radio9          = "9"
+    Chosen          = "ON"
+    NotChosen       = "OFF"
+    InstallDefault  = $(Radio3)
+    SetupOption     = $(InstallDefault)
+
+[UiVars]
+    ProductVersion      = "6.5"
+    gMinSQLVersion      = "6.50.201"
+    HelpSQLNTSetup      = "SQLSETUP.HLP"
+    Binaries            = "BINN"
+    BinDir              = "BIN"
+    SQLDllDir           = "DLL"
+    InstallDir          = "INSTALL"
+    SymbolsExeDir       = "SYMBOLS\EXE"
+    SymbolsBinnDir      = "SYMBOLS\BINN"
+    RebootText          = "Reboot"
+    RegSQLServer        = "SOFTWARE\Microsoft\MSSQLServer"
+    RegSQLSetup         = "SOFTWARE\Microsoft\MSSQLServer\Setup"
+    RegSQLServerServer  = "SOFTWARE\Microsoft\MSSQLServer\MSSQLServer"
+    RegSQLWinNT         = "SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+    RegValVersion       = "CurrentVersion"
+    RegSQLServerVer     = "CurrentVersion"
+    RegValSQLPath       = "SQLPath"
+    RegValSystemRoot    = "SystemRoot"
+    SQLServerService    = "MSSQLServer"
+    SQLSchedulerService = "SQLExecutive"
+    DBLibModule         = "NTWDBLIB.DLL"
+    NetLibModule        = "DBNMPNTW.DLL"
+    ODBCModule          = "SQLSRV32.DLL"
+    ODBC16Module        = "SQLSRVR.DLL"
+    DacDllModule        = "DACDLL.DLL"
+    XoleHlpModule       = "XOLEHLP.DLL"
+    MsDtcPrxModule      = "MSDTCPRX.DLL"
+    DtcCmModule         = "DTCCM.DLL"
+    DtcCfgModule        = "DTCCFG.CPL"
+    STF_WINDOWSSYSPATH  = "" ? $(!DLLSQL) GetWindowsNtSysDir
+    SALogin             = "sa"
+    LoginSleepPeriod    = "30"
+    LoginSleepRetrys    = "5"
+;   The following variable is set to TRUE if file copies are pending
+    gfCopyPending       = "FALSE"
+
+;   The following variable MUST be defined otherwise Setup AVs if file in use
+    RemoteComputer      = ""
+
+;   Set the following variable to TRUE if scripts need to be run
+    gfRunScripts        = "TRUE"
+    ISQL                = "ISQL.EXE"
+    SqlOle65            = "SQLOLE65.SQL"
+    InstRepl            = "INSTREPL.SQL"
+    Proc651             = "PROC65_1.SQL"
+    FixedScriptsList    = {$(!Proc651),$(!SqlOle65),$(!InstRepl)}
+
+;   Set the following variable to TRUE if files need to be deleted
+    gDelFiles           = "TRUE"
+    DelBinnFileList     = {}
+
+;
+;		VCFile Modules
+;
+		AutMgr32Exe		= "autmgr32.exe"
+		AutPrx32Dll		= "autprx32.dll"
+		SDIDll			= "sdi.dll"
+    Setup_Title     = "Microsoft SQL Server Debugging Setup"
+
+
+[FailedUserQuitENG]
+    !AddlText           = "Setup has not updated your system. If you wish to update your system, please run the update program again."$(!LF)$(!LF)
+
+[SetupInitENG]
+    !MsgText            = "Setup initialization could not be successfully completed."$(!LF)$(!LF)
+
+[InsufficientPriv]
+    !AddlText           = "You need administrative privileges to perform these operations."
+
+[FileCouldNotBeCopiedENG]
+    !AddlText           = "The files could not be copied."
+
+[SQLNotInstalledENG]
+    !MsgText            = "Setup has not updated your system."
+    !AddlText           = "SQL Server is not installed on this computer. "
+
+[UpdatedTagENG]
+    !RebootType         = "SQL Server ("$(!InstalledVersion)") is now updated."
+
+[WrongSQLVersionENG]
+    !AddlText           = "The installed version should be at least "$(!gMinSQLVersion)"."
+
+[NetStartErrorENG]
+    !AddlText           = "The service could not be started. Please check the error/event log to determine the cause."
+
+[NetStopErrorENG]
+    !AddlText           = " The service could not be stopped."
+
+[ProcessExecErrorENG]
+    !AddlText          = "could not be executed. Please check the relevant .OUT file."$(!LF)
+
+[PasswordsDontMatchENG]
+    !AddlText          = $(!LF)"The password was not correctly confirmed. Please be sure that the confirmation password exactly matches the password."
+
+[NoLoginToSQLServerENG]
+    !AddlText          =       "Setup could not connect to the SQL Server."
+
+[InvalidServiceStartupENG]
+    !AddlText          =       "Setup has detected that MSSQLServer Service is configured to startup using the System Account. This configuration will"+
+							   " not support SQL Debugging. Please refer to the Enterprise Edition Release notes."
+
+[InvalidOSVersionENG]
+    !AddlText          =       "Setup has detected that NT 3.51 Service Pack 4 is not installed. This configuration will"+
+							   " not support SQL Debugging. Please install Windows NT Service Pack 4 from CD2".
+
+[WindowsNTENG]
+        !WindowsBase    = "Windows NT"
+        !SQLServerBase  = "SQL Server"
+        !SQLServicePack = "Service Pack 1"
+
+[InfoMessageENG]
+        DlgTemplate     =       "SetupMessage"
+        DlgType         =       "MessageBox"
+        STF_MB_TITLE    =       $(!Setup_Title)
+        STF_MB_TEXT     =       $(!AddlText)
+        STF_MB_TYPE     =       1
+        STF_MB_ICON     =       2
+        STF_MB_DEF      =       1
+
+[ExitWarningDlgENG]
+        DlgType         = "MessageBox"
+        STF_MB_TITLE    = "Exit SQL Server Setup"
+        STF_MB_TEXT     = "Are you sure you want to exit SQL Server Setup?"
+        STF_MB_TYPE     = 3
+        STF_MB_ICON     = 5
+        STF_MB_DEF      = 2
+
+[ProgressCopyVars]
+        ProCaption      = "File copy in progress"
+        ProCancel       = "&Cancel"
+        ProCancelMsg    = "Setup cannot run correctly until this operation is"$(!LF)+
+                          "complete.  Are you sure you want to cancel?"
+        ProCancelCap    = "SQL Server for "$(!WindowsBase)" Setup Warning"
+        ProText1        = "Copying "
+        ProText2        = "         to "
+
+[PopupInfo]
+        DlgType         = "Info"
+        DlgTemplate     = "REBOOT"
+        Caption         = $(!Setup_Title)
+        DlgText         = $(tmpvar)
+
+
+[WelcomeDlgENG]
+    DlgTemplate     = "DLG_WELCOME"
+    !SQLDlgNames    = { "@Caption","Welcome", +
+                        "@HELPFILE",$(!HelpSQLNTSetup),+
+                        "@HELPID","100",+
+                        "@DlgText","Welcome to Setup. "$(!LF)$(!LF)+
+                        "The Setup program for Microsoft SQL Server ("+
+                        $(!ProductVersion)") updates your "$(!SQLServerBase)" system "+
+                        "with "$(!SQLServicePack)". "+
+                        "If you want additional information and instructions "+
+                        "about a dialog box or an option, choose Help."$(!LF)$(!LF)+
+                        "To install "$(!SQLServicePack)" on your computer now, choose Continue "+
+                        "or press ENTER."$(!LF)$(!LF)+
+                        "To exit Setup without installing "$(!SQLServerBase)", choose Exit.",+
+                        "@ABOUT","",+
+                        "@Continue","C&ontinue",+
+                        "@Help","&Help",+
+                        "@Exit","E&xit"}
+
+[GetSAPasswordDlgENG]
+        DlgTemplate     =       "DLG_SQLPASSWORDEDIT"
+        !PermitNullName =       "YES"
+        !CreatePathPrompt=      "NO"
+        !AutoPopoff     =       "YES"
+        !Text1          =       "Please enter and confirm the SA password that the upgrade "+
+                                "will use to log in to the SQL Server."
+        !Text2          =       "To enter a different SA password, "+
+                                "use the BACKSPACE key to delete "+
+                                "characters, and then type the password "+
+                                "you want the Setup program to use when upgrading."
+        !SQLDlgNames    =       {"@Caption","SA Password",+
+                                 "@HELPFILE",$(!HelpSQLNTSetup),+
+                                 "@HELPID",118,+
+                                 "@DlgText1",$(!Text1),+
+                                 "@DlgText2",$(!Text2),+
+                                 "@Edit1Label","&SA Password:",+
+                                 "@Edit2Label","&Confirm Password:",+
+                                 "@EDITIN1","",+
+                                 "@EDITLEN1","256",+
+                                 "@EDITIN2","",+
+                                 "@EDITLEN2","256",+
+                                 "@Continue","C&ontinue",+
+                                 "@Help","&Help",+
+                                 "@Back","&Back",+
+                                 "@Exit","E&xit"}
+
+[SetupDoneDlgENG]
+    DlgTemplate     =   "DLG_RESTART"
+    !SQLDlgNames    = { "@Caption",$(!Setup_Title),+
+                        "@DlgText",$(!MsgText)$(!LF)$(!LF)$(!AddlText),+
+                        "@WindowsText","Exit to "$(!WindowsBase),+
+                        "@Windows","E&xit to "$(!WindowsBase)}
+
+[UpdateCompletedENG]
+        DlgTemplate     = "DLG_RESTART"
+        !SQLDlgNames    = { "@Caption",$(!Setup_Title)" - Completed", +
+                            "@DlgText",$(!RebootType)$(!LF)$(!LF)+
+                            $(!AddlText),+
+                            "@WindowsText","Exit to "$(!WindowsBase)".",+
+                            "@Windows","E&xit to "$(!WindowsBase)"."}
+
+[UpdateCompdCopyPendingENG]
+        DlgTemplate     =   "DLG_REBREST"
+        !SQLDlgNames    = { "@Caption",$(!Setup_Title)" - Completed", +
+                            "@DlgText",$(!RebootType)$(!LF)$(!LF)+
+                            "Some file copy operations are pending and will become effective "+
+                            "when the system is rebooted. Be sure to remove any floppy disks from "+
+                            "the computer before you reboot."$(!LF)$(!AddlText),+
+                            "@WindowsText","Exit to "$(!WindowsBase)".",+
+                            "@Windows","E&xit to "$(!WindowsBase)".",+
+                            "@RebootLater","Reboot later.",+
+                            "@RebootText",$(!RebootText),+
+                            "@Reboot","&Reboot"}
+
+[Source Media Descriptions]
+        1  = "Microsoft SQL Server for Windows NT Diskette #1"
+
+
+
+[SetupInstFlags]
+       ODBCInstall = "YES"
+       SQLBooksInst = "YES"
+       PPCInst = "NO"
+
+[SvcPack]
+    1, SQLSERVR.EXE, SIZE=2481936
+    1, SQLMAINT.EXE, SIZE=41984
+    1, XPSQLWEB.DLL, SIZE=35328
+    1, NTWDBLIB.DLL, SIZE=275968, CHECKVERSION=*($(!DBLibFileVersion), 1)^*($(!DBLibFileVersion),2)
+    1, DBNMPNTW.DLL, SIZE=23552, CHECKVERSION=*($(!NetLibFileVersion), 1)^*($(!NetLibFileVersion),2)
+    1, OPENDS60.DLL, SIZE=150800
+    1, SQLEVN60.DLL, SIZE=37888
+    1, SQLMAP60.DLL, SIZE=68608
+    1, XPLOG60.DLL, SIZE=49664
+    1, SQLREPL.DLL, SIZE=108544
+    1, DACDLL.DLL, SIZE=58368, CHECKVERSION=*($(!DacDllFileVersion), 1)^*($(!DacDllFileVersion),2)
+    1, XOLEHLP.DLL, SIZE=9728, CHECKVERSION=*($(!XoleHlpFileVersion), 1)^*($(!XoleHlpFileVersion),2)
+    1, MSDTCPRX.DLL, SIZE=67584, CHECKVERSION=*($(!MsDtcPrxFileVersion), 1)^*($(!MsDtcPrxFileVersion),2)
+    1, DTCCM.DLL, SIZE=94720, CHECKVERSION=*($(!DtcCmFileVersion), 1)^*($(!DtcCmFileVersion),2)
+
+[SvcPackBin]
+    1, W3DBLIB.DLL, SIZE=209664
+    1, MSDBLIB3.DLL, SIZE=209664
+    1, DBMSSPX3.DLL, SIZE=22144
+
+[SvcPackSys]
+    1, NTWDBLIB.DLL, SIZE=275968, CHECKVERSION=*($(!DBLibFileVersion), 1)^*($(!DBLibFileVersion),2)
+    1, DBNMPNTW.DLL, SIZE=23552, CHECKVERSION=*($(!NetLibFileVersion), 1)^*($(!NetLibFileVersion),2)
+    1, SQLSRV32.DLL, SIZE=244224, CHECKVERSION=*($(!ODBCFileVersion), 1)^*($(!ODBCFileVersion),2)
+    1, DTCCFG.CPL, SIZE=24576, CHECKVERSION=*($(!DtcCfgFileVersion), 1)^*($(!DtcCfgFileVersion),2)
+
+[SvcPackInstall]
+    1, INSTREPL.SQL, SIZE=240523
+    1, PROCSYST.SQL, SIZE=675517
+    1, PROC65_1.SQL, SIZE=124255
+    1, SQLOLE65.SQL, SIZE=123372
+    1, U_TABLES.SQL, SIZE=36708
+
+[SvcPackSymbolsExe]
+    1, SQLSERVR.DBG, SIZE=3263728
+
+[SvcPackSymbolsBinn]
+    1, OPENDS60.DBG, SIZE=569112
+
+[VCFiles]
+    1, autmgr32.exe, SIZE=1021440, CHECKVERSION=*($(!AutMgrFileVersion), 1)^*($(!AutMgrFileVersion),2)
+    1, autprx32.dll, SIZE=921600,  CHECKVERSION=*($(!AutPrxFileVersion), 1)^*($(!AutPrxFileVersion),2)
+
+[VCFilesSQLBinn]
+	1, sdi.dll,	     SIZE=212688
+

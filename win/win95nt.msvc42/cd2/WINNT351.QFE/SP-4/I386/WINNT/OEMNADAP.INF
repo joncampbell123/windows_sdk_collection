@@ -1,0 +1,1177 @@
+[Identification]
+    OptionType = NetAdapter
+[PlatformsSupported]
+    ISA
+    EISA
+    PCI
+[Options]
+    AMDPCI
+[FileConstants]
+GenericInfVersion  = " v2.45"
+GenericSysName     = "amdpcn.sys"
+GenericName        = "AMDPCN"
+UtilityInf      = "UTILITY.INF"
+ParamInf        = "NCPARAM.INF"
+subroutineinf   = "SUBROUTN.INF"
+SoftwareType    = "driver"
+Exit_Code       = 0
+NetEventDLL     = "%SystemRoot%\System32\netevent.dll"
+IoLogMsgDLL     = "%SystemRoot%\System32\IoLogMsg.dll"
+Manufacturer    = "Microsoft"
+ProductMajorVersion     = "3"
+ProductMinorVersion     = "1"
+ProductVersion  = $(ProductMajorVersion)"."$(ProductMinorVersion)
+ProductSoftwareName     = "AMDPCN"
+ProductSoftwareImagePath = "\SystemRoot\System32\drivers\"$(GenericSysName)
+NetRuleSoftwareType     = "pcntn3Sys ndisDriver pcntn3Driver"
+NetRuleSoftwareUse      = $(SoftwareType)
+NetRuleSoftwareBindForm = """pcntn3Sys"" yes no container"
+NetRuleSoftwareClass    = {"pcntn3Driver basic"}
+NetRuleSoftwareBindable = {"pcntn3Driver pcntn3Adapter non exclusive 100"}
+ProductHardwareName        = "AMDPCN"
+NetRuleHardwareType        = "pcntn3 pcntn3Adapter"
+NetRuleHardwareBindForm    = " yes yes container"
+NetRuleHardwareClass       = {"pcntn3Adapter basic"}
+ProductKeyName  = $(!NTN_SoftwareBase)"\"$(Manufacturer)"\"$(ProductSoftwareName)"\CurrentVersion"
+ParamKeyName    = $(!NTN_ServiceBase)"\"$(ProductHardwareName)"\Parameters"
+[GeneralConstants]
+from      = ""
+to        = ""
+ExitCodeOk     = 0
+ExitCodeCancel = 1
+ExitCodeFatal  = 2
+KeyNull         = ""
+MAXIMUM_ALLOWED   = 33554432
+RegistryErrorIndex = NO_ERROR
+KeyProduct      = ""
+KeyParameters   = ""
+TRUE            = 1
+FALSE           = 0
+NoTitle         = 0
+ExitState   = "Active"
+OldVersionExisted = $(FALSE)
+DriverPath      = $(!STF_NTPATH)\drivers
+[date]
+    Now = {} ? $(!LIBHANDLE) GetSystemDate
+[Identify]
+    read-syms Identification
+    set Status     = STATUS_SUCCESSFUL
+    set Identifier = $(OptionType)
+    set Media      = #("Source Media Descriptions", 1, 1)
+    Return $(Status) $(Identifier) $(Media)
+[ReturnOptions]
+    set Status        = STATUS_FAILED
+    set OptionList     = {}
+    set OptionTextList = {}
+    set LanguageList = ^(LanguagesSupported, 1)
+    Ifcontains(i) $($0) in $(LanguageList)
+	ifstr(i) $($1) == ""
+			goto returnoptions
+	endif
+	set PlatformList = ^(PlatformsSupported, 1)
+	Ifcontains(i) $($1) in $(PlatformList)
+			goto returnoptions
+	else
+			set Status = STATUS_NOTSUPPORTED
+			goto finish_ReturnOptions
+	endif
+    else
+		set Status = STATUS_NOLANGUAGE
+		goto finish_ReturnOptions
+    endif
+returnoptions = +
+    set OptionList     = ^(Options, 1)
+    set OptionTextList = ^(OptionsText$($0), 1)
+    set Status         = STATUS_SUCCESSFUL
+finish_ReturnOptions = +
+    Return $(Status) $(OptionList) $(OptionTextList)
+[InstallOption]
+    set Status   = STATUS_FAILED
+    set Option   = $($1)
+    set SrcDir   = $($2)
+    set AddCopy  = $($3)
+    set DoCopy   = $($4)
+    set DoConfig = $($5)
+    set LanguageList = ^(LanguagesSupported, 1)
+    Ifcontains(i) $($0) NOT-IN $(LanguageList)
+	Return STATUS_NOLANGUAGE
+    endif
+    set-subst LF = "\n"
+    read-syms GeneralConstants
+    read-syms FileConstants
+    read-syms FileConstants$(!STF_LANGUAGE)
+    read-syms DialogConstants$(!STF_LANGUAGE)
+    ifstr(i) $(!NTN_Origination) == "NCPA"
+	set Continue = $(OK)
+    endif
+    detect date
+    set-title  $(FunctionTitle)
+    set to   = Begin
+    set from = Begin
+    set CommonStatus = STATUS_SUCCESSFUL
+    EndWait
+Begin = +
+    Set ActivateDetection = FALSE
+    Ifstr(i) $(!NTN_InstallMode) == deinstall
+	set StartLabel = removeadapter
+    else-Ifstr(i) $(!NTN_InstallMode) == Update
+	set StartLabel = UpgradeSoftware
+    else-Ifstr(i) $(!NTN_InstallMode) == bind
+	set StartLabel = bindingadapter
+    else-Ifstr(i) $(!NTN_InstallMode) == configure
+	set StartLabel = configureadapter
+	Ifstr(i) $(ProductKeyName) == $(!NTN_RegBase)
+	    Debug-Output "Cannot configure the PCNet family driver software."
+	    Shell $(UtilityInf),RegistryErrorString,CANNOT_CONFIGURE_SOFTWARE
+	    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+		Debug-Output "ShellCode error: cannot get an error string."
+		goto ShellCodeError
+	    endif
+	    set Error = $($R0)
+	    set from = end
+	    set to = end
+	    goto nonfatalinfo
+	endif
+    else
+	set StartLabel = installadapter
+	set OEM_ABANDON_OPTIONS = {}
+	set OEM_ABANDON_SOFTWARE = FALSE
+	set OEM_ABANDON_ON = TRUE
+    endif
+    set IRQValue = *($(IRQList), 9)
+    set IOBaseAddrValue = *($(IOBaseAddrList), 17)
+    set DMAChannelValue = *($(DMAChannelList), 5)
+    set RadioIn  = {4}
+    set BusScanValue = "ALL"
+    set LED0Value = *($(LEDList), 1)
+    set LED1Value = *($(LEDList), 1)
+    set LED2Value = *($(LEDList), 1)
+    set LED3Value = *($(LEDList), 1)
+    set TPValue = 1
+    set FullDuplexValue = *($(FullDuplexList), 4)
+    set BusTimerValue = *($(BusTimerList), 10)
+    Set from = $(fatal)
+    Set to = $(fatal)
+    Goto $(StartLabel)
+installadapter = +
+	set IsISA = 0
+	set Vendor = 4130
+	set CardID = 8192
+	Shell $(UtilityInf), GetPCIInformation, $(Vendor) $(CardID)
+	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	    goto ShellCodeError
+	endif
+	set AdapterList = $($R0)
+        set NewAdapterList = {}
+	set NumNew = 0
+	ForListDo $(AdapterList)
+	    set BusNum = *($($),1)
+	    set SlotNum = *($($),2)
+	    Shell $(UtilityInf), IsNetCardAlreadyInstalled, $(BusNum), +
+		$(SlotNum), $(GenericPCIAdapterName), $(ProductHardwareName)
+	    ifstr(i) $($R1) != "YES"
+		    set-add NumNew = $(NumNew),1
+		    ifstr(i) $(NewAdapterList) == {}
+	            set NewAdapterList = {$($)}
+            else
+		        set NewAdapterList = >($(NewAdapterList),$($))
+            endif
+	    endif
+	EndForListDo
+	set AdapterList = $(NewAdapterList)
+	ifint $(NumNew) == 0
+	    set AdapterList = {{0,0,0}}
+	    set IsISA = 1
+	endif
+	debug-output $(AdapterList)
+    OpenRegKey $(!REG_H_LOCAL) "" $(ProductKeyName) $(MAXIMUM_ALLOWED) KeyProduct
+    Ifstr $(KeyProduct) != $(KeyNull)
+	CloseRegKey $(KeyProduct)
+	ifstr(i) !(NTN_RegBase) == $(ProductKeyName)
+	   Shell $(UtilityInf), VerExistedDlg, $(ProductSoftwareTitle),+
+	       $(ProductVersion)
+	   ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	       Debug-Output "ShellCode error: cannot get an error string."
+	       goto ShellCodeError
+	   endif
+	   goto end
+	else
+	   Shell $(UtilityInf), CardExistedDlg
+	   ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	       Debug-Output "ShellCode error: cannot get an error string."
+	       goto ShellCodeError
+	   endif
+	   ifstr(i) $($R1) != "OK"
+	       goto end
+	   endif
+	   set OldVersionExisted = $(TRUE)
+	endif
+    endif
+    ifint $(OldVersionExisted) == $(FALSE)
+	ifstr(i) $(!NTN_InstallMode) == "install"
+	   Ifstr(i) $(DoCopy) == "YES"
+		Shell $(UtilityInf), DoAskSource, $(!STF_CWDDIR), $(SrcDir) NO
+		Ifint $($ShellCode) != $(!SHELL_CODE_OK)
+		    Goto ShellCodeError
+		Else-Ifstr(i) $($R0) == STATUS_FAILED
+		    Shell $(UtilityInf) RegistryErrorString "ASK_SOURCE_FAIL"
+		    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+			goto ShellCodeError
+		    endif
+		    set Error = $($R0)
+		    Goto fatal
+		Else-Ifstr(i) $($R0) == STATUS_USERCANCEL
+		    Goto successful
+		Endif
+		Set SrcDir = $($R1)
+	    endif
+	    install "Install-Helpfile"
+	endif
+    endif
+    SetHelpFile "pcnet.hlp" 1 11
+    Shell $(UtilityInf), DoAskSource, $(!STF_CWDDIR), $(SrcDir) YES
+    Ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	Goto ShellCodeError
+    Else-Ifstr(i) $($R0) == STATUS_FAILED
+	Shell $(UtilityInf) RegistryErrorString "ASK_SOURCE_FAIL"
+	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	    goto ShellCodeError
+	endif
+	set Error = $($R0)
+	Goto fatal
+    Else-Ifstr(i) $($R0) == STATUS_USERCANCEL
+	Goto successful
+    Endif
+    Set SrcDir = $($R1)
+    install "Install-Dll"
+    goto adaptersetup
+configureadapter = +
+    SetHelpFile "pcnet.hlp" 1 11
+    Ifstr $(KeyProduct) == $(KeyNull)
+	OpenRegKey $(!REG_H_LOCAL) "" $(!NTN_RegBase) $(MAXIMUM_ALLOWED) KeyProduct
+	Ifstr $(KeyProduct) == $(KeyNull)
+	    set RegistryErrorIndex = CANNOT_FIND_COMPONENT_SERVICE
+	    Debug-Output "Cannot find component product key"
+	    goto fatalregistry
+	Endif
+    Endif
+    Debug-Output "INF: Shelling to FindService"
+    Shell $(UtilityInf) FindService, $(KeyProduct)
+    Ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	Debug-Output "INF: FindService shell failure"
+	Goto ShellCodeError
+    Endif
+    Ifstr(i) $($R0) != NO_ERROR
+	Debug-Output "INF: FindService Shell error: "$($R0)
+	Goto fatalregistry
+    endif
+    Set KeyParameters = $($R2)
+    CloseRegKey $($R1)
+    Ifstr $(KeyParameters) == $(KeyNull)
+	set RegistryErrorIndex = CANNOT_FIND_COMPONENT_SERVICE
+	Debug-Output "Cannot find component service"
+	goto fatalregistry
+    endif
+    set OldVersionExisted = $(TRUE)
+    set ValueName = ""
+    set ValueData = ""
+    set ValueStr  = ""
+    set ValueList = {}
+    EnumRegValue $(KeyParameters) ValueList
+    ForListDo $(ValueList)
+	set ValueItem = $($)
+	set ValueName = *($(ValueItem),1)
+	set ValueData = *($(ValueItem),4)
+	ifstr(i) $(ValueName) == "BUS_TO_SCAN"
+	    set BusScanValue = $(ValueData)
+	else-ifstr(i) $(ValueName) == "TP"
+	    set TPValue = $(ValueData)
+	else-ifstr(i) $(ValueName) == "LED0"
+	    set LED0Value = $(ValueData)
+	else-ifstr(i) $(ValueName) == "LED1"
+	    set LED1Value = $(ValueData)
+	else-ifstr(i) $(ValueName) == "LED2"
+	    set LED2Value = $(ValueData)
+	else-ifstr(i) $(ValueName) == "LED3"
+	    set LED3Value = $(ValueData)
+	else-ifstr(i) $(ValueName) == "IOBaseAddress"
+	    set IOBaseAddrValue = $(ValueData)
+	else-ifstr(i) $(ValueName) == "InterruptNumber"
+	    set IRQValue = $(ValueData)
+	else-ifstr(i) $(ValueName) == "DMAChannel"
+	    set DMAChannelValue = $(ValueData)
+	else-ifstr(i) $(ValueName) == "FDUP"
+	    set FullDuplexValue = $(ValueData)
+	else-ifstr(i) $(ValueName) == "BUSTIMER"
+	    set BusTimerValue = $(ValueData)
+	else-ifstr(i) $(ValueName) == "BusType"
+	    set BusInterfaceType = $(ValueData)
+        ifint $(BusInterfaceType) == 5
+            set IsISA = 0
+        else
+            set IsISA = 1
+        endif
+	else-ifstr(i) $(ValueName) == "BusNum"
+	    set BusNumber = $(ValueData)
+	endif
+    EndForListDo
+    Ifint $(TPValue) == 0
+	Set CheckItemsIn = {"OFF"}
+    Else
+	Set CheckItemsIn = {"ON"}
+    Endif
+    Ifstr $(BusScanValue) == "PNP"
+	Set RadioIn = {1}
+    Else-Ifstr $(BusScanValue) == "VESA"
+	Set RadioIn = {2}
+    Else-Ifstr $(BusScanValue) == "ISA"
+	Set RadioIn = {3}
+    Else-Ifstr $(BusScanValue) == "ALL"
+	Set RadioIn = {4}
+    Else-Ifstr $(BusScanValue) == ""
+	Set RadioIn = {4}
+    Endif
+    Debug-Output $(InfName)" TP is "$(TPValue)
+ifint $(IsISA) == 1
+    set IRQValue = *($(IRQList), ~($(IRQValues),$(IRQValue)))
+    ifstr(i) $(IRQValue) == ""
+	set IRQValue = *($(IRQList), 2)
+    endif
+    Debug-Output $(InfName)" IRQ_Level is "$(IRQValue)
+    set DMAChannelValue = *($(DMAChannelList), ~($(DMAChannelValues),$(DMAChannelValue)))
+    ifstr(i) $(DMAChannelValue) == ""
+	set DMAChannelValue = *($(DMAChannelList), 2)
+    endif
+    Debug-Output $(InfName)" DMA is "$(DMAChannelValue)
+    set IOBaseAddrValue = *($(IOBaseAddrList), ~($(IOBaseAddrValues),$(IOBaseAddrValue)))
+    ifstr(i) $(IOBaseAddrValue) == ""
+	set IOBaseAddrValue = *($(IOBaseAddrList), 1)
+    endif
+    Debug-Output $(InfName)" I/o base is "$(IOBaseAddrValue)
+endif
+    set LED0Value = *($(LEDList), ~($(LEDValues),$(LED0Value)))
+    ifstr(i) $(LED0Value) == ""
+	set LED0Value = *($(LEDList), 1)
+    endif
+    Debug-Output $(InfName)" LED0 is "$(LED0Value)
+    set LED1Value = *($(LEDList), ~($(LEDValues),$(LED1Value)))
+    ifstr(i) $(LED1Value) == ""
+	set LED1Value = *($(LEDList), 1)
+    endif
+    Debug-Output $(InfName)" LED1 is "$(LED1Value)
+    set LED2Value = *($(LEDList), ~($(LEDValues),$(LED2Value)))
+    ifstr(i) $(LED2Value) == ""
+	set LED2Value = *($(LEDList), 1)
+    endif
+    Debug-Output $(InfName)" LED2 is "$(LED0Value)
+    set LED3Value = *($(LEDList), ~($(LEDValues),$(LED3Value)))
+    ifstr(i) $(LED3Value) == ""
+	set LED3Value = *($(LEDList), 1)
+    endif
+    Debug-Output $(InfName)" LED3 is "$(LED3Value)
+    set FullDuplexValue = *($(FullDuplexList), ~($(FullDuplexValues),$(FullDuplexValue)))
+    ifstr(i) $(FullDuplexValue) == ""
+	set FullDuplexValue = *($(FullDuplexList), 1)
+    endif
+    Debug-Output $(InfName)" Full Duplex is "$(FullDuplexValue)
+    set BusTimerValue = *($(BusTimerList), ~($(BusTimerValues),$(BusTimerValue)))
+    ifstr(i) $(BusTimerValue) == ""
+	set BusTimerValue = *($(BusTimerList), 1)
+    endif
+    Debug-Output $(InfName)" Bus Timer is "$(BusTimerValue)
+adaptersetup = +
+    Set from = adapteroptions
+adapteroptions = +
+    LoadLibrary "Disk 1" .\$(DialogDllName) hLib
+ifint $(IsISA) == 0
+    read-syms FileDependentDlgPCI$(!STF_LANGUAGE)
+    Debug-Output $(InfName)" TP is "$(TPValue)
+    Debug-Output $(InfName)" LED0 is "$(LED0Value)
+    Debug-Output $(InfName)" LED1 is "$(LED1Value)
+    Debug-Output $(InfName)" LED2 is "$(LED2Value)
+    Debug-Output $(InfName)" LED3 is "$(LED3Value)
+    Debug-Output $(InfName)" Full Duplex is "$(FullDuplexValue)
+    Debug-Output $(InfName)" Bus Timer is "$(BusTimerValue)
+    ui start "Inputdlg" $(hLib)
+else
+debug-output "read the isa dialog"
+    read-syms FileDependentDlg$(!STF_LANGUAGE)
+    Debug-Output $(InfName)" Bus is "$(BusScanValue)
+    Debug-Output $(InfName)" TP is "$(TPValue)
+    Debug-Output $(InfName)" LED0 is "$(LED0Value)
+    Debug-Output $(InfName)" LED1 is "$(LED1Value)
+    Debug-Output $(InfName)" LED2 is "$(LED2Value)
+    Debug-Output $(InfName)" LED3 is "$(LED3Value)
+    Debug-Output $(InfName)" DMA is "$(DMAChannelValue)
+    Debug-Output $(InfName)" I/o base is "$(IOBaseAddrValue)
+    Debug-Output $(InfName)" Full Duplex is "$(FullDuplexValue)
+    Debug-Output $(InfName)" Bus Timer is "$(BusTimerValue)
+    ui start "InputDlg"  $(hLib)
+endif
+    set ExitButton      = $(ButtonPressed)
+    Debug-Output " ButtonPressed "$(ButtonPressed)
+debug-output $(DLGEVENT)
+    FreeLibrary $(hLib)
+    ifstr(i) $(DLGEVENT) == "CONTINUE"
+ifint $(IsISA) == 1
+		set IOBaseAddrValue = $(Combo1Out)
+		set IRQValueValue = $(Combo2Out)
+		set DMAChannelValue = $(Combo3Out)
+		set FullDuplexValue = $(Combo4Out)
+		set BusTimerValue = $(Combo5Out)
+		set ExitButton = $(ButtonPressed)
+		set BusIndex = *($(RadioOut),1)
+else
+		set FullDuplexValue = $(Combo1Out)
+		set BusTimerValue = $(Combo2Out)
+		set ExitButton = $(ButtonPressed)
+		set BusIndex = *($(RadioOut),1)
+endif
+		Ifint $(BusIndex) == 1
+		    Set BusScanValue = "PNP"
+		else-Ifint $(BusIndex) == 2
+		    Set BusScanValue = "VESA"
+		else-Ifint $(BusIndex) == 3
+		    Set BusScanValue = "ISA"
+		else-Ifint $(BusIndex) ==  4
+		    Set BusScanValue = "ALL"
+		Endif
+	Set Chk = *($(CheckItemsOut), 1)
+	Ifstr(i) $(Chk) == "ON"
+	    Set TPValue = 1
+	Else
+	    Set TPValue = 0
+	Endif
+		ui pop 1
+    else-ifstr(i) $(DLGEVENT) == "EXIT"
+		set CommonStatus = STATUS_USERCANCEL
+		Debug-Output "Action: exit. Bye."
+		ui pop 1
+		goto end
+    else
+		ui pop 1
+		Debug-Output "Action: unknown. Bye."
+		goto end
+    endif
+    Debug-Output " Combo list out "$(ComboListItemsOut)
+skipoptions =+
+    ifint $(OldVersionExisted) == $(TRUE)
+	ifstr(i) $(!NTN_InstallMode) == configure
+    Shell $(UtilityInf), GetBusTypeNum
+    set BusTypeNum = $($R1)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	Debug-Output "ShellCode error."
+	goto ShellCodeError
+    endif
+debug-output "before write registry"
+    set DMAChannelValue = *($(DMAChannelValues), ~($(DMAChannelList),$(DMAChannelValue)))
+    set IRQValue = *($(IRQValues), ~($(IRQList),$(IRQValueValue)))
+    set IOBaseAddrValue = *($(IOBaseAddrValues), ~($(IOBaseAddrList),$(IOBaseAddrValue)))
+    set LED0Value = *($(LEDValues), ~($(LEDList),$(LED0Value)))
+    set LED1Value = *($(LEDValues), ~($(LEDList),$(LED1Value)))
+    set LED2Value = *($(LEDValues), ~($(LEDList),$(LED2Value)))
+    set LED3Value = *($(LEDValues), ~($(LEDList),$(LED3Value)))
+    set FullDuplexValue = *($(FullDuplexValues), ~($(FullDuplexList),$(FullDuplexValue)))
+    set BusTimerValue = *($(BusTimerValues), ~($(BusTimerList),$(BusTimerValue)))
+    ifint $(IsISA) == 0
+    set NewValueList = {{FDUP,  $(NoTitle),$(!REG_VT_DWORD),$(FullDuplexValue)},+
+			{BUSTIMER,  $(NoTitle),$(!REG_VT_DWORD),$(BusTimerValue)},+
+			{TP,    $(NoTitle),$(!REG_VT_DWORD),$(TPValue)}}
+    Shell  $(UtilityInf), AddValueList, $(KeyParameters), $(NewValueList)
+    else
+    set NewValueList = {{BUS_TO_SCAN,$(NoTitle),$(!REG_VT_SZ),$(BusScanValue)},+
+			{FDUP,  $(NoTitle),$(!REG_VT_DWORD),$(FullDuplexValue)},+
+			{BUSTIMER,  $(NoTitle),$(!REG_VT_DWORD),$(BusTimerValue)},+
+			{TP,    $(NoTitle),$(!REG_VT_DWORD),$(TPValue)},+
+			{IOBaseAddress,  $(NoTitle),$(!REG_VT_DWORD),$(IOBaseAddrValue)},+
+			{InterruptNumber,  $(NoTitle),$(!REG_VT_DWORD),$(IRQValue)},+
+			{DMAChannel, $(NoTitle),$(!REG_VT_DWORD),$(DMAChannelValue)}}
+    Shell  $(UtilityInf), AddValueList, $(KeyParameters), $(NewValueList)
+    endif
+    CloseRegKey $(KeyParameters)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	Debug-Output "ShellCode error."
+	goto ShellCodeError
+    endif
+    set RegistryErrorIndex = $($R0)
+    Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	Debug-Output "Registry error: Add value list"
+	goto fatalregistry
+    endif
+    EndWait
+    goto successful
+	endif
+    endif
+    StartWait
+    ifint $(OldVersionExisted) == $(FALSE)
+	ifstr(i) $(!NTN_InstallMode) == "install"
+	   Ifstr(i) $(DoCopy) == "YES"
+	      Shell $(UtilityInf), DoAskSource, $(!STF_CWDDIR), $(SrcDir) YES
+	      Ifint $($ShellCode) != $(!SHELL_CODE_OK)
+		  Goto ShellCodeError
+	      Else-Ifstr(i) $($R0) == STATUS_FAILED
+		  Shell $(UtilityInf) RegistryErrorString "ASK_SOURCE_FAIL"
+		  ifint $($ShellCode) != $(!SHELL_CODE_OK)
+		      goto ShellCodeError
+		  endif
+		  set Error = $($R0)
+		  Goto fatal
+	      Else-Ifstr(i) $($R0) == STATUS_USERCANCEL
+		  Goto successful
+	      Endif
+	      Set SrcDir = $($R1)
+	   Endif
+	   install "Install-Option"
+	   ifstr(i) $(STF_INSTALL_OUTCOME) != STF_SUCCESS
+	      Shell $(UtilityInf) RegistryErrorString "UNABLE_COPY_FILE"
+	      ifint $($ShellCode) != $(!SHELL_CODE_OK)
+		  goto ShellCodeError
+	      endif
+	      set Error = $($R0)
+	      goto fatal
+	   endif
+	endif
+	Shell $(UtilityInf), AddSoftwareComponent, $(Manufacturer), +
+	    $(ProductSoftwareName), +
+	    $(ProductSoftwareName), +
+	    $(ProductSoftwareTitle), $(STF_CONTEXTINFNAME), +
+	    $(ProductSoftwareImagePath), "kernel", "NDIS", {}, "",+
+	    $(NetEventDLL)
+	Set OEM_ABANDON_SOFTWARE = TRUE
+	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	    Debug-Output "ShellCode error"
+	    goto ShellCodeError
+	endif
+	set RegistryErrorIndex = $($R0)
+	set KeyProduct      = $($R1)
+	Set SoftNetRulesKey = $($R2)
+	CloseRegKey $($R3)
+	CloseRegKey $($R4)
+	CloseRegKey $($R5)
+	Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	    EndWait
+	    Debug-Output "Registry error: add software components"
+	    CloseRegKey $(KeyProduct)
+	    CloseRegKey $(SoftNetRulesKey)
+	    goto fatalregistry
+	endif
+	set NewValueList = {{SoftwareType,$(NoTitle),$(!REG_VT_SZ),$(SoftwareType)},+
+			   {MajorVersion,$(NoTitle),$(!REG_VT_DWORD),$(ProductMajorVersion)},+
+			   {MinorVersion,$(NoTitle),$(!REG_VT_DWORD),$(ProductMinorVersion)},+
+			   {Title,$(NoTitle),$(!REG_VT_SZ),$(ProductSoftwareTitle)},+
+			   {Description,$(NoTitle),$(!REG_VT_SZ),$(ProductSoftwareDescription)},+
+			   {ServiceName,$(NoTitle),$(!REG_VT_SZ),$(ProductSoftwareName)},+
+			   {InstallDate,$(NoTitle),$(!REG_VT_DWORD),*($(Now),1)}}
+	Shell  $(UtilityInf), AddValueList, $(KeyProduct), $(NewValueList)
+	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	    Debug-Output "ShellCode error."
+	    goto ShellCodeError
+	endif
+	set RegistryErrorIndex = $($R0)
+	Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	    EndWait
+	    Debug-Output "Registry error: add value list."
+	    CloseRegKey $(KeyProduct)
+	    CloseRegKey $(SoftNetRulesKey)
+	    goto fatalregistry
+	endif
+	set NewValueList = {{type,$(NoTitle),$(!REG_VT_SZ),$(NetRuleSoftwareType)},+
+			    {use,$(NoTitle),$(!REG_VT_SZ),$(NetRuleSoftwareUse)}, +
+			    {bindform,$(NoTitle),$(!REG_VT_SZ),$(NetRuleSoftwareBindForm)}, +
+			    {class,$(NoTitle),$(!REG_VT_MULTI_SZ),$(NetRuleSoftwareClass)}, +
+			    {bindable,$(NoTitle),$(!REG_VT_MULTI_SZ),$(NetRuleSoftwareBindable)}, +
+			    {InfOption,$(NoTitle),$(!REG_VT_SZ),$(Option)}}
+	Shell  $(UtilityInf), AddValueList, $(SoftNetRulesKey), $(NewValueList)
+	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	    Debug-Output "ShellCode error."
+	    goto ShellCodeError
+	endif
+	set RegistryErrorIndex = $($R0)
+	CloseRegKey $(KeyProduct)
+	CloseRegKey $(SoftNetRulesKey)
+	Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	    EndWait
+	    Debug-Output "Resgitry error: add value list."
+	    goto fatalregistry
+	endif
+    endif
+debug-output $(AdapterList)
+    ForListDo $(AdapterList)
+        set BusNumber = *($($),1)
+	set DeviceNum = *($($),2)
+	set FunctionNum = *($($),3)
+    Shell $(UtilityInf), AddHardwareComponent, $(ProductHardwareName),$(STF_CONTEXTINFNAME),$(ProductKeyName)
+    ifint $($R4) != -1
+	Set OEM_ABANDON_OPTIONS = >($(OEM_ABANDON_OPTIONS), $(!NTN_SoftwareBase)"\Microsoft\Windows NT\CurrentVersion\NetworkCards\"$($R4))
+    endif
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	Debug-Output "Cannot add hardware component"
+	goto ShellCodeError
+    endif
+    set RegistryErrorIndex = $($R0)
+    Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	EndWait
+	Debug-Output "Registry error: add hardware component"
+	CloseRegKey $($R1)
+	CloseRegKey $($R2)
+	CloseRegKey $($R3)
+	goto fatalregistry
+    endif
+    set KeyParameters = $($R3)
+    set KeyAdapterRules = $($R2)
+    set AdapterNumber = $($R4)
+    ifint $(IsISA) == 1
+        set HardwareDescription = $(GenericAdapterName)
+        set HardwareTitle = $(GenericAdapterName)
+    else
+        set HardwareDescription = $(GenericPCIAdapterName)
+        set HardwareTitle = $(GenericPCIAdapterName)
+    endif
+    set NewValueList = {{Manufacturer,$(NoTitle),$(!REG_VT_SZ),$(Manufacturer)},+
+		       {Title,$(NoTitle),$(!REG_VT_SZ),"["$($R4)"] "$(HardwareTitle)},+
+		       {Description,$(NoTitle),$(!REG_VT_SZ),$(HardwareDescription)},+
+		       {ProductName,$(NoTitle),$(!REG_VT_SZ),$(ProductHardwareName)},+
+		       {ServiceName,$(NoTitle),$(!REG_VT_SZ),$($R5)},+
+		       {InstallDate,$(NoTitle),$(!REG_VT_DWORD),*($(Now),1)}}
+    Shell  $(UtilityInf), AddValueList, $($R1), $(NewValueList)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	Debug-Output "ShellCode error"
+	goto ShellCodeError
+    endif
+    CloseRegKey $($R1)
+    set TempProdName = """"$(ProductHardwareName)$(AdapterNumber)""""
+    set TempBindForm = $(TempProdName)$(NetRuleHardwareBindForm)
+    set NewValueList = {{type,$(NoTitle),$(!REG_VT_SZ),$(NetRuleHardwareType)},+
+			{bindform,$(NoTitle),$(!REG_VT_SZ),$(TempBindForm)}, +
+			{class,$(NoTitle),$(!REG_VT_MULTI_SZ),$(NetRuleHardwareClass)}, +
+			{InfOption,$(NoTitle),$(!REG_VT_SZ),$(Option)}}
+    Shell  $(UtilityInf), AddValueList, $(KeyAdapterRules), $(NewValueList)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	Debug-Output "ShellCode error."
+	goto ShellCodeError
+    endif
+    set RegistryErrorIndex = $($R0)
+    Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	EndWait
+	Debug-Output "Resgitry error: add value list."
+	CloseRegKey $(KeyParameters)
+	CloseRegKey $(KeyAdapterRules)
+	goto fatalregistry
+    endif
+    CloseRegKey $(KeyAdapterRules)
+    goto writeparameters
+writeparameters = +
+    Shell $(UtilityInf), GetBusTypeNum
+    set BusTypeNum = $($R1)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	Debug-Output "ShellCode error."
+	goto ShellCodeError
+    endif
+debug-output "before write registry"
+    set DMAChannelValue = *($(DMAChannelValues), ~($(DMAChannelList),$(DMAChannelValue)))
+    set IRQValue = *($(IRQValues), ~($(IRQList),$(IRQValueValue)))
+    set IOBaseAddrValue = *($(IOBaseAddrValues), ~($(IOBaseAddrList),$(IOBaseAddrValue)))
+    set LED0Value = *($(LEDValues), ~($(LEDList),$(LED0Value)))
+    set LED1Value = *($(LEDValues), ~($(LEDList),$(LED1Value)))
+    set LED2Value = *($(LEDValues), ~($(LEDList),$(LED2Value)))
+    set LED3Value = *($(LEDValues), ~($(LEDList),$(LED3Value)))
+    set FullDuplexValue = *($(FullDuplexValues), ~($(FullDuplexList),$(FullDuplexValue)))
+    set BusTimerValue = *($(BusTimerValues), ~($(BusTimerList),$(BusTimerValue)))
+    ifint $(IsISA) == 0
+    set NewValueList = {{BusType,$(NoTitle),$(!REG_VT_DWORD),5},+
+			{MediaType,$(NoTitle),$(!REG_VT_DWORD),1},+
+			{LED0,  $(NoTitle),$(!REG_VT_DWORD),$(LED0Value)},+
+			{LED1,  $(NoTitle),$(!REG_VT_DWORD),$(LED1Value)},+
+			{LED2,  $(NoTitle),$(!REG_VT_DWORD),$(LED2Value)},+
+			{LED3,  $(NoTitle),$(!REG_VT_DWORD),$(LED3Value)},+
+			{FDUP,  $(NoTitle),$(!REG_VT_DWORD),$(FullDuplexValue)},+
+			{BUSTIMER,  $(NoTitle),$(!REG_VT_DWORD),$(BusTimerValue)},+
+			{TP,    $(NoTitle),$(!REG_VT_DWORD),$(TPValue)},+
+                        {AdapterCFID,$(NoTitle),$(!REG_VT_DWORD),536875042},+
+			{SlotNumber, $(NoTitle),$(!REG_VT_DWORD),$(DeviceNum)},+
+			{BusNumber,  $(NoTitle),$(!REG_VT_DWORD),$(BusNumber)}}
+    Shell  $(UtilityInf), AddValueList, $(KeyParameters), $(NewValueList)
+    else
+    set NewValueList = {{BUS_TO_SCAN,$(NoTitle),$(!REG_VT_SZ),$(BusScanValue)},+
+			{BusType,$(NoTitle),$(!REG_VT_DWORD),1},+
+			{MediaType,$(NoTitle),$(!REG_VT_DWORD),1},+
+			{LED0,  $(NoTitle),$(!REG_VT_DWORD),$(LED0Value)},+
+			{LED1,  $(NoTitle),$(!REG_VT_DWORD),$(LED1Value)},+
+			{LED2,  $(NoTitle),$(!REG_VT_DWORD),$(LED2Value)},+
+			{LED3,  $(NoTitle),$(!REG_VT_DWORD),$(LED3Value)},+
+			{FDUP,  $(NoTitle),$(!REG_VT_DWORD),$(FullDuplexValue)},+
+			{BUSTIMER,  $(NoTitle),$(!REG_VT_DWORD),$(BusTimerValue)},+
+			{TP,    $(NoTitle),$(!REG_VT_DWORD),$(TPValue)},+
+			{IOBaseAddress,  $(NoTitle),$(!REG_VT_DWORD),$(IOBaseAddrValue)},+
+			{InterruptNumber,  $(NoTitle),$(!REG_VT_DWORD),$(IRQValue)},+
+			{DMAChannel, $(NoTitle),$(!REG_VT_DWORD),$(DMAChannelValue)},+
+			{BusNumber,  $(NoTitle),$(!REG_VT_DWORD),$(BusNumber)}}
+    Shell  $(UtilityInf), AddValueList, $(KeyParameters), $(NewValueList)
+    endif
+    CloseRegKey $(KeyParameters)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	Debug-Output "ShellCode error."
+	goto ShellCodeError
+    endif
+    set RegistryErrorIndex = $($R0)
+    Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	Debug-Output "Registry error: Add value list"
+	goto fatalregistry
+    endif
+    EndForListDo
+    EndWait
+    goto successful
+bindingadapter =+
+    set Error = "Binding: Sorry, not yet implemented."
+    goto fatal
+removeadapter = +
+    Ifstr(i) $(ProductKeyName) == $(!NTN_RegBase)
+	Shell $(UtilityInf), RemoveSoftwareComponent, $(Manufacturer), +
+	    $(ProductSoftwareName)
+	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	    Debug-Output "ShellCode error"
+	    goto ShellCodeError
+	endif
+	set RegistryErrorIndex = $($R0)
+	Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	    goto fatalregistry
+	endif
+    else
+	Shell $(UtilityInf), RemoveHardwareComponent, $(Manufacturer), +
+	    $(ProductSoftwareName), $(!NTN_RegBase)
+	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	    Debug-Output "ShellCode error"
+	    goto ShellCodeError
+	endif
+	set RegistryErrorIndex = $($R0)
+	Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	    goto fatalregistry
+	endif
+    endif
+    goto end
+UpgradeSoftware = +
+    LoadLibrary "x" $(!STF_CWDDIR)\ncpa.cpl NCPA_HANDLE
+    OpenRegKey $(!REG_H_LOCAL) "" "Software\Microsoft\PCNTN3" $(MAXIMUM_ALLOWED) KeyProduct
+    Ifstr $(KeyProduct) != $(KeyNull)
+        DeleteRegTree $(KeyProduct) ""
+        LibraryProcedure NCPA_RESULT $(NCPA_HANDLE), CPlSetup $(!STF_HWND), DELETESVC, "PCNTN3"
+        set NetworkCardKeyName = $(!NTN_SoftwareBase)"\Microsoft\Windows NT\CurrentVersion\NetworkCards"
+            OpenRegKey $(!REG_H_LOCAL) "" $(NetworkCardKeyName) $(MAXIMUM_ALLOWED) IE_KeyNetcards
+        ifstr(i) $(IE_KeyNetcards) != ""    
+            EnumRegKey $(IE_KeyNetcards) IE_KeyNameList
+            ForListDo $(IE_KeyNameList)
+                OpenRegKey $(IE_KeyNetcards) "" *($($),1) +
+                    $(MAXIMUM_ALLOWED) NetworkCardKey
+                Ifstr(i) $(NetworkCardKey) != $(KeyNull)
+                    GetRegValue $(NetworkCardKey),"ProductName", ProductNameInfo
+                    set ProductName = *($(ProductNameInfo), 4)
+                    Debug-Output "   ProductName = "$(ProductName)
+                    ifstr(i) $(ProductName) != "PCNTN3"
+                        goto nextnetcard
+                    endif
+                    GetRegValue $(NetworkCardKey),"ServiceName", ServiceNameInfo
+                    set ServiceName = *($(ServiceNameInfo), 4)
+                    Debug-Output "   ServiceName = "$(ServiceName)
+                    OpenRegKey $(!REG_H_LOCAL) "" "System\CurrentControlSet\Services\"$(ServiceName) +
+                          $(MAXIMUM_ALLOWED) ServiceKey
+                DeleteRegTree $(ServiceKey) ""
+                DeleteRegTree $(NetworkCardKey) ""
+                endif
+    nextnetcard = +
+            EndForListDo
+        endif	
+        OpenRegKey $(!REG_H_LOCAL) "" "Software\Microsoft\AMDPCI" $(MAXIMUM_ALLOWED) KeyProduct2
+        ifstr $(KeyProduct2) == $(KeyNull)
+            LibraryProcedure NCPA_RESULT $(NCPA_HANDLE), CPlSetup $(!STF_HWND), STARTSVC, NetDetect
+            set !NTN_InstallMode = Install
+            Shell "" InstallOption $(!STF_LANGUAGE) "AMDPCI" $(SrcDir) "YES" "YES" "NO"
+            set !NTN_InstallMode = Update
+        else
+        endif
+    else
+    endif
+    FreeLibrary $(NCPA_HANDLE)
+    goto end
+successful = +
+    goto end
+abandon = +
+    ForListDo $(OEM_ABANDON_OPTIONS)
+	Shell $(UtilityInf), RemoveHardwareComponent, $(Manufacturer), +
+	    $(ProductSoftwareName), $($)
+	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	    Debug-Output "ShellCode error"
+	    goto ShellCodeError
+	endif
+	set RegistryErrorIndex = $($R0)
+	Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	    goto fatalregistry
+	endif
+    EndForListDo
+    Ifstr(i) $(OEM_ABANDON_SOFTWARE) == TRUE
+	Shell $(UtilityInf), RemoveSoftwareComponent, $(Manufacturer), +
+	    $(ProductSoftwareName), FALSE
+	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	    Debug-Output "ShellCode error"
+	    goto ShellCodeError
+	endif
+	set RegistryErrorIndex = $($R0)
+	Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	    goto fatalregistry
+	endif
+    endif
+    goto end
+warning = +
+    Shell $(subroutineinf) SetupMessage, $(!STF_LANGUAGE), "WARNING", $(Error)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	goto ShellCodeError
+    endif
+    ifstr(i) $($R1) == "OK"
+	goto $(to)
+    else-ifstr(i) $($R1) == "CANCEL"
+	goto $(from)
+    else
+	goto "end"
+    endif
+nonfatalinfo = +
+    Set Severity = STATUS
+    Set CommonStatus = STATUS_USERCANCEL
+    goto nonfatalmsg
+nonfatal = +
+    Set Severity = NONFATAL
+    goto nonfatalmsg
+nonfatalmsg = +
+    ifstr(i) $(Error) == ""
+	Set Severity = NONFATAL
+	Shell $(UtilityInf) RegistryErrorString "SETUP_FAIL"
+	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	    goto ShellCodeError
+	endif
+	set Error = $($R0)
+    endif
+    Shell $(subroutineinf) SetupMessage, $(!STF_LANGUAGE), $(Severity), $(Error)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	goto ShellCodeError
+    endif
+    ifstr(i) $($R1) == "OK"
+	goto $(from)
+    else
+	goto "end"
+    endif
+fatalregistry = +
+    Shell $(UtilityInf) RegistryErrorString $(RegistryErrorIndex)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	goto ShellCodeError
+    endif
+    set Error = $($R0)
+    goto fatal
+fataldetect = +
+    Shell $(UtilityInf),RegistryErrorString,CANNOT_DETECT
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	Debug-Output "ShellCode error: cannot get an error string."
+	goto ShellCodeError
+    endif
+    set Error = $($R0)
+    Goto fatal
+fatal = +
+    ifstr(i) $(Error) == ""
+	Shell $(UtilityInf) RegistryErrorString "SETUP_FAIL"
+	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	    goto ShellCodeError
+	endif
+	set Error = $($R0)
+    endif
+    Shell $(subroutineinf) SetupMessage, $(!STF_LANGUAGE), "FATAL", $(Error)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	goto ShellCodeError
+    endif
+    goto setfailed
+ShellCodeError = +
+    set DlgType      = "MessageBox"
+    set STF_MB_TITLE = $(ShellCodeErrorTitle)
+    set STF_MB_TEXT  = $(ShellCodeErrorText)
+    set STF_MB_TYPE  = 1
+    set STF_MB_ICON  = 3
+    set STF_MB_DEF   = 1
+    ui start "Error Message"
+    goto setfailed
+setfailed = +
+    set CommonStatus = STATUS_FAILED
+    ifstr(i) $(OEM_ABANDON_ON) == TRUE
+	set OEM_ABANDON_ON = FALSE
+	goto abandon
+    endif
+    goto end
+end = +
+    goto term
+term = +
+    Return $(CommonStatus)
+[DebugConfiguration]
+    Set InfName = "OEMNADAM.INF"
+    Debug-Output $(InfName)" **CONFIGURATION STATE: "$($0)
+    Debug-Output $(InfName)" IRQ_Level is "$(!p:IRQ_Level)
+    Debug-Output $(InfName)" IOBaseAddrValue is "$(!p:IOBaseAddrValue)
+    return
+[Install-Option]
+    set STF_VITAL = ""
+    ifstr(i) $(AddCopy) == "YES"
+	AddSectionFilesToCopyList Files-$(Option) $(SrcDir) $(!STF_WINDOWSSYSPATH)\drivers
+    endif
+    ifstr(i) $(DoCopy) == "YES"
+       set !STF_NCPA_FLUSH_COPYLIST = TRUE
+       CopyFilesInCopyList
+    endif
+    Exit
+[Install-Update]
+   set STF_VITAL        = ""
+   set STF_OVERWRITE    = "VERIFYSOURCEOLDER"
+   AddSectionFilesToCopyList Files-$(Option) $(SrcDir) $(!STF_WINDOWSSYSPATH)\drivers
+   AddSectionFilesToCopyList Files-Dll $(SrcDir) $(!STF_WINDOWSSYSPATH)
+   AddSectionFilesToCopyList Files-hlp $(SrcDir) $(!STF_WINDOWSSYSPATH)
+   exit
+[Install-Helpfile]
+   Debug-Output "At Install-Helpfile"
+   set STF_VITAL        = ""
+   set STF_OVERWRITE    = "VERIFYSOURCEOLDER"
+   ifstr(i) $(AddCopy) == "YES"
+       AddSectionFilesToCopyList Files-hlp $(SrcDir) $(!STF_WINDOWSSYSPATH)
+   endif
+   ifstr(i) $(DoCopy) == "YES"
+      set !STF_NCPA_FLUSH_COPYLIST = TRUE
+      CopyFilesInCopyList
+   endif
+   exit
+[Install-Dll]
+   set STF_VITAL        = ""
+   ifstr(i) $(AddCopy) == "YES"
+       AddSectionFilesToCopyList Files-Dll $(SrcDir) $(!STF_WINDOWSSYSPATH)
+   endif
+   ifstr(i) $(DoCopy) == "YES"
+       set !STF_NCPA_FLUSH_COPYLIST = TRUE
+       CopyFilesInCopyList
+   endif
+   exit
+[Source Media Descriptions]
+    1 = "Windows NT Workstation CD-ROM" , TAGFILE = cdrom.w
+[Signature]
+    FileType = MICROSOFT_FILE
+[GetSignature]
+    read-syms Signature
+    return $(FileType)
+[ProductType]
+STF_PRODUCT  = Winnt
+STF_PLATFORM = I386
+[Files-Inf]
+2,	oemsetup.inf,	 SIZE=1000,	RENAME=$(!UG_Filename)
+[Files-AMDPCI]
+1,AMDPCN.SYS , SIZE=999
+[Files-Dll]
+1,AMDDLG.DLL , SIZE=999
+[Files-hlp]
+1,PCNET.HLP , SIZE=999
+[LanguagesSupported]
+    ENG
+[OptionsTextENG]
+    AMDPCI     = "AMD PCNET Family Ethernet Adapter"
+[FileConstantsENG]
+ProCaption   = "Windows NT Setup"
+ProCancel    = "Cancel"
+ProCancelMsg = "Windows NT Networking is not correctly installed.  "+
+	       "Are you sure you want to cancel copying files?"
+ProCancelCap = "Network Setup Message"
+ProText1     = "Copying:"
+ProText2     = "To:"
+GenericAdapterName = "AMD PCNET ISA/VESA Ethernet Adapter"
+GenericPCIAdapterName = "AMD PCNET PCI Ethernet Adapter"
+GenericDriverName  = "AMD PCNET Family Ethernet Adapter Driver"
+ProductSoftwareDescription = $(GenericDriverName)
+ProductHardwareDescription = $(GenericAdapterName)
+ProductHardwarePCNTN3Description="AMD PCnet Family Driver"
+ProductSoftwareTitle =       $(GenericDriverName)
+ProductHardwarePCNTN3Title = $(GenericAdapterName)
+DialogDllName   = "amddlg.dll"
+IRQList  = ^(IRQChoices, 1)
+IRQValues = ^(IRQChoices, 2)
+IOBaseAddrList = ^(IOBaseAddrChoices, 1)
+IOBaseAddrValues = ^(IOBaseAddrChoices, 2)
+DMAChannelList = ^(DMAChannelChoices,1)
+DMAChannelValues = ^(DMAChannelChoices,2)
+LEDList = ^(LEDChoices,1)
+LEDValues = ^(LEDChoices,2)
+FullDuplexList = ^(FullDuplexChoices,1)
+FullDuplexValues = ^(FullDuplexChoices,2)
+BusTimerList = ^(BusTimerChoices,1)
+BusTimerValues = ^(BusTimerChoices,2)
+[DialogConstantsENG]
+FunctionTitle   = $(GenericAdapterName)$(GenericInfVersion)
+Help        = "&Help"
+Exit        = "Cancel"
+OK          = "&OK"
+HelpContext = ""
+Continue    = "Continue"
+Cancel      = "&Cancel"
+[MemoryMappedChoicesENG]
+Map_1 = 1, "ON"
+Map_2 = 0, "OFF"
+[FileDependentDlgENG]
+DlgText = "Please select values for the following fields:"
+Combo1Label = "I/O Port:"
+Combo2Label = "IRQ Number:"
+Combo3Label = "DMA Number:"
+Combo4Label = "Full Duplex:"
+Combo5Label = "Bus Timer:"
+BigButton   = "More pcntn3 BS >>"
+CheckBox1 = "&TP"
+Group1 = "&Bus to scan"
+Radio1 = "PNP"
+Radio2 = "VESA"
+Radio3 = "ISA"
+Radio4 = "ALL"
+DlgType = "RadioCombination"
+DlgTemplate = "PCNTN3"
+Caption = $(FunctionTitle)
+CBOptionsGreyed = {}
+NotifyFields = {NO, NO}
+HelpContext = 1
+Combo1List = $(IOBaseAddrList)
+Combo1Out  = $(IOBaseAddrValue)
+Combo2List = $(IRQList)
+Combo2Out  = $(IRQValue)
+Combo3List = $(DMAChannelList)
+Combo3Out  = $(DMAChannelValue)
+Combo4List = $(FullDuplexList)
+Combo4Out  = $(FullDuplexValue)
+Combo5List = $(BusTimerList)
+Combo5Out  = $(BusTimerValue)
+ComboListItemsIn  = {Combo1List,Combo2List,Combo3List,Combo4List,Combo5List}
+ComboListItemsOut = {Combo1Out,Combo2Out,Combo3Out,Combo4Out,Combo5Out}
+EditTextIn = ""
+EditTextLim = ""
+[IRQChoices]
+IRQ_1 = "3",3
+IRQ_2 = "4",4
+IRQ_3 = "5",5
+IRQ_4 = "9",9
+IRQ_5 = "10",10
+IRQ_6 = "11",11
+IRQ_7 = "12",12
+IRQ_8 = "15",15
+IRQ_9 = "Auto_Scan",0
+[IOBaseAddrChoices]
+IOBase_1  = "0x200",512
+IOBase_2  = "0x220",544
+IOBase_3  = "0x240",576
+IOBase_4  = "0x260",608
+IOBase_5  = "0x280",640
+IOBase_6  = "0x2a0",672
+IOBase_7  = "0x2c0",714
+IOBase_8  = "0x2e0",746
+IOBase_9  = "0x300",768
+IOBase_10 = "0x320",800
+IOBase_11 = "0x340",832
+IOBase_12 = "0x360",864
+IOBase_13 = "0x380",896
+IOBase_14 = "0x3a0",928
+IOBase_15 = "0x3c0",960
+IOBase_16 = "0x3e0",992
+IOBase_17 = "Auto_Scan",0
+[DMAChannelChoices]
+DMAChannel_1 = "3",3
+DMAChannel_2 = "5",5
+DMAChannel_3 = "6",6
+DMAChannel_4 = "7",7
+DMAChannel_5 = "Auto_Scan",0
+[LEDChoices]
+LED_1 = "Default",65536
+LED_2 = "0x0",0
+LED_3 = "0x2",2
+LED_4 = "0x4",4
+LED_5 = "0x8",8
+LED_6 = "0x10",16
+LED_7 = "0x20",32
+LED_8 = "0x30",48
+LED_9 = "0x34",52
+LED_10 = "0x40",64
+LED_11 = "0xc0",192
+LED_12 = "0x4088",16520
+LED_13 = "0xb0",176
+LED_14 = "0x21",129
+[FullDuplexChoices]
+FULLDUPLEX_1 = "OFF",1
+FULLDUPLEX_2 = "AUI",2
+FULLDUPLEX_3 = "UTP",3
+FULLDUPLEX_4 = "Default",0
+[BusTimerChoices]
+BUSTIMER_1 = "5",5
+BUSTIMER_2 = "6",6
+BUSTIMER_3 = "7",7
+BUSTIMER_4 = "8",8
+BUSTIMER_5 = "9",9
+BUSTIMER_6 = "10",10
+BUSTIMER_7 = "11",11
+BUSTIMER_8 = "12",12
+BUSTIMER_9 = "13",13
+BUSTIMER_10 = "Default",0
+[FileDependentDlgPCIENG]
+FunctionTitle   = $(GenericPCIAdapterName)$(GenericInfVersion)
+DlgText = "Please select values for the following fields:"
+Combo1Label = "Full Duplex:"
+Combo2Label = "Bus Timer:"
+BigButton   = "More pcntn3 BS >>"
+CheckBox1 = "&TP"
+Radio1 = "PNP"
+Radio2 = "VESA"
+Radio3 = "ISA"
+Radio4 = "ALL"
+DlgType = "RadioCombination"
+DlgTemplate = "PCNTN3PCI"
+Caption = $(FunctionTitle)
+CBOptionsGreyed = {}
+NotifyFields = {NO, NO}
+HelpContext = 1
+Combo1List = $(FullDuplexList)
+Combo1Out  = $(FullDuplexValue)
+Combo2List = $(BusTimerList)
+Combo2Out  = $(BusTimerValue)
+Combo3List = $(LEDList)
+Combo3Out  = $(LED0Value)
+Combo4List = $(LEDList)
+Combo4Out  = $(LED1Value)
+Combo5List = $(LEDList)
+Combo5Out  = $(LED2Value)
+Combo6List = $(LEDList)
+Combo6Out  = $(LED3Value)
+ComboListItemsIn  = {Combo1List,Combo2List}
+ComboListItemsOut = {Combo1Out,Combo2Out}
+EditTextIn = ""
+EditTextLim = ""
+[LEDChoices]
+LED_1 = "Default",65536
+LED_2 = "0x0",0
+LED_3 = "0x2",2
+LED_4 = "0x4",4
+LED_5 = "0x8",8
+LED_6 = "0x10",16
+LED_7 = "0x20",32
+LED_8 = "0x30",48
+LED_9 = "0x34",52
+LED_10 = "0x40",64
+LED_11 = "0xc0",192
+LED_12 = "0x4088",16520
+LED_13 = "0xb0",176
+LED_14 = "0x21",129
+[FullDuplexChoices]
+FULLDUPLEX_1 = "OFF",1
+FULLDUPLEX_2 = "AUI",2
+FULLDUPLEX_3 = "UTP",3
+FULLDUPLEX_4 = "Default",0
+[BusTimerChoices]
+BUSTIMER_1 = "5",5
+BUSTIMER_2 = "6",6
+BUSTIMER_3 = "7",7
+BUSTIMER_4 = "8",8
+BUSTIMER_5 = "9",9
+BUSTIMER_6 = "10",10
+BUSTIMER_7 = "11",11
+BUSTIMER_8 = "12",12
+BUSTIMER_9 = "13",13
+BUSTIMER_10 = "Default",0
