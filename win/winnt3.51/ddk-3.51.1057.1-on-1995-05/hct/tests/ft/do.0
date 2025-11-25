@@ -1,0 +1,196 @@
+@rem ************************************************************************
+@rem
+@rem Copyright (c) 1991 Microsoft Corporation
+@rem
+@rem Module Name:
+@rem
+@rem   do.0   
+@rem
+@rem Abstract:
+@rem
+@rem   This is the first do command script.  It is run before any test
+@rem   variation.  The primary job of this script is to figure out what
+@rem   the next test variation to run is, and to create that partition.
+@rem
+@rem Author:
+@rem
+@rem   Kenieth Peery (t-kenpe) 12-9-92
+@rem
+@rem Revision History:
+@rem
+@rem *************************************************************************
+
+@rem
+@rem If we were shutdown last time due to chsimbad forcing us down to pick
+@rem up a simbad change, then do not refigure the next variation.  We would
+@rem skip variations like this.
+@rem
+
+if exist simbad.sig goto do_not_find_next_variation
+
+@rem
+@rem Query the disks to find out the unsed portions of them.  This program
+@rem will write config.ini which contains this info, and set the errorlevel
+@rem if it fails.
+@rem
+
+querydsk.exe
+if errorlevel 1 goto fatal_qdisk
+
+:try_again
+
+@rem
+@rem Find the next .ini file we're not done with yet
+@rem
+
+nextscen.exe .\scenario.ini .\run.ini scendat.cmd
+if errorlevel 2 goto fatal_nextscen
+if errorlevel 1 goto no_more_tests
+
+@rem
+@rem Set the logfile so we can log the results from scenario.exe.
+@rem
+
+call scendat.cmd logfile dummy dummy dummy dummy
+
+@rem
+@rem Find the next runnable variation.
+@rem
+
+scenario .\run.ini >> %logfile% 
+
+if errorlevel 2 goto fatal_variation
+if errorlevel 1 goto try_again
+
+@rem
+@rem Jump to here to not refigure the next scenario across a boot due to
+@rem chsimbad.cmd
+@rem
+
+:do_not_find_next_variation
+
+@rem
+@rem Set the logfile, nexttodo, etc. vars as determined by nextscen.
+@rem Note that we have to could have jumped here due to a reboot to pickup
+@rem simbad.sys.  In that case, scendat.cmd would have been left behind
+@rem from the prior boot.
+@rem
+
+call scendat.cmd logfile nexttodo ft_version ft_forever ft_qformat
+
+@rem 
+@rem close the last time log if there is one.
+@rem
+
+if not exist time.sig goto dont_close_time_log
+del time.sig
+
+@rem
+@rem Log VARIATION_END times
+@rem
+call dotimer VARIATION_END "." time.log
+
+:dont_close_time_log
+
+@rem
+@rem Set some env settings for the current variation
+@rem
+
+crgetdat getdat.cmd
+call getdat.cmd ft_test fileSystem sizeMB dummy dummy options1
+
+@rem
+@rem Enable/Disable simbad as needed.  Note that this script might reboot the
+@rem system.  Also note that options1 needs to be set before chsimbad is run;
+@rem it needs to know if the current variation needs badsectors or not.
+@rem
+
+call chsimbad
+
+@rem
+@rem log the time
+@rem
+call dotimer VARIATION_START "." time.log
+echo This is a signal                        > time.sig
+
+@rem
+@rem copy over the next script to be exec'd after the boot
+@rem
+
+copy %nexttodo%.1 donext
+
+@rem
+@rem Create the ftComponet based on create.dat.  Note that the .mst scripts
+@rem will nuke do.cmd by copying donext over the top for the next boot
+@rem (which they intiate)
+@rem
+
+mtrun create.pcd /h
+exit
+
+:fatal_qdisk
+echo BLOCKED: query disk failed
+fttest -mBLOCKED: query disk failed
+goto done
+
+:fatal_nextscen
+echo BLOCKED: fatal error trying to find next scenario
+fttest -m BLOCKED: fatal error trying to find next scenario
+goto done
+
+:fatal_variation
+echo BLOCKED: fatal error finding next variation
+fttest -mBLOCKED: fatal error finding next variation
+goto done
+
+@rem
+@rem No more tests ...
+@rem
+
+:no_more_tests
+echo No more tests to run
+
+@rem
+@rem Call scendat to bind the value of ft_forever.  Note that scendat.cmd
+@rem is not called after the call to nextscen.exe above.  Also note that
+@rem nextscen will generate scendat.cmd and will set the ft_forever value
+@rem correctly when there are no more tests.
+@rem
+
+call scendat.cmd dummy dummy dummy ft_forever dummy
+
+@rem
+@rem If we are running forever ...
+@rem
+
+if "%FT_FOREVER%" == "1" goto run_forever
+
+@rem
+@rem Run is entirely over.
+@rem
+
+echo This is the signal means we are done running this test. > ftdone.sig
+
+copy donothin.0 donext
+del  time.sig
+call dotimer VARIATION_END "." time.log
+
+sendstat "." "FTtest completed.  For data run getstats.cmd."
+fttest -mFTtest completed.  For data run getstats.cmd.
+goto done
+
+@rem
+@rem Running forever, restore the run to it's initial state, and set do.0
+@rem to run again.
+@rem
+
+:run_forever
+echo.
+echo ---------  forever: start the test run again  ---------
+echo.
+del time.sig
+del state.ini
+copy do.0 donext
+copy run.bak run.ini
+
+:done

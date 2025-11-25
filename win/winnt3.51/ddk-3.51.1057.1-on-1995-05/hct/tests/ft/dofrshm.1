@@ -1,0 +1,145 @@
+@rem ************************************************************************
+@rem
+@rem Copyright (c) 1991 Microsoft Corporation
+@rem
+@rem Module Name:
+@rem
+@rem   dofrshm.1   
+@rem
+@rem Abstract:
+@rem
+@rem   This is the phase 1 script for the fresh mirror tests.  The test
+@rem   partition is formatted, a file is written and read.  At the end, we
+@rem   setup for phase 2 to run and break the mirror.
+@rem
+@rem Author:
+@rem
+@rem   Kenieth Peery (t-kenpe) 12-9-92
+@rem
+@rem Revision History:
+@rem
+@rem   steveko - 5/93 - support badsectors/orphaning
+@rem   kpeery  - 7/94 - support failremaps
+@rem
+@rem *************************************************************************
+
+call doinit
+
+@rem
+@rem Format the mirror
+@rem
+
+call doformat %label% %fileSystem% %driveLetter1% %logfile% %FT_QFORMAT%
+
+@rem
+@rem If badsector variations, enable them now.
+@rem
+
+if "%_options1%" == "badsectors" call dobadsec %driveLetter1% 256 %_options1% %logfile%
+if "%_options1%" == "failremaps" call dobadsec %driveLetter1% 256 %_options1% %logfile%
+
+@rem
+@rem If badsector variation, list out the badsectors.  FAIL_VERIFY blocks
+@rem should have been mapped out by the format.
+@rem
+
+if "%_options1%" == "badsectors" call dolstbad %logfile%
+if "%_options1%" == "failremaps" call dolstbad %logfile%
+
+@rem
+@rem Write the file.  Spawn the orphaning process if this is an
+@rem orphan_write variation, and verify the orphaning afterwards.
+@rem
+
+if "%_options1%" == "orphan_writes" call doorph %driveLetter1% %sizeMB% 0.15 %logfile%
+
+call dosetmap %driveLetter1%:\foo.bin %_fill_percent% %logfile%   
+
+if "%_options1%" == "orphan_writes" call dochorph %logfile%
+
+@rem
+@rem If badsector variation, list out the badsectors.  FAIL_WRITE blocks
+@rem should have been mapped out by the fsetmap.
+@rem
+
+if "%_options1%" == "badsectors" call dolstbad %logfile%
+if "%_options1%" == "failremaps" call dolstbad %logfile%
+
+@rem
+@rem Do a dir for visual verification.
+@rem
+
+call dodir %driveLetter1% %logfile%   
+
+@rem
+@rem Read the file.  Spawn the orphaning process iff this is an
+@rem orphan_read variation, and verify the orphaning afterwards.
+@rem
+
+if "%_options1%" == "orphan_reads" call doorph %driveLetter1% %sizeMB% 0.1 %logfile%
+
+@rem
+@rem BUGBUG: this may be a bug
+@rem
+@rem the data of certain sectors never made it to the disk so we
+@rem must skip the endtomd test.
+@rem
+rem if "%_options1%" == "failremaps" goto skip_doendmd
+call doendmd %driveLetter1%:\foo.bin %logfile%   
+:skip_doendmd
+
+if "%_options1%" == "orphan_reads" call dochorph %logfile%
+
+@rem
+@rem If badsector variation, list out the badsectors.  FAIL_READ blocks
+@rem should have been mapped out by the endtomd.
+@rem
+
+if "%_options1%" == "badsectors" call dolstbad %logfile%
+if "%_options1%" == "failremaps" call dolstbad %logfile%
+
+@rem
+@rem Run chkdsk
+@rem
+
+call dochkdsk %driveLetter1% %fileSystem% %logfile%   
+
+@rem
+@rem Clear the remaining badsectors on the mirror (if any).  Note that
+@rem this clears the orphaning state as well, and note that this is
+@rem necessary.
+@rem
+
+if "%_options1%" == "badsectors"    goto clear_simbad
+if "%_options1%" == "failremaps"    goto clear_simbad
+if "%_options1%" == "orphan_reads"  goto clear_simbad
+if "%_options1%" == "orphan_writes" goto clear_simbad
+goto do_not_clear_simbad
+
+:clear_simbad
+call dolstbad %logfile%
+call doclrbad %logfile%
+
+:do_not_clear_simbad
+
+@rem
+@rem If not an orphaning test, run parcomp.  Note that at this time, there
+@rem should be no remaining bad sectors.
+@rem
+
+if "%_options1%" == "orphan_reads"  goto skip_the_parcomp
+if "%_options1%" == "orphan_writes" goto skip_the_parcomp
+call doparcmp %driveLetter1% %_options1% %logfile%
+:skip_the_parcomp
+
+@rem
+@rem Break the mirror
+@rem
+
+echo.                                 >> %logfile%
+echo TRACE: About to break the mirror >> %logfile%
+echo.                                 >> %logfile%
+
+copy dofrshm.2 donext
+mtrun break.pcd /h
+exit

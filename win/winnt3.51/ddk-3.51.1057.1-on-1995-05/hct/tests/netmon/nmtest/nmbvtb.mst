@@ -1,0 +1,917 @@
+'******************************************************************************
+'
+' Microsoft Test Smart Event(tm) Recording.
+'
+'              Date:  Monday, July 18, 1994
+'              Time:  8:03:53 PM
+'
+'     String Length:  60
+'   Pause threshold:  5000
+'     Ordinals Only:  NO
+'
+'******************************************************************************
+' Network monitor Build Verification Test   V 0.78
+' Wm. Bradley Paris 7-18-94
+'******************************************************************************
+
+'$INCLUDE 'DECLARES.INC'
+'$Include 'NMBVTASK.Inc'
+
+'$IFNDEF REC_VARS_DEFINED
+'$DEFINE REC_VARS_DEFINED
+'$DEFINE Teststat
+'$Include 'MSTEST.Inc'
+
+Macro TimeVal(t) = t
+
+
+Dim CurrentWindow       As Long,  _
+    ChildCurrentWindow  As Long,  _
+    ResDeltaX           As Long,  _
+    ResDeltaY           As Long,  _
+    Timeout             As Short
+'$ENDIF
+
+Const Pass_Fl_Nm%=2
+Const Log_Fl_Nm%=1
+Const Frames_2_Trans%=5000
+
+DIM Num_Passwords%
+Dim Passwords$(Num_Passwords%)
+Dim I%, Count%, Notdone%, Done% 'Counters
+Dim  Ttl_Cnt%, Do_X_Loops%, Do_Inf_Loop%, Lcl_ID_Cnt%
+Dim Trans_Net$, Rem_Cap_Net$, Do_Lcl_IDs%, Do_local_Cap%
+Dim DO_Transmits%, Snd_X1_Cnt%, Snd_1X_Cnt%, Snd_Many_Cnt%
+Dim DO_Remotes%, Rem_Sus_Cnt%, Rem_CD_Cnt%, DO_Rem_ID%,Rem_Id_Cnt%
+Global Out_2_VP%, Out_2_File%, Ttl_Frames%, Open_test_Cap%, In_Disp_Md%
+Global Frame_Sz$, Buffer_Sz$, Cap_Net$
+Global Log_File$
+Dim Desc$, State$, Remote$, NMPATH$, Rem_Password$
+
+Declare Sub DoPass(State$,Password_Cnt%,Passwords$())    'Sub Procedure to negotiate Passwords State=Continued or FUed, Password is one that worked
+Declare Sub Ident(State$)
+Declare Sub Capture(State$,Frame_Sz$,Buffer_Sz$)
+Declare Sub ViewCap(State$)
+Declare Sub CloseNm(State$)
+Declare Sub TransTst(State$,Trans_Net$, Snd_1X_Cnt%, Snd_X1_Cnt%, Snd_Many_Cnt%)
+Declare Sub Report(Temp$)
+Declare Sub Do_Sngl_Frame_Transmits(State$,Snd_1x_cnt%)
+Declare Sub Do_1_many_Transmit(State$,Snd_x1_cnt%)
+Declare Sub DO_Rem_Password(State$,Password_Cnt%,Passwords$(),Rem_Password$)
+Declare Sub Connect_2_Remote(State$,Password_Cnt%,Passwords$(),Remote$,Rem_CapNet$,Recon_2_Sus%)
+Declare Sub Discon()
+
+' Check the resolution that this script was recorded on.
+'------------------------------------------------------------------------------
+ResDeltaX = 640     'Screen width, inserted by recorder.
+ResDeltaY = 480     'Screen height, inserted by recorder.
+'If CheckResolution (ResDeltaX, ResDeltaY) = FALSE Then End
+'I am ignoreing the screen size to see how bad it hurts
+
+
+'Make sure this script does not try to playback to its own instance of MT.EXE
+'------------------------------------------------------------------------------
+If GetHandle (GH_HWNDCLIENT) Then WMinWnd GetHandle (GH_HWNDCLIENT)
+State$="Continue"
+
+SetDeadlockTimeout (120000)
+SetSuspendedTimeout (0)
+QueSetSpeed (10)
+
+'Goto Continue
+
+'Init password list: Count how many lines in file and Redim Passwords
+Open "Password.Lst" for Input as Pass_Fl_Nm%
+Done%=False
+Num_Passwords%=0
+While Not EOF(Pass_Fl_Nm%)
+    Num_Passwords%=Num_Passwords%+1
+    Line Input # Pass_Fl_Nm%,TMP$
+WEND
+REDIM Passwords$(Num_Passwords%)
+Close # Pass_fl_NM%
+Open "Password.Lst" for Input as Pass_Fl_Nm%
+For I%=1 to Num_Passwords% 'Fill Password list
+    Line Input #Pass_Fl_Nm%,Passwords$(I%)
+Next I%
+Close # Pass_Fl_Nm%
+
+
+'init Dialog Values
+Mach_Name$=String$(16," ")
+'Temp% = GetMachineName(Mach_Name$)
+Dlg_NMBVTIO2.Txt_Description="Testing NM Bld ???, Platform ???, on "+Mach_Name$+": "+DateTime$
+Dlg_NMBVTIO2.Txt_NM_Path="C:\NM"
+
+Dlg_NMBVTIO2.Opt_Infinite_Pass=False
+Dlg_NMBVTIO2.Opt_Multi_Pass=True
+Dlg_NMBVTIO2.Txt_Total_Reps=Str$(1)
+
+Dlg_NMBVTIO2.Opt_Viewport_IO=True
+Dlg_NMBVTIO2.Opt_File_IO=True
+Dlg_NMBVTIO2.Txt_Output_Path="NMBVT.LOG"
+
+Dlg_NMBVTIO2.Txt_Buffer_Size=Str$(4.35)
+Dlg_NMBVTIO2.Txt_Frame_Size=Str$(256)
+
+Dlg_NMBVTIO2.Chk_Do_Lcl_Cap=True
+Dlg_NMBVTIO2.Txt_CaptureNet=Str$(1)
+Dlg_NMBVTIO2.Chk_Local_Ident=True
+Dlg_NMBVTIO2.Txt_Lcl_Ident_Reps=Str$(1)
+
+Dlg_NMBVTIO2.Chk_Transmit=True
+Dlg_NMBVTIO2.Txt_TransmitNet=Str$(1)
+Dlg_NMBVTIO2.Txt_Sngl_Frame_Rep=Str$(1)
+Dlg_NMBVTIO2.Txt_Big_Frame_Rep=Str$(1)
+Dlg_NMBVTIO2.Txt_Same_Frame_Rep=Str$(1)
+
+Dlg_NMBVTIO2.Txt_RemoteCaptureNet=Str$(1)
+Dlg_NMBVTIO2.Chk_Remote_Connect=False
+Dlg_NMBVTIO2.Txt_RemoteName=""
+Dlg_NMBVTIO2.Txt_Discon_Reps=Str$(1)
+Dlg_NMBVTIO2.Txt_Suspend_Reps=Str$(1)
+
+Dlg_NMBVTIO2.Chk_Remote_Indent=True
+Dlg_NMBVTIO2.Txt_Rmt_Ident_X=Str$(1)
+
+For I%=1 to Num_Passwords% 'Init Password List
+    Dlg_NMBVTIO2.CMB_PasswordList=Dlg_NMBVTIO2.CMB_PasswordList+Passwords$(I%)+CHR$(13)
+Next I
+
+'Run Dialog Box and get values
+If 1 = DlgBox(200,null,Dlg_NMBVTIO2,".\NMBVT2.res",TRUE) Then 'Calls Dialog Box
+    State$="Continue"
+    NMPATH$=Dlg_NMBVTIO2.Txt_NM_Path
+    Desc$=Dlg_NMBVTIO2.Txt_Description
+    Frame_Sz$ = Dlg_NMBVTIO2.Txt_Frame_Size
+    Buffer_Sz$ = Dlg_NMBVTIO2.Txt_Buffer_Size
+
+
+    Vwport_IO%=Dlg_NMBVTIO2.Opt_Viewport_IO
+    Out_2_VP%=Dlg_NMBVTIO2.Opt_Viewport_IO
+    Out_2_File%=Dlg_NMBVTIO2.Opt_File_IO
+    Log_File$=Dlg_NMBVTIO2.Txt_Output_Path
+
+    Do_Local_cap%=Dlg_NMBVTIO2.Chk_Do_Lcl_Cap
+    Cap_Net$ = Dlg_NMBVTIO2.Txt_CaptureNet
+    Do_Inf_Loop%=Dlg_NMBVTIO2.Opt_Infinite_Pass
+    Do_X_Loops%=Dlg_NMBVTIO2.Opt_Multi_Pass
+    Ttl_Reps%=Val(Dlg_NMBVTIO2.Txt_Total_Reps)
+
+    Do_Lcl_IDs%=Dlg_NMBVTIO2.Chk_Local_Ident
+    Lcl_ID_Cnt%=Val(Dlg_NMBVTIO2.Txt_Lcl_Ident_Reps)
+
+    Trans_Net$ = Dlg_NMBVTIO2.Txt_TransmitNet
+    Do_Transmits%=Dlg_NMBVTIO2.Chk_Transmit
+    Snd_1X_Cnt%=Val(Dlg_NMBVTIO2.Txt_Sngl_Frame_Rep)
+    Snd_Many_Cnt%=Val(Dlg_NMBVTIO2.Txt_Big_Frame_Rep)
+    Snd_X1_Cnt%=Val(Dlg_NMBVTIO2.Txt_Same_Frame_Rep)
+    DO_Remotes%=Dlg_NMBVTIO2.Chk_Remote_Connect
+
+    Remote$=Dlg_NMBVTIO2.Txt_RemoteName
+    Rem_Cap_Net$ = Dlg_NMBVTIO2.Txt_RemoteCaptureNet
+    Rem_CD_Cnt%=Val(Dlg_NMBVTIO2.Txt_Discon_Reps)
+    Rem_Sus_Cnt%=Val(Dlg_NMBVTIO2.Txt_Suspend_Reps)
+    DO_Rem_ID%=Dlg_NMBVTIO2.Chk_Remote_Indent
+    Rem_ID_CNt%=Val(Dlg_NMBVTIO2.Txt_Rmt_Ident_X)
+
+    IF Out_2_VP% then
+        Viewport on
+        Viewport Clear
+    Endif
+    If out_2_File% then
+        Open Log_File$ for append as Log_Fl_Nm%
+    Endif
+
+    If Not Exists(NMPath$+"\Captures\Testcap.Cap") then
+        copy ".\Testcap.cap" to NMPath$+"\Captures\Testcap.Cap"
+    Endif
+
+    Report "NM BVT Testing: "+Dlg_NMBVTIO2.Txt_Description
+    If Do_Local_Cap% then
+        Report "Local Capture on Net# "+Cap_Net$+ "Buffer = "+ Buffer_Sz$+"Mg. and Frames Clipped at "+Frame_Sz$+ " Bytes"
+    Else
+        Report "Not Doing Local Captures."
+    Endif
+    If Do_Lcl_Ids% then
+        Report "Doing local Idents "+Str$(Lcl_ID_Cnt%)+" times."
+    Else
+        Report "Not doing Local Idents."
+    Endif
+    If Do_Transmits% then
+        Report "Transmit on Net# "+Trans_Net$+"."
+        Report "Do "+Str$(Snd_1x_Cnt%)+" Single Frame Tranmsits, "+Str$(Snd_X_Cnt%)+" Tranmsits of 1 frame, and "+Str$(Snd_Many_Cnt%)+" 5K Frame captures."
+    Else
+        Report "Not doing Transmits."
+    Endif
+    If Do_Remotes% then
+        Report "Connect to Remote "+Remote$+" and Capture on net# "+Rem_Cap_Net$+"."
+        Report "Doing "+Str$(Rem_CD_Cnt%)+" Connect & Disconnects and "+Str$(Rem_Sus_Cnt%)+" suspends."
+    Else
+        Report "Not do remotes."
+    Endif
+    Report "***************************** Starting Test ******************************"
+Else
+    State$="User bailed in Dialog"
+    Report "User Bailed in UI"
+Endif
+
+'Start Appplication and get it ready
+Cycle%=0
+Times_Thru%=0
+While Cycle% < Ttl_Reps% and State$="Continue"
+
+Times_Thru%=Times_Thru%+1
+If  Do_X_Loops% then
+    Cycle%=Cycle%+1
+Endif
+Report "-------------------------------------------------------------------------------"
+Report "Begin test cycle #"+Str$(Times_Thru%)
+Report "-------------------------------------------------------------------------------"
+
+If State$="Continue" then ' Start Net Monitor
+    Report "Starting NetMonitor in "+NMPath$
+    RunVal% = WinExec(NMPath$+"\Netmon.exe",SW_SHOW)
+    if 32 < RunVal% then
+        State$="Continue"
+        Report "Started "+NMPath$+"\NetMon.exe."
+    Else
+        State$="Failed to start "+NMPath$+"\NetMon.exe."
+    Endif
+
+    Done% = False
+    Count% = 0
+    Wait_Time%=20
+
+    WHILE Not Done% and State$="Continue" and Count% < Wait_Time%+Num_Passwords% 'Keep Clearing Windows until we are at Netmon Screen
+        Count%=Count%+1
+        hWnd% = GetActiveWindow()
+        Caption$ = rTrim$(GetText(hWnd%))
+        IF LEFT$(UCASE$ ( Caption$ ),10) = "EXPIRATION" THEN
+            DoKeys "{ENTER}"
+            Report "Found Expiration warning and disposed of it."
+            SLEEP 2
+        ELSEIF LEFT$(UCASE$(Caption$),7) = "WELCOME" THEN
+        Report "Found Password Panel, Testing Passwords"
+            DoPass State$,Num_Passwords%,Passwords$
+        ELSEIF UCASE$(Caption$) = "NETWORK MONITOR" THEN
+            Done% = True
+        ELSE
+            END
+        ENDIF
+    WEND
+EndIf
+
+If State$="Continue" then 'Maximize App
+    CurrentWindow = WFndWndWaitC ("Network Monitor", "BH_MainWndClass", FINDWINDOWFLAGS, 15)
+    DoKeys "%( )"
+    DoKeys "x"
+
+    DoKeys "x"
+    DoKeys "%(-)"
+    DoKeys "x"
+    Report "Maxed app"
+Endif
+
+If Do_Local_Cap% and State$="Continue" then   ' Choose Network and Do Capture
+    DoKeys "%(c)n"           'Set Network
+    DoKeys Cap_Net$
+    DoKeys "{ENTER}"
+    If 0 < WFndWnd("Save Capture?", FW_Full)  then 'In case there's a capture in the Q
+        DoKeys "N" 'No
+    Endif
+
+    Capture State$,Frame_Sz$,Buffer_Sz$
+    If State$ = "Trigger Failed"  Then
+        State$="Continue"
+        Open_Test_Cap%=True
+    EndIf
+    If State$="Continue" then  'View Capture and test find and filter
+        ViewCap State$
+    Endif
+Endif
+
+If Do_Lcl_Ids% and State="Continue" then  'Do some idents
+    Report "Preparing to do "+Str$(Lcl_Id_Cnt%)+" Idents"
+    DoKeys "%(c)n"           'Set Network
+    DoKeys Cap_Net$
+    DoKeys "{ENTER}"
+    If 0 < WFndWnd("Save Capture?", FW_Full)  then 'In case there's a capture in the Q
+        DoKeys "N" 'No
+    Endif
+    For Count%=1 to Lcl_Id_Cnt%
+        Ident State$
+    Next Count%
+    Report "Finished doing "+Str$(Lcl_Id_Cnt%)+" Idents"
+Endif
+
+
+
+If (State$="Continue") and DO_Transmits% then  'Do some Transmit
+    DoKeys "%(f)o"
+    DoKeys "Testcap"
+    DoKeys "{Enter}"
+    TransTst State$,Trans_Net$, Snd_1X_Cnt%, Snd_X1_Cnt%, Snd_Many_Cnt%
+    DoKeys "%(-)c"  'Exit capture display from transmit
+Endif
+
+Sleep(1)
+
+If (State$="Continue") and Not (Remote$ = "")Then 'Do Remote
+    Report "*** Starting Remote work using "+Remote$+"."
+    DoKeys "%(c)n{end}{enter}"           'Set Network
+    If 0 < WFndWnd("Save Capture?", FW_Full)  then 'In case there's a capture in the Q
+        DoKeys "N" 'No
+    Endif
+    DoKeys Remote$+"{Enter}"
+    Count%=0
+    While ("Connect to Network Monitoring Agent" = rTrim$(GetText(GetActiveWindow()))) and (Count% < 30)
+        Sleep (1)
+        Count% = Count% + 1
+    Wend
+    If "Connect to Network Monitoring Agent" = GetText(GetActiveWindow()) then 'We got hung waiting for connection
+        Report "Took longer than 60 seconds to negotiate connection"
+        State$="Never Connected to agent"
+    Else
+        Connect_2_Remote State$,Num_Passwords%,Passwords$,Remote$, Rem_Cap_Net$, Recon_2_Sus% 'Negotiate into remote if possible
+        If State="Continue" Then
+            Capture State$,Frame_Sz$,Buffer_Sz$
+            If State$="Continue" then
+                ViewCap State$
+                DoKeys "%(-)c"  'Exit capture display from transmit
+                If State$="Continue" and Do_Rem_ID% then
+                    For I%=1 to Rem_ID_Cnt%
+                        Ident State$
+                    Next I%
+                Endif
+            Endif
+            Discon
+        Else
+            Report "I am lost"
+        EndIf
+
+        'Disconnects
+
+        If State$="Continue" and 0 < Rem_Cd_Cnt% then
+            DoKeys "%(c)n{end}{enter}"           'Set Network
+            If 0 < WFndWnd("Save Capture?", FW_Full)  then 'In case there's a capture in the Q
+                DoKeys "N" 'No
+            Endif
+            DoKeys Remote$+"{Enter}"
+            Count%=0
+            While ("Connect to Network Monitoring Agent" = rTrim$(GetText(GetActiveWindow()))) and (Count% < 30)
+                Sleep (1)
+                Count% = Count% + 1
+            Wend
+            If "Connect to Network Monitoring Agent" = GetText(GetActiveWindow()) then 'We got hung waiting for connection
+                Report "Took longer than 60 seconds to negotiate connection"
+                State$="Never Connected to agent"
+            Endif
+            Connect_2_Remote State$,Num_Passwords%,Passwords$,Remote$, Rem_Cap_Net$, Recon_2_Sus% 'Negotiate into remote if possible
+            DoKeys "%(c)b"          ' Set Buffer
+            DoKeys Buffer_Sz$
+            DoKeys  "%(r)"
+            DoKeys Frame_Sz$  ' Set Frame Size
+            DoKeys "{ENTER}"
+            IF Not WFndWndWait("network buffers",FW_NOEXIST or FW_Part,180) then
+                Report "Still allocating after a long time"
+                State$="Hosed in Capture"
+            Else
+                Report "Allocated Buffer: "+Buffer_Sz$+" with a frame Size of "+Frame_Sz$+"."
+            Endif
+            Report "Set buffers"
+            DoKeys "%(c)tn{Enter}"
+            Report "Removed triggers."
+            DoKeys "%(c)S"
+            Sleep(1)
+            IF Not WFndWndWait("network buffers",FW_NOEXIST or FW_Part,180) then
+                Report "Still allocating after a long time"
+                State$="Hosed in Capture"
+            Else
+                Report "Allocated Buffer: "+Buffer_Sz$+" with a frame Size of "+Frame_Sz$+"."
+            Endif
+            Sleep(1)
+            If 0 < WFndWnd("Save Capture?", FW_Full)  then 'In case there's a capture in the Q
+                DoKeys "N" 'No
+            Endif
+            Sleep(1)
+            IF Not WFndWndWait("network buffers",FW_NOEXIST or FW_Part,180) then
+                Report "Still allocating after a long time"
+                State$="Hosed in Capture"
+            Else
+                Report "Allocated Buffer: "+Buffer_Sz$+" with a frame Size of "+Frame_Sz$+"."
+            Endif
+            Sleep(1)
+            I%=1
+            While I% < Rem_CD_Cnt% and State$="Continue"
+                I%=I%+1
+                Discon
+                DoKeys "%(c)n{end}{enter}"           'Set Network
+                Sleep(1)
+                DoKeys Remote$+"{Enter}"
+                Count%=0
+                While ("Connect to Network Monitoring Agent" = rTrim$(GetText(GetActiveWindow()))) and (Count% < 30)
+                    Sleep (1)
+                    Count% = Count% + 1
+                Wend
+                If "Connect to Network Monitoring Agent" = GetText(GetActiveWindow()) then 'We got hung waiting for connection
+                    Report "Took longer than 60 seconds to negotiate connection"
+                    State$="Never Connected to agent"
+                Endif
+                Connect_2_Remote State$,Num_Passwords%,Passwords$,Remote$, Rem_Cap_Net$, Recon_2_Sus% 'Negotiate into remote if possible
+                DoKeys "%(c)s"
+                Sleep (3)
+            Wend
+            Report "Out of loop. State$ = "+State$
+            Report "Done doing Connects / Disconect to "+Remote$+" "+Str$(I%)+" Times."
+            Discon
+        Endif
+        If State$="Continue" and 0 < Rem_Sus_Cnt% then
+            DoKeys "%(c)n{end}{enter}"           'Set Network
+            If 0 < WFndWnd("Save Capture?", FW_Full)  then 'In case there's a capture in the Q
+                DoKeys "N" 'No
+            Endif
+            DoKeys Remote$+"{Enter}"
+            Count%=0
+            While ("Connect to Network Monitoring Agent" = rTrim$(GetText(GetActiveWindow()))) and (Count% < 30)
+                Sleep (1)
+                Count% = Count% + 1
+            Wend
+            If "Connect to Network Monitoring Agent" = GetText(GetActiveWindow()) then 'We got hung waiting for connection
+                Report "Took longer than 60 seconds to negotiate connection"
+                State$="Never Connected to agent"
+            Endif
+            Connect_2_Remote State$,Num_Passwords%,Passwords$,Remote$, Rem_Cap_Net$, Recon_2_Sus% 'Negotiate into remote if possible
+            DoKeys "%(c)b"          ' Set Buffer
+            DoKeys Buffer_Sz$
+            DoKeys  "%(r)"
+            DoKeys Frame_Sz$  ' Set Frame Size
+            DoKeys "{ENTER}"
+            IF Not WFndWndWait("network buffers",FW_NOEXIST or FW_Part,180) then
+                Report "Still allocating after a long time"
+                State$="Hosed in Capture"
+            Else
+                Report "Allocated Buffer: "+Buffer_Sz$+" with a frame Size of "+Frame_Sz$+"."
+            Endif
+            Report "Set buffers"
+            DoKeys "%(c)S"
+            Sleep(1)
+            IF Not WFndWndWait("network buffers",FW_NOEXIST or FW_Part,180) then
+                Report "Still allocating after a long time"
+                State$="Hosed in Capture"
+            Else
+                Report "Allocated Buffer: "+Buffer_Sz$+" with a frame Size of "+Frame_Sz$+"."
+            Endif
+            Sleep(1)
+            If 0 < WFndWnd("Save Capture?", FW_Full)  then 'In case there's a capture in the Q
+                DoKeys "N" 'No
+            Endif
+            Sleep(1)
+            IF Not WFndWndWait("network buffers",FW_NOEXIST or FW_Part,180) then
+                Report "Still allocating after a long time"
+                State$="Hosed in Capture"
+            Else
+                Report "Allocated Buffer: "+Buffer_Sz$+" with a frame Size of "+Frame_Sz$+"."
+            Endif
+            Sleep(1)
+            I%=0 ' have not yet suspended a session
+            While I% < Rem_Sus_Cnt% and State$="Continue"
+                DoKeys "%(c)n%(d)"
+                If 0 < WFndWnd("Suspend?", FW_Full)  then 'Do not suspend capture
+                    DoKeys "y" 'Yes do suspend
+                Endif
+                Sleep (1)
+                DoKeys Cap_Net$+"{Enter}"
+                DoKeys "%(c)n{end}{enter}"           'Set Network
+                If 0 < WFndWnd("Save Capture?", FW_Full)  then 'In case there's a capture in the Q
+                    DoKeys "N" 'No
+                Endif
+                DoKeys Remote$+"{Enter}"
+                Count%=0
+                While ("Connect to Network Monitoring Agent" = rTrim$(GetText(GetActiveWindow()))) and (Count% < 30)
+                    Sleep (1)
+                    Count% = Count% + 1
+                Wend
+                If "Connect to Network Monitoring Agent" = GetText(GetActiveWindow()) then 'We got hung waiting for connection
+                    Report "Took longer than 60 seconds to negotiate connection"
+                    State$="Never Connected to agent"
+                Endif
+                Connect_2_Remote State$,Num_Passwords%,Passwords$,Remote$, Rem_Cap_Net$, Recon_2_Sus% 'Negotiate into remote if possible
+                I%=I%+1
+            Wend
+            Discon
+            Report "Done doing Suspends to "+Remote$+" "+Str$(I%)+"Times."
+        Endif
+    Endif
+EndIf
+
+If State$="Continue" then  'Close the application
+    CloseNM State$
+Endif
+
+Wend
+
+
+If State$="Continue" then 'Cool things worked
+    Report "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+    Report "Cool, Everything worked!  Cycled throu test script "+Str$(Times_Thru%)+" times."
+    Report "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+Else
+    Report "********************************************************************"
+    Report "We died somewhere!"+ State$
+    Report "********************************************************************"
+Endif
+
+If (Out_2_VP%=True) Then 'Find and Display Viewport
+    Temp%=WFndWnd("Viewport",FW_Part or FW_Focus)
+    DoKeys "%( )"
+    DoKeys "x"
+ENDIf
+If Out_2_File% Then
+    Close # Log_Fl_Nm%
+EndIF
+'End
+
+' ************************* Sub Routines ************************************
+Static Sub Report(Out_Str$) ' Do Report
+    If Out_2_VP% Then
+        Print Out_Str$
+    Endif
+    If Out_2_File% Then
+        Print #Log_Fl_Nm%,Out_Str$
+    EndIf
+End Sub
+
+
+Static Sub DoPass(Status$,Password_Cnt%,PasswordS$()) 'Negotiate Passwords
+
+    Dim I% ' Counter
+    I%=0
+    Temp%=WFndWnd("Note", FW_active)
+        While (I% < Password_Cnt%) and 0=WFndWnd("Note", FW_active)
+        I%=I%+1
+        IF 0 < WFndWnd("Welcome to Network Monitor", FW_Full) Then
+            Dokeys Passwords$(I%)
+            DoKeys "{ENTER}"
+        Endif
+        If 0 < WFndWnd("Access Error", FW_Full) Then
+            DoKeys "{ENTER}"
+        endif
+    wend
+
+    sleep(1)
+
+    if GetText(GetActiveWindow())="Note" Then
+        Report "Successfully dealt with password: "+passwords(I%)
+        Status$="Continue"
+        Password$=Passwords(I%)
+        DoKeys ("{Enter}")
+    Else
+        Report "Failed Passwords: and I Tried "+Str$(I%)+" Times."
+        Report "Please edit Password.lst to enter a valid password."
+        Status$="Failed startup Password"
+    Endif
+End Sub
+
+
+Static Sub Capture(State$,Frame_Sz$,Buffer_Sz$) 'Capture Data: test triggers and Buffers
+
+    DoKeys  "%(r)"
+    DoKeys Frame_Sz$  ' Set Frame Size
+    DoKeys "{ENTER}"
+
+    Sleep (2)
+    Report "Set buffers"
+    DoKeys "%(c)S"
+    If 0 < WFndWnd("Save Capture?", FW_Full)  then 'In case there's a capture in the Q
+        DoKeys "N" 'No
+    Endif
+    Sleep(1)
+    IF Not WFndWndWait("Allocating network buffers",FW_NOEXIST,180) then
+        Report "Still allocating after a long time"
+        State$="Hosed in Capture"
+    Else
+        Report "Allocated Buffer: "+Buffer_Sz$+" with a frame Size of "+Frame_Sz$+"."
+    Endif
+    Sleep (1)
+    DoKeys "%(c)p"
+    DoKeys "%(c)t"
+    DoKeys "e7g" 'Patt&ern &75% Topolo&gy
+    DoKeys "p00"  '&Pattern 00 - default to 00 offset
+    DoKeys "%(s)"
+    Dokeys "{Enter}"
+    Sleep(1)
+    DoKeys "%(c)c" 'Continue capture
+
+    Count%=0
+    Done%=False
+    Wait_Time%=40 'Each Wait Time seems to account for 15-20 seconds
+    While Not Done% and Count% < Wait_Time%
+        Sleep(1)
+        Count%=Count%+1
+        if WFndWnd("Trigger", FW_Full) then
+            Done%=True
+        EndIf
+    Wend
+    if WFndWnd("Trigger", FW_Full) then
+        DoKeys"{enter}"
+        State$="Continue"
+        Report "Trigger Fired after "+Str$(Count%)+" Seconds"
+    Else
+        Report "Trigger never fired after "+Str$(Count%)+" Seconds"
+        State$ = "Trigger Failed"
+    endif
+End Sub
+
+Static Sub Ident(State$) 'Do an Identify Network Monitor Installations
+    DoKeys "%t"
+    DoKeys "{ENTER}"
+    sleep (10)
+    IF 0 < WFndWndWait("Other Network Monitor Installations",FW_Full,60) then
+        DoKeys "{enter}"
+    Else
+        State$="Ident Failed"
+        Report "Failed during Ident."
+    Endif
+End Sub
+
+
+Static Sub ViewCap(State$) ' View Capture and test Find and Filter and Address Editing
+
+    If Open_Test_Cap% then ' if we do not have a good capture open the testcap
+        DoKeys "%(C)s"
+        DoKeys "%(f)o"
+        DoKeys "Testcap"
+        DoKeys "{Enter}"
+    Else
+        DoKeys "%(c)d" ' View data
+    Endif
+
+    DoKeys "%(d)a%(l)" 'load default.adr
+    if WFndWnd("Load Address",FW_Full) then
+        Dokeys "Y"
+    Endif
+    DoKeys "Default{enter}"
+    Sleep(1)
+    DoKeys "{Enter}"
+    Sleep(1)
+
+    DoKeys "%(d)m" ' find all names
+    If 0 < WFndWndWait("Find All Names",FW_Full,120) then
+        Report "found all names Succesfully"
+        DoKeys "{enter}"
+        DoKeys "%(d)a" ' Addresses
+        DoKeys "try"   ' go to some odd adress in the try are
+        DoKeys "%(E)%(N)TestScriptAgent" ' edit addresses try 13 digits but only 12 should stick
+        DoKeys "{Enter}{Home}TestScriptAgent"
+        DoKeys "%(e)"
+
+        DoKeys "%(n)"
+        Report EditselText("&Name")
+
+        If EditselText("&Name")="TestScriptAgent" then
+            Report "Edited adresses"
+            DoKeys "{enter}{enter}"
+            'Set find frame to test agent
+            Dokeys"%(d)i{left}{left}%(1)TestScriptAgent{enter}"
+            IF Not WFndWndWait("Filtering",FW_NOEXIST,120) then
+                Report "Still Finding Frames after 120 Seconds"
+            Else
+                Report "Done Finding Displayed Frames"
+            Endif
+            DoKeys "%(d)f%(x)%(1)TestScriptAgent{enter}{enter}"
+            If Not WFndWndWait("Filtering",FW_NOExist,240) Then
+                Report "Still Filtering Frames after 120 Seconds"
+            Else
+                Report "Done Filtering Displayed Frames"
+            Endif
+            If 0 = WFndWnd("Warning",FW_Full) then
+               Report "Found packets"
+            Else
+                State$="No Packets Found"
+                Dokeys "{enter}"
+            Endif
+         Else
+            State$= "Failed to edit address"
+        Endif
+    Else
+        State$="Failed find all names"
+    Endif
+    If state$="Continue" then 'Save capture locally
+        DoKeys "%(f)a"
+        Sleep (1)
+        DoKeys "LastTest{Enter}"
+        If 0 < WFndWnd("Save",FW_Full) Then
+            DoKeys "Y"
+        Endif
+        If not WFndWndWait("% Frames",FW_NOExist,120) Then
+            Report "Still Saving after 120 Seconds"
+        Else
+            Report "Done Saving capture"
+        Endif
+        DoKeys "%(-)c"  'Exit capture display
+    Endif
+End Sub
+
+
+Static Sub CloseNM(State$) ' Close NM: Save Capture, Dump Addresses
+
+    DoKeys "%(f)x"
+    Sleep (1)
+    If 0 < WFndWnd("Save",FW_Full or FW_Focus) Then
+        DoKeys "Y"
+        DoKeys "Test{Enter}"
+        If 0 < WFndWnd("Save",FW_Full or FW_Focus) Then
+            DoKeys "Y"
+        Endif
+        If not WFndWndWait("% Frames",FW_NOExist,120) Then
+            Report "Still Saving after 120 Seconds"
+        Else
+            Report "Done Saving capture"
+        Endif
+    Endif
+    if 0 < WFndWnd("Save Address Database?",FW_Full or FW_Focus) then
+        Report "Not Saving addresses"
+        DoKeys "n"
+    Endif
+    If 0 < WFndWnd("Save",FW_Full or FW_Focus) Then
+        DoKeys "Y"
+        DoKeys "Test{Enter}"
+        If 0 < WFndWnd("Save",FW_Full or FW_Focus) Then
+            DoKeys "Y"
+        Endif
+        If not WFndWndWait("% Frames",FW_NOExist,120) Then
+            Report "Still Saving after 120 Seconds"
+        Else
+            Report "Done Saving capture"
+        Endif
+    Endif
+End Sub
+
+
+Static Sub TransTst(State$,Trans_Net$, Snd_1X_Cnt%, Snd_X1_Cnt%, Snd_Many_Cnt%) ' Do Transmit
+    Sleep(1)
+    DoKeys "%(d)f%(d)Default{enter}{Enter}" 'Load Default Filter
+    DoKeys "%(t)"
+    If Not WmenuChecked("Allow &Transmit") then
+        DoKeys "t"
+    Else
+        DoKeys "n"
+    Endif
+    DoKeys Trans_net$ ' Choose Transmit Network
+    DoKeys "{Enter}"
+    DoKeys "%tc%t" 'Open Transmit Capture Dialog to get Total Frames
+    Ttl_Frames%=Val(EditselText("&To:"))
+    DoKeys "{Esc}"
+
+    If Snd_1X_Cnt% > 0 Then
+        Report "Preparing to send Single Frames "+Str$(Snd_1x_Cnt%)+" times."
+        Do_Sngl_Frame_Transmits State$,Snd_1X_Cnt%
+    EndIf
+    If Snd_X1_Cnt%> 0 then
+        Report "Preparing to send 1 frame "+Str$(Snd_X1_Cnt%)+" Times."
+        Do_1_Many_Transmit State$,Snd_X1_Cnt%
+    EndIf
+    If Snd_many_Cnt% > 0 Then
+        If Frames_2_Trans% > Ttl_Frames then
+            Frame_Cnt%=Ttl_Frames%
+            Report "Changing large Frame Transmit Count to "+Str$(Ttl_Frames%)
+        Else
+            Frame_Cnt%=Frames_2_Trans%
+        Endif
+        For I%=1 to Snd_Many_Cnt%
+            DoKeys "%(t)c"
+            DoKeys "%(t)"+Str$(Frame_Cnt%)
+            DoKeys "{enter}"
+            IF Not WFndWndWait("Processing",FW_NOEXIST or FW_Part,300) then
+                Report "Took longer than 5 Minutes to Transmit capture"
+                State$="Hosed in Transmit capture"
+            Endif
+        Next I%
+        If State$="Continue" then
+            Report "Transmited Capture Frames 1-"+Str$(Frame_Cnt%)+", "+Str$(I%)+" times."
+        Endif
+    Endif
+End Sub
+
+Static Sub Do_Sngl_Frame_Transmits(State$,Transmit_Cnt%)
+    If Transmit_Cnt% > Ttl_Frames% then
+        Transmit_Cnt%=Ttl_Frames%
+        Report "Changing Single Frame Transmit Count to "+Str$(Ttl_Frames%)
+    EndIf
+    For Count%=1 to Transmit_Cnt% 'Transmit 1 frame X times
+        DoKeys "%(d)g"+Str$(Count%)+"{Enter}"
+        DoKeys "%(t)f"
+        IF Not WFndWndWait("Tranmitting",FW_NOEXIST or FW_Part,25) then
+            Report "Took a long time to Transmit Frame"
+            State$="Hosed in Transmit frame: Iteration "+Str$(Count%)
+            Count%=Transmit_Cnt%
+        Endif
+    Next Count%
+    If State$="Continue" then
+        Report "Transmitted Single frames 1 - "+Str$(Count%-1)+"."
+    Endif
+End Sub
+
+Static Sub Do_1_Many_Transmit(State$,Transmit_Cnt%)
+    Test_Frame%=Int(Rnd*Ttl_Frames)+1
+    DoKeys "%(t)c"
+    DoKeys "%(f)"+Str$(Test_Frame%) 'From frame
+    DoKeys "%(t)"+Str$(Test_Frame%) 'To Frame
+    DoKeys "%(n)"+Str$(Transmit_Cnt%)+"{Enter}"
+    IF Not WFndWndWait("Processing",FW_NOEXIST or FW_Part,10) then
+        Report "Took long time to Transmit 1 Frame "+Str$(Transmit_Cnt%)+" Times."
+        State$="Hosed in Transmit 1 Frame X Times"
+    Else
+        Report "Transmited Frame "+Str$(Test_Frame%)+" "+Str$(Transmit_Cnt%)+" times."
+    Endif
+End Sub
+
+Static Sub DO_Rem_Password(State$,Password_Cnt%,Passwords$(),Rem_Password$)
+    I%=0
+    While (I% < Password_Cnt%) and (GetText(GetActiveWindow())="Remote Password")
+        I%=I%+1
+        Dokeys Passwords$(I%)
+        DoKeys "{ENTER}"
+        If rTrim$(GetText(GetActiveWindow()))="Remote Password" Then
+            DoKeys "{ENTER}"
+        endif
+    wend
+    If GetText(GetActiveWindow()) = "Remote Password" Then 'Failed to get password
+        Report "Did not negotiate remote password"
+        State$ = "Remotes Password Unknown"
+    Else
+        Rem_Password$=Passwords$(I%)
+        Report "Connected to remote: Password="+Rem_Password$
+    Endif
+End Sub
+
+Static Sub Connect_2_Remote(State$,Password_Cnt%,Passwords$(),Remote$,Rem_Cap_Net$,Recon_2_Sus%)
+
+    Sleep (1)
+    Done%=false
+    Recon_2_Sus%=True
+    While State$="Continue" and Not Done%
+        Select Case GetText(GetActiveWindow())
+            Case "Agent Not Found"
+                Report "Agent was not found"
+                State$ = "Agent "+Remote$+" was not found"
+                Done%=True
+            Case "Select Agent Network Card"
+                Report "Agent was found with a Bunch of Cards"
+                DoKeys Rem_Cap_Net$
+                DoKeys "{Enter}"
+                Report "Selected Net# "+Rem_Cap_Net+" for capture"
+            Case "Remote Password"
+                Rem_Password$=""
+                DO_Rem_Password State$,Password_Cnt%,Passwords$,Rem_Password$
+                If State$="Continue" Then
+                    Sleep(3)
+                 EndIf
+            Case "Loopback failure"
+                Report "You are silly, choose a remote and not this Machine!"
+                State$="Failed to connect to the same machine."
+                Done%=True
+            Case "Reconnected"
+                DoKeys "{Enter}"
+                Report "Reconnected to suspended session"
+                Recon_2_Sus%=True
+                Done%=True
+                Sleep (4)
+            Case Else 'We are either in or we are lost
+                Done%=True
+                If WFndWnd("Network Monitor",FW_Part) then
+                    Report "Found Net Monitor Window Active"
+                    Sleep (4)
+                    Win_Cap$=Mid$(GetText(GetActiveWindow()),1,Len(Remote$)+22)
+                    Test_Cap$="Network Monitor - [\\"+UCASE$(Remote$)+"\"
+                    Report Win_Cap$+"="+Test_Cap$
+                    If Test_Cap$=Win_Cap$ Then
+                        Report "We Made it to Remote "+Remote$
+                    Else
+                        State$ = "Lost trying to do remotes"
+                        Report "I am lost in remotes"
+                    EndIf
+                Endif
+        End Select
+    Wend
+End Sub
+
+Static Sub Discon()
+
+    DoKeys "%(c)n"
+    Sleep(1)
+    DoKeys "%(d)"
+    Sleep(1)
+    While not (WFndWnd("Suspend?", FW_Full) or WFndWnd("Save Capture?", FW_Full))
+        Sleep (1)
+    Wend
+    If 0 < WFndWnd("Suspend?", FW_Full)  then 'In case there's a capture in the Q
+        DoKeys "N" 'No
+    Endif
+    If 0 < WFndWnd("Save Capture?", FW_Full)  then 'In case there's a capture in the Q
+        DoKeys "N" 'No
+    Endif
+    DoKeys Cap_Net$+"{Enter}"
+
+End Sub

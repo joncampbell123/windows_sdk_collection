@@ -1,0 +1,1 @@
+WC -l C:\OUT.TXT >C:\OUT.NUM

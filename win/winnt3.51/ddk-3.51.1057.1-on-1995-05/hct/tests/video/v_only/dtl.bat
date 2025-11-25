@@ -1,0 +1,1 @@
+type dt.log | find "FAILED" /i

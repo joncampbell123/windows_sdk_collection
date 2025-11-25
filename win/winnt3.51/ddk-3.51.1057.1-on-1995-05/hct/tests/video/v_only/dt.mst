@@ -1,0 +1,517 @@
+'*********************************************************************
+'
+'   Title:      Disptest automation
+'
+'   Name:       dt.mst
+'   Creator:    Dieter Achtelstetter
+'
+'   Paramiter1   : /c  Will create screan file
+'   Paramiter2   : /s:#  Number of screans to test
+'   Paramiter3   : /t:#  Number of togles for every screen screans to test
+'   Paramiter4   : /TW:# If given overides the default togle wait time of 3 seconds
+'   Paramiter5   : /GS:  Indicates at what screen number the graphic screen end
+'   Paramiter6   : /GE:  Indicates at what screen number the graphic screens end
+'   Returns      : dt.log file
+'   Description  :
+'*********************************************************************
+
+'---- Includes
+'$define testdlgs
+'$define TESTSCRN
+'$define TESTCTRL
+
+'$INCLUDE   'c:\mt\INC\MSTEST32.INC'
+'$INCLUDE   'c:\hct\tests\disk\pars3.mst'
+'$INCLUDE   'c:\hct\tests\disk\loging.mst'
+'$INCLUDE   'c:\Mt\INC\winapi.INC'
+
+'====== Constants
+    const max_screen = 57         '----- Maximum screens in disptest
+    const TogelDefaultWait = 3    '----- Default wait time after togle can be overriten with the command line switch /tw:
+    const CompNumberDefault = 20  '----- Default value for CompNumber. The number of times to comp screen till it passes
+
+'===== Command line arg stuf
+        dim   pars_found(9) as  tpars
+        dim   leagel_pars(9) as string
+        leagel_pars(0) = "/C"
+        leagel_pars(1) = "/S:"
+        leagel_pars(2) = "/T:"
+        leagel_pars(3) = "/TW:"
+        leagel_pars(4) = "/P:"
+        leagel_pars(5) = "/GS:"
+        leagel_pars(6) = "/GE:"
+        leagel_pars(7) = ""
+
+
+
+
+'====== Globel veriables
+
+    '---- Flag if to create the screan file or compare window to it. This is set with the /c:  command line switch
+    global create_screen_file   as integer
+    global TempScreenFileName as string '----- Will hold current name of temp scn file name.
+    global   ScreenFileName as string   '----- Name of screen file to create or use
+    global screens  as integer          '----- Number of screens to test. This is set with the /S:  command line switch
+    global togles   as integer          '----- Number of togles per screen. This is set with the /T:  command line switch
+    global TogleWait  as integer        '----- Will hold the number of seconds to wait after i togled
+    global CompNumber as integer        '----- Will hold the number of times to try to compare a screen  till it passes
+    global Xres ,Yres as integer        '----- Will hold screen resolution
+    global BitsPerPixcel as long        '----- WIll hold current y , x pixcel counts
+    global PromptWhenFail as integer    '----- This is set with the /P: paramiter and if true it will prompt when
+    PromptWhenFail = FALSE              '----- Default ot whil not prompt if comp failes.
+    global GraphicStart as integer      '----- First screen that will be in graphic mode
+    global GraphicEnd as integer        '----- Last screan that will be in graphic mode
+    global  VariationResults(30,30) as integer    '---- Store pass/faile for each screen/togle
+
+
+'---- Function/Sub Definitions
+declare function togle(sec as integer)
+declare function compwindowed(scnfile as string  , scn$, hWnd&) as integer
+declare function compnonwindowed(scnfile$ , scn$) as integer
+declare function test_screans(number_of_screens as integer, number_of_togles_per_screan as integer)   as integer
+declare function next_screen()
+declare function help(s as string)
+declare function read_ini(ini_file as string) as string
+declare sub getscreenres(x as integer, y as integer, BitsPerPixcel as long)
+'declare function logr(text as string, s as integer, t as integer)
+''$define START_DISPTEST_USING_RUN
+
+'---- Open loging
+loging "OPEN", "dt.log"
+
+'======== Ini Stuff
+    TogleWait  = -1                 '---- IF this value will not change after i get arguments i will use TogelDefaultValue
+    CompNumber = CompNumberDefault  '---- Set Default CompNumber
+    create_screen_file = false      '---- I default to not creat the screan file
+
+'======== Handle command line arguments
+    ret =  get_paramiters(command$, leagel_pars , pars_found)
+    if ret = -100 then '---- Invallid paramiter given
+        help("Invalid pramiter")
+    elseif ret = 0 then '---- no paramiters given
+        help("No Paramiters given")
+    else '---- We have paramiters
+        for i = 0 to ret -1
+            if   pars_found(i).switch =   "/?"  then      ' help switch
+                help("HELP")
+            elseif  pars_found(i).switch =   "/C"  then   ' Create screen file
+                create_screen_file = true
+                ScreenFileName =  pars_found(i).par
+            elseif  pars_found(i).switch =   "/S:"  then   ' Number of screans to test
+                screens = val(pars_found(i).par)
+            elseif  pars_found(i).switch =   "/T:"  then   ' Number of togles per screen
+                togles = val(pars_found(i).par)
+            elseif  pars_found(i).switch =   "/TW:"  then  ' number of seconds to wait after togled
+                TogleWait = val(pars_found(i).par)
+            elseif  pars_found(i).switch =   "/P:"  then  ' IF exists will prompt when i faile screen comp.
+                PromptWhenFail = TRUE
+            elseif  pars_found(i).switch =   "/GS:"  then  ' Screen number where graphic screens startat
+                GraphicStart =  val(pars_found(i).par)
+            elseif  pars_found(i).switch =   "/GE:"  then  ' Screen number where graphic screens end
+                GraphicEnd =    val(pars_found(i).par)
+            endif
+        next i
+    endif
+
+
+'---- Handle default values.
+'---- IF /tw: was not given as paramiter set default togle wait
+if TogleWait = -1 then
+    TogleWait = TogelDefaultWait
+endif
+
+'---- If GraphicStart and  GraphicEnd where not given set to default.
+if GraphicStart = 0 then
+    GraphicStart = 25
+endif
+
+if GraphicEnd = 0 then
+    GraphicEnd =  33
+endif
+
+'======= start progrum and get window handle
+    '$ifdef START_DISPTEST_USING_RUN
+        Run "d:\video\DISPTEST EXE", nowait , SW_SHOWNORMAL
+        ''Run("c:\video\DISPTEST EXE")
+        hWnd& = WFndWndWait ("DispTesT", FW_PART, 5)
+    '$else
+        VMConsoleOpen
+        i = VMProcessCreate("disptest.exe" ,"")
+        sleep 10  '----- Give it time to start
+
+        hWnd& = WFndWndWait ("Microsoft Test", FW_PART, 5)
+    '$endif
+    if hWnd = 0 then   '---- iF DispTest vindow was not found try VT. If started in VT this what it would be
+        hWnd& = WFndWndWait ("MT", FW_PART, 5)
+        if hWnd = 0 then
+            ErrMsg$ = "ERROR, DISPTEST EXE window could not be found!"
+            msgbox ErrMsg$, MB_OK + MB_ICONSTOP, "ERROR"
+            end
+        ENDIF
+    endif
+
+sleep 5
+
+'---- Set window title to disptest
+    WSetText  hWnd , "DispTest"
+
+hWnd& = WFndWndWait ("DispTest", FW_PART, 5)
+if hWnd = 0 then
+   ErrMsg$ = "ERROR, DISPTEST EXE window could not be found!"
+   msgbox ErrMsg$, MB_OK + MB_ICONSTOP, "ERROR"
+   end
+ENDIF
+
+
+'----- Get screan resolution and bits per pixcel.
+    getscreenres Xres, Yres , BitsPerPixcel
+
+'---- Figure out what base screan file to use from current screen res and BitsPerPixcel
+s$ = str$(BitsPerPixcel)
+s = ltrim$(s," ")
+s = rtrim$(s)
+ScreenFileName = "dt_" + s + ".scn"
+
+'----- Set screen file depending of resolution
+if     Xres  =   640 and Yres <=  480 then
+     ScreenFileName = "dt64_" + s + ".scn"
+endif
+
+
+'elseif Xres =   640 and Yres =  480 then
+'    ScreenFileName = "dt64_" + s + ".scn"
+'elseif Xres =   800 and Yres =  600 then
+'    ScreenFileName = "dt86_" + s + ".scn"
+'elseif Xres >= 1024 and Yres >= 768 then
+'    ScreenFileName = "dt17_" + s + ".scn"
+'else
+'  msgbox "Unsupported resolution " , MB_OK + MB_ICONSTOP, "ERROR"
+'  end
+'endif
+
+'---- Log screan file used to compare dt to.
+loging ScreenFileName,""
+
+'----- Determin current temp screen file.
+ its = 0
+ do while TRUE
+    TempScreenFileName = "DTemp" + ltrim$(str$(its)) + ".scn"
+    if not exists(TempScreenFileName) = TRUE then
+        exit do
+    endif
+    its = its + 1
+ loop
+
+ '---- If we are going to creat a scren file lets delete the old one
+ if create_screen_file = TRUE then
+    if exists(ScreenFileName) = TRUE then
+        kill ScreenFileName
+    endif
+ endif
+
+
+'---- Set window to Top Left most corner.
+'---- This way i will fit most of the window on the screen if window is taller then screen high and window will be on same
+'---- Spot too.
+    WsetWndPos hWnd , 0 , 0
+
+loging "Time testing started:" + time$,""
+
+i = test_screans(screens, togles)
+
+loging "Time testing finished:" + time$,""
+
+
+'===== Get and log total test results
+Dim ScreenFailTotal as integer
+Dim ScreenPassTotal as integer
+Dim PassProcentige as integer
+Dim ScreenTotal as integer
+
+FOR sc = 0 TO screens-1
+    for t = 0 to togles-1
+        if VariationResults(sc,t) = true then
+            ScreenPassTotal = ScreenPassTotal + 1
+        else
+            ScreenFailTotal = ScreenFailTotal + 1
+        endif
+        ScreenTotal = ScreenTotal +1
+    next t
+next sc
+
+if (ScreenPassTotal =  ScreenTotal) then
+    PassProcentige = 100
+else
+    PassProcentige = (100/ScreenTotal)* ScreenPassTotal
+endif
+
+loging "----------------------------------------------------------------------------------------", ""
+loging "Tests Passed     "+str$(PassProcentige)+"%| Varitions Passed     "+str$(PassProcentige)+"%", ""
+loging "----------------------------------------------------------------------------------------", ""
+
+
+
+'==== Close app and stuff
+
+togle(TogleWait) ''----- Go full screen
+
+'---- Close app.
+        QueKeyDn "{F2}"
+        QueKeyUp "{F2}"
+        QueFlush 1
+
+'---- Give it some time to close
+'---- If i dont i will get a term app popup below when i close window
+    sleep 9
+
+'---- Close console
+    VMConsoleClose
+
+
+'----- Close window
+    DoKeysHwnd hWnd , "%( )"
+    DoKeysHwnd hWnd , "c"
+
+loging "CLOSE",""
+end
+
+
+'*********************************************************************
+'
+'   Function:    togle(sec as integer)
+'
+'   Paramiter1   : sec to wait after togle.
+'   Returns      : void
+'   Globals used : NON
+'   Description  : Togles the disptest.exe between full or window mode
+'*********************************************************************
+function togle(sec as integer)
+    'QueEmpty
+    QuekeyDn "%"
+    QuekeyDn "{ENTER}"
+    QuekeyUp "{ENTER}"
+    QuekeyUp "%"
+    QueFlush 1
+    sleep sec
+end function
+
+'*********************************************************************
+'
+'   Function:    compwindowed(scnfile$ , scn$) as integer
+'
+'   Paramiter1   : screen file to use for comp
+'   Paramiter2   : screen  to use for comp in screanfile given in paramiter1
+'   Paramiter3   : Handle to window to comp
+'   Returns      :0 if not compared or  the number of comp it took to make it pass
+'   Globals used : NON
+'   Description  :
+'*********************************************************************
+function   compwindowed(scnfile as string , scn$, hWnd&) as integer
+dim pf as integer '----- Pass/Faile boolean
+dim t as integer  '----- Try counter
+
+
+'----- This flag is true if the /c command line paramiter was given
+if  create_screen_file = true  then
+    pf = ScnCaptureWindow(scnfile,scn,hWnd,FALSE)
+endif
+'-----
+pf = 1   '----- Default to Faile
+
+'------ We will try to compare the screan a maximum of 30 times.
+'------ I am doing this is because of the courser or maybe it failed because it is still redrawing itself
+for t = 1  to CompNumber
+    '----- Capture window to temp scn file
+    pf = ScnCaptureWindow(TempScreenFileName,scn,hWnd,FALSE)
+    '---- Comp the 2 files
+    pf = ScnCompFiles(scnfile,scn,TempScreenFileName,scn, TRUE)
+
+    '---- Are they the same
+    if pf = 0 then
+        compwindowed = t
+        exit function
+    end if
+next t
+compwindowed = 0  '----- We failed
+end function
+
+'*********************************************************************
+'
+'   Function:      test_screens
+'
+'   Paramiter1   : The number of screens to test. The apps has 57 as max
+'   Paramiter2   : Number of times to togle the app windowed/FullScreen
+'   Returns      :void
+'   Globals used : NON
+'   Description  :
+'*********************************************************************
+function test_screans(number_of_screens as integer, number_of_togles_per_screan as integer)
+
+
+if  number_of_screens >   max_screen then
+    number_of_screens =   max_screen
+endif
+
+'---- print log file header
+loging "--------------------------------------------------------------------------",""
+loging "Number of screens to test  :"+ ltrim$(str$(number_of_screens)),""
+loging "Number of togles per screen:"+ ltrim$(str$(number_of_togles_per_screan)),""
+loging "--------------------------------------------------------------------------",""
+
+
+'---- I will start with full scren mode.
+'---- Reasons
+'----- 1) I need to change screens in full screan mode because grafic screans in windowes mode are frozen
+'-----    and will not respond to any key strokes if in wondow mode.
+'----- 2) If i change screen in window mode end next scren is grafic it is forced into full screan mode
+'-------  so if i change in full screan mode i eliminate a special case.
+togle(TogleWait) '----- Togle screen to full mode
+
+'---- Loop threw all screans to test
+for s = 1 to  number_of_screens
+
+    CompNumber = 15
+    '---- If grafic screens are windowed they are frozen  so they will not change
+    '---- So there is no need to comp many times till it will pass.
+    '---- So i will comp less times till it passes. This reduces the tine the test takes if grafic screens faile.
+    if s >= GraphicStart and s <= GraphicEnd then
+        CompNumber = 3
+    endif
+
+    '---- Loop number of togles
+    for t = 1 to   number_of_togles_per_screan
+
+       togle(TogleWait) '----- Back to windowed mode
+
+       '---- When disptest goes grafic in full screen mode & i go windowed the title is changed back to
+       '---- what it was befor i called WSetText  hWnd , "DispTest" above. So i change it again
+       '---- This seams to work
+       if s = GraphicStart then
+            '---- Set window title to disptest
+            WSetText  hWnd , "DispTest"
+       endif
+
+       '---- If not griphic any more change it back
+       if s = GraphicEnd + 1 then
+            '---- Set window title to disptest
+            WSetText  hWnd , "DispTest"
+       endif
+
+       '------- Compare screans
+       i =  compwindowed(ScreenFileName , "screen" + ltrim$(str$(s)), hWnd)
+       if i = 0 then
+           '----- Bepp if screen comp failed
+           beep
+            '---- If true then prompt for user responds if test failed.
+            if PromptWhenFail = TRUE then
+                ret = msgbox( " Screen#:" + ltrim$(str$(s)) + "  Togle#:" + ltrim$(str$(t))+" If it passed click YES if it failed click no", MB_YESNO + MB_ICONEXCLAMATION ,"Comparing of screen failed."  )
+                if ret = 6 then ' ---- yes button was selected
+                     loging "PASSED:  Screen#:"+ ltrim$(str$(s)) +"  Togle#:"+ltrim$(str$(t))+ " Screen FAILED  but user said it PASSED",""
+                     VariationResults(s-1,t-1) = TRUE
+                else            '------ NO buttin was selected
+                     loging "FAILED:  Screen#:"+ ltrim$(str$(s)) +"  Togle#:"+ltrim$(str$(t))+ " Screen FAILED and user said it FAILED",""
+                     VariationResults(s-1,t-1) = FALSE
+                endif
+           else
+                loging "FAILED:  Screen#:"+ ltrim$(str$(s)) +"  Togle#:"+ltrim$(str$(t)),""
+                VariationResults(s-1,t-1) = FALSE
+           endif
+
+       else
+           loging "PASSED:  Screen#:"+ ltrim$(str$(s)) +"  Togle#:"+ltrim$(str$(t)),""
+           VariationResults(s-1,t-1) = TRUE
+       endif
+
+       togle(TogleWait) '----- set to full screan mode
+
+    next t
+
+    '---- If last screen no bother to go to next.
+    if s < number_of_screens then
+        next_screen
+        '----- If this scren is a grafic screan give it more time to draw itself
+        '----- Since if it gets windowed it fresez and will not finish drawing itself
+        '----- screens GraphicStart to GraphicEnd are graphic.
+        if (s+1) >= GraphicStart and (s+1) <=GraphicEnd then
+            sleep 13
+        endif
+    endif
+
+next s
+
+togle(TogleWait) '----- set to windowed mode
+
+end function
+
+'*********************************************************************
+'   Function:   next_screen()
+'
+'   Paramiter1   :void
+'   Returns      :void
+'   Description  : Sets disptest to next video screen mode
+'*********************************************************************
+function next_screen()
+    QueKeyDn "{ENTER}"
+    QueKeyUp "{ENTER}"
+    QueFlush 1
+    sleep 5
+end function
+
+'*********************************************************************
+'
+'   Function:   help()
+'
+'   Paramiter1   : string for header of help popup
+'   Returns      : void
+'   Globals used : NON
+'   Description  : Displase usage of this script
+'*********************************************************************
+function help( s as string)
+'----dispaly syntex of switches
+dim s1$, s2$ , s3$
+
+s1 = "    /C .    Create screen file"
+s2 = "    /S:#    Number of screens to test  "
+s3 = "    /T:#    Number of togles ber screen "
+msgbox "Switches for DT.pcd" + chr$(10) + s1 + chr$(10) + s2 + chr$(10)  + s3 + chr$(10) , MB_OK, s
+end
+end function
+
+'*********************************************************************
+'
+'   Function:   read_ini(ini_file as string)
+'
+'   Paramiter1   : file_name   of ini file
+'   Returns      :void
+'   Globals used : NON
+'   Description  :
+'*********************************************************************
+function read_ini(ini_file as string)  as string
+dim infile, ret, i   as integer
+infile = freefile
+ret = exists( ini_file, "-d-v-h-s-r?a")
+if ret <> -1 then
+    msgbox "INI file doesn't exist" + ini_file , MB_OK + MB_ICONSTOP, "ERROR"
+    end
+endif
+
+OPEN ini_file for input as #infile
+line input #infile, read_ini
+end function
+
+'*********************************************************************
+'   Function:  screenres(x as integer, y as integer)
+'
+'   Paramiter1   :a structure of lrect
+'   Returns      :files the structure passed in paramiter1 with current full screen corodinates.
+'   Globals used : NON
+'   Description  : retuns resolution of screen and bits per pixcel.
+'*********************************************************************
+sub getscreenres(x as integer, y as integer, BitsPerPixcel as long)
+dim MyDC as integer
+    MyDC% = GetDC(0)
+
+    x         =  GetDeviceCaps(MyDC%, HORZRES)
+    y         =  GetDeviceCaps(MyDC%, VERTRES)
+BitsPerPixcel =  GetDeviceCaps(MyDC%, BITSPIXEL)
+end sub

@@ -1,0 +1,100 @@
+@rem ************************************************************************
+@rem
+@rem Copyright (c) 1991 Microsoft Corporation
+@rem
+@rem Module Name:
+@rem
+@rem   dofrshm.2   
+@rem
+@rem Abstract:
+@rem
+@rem   This is the script phase 2 of the fresh mirror tests.  At this point
+@rem   the mirror has been broken.  The file previously written to the mirror
+@rem   is read from each side.  Then the 2 partitions are compared.
+@rem
+@rem   If the current tests are orphan_during_writes, then the member that
+@rem   was lost is invalid.  We cannot expect to read the file from that
+@rem   side.  Also, we cannot perform the comp in this case either.
+@rem
+@rem Author:
+@rem
+@rem   Kenieth Peery (t-kenpe) 12-9-92
+@rem
+@rem Revision History:
+@rem
+@rem   steveko  - 5/93 - support orphaning/badsectors
+@rem   a-mitchm - 5/94 - add call to doprtcmp.cmd
+@rem
+@rem *************************************************************************
+
+call doinit
+
+@rem
+@rem If we orphaned during writes, then only check the data on the one
+@rem that was not orphaned.  orphan.cmd should be laying around from
+@rem previous boot.
+@rem
+@rem The one not orphaned is always assigne the original drive letter.
+@rem
+
+@rem
+@rem If not orphan_writes or orphan_reads variations, then run partcomp.
+@rem
+@rem We could almost run partcomp on the orphan_reads case except we force
+@rem the orphaning popup by writing to the disk in doorph2.cmd.
+@rem
+@rem If we restricted this write a specifed sector then we could pass a
+@rem "badsect.lst" which would tell partcomp to avoid this "bad" sector.
+@rem For now we simply won't run the partcomp.
+@rem
+
+if "%_options1%" == "orphan_reads" goto no_part_comp
+if "%_options1%" == "orphan_writes" goto no_part_comp
+call doprtcmp %driveletter1% %driveletter2% %_options1% %logfile%
+:no_part_comp
+
+@rem
+@rem If this is a failremaps variation then after we break the mirror
+@rem likely have bad sectors on both paritions.  Therefore we cann't 
+@rem run doendmd or docomp on a broken mirror.  We still however should
+@rem be able to run dochkdsk and doprtcmp
+@rem
+@rem Run endtomd and chkdsk on both the primary and shadow.
+@rem
+
+if "%_options1%" == "failremaps" goto no_doendmd1
+call doendmd %driveLetter1%:\foo.bin %logfile% 
+:no_doendmd1
+
+call dochkdsk %driveLetter1% %fileSystem% %logfile% 
+
+if "%_options1%" == "orphan_writes" goto no_read_orphan
+
+if "%_options1%" == "failremaps" goto no_doendmd2
+call doendmd %driveLetter2%:\foo.bin %logfile% 
+:no_doendmd2
+
+call dochkdsk %driveLetter2% %fileSystem% %logfile% 
+:no_read_orphan
+
+@rem
+@rem Compare the files on the primary and shadow.  If orphaned writes
+@rem can't do this either.
+@rem
+
+if "%_options1%" == "failremaps" goto no_comp
+if "%_options1%" == "orphan_writes" goto no_comp
+call docomp %driveLetter1%:\foo.bin %driveLetter2%:\foo.bin %logfile% 
+:no_comp
+
+@rem
+@rem Delete the partitions and move to next variation
+@rem
+
+echo.                                                        >> %logfile%
+echo TRACE: End of variation - about to delete the partition >> %logfile%
+echo.                                                        >> %logfile%
+
+copy do.0 donext
+mtrun delete.pcd /h
+exit

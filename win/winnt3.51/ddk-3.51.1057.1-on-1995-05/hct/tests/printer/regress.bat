@@ -1,0 +1,15 @@
+guijr /textout.ini /ofm1adv.ini      /vxtout1.log     /c /l
+guijr /textout.ini /ofm2adv.ini      /vxtout2.log     /c /l
+guijr /textout.ini /ofm3adv.ini      /vxtout3.log     /c /l
+guijr /textout.ini /ofm4adv.ini      /vxtout4.log     /c /l
+guijr /textout.ini /ofontmap1.ini    /vxtout5.log     /c /l
+guijr /textout.ini /ofontmap2.ini    /vxtout6.log     /c /l
+guijr /textout.ini /ofontmap3.ini    /vxtout7.log     /c /l
+guijr /textout.ini /ofontmap4.ini    /vxtout8.log     /c /l
+guijr /textout.ini /ographics.ini    /vxtout9.log     /c /l
+guijr /textout.ini /omapmode.ini     /vxtout10.log    /c /l
+guijr /textout.ini /ommadv.ini       /vxtout11.log    /c /l
+guijr /textout.ini /oobjects.ini     /vxtout12.log    /c /l
+guijr /textout.ini /oregion.ini      /vxtout13.log    /c /l
+guijr /textout.ini /orgnadv.ini      /vxtout14.log    /c /l
+guijr /textout.ini /oxform.ini       /vxtout15.log    /c /l

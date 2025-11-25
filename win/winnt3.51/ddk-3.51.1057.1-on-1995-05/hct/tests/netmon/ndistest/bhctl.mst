@@ -1,0 +1,643 @@
+'******************************************************************************
+'
+' Bloodhound Card/Driver tester
+'
+' 05-11-94
+'
+'
+' History:
+' Steve Hiskey      Created
+'
+'******************************************************************************
+'$INCLUDE 'DECLARES.INC'
+
+
+CONST   ControlFile$ = "\\bh_server\bhtest\bhctl.txt"
+CONST   MasterSyncRequestFile$ = "Master.snc"
+CONST   SlaveSyncResponseFile$ = "Slave.snc"
+CONST   BHFileDrive = "C:"
+CONST   BHPrintFile$ = "OUT.TXT"
+CONST   BHPrintNum$ = "OUT.NUM"
+
+CONST   NumberFrames% = 10000
+
+CONST   BandwidthStep% = 10
+CONST   BandwidthStart% = 10
+CONST   BandwidthMax% = 80
+CONST   PacketSizeStart% = 64
+CONST   TestTimeout% = 100
+
+
+
+CONST   MaxEthernetPacket = 1514
+CONST   MaxTokenRingPacket = 4192
+CONST   MaxFDDIPacket = 16384
+
+
+Global  MaxMediaPacket%     ' set in init function
+
+GLOBAL  BHPath$
+GLOBAL  TestControl$
+GLOBAL  ControlShare$
+GLOBAL  TestShare$
+GLOBAL  LogDir$
+GLOBAL  Media$
+GLOBAL  Card$
+GLOBAL  LogName$
+
+GLOBAL  ControlPath$
+GLOBAL  HwndBH%
+
+
+DECLARE FUNCTION ReadControlFile() AS INTEGER
+DECLARE FUNCTION InitControl() AS INTEGER
+DECLARE SUB MakeLogDir
+DECLARE SUB SetupLogFile()
+DECLARE SUB SlaveSync()
+DECLARE SUB StartBHCapture(BufferSize AS INTEGER)
+DECLARE SUB StartSlaveTest ( Bandwidth%, PacketSize%, NumberFrames%, Iteration% )
+DECLARE SUB RemoveSlaveSync()
+DECLARE SUB StartBH()
+DECLARE SUB StopBHCapture()
+DECLARE SUB ExitBH ()
+DECLARE FUNCTION WaitForTestComplete () AS INTEGER
+DECLARE FUNCTION GetBHFramesKept () AS INTEGER
+
+
+'********************************** Main control*******************************
+
+'   Read control file
+'   init
+'   open log
+'   verify existence of slave
+'   test loop
+'   close log
+'
+
+    ' use the viewport as a debugging/test status tool
+    VIEWPORT ON
+    VIEWPORT CLEAR
+    PRINT
+    PRINT
+    PRINT "*************************************************************"
+    PRINT DATETIME$
+    PRINT
+    PRINT "Bloodhound PMode tester, Version 1."
+    PRINT "Steve Hiskey, James Evanston"
+    PRINT
+
+    Failure% = ReadControlFile
+
+    IF Failure% THEN
+        END
+    END IF
+
+'    CheckVariableChange
+
+    Failure% = InitControl
+
+    ON ERROR GOTO DirAlreadyExists
+    MakeLogDir
+
+    DirAlreadyExists:
+
+    ' for some reason, the on error here does not fire... so you get
+    ' an undescriptive error message.
+    ON ERROR GOTO LOGFILEOPENFAILURE
+    SetupLogFile
+
+
+
+    ' Tell Slave that we are around and want to start a test...
+    ON ERROR GOTO AUTORESUME
+    SlaveSync
+
+    ON ERROR GOTO GENERALFAILURE
+
+    TestActive% = 1
+    PacketSize% = PacketSizeStart%
+    Bandwidth% = BandwidthStart%
+    Iteration% = 0
+
+    LineOut$ = ","+STR$(Bandwidth%)
+
+
+    WHILE TestActive%
+
+        Iteration% = Iteration% + 1
+        PRINT
+        PRINT "Iteration: "+STR$(Iteration%)
+
+        StartBH
+
+        RemoveSlaveSync
+
+        ' how much space do we need?  # frames * packet size + overhead
+        BufferNeeded% = ( NumberFrames% * PacketSize% * 1.1 )
+        BufferNeeded%= BufferNeeded% / 1024 / 1024 + 1
+        PRINT "Buffer Needed: " + STR$(BufferNeeded%)
+
+        ' start the capture
+
+        StartBHCapture ( BufferNeeded% )
+
+        ' Tell the slave to do the test
+
+        PRINT "Test at "+Str$(Bandwidth%)+"% bandwidth, with packetsize "+Str$(PacketSize%)+" *******************"
+        StartSlaveTest Bandwidth%, PacketSize%, NumberFrames%, Iteration%
+
+        ' wait for the slave to say it is done
+        Failure% = WaitForTestComplete
+
+        IF Failure% THEN
+            PRINT "Test Timeout!  ********"
+            StopBHCapture
+            ExitBH
+
+            MsgBox "Test timeout", MB_OK, "Test Failure"
+            END
+        END IF
+
+        StopBHCapture
+
+        ' how many frames did we capture?
+        FramesKept% = 0
+        FramesKept% = GetBHFramesKept
+
+        ExitBH      ' exit BH so that Arthur's dlg will be inited correctly...
+
+        LineOut$ = LineOut$+","+STR$(NumberFrames%-FramesKept%)
+        ' log the results
+
+        IF PacketSize% = MaxMediaPacket% THEN
+            ' we are done with this run... up the bandwidth
+            Bandwidth% = Bandwidth% + BandwidthStep%
+            PRINT #1, LineOut$
+
+            LineOut$ = ","+STR$(Bandwidth%)
+
+            ' start over with the next bandwidth and small packets
+            PacketSize% = PacketSizeStart%
+
+        ELSE
+            PacketSize% = PacketSize% * 2
+
+            IF PacketSize% > MaxMediaPacket% THEN
+                PacketSize% = MaxMediaPacket%
+            END IF
+
+        END IF
+
+        IF Bandwidth% > BandwidthMax% THEN
+            TestActive% = 0
+        END IF
+
+        sleep 5     ' let BH rest to stop the service...
+
+        IF Iteration% = 5 THEN
+            PRINT Iteration%
+        END IF
+
+    WEND
+
+    CLOSE #1    ' the log file...
+
+    END
+
+    ' error handling
+
+    LOGFILEOPENFAILURE:
+        MsgBox "The log file \\"+TestControl$+"\"+TestShare$+"\"+LogDir$+"\"+LogName$+ "refused to open.", MB_OK, "Init Failure"
+        END
+
+    AUTORESUME:
+        RESUME
+
+    GENERALFAILURE:
+        pause
+        END
+
+
+'******************************** End Main control*****************************
+
+
+'******************************************************************************
+STATIC FUNCTION ReadControlFile() AS INTEGER
+
+    DIM TheLine$
+    DIM Target$
+    DIM Equal%
+    DIM Failure%
+
+    ' assume that the control file is in the SAME directory that we are in.
+
+    Print "Read Control File ( " + ControlFile$ + " ) ***********"
+    Open ControlFile$ for Input as #1
+
+    WHILE  NOT EOF(1)
+        Line Input #1, TheLine$
+        Print TheLine$
+
+        ' the file has items in it like "BHPath=c:\bh\hound"... find the BHPath
+
+        IF len ( TheLine$ ) > 0 THEN
+
+            ' find the =
+            Equal% = INSTRB(TheLine$, "=")
+
+            IF Equal% THEN
+
+                Target$ = left$ ( TheLine$, Equal% - 1)
+
+                SELECT CASE UCASE$( Target$ )
+
+                    CASE "BHPATH"
+                        BHPath$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "TESTCONTROL"
+                        TestControl$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "CONTROLSHARE"
+                        ControlShare$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "TESTSHARE"
+                        TestShare$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "LOGDIR"
+                        LogDir$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "MEDIA"
+                        Media$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "CARD"
+                        Card$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "LOGNAME"
+                        LogName$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                END SELECT
+
+            END IF
+        END IF
+    WEND
+
+    Failure% = 0
+
+    ' did we get all the variables that we wanted??
+    IF len(BHPath$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " BHPath"
+    END IF
+
+    IF len(TestControl$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " TestControl"
+    END IF
+
+    IF len(ControlShare$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " ControlShare"
+    END IF
+
+    IF len(TestShare$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " TestShare"
+    END IF
+
+    IF len(LogDir$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " LogDir"
+    END IF
+
+    IF len(Media$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " Media"
+    END IF
+
+    IF len(Card$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " Card"
+    END IF
+
+    IF len(Logname$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " Logname"
+    END IF
+
+    IF Failure% THEN
+        MsgBox "There are some missing variables from the "+ ControlFile$ +" Control File.  The missing variables are ("+ VariablesMissing$+" )", MB_OK, "Init Failure"
+    END IF
+
+    Close #1
+
+    ReadControlFile = Failure%
+
+END FUNCTION
+
+
+'******************************************************************************
+STATIC FUNCTION InitControl() AS INTEGER
+
+    LogFile% = 1
+    ControlPath$="\\"+TestControl$+"\"+TestShare$+"\"
+
+    IF ( UCASE$(Media$) = "ETHERNET" ) THEN
+        MaxMediaPacket% = MaxEthernetPacket
+    ELSEIF ( UCASE$(Media$) = "TOKENRING" ) THEN
+        MaxMediaPacket% = MaxTokenRingPacket
+    ELSEIF ( UCASE$(Media$) = "FDDI" ) THEN
+        MaxMediaPacket% = MaxFDDIPacket
+    ELSE
+        PRINT "Media recognition error from control file."
+        MsgBox "Media recognition error from control file.  Media is "+Media$, MB_OK, "Init Failure"
+        END
+    END IF
+
+END FUNCTION
+
+'******************************************************************************
+STATIC SUB StartBH
+
+    PRINT "Starting Hound..."
+    HwndBH% = WinExec(BHPath$, SW_SHOW)
+
+END SUB
+
+
+
+'******************************************************************************
+STATIC SUB MakeLogDir
+    ' make sure the log dir exists, and create it if it does not
+    ' open the log file and put the handle into a global
+    ' create the log file header in .CSV format
+
+    Target$ = ControlPath$+LogDir$
+    Print "Target Log directory:  "+Target$
+
+    MKDIR Target$
+END SUB
+
+
+'******************************************************************************
+STATIC SUB SetupLogFile()
+
+
+    ' we have no idea if the mkdir worked... but if we create a file now...
+    ' and it fails, then we choke.
+
+    ' lets be ornery and see if mstest can handle a UNC file open...
+
+    Target$ = ControlPath$+LogDir$+"\"+LogName$
+    Print "Target Log File:       "+Target$
+
+
+    Open Target$ for Output as #1
+
+
+    PRINT #1, Card$
+    PRINT #1, "Media: "+Media$
+    PRINT #1, "Test Date: "+ DATE$
+    PRINT #1, "Frames: " + STR$ ( NumberFrames% )
+    PRINT #1, ","
+    PRINT #1, ",,Frames dropped per frame size"
+    PRINT #1, ",Net Load,64,128,256,512,1024,1514"
+
+
+
+
+END SUB
+
+
+'******************************************************************************
+STATIC SUB SlaveSync()
+
+    PRINT "Cleaning up old sync files "+ControlPath$+MasterSyncRequestFile$+" and "+ControlPath$+SlaveSyncResponseFile$
+
+    ' first, delete any old master sync files
+
+    IF EXISTS (ControlPath$+MasterSyncRequestFile$) THEN
+        KILL ControlPath$+MasterSyncRequestFile$
+    END IF
+
+    ' if a master was around, then a slave sync file might be around...
+    RemoveSlaveSync
+
+
+    PRINT "Creating master sync file"
+    OPEN ControlPath$+MasterSyncRequestFile$ FOR OUTPUT as #2
+
+    PRINT #2, "Command=SYNC"
+
+    CLOSE #2
+
+    PRINT "Wait for the client to delete the master sync file and write the response"
+    ' wait for the client to see the file and respond
+
+    Counter% = 0
+    NotDone% = 1
+
+    WHILE NotDone%
+
+        SLEEP 1
+
+        Counter% = Counter% + 1
+        IF Counter% MOD 5 = 0 THEN
+            PRINT "Sleep Time at " STR$ (Counter%) + " of 30"
+        END IF
+
+        IF EXISTS (ControlPath$+SlaveSyncResponseFile$) THEN
+            Print "Slave Sync"
+            NotDone% = 0
+        END IF
+
+        IF (Counter% = 30 ) AND ( NotDone% ) THEN
+            MsgBox "Cannot sync with the slave.  Please setup the slave and start again.", MB_OK, "Init Failure"
+            END
+        END IF
+    WEND
+
+
+END SUB
+
+
+'******************************************************************************
+STATIC SUB StartBHCapture( BufferSize AS INTEGER)
+
+    ' functionized for easy conversion to BHAPI...
+
+    PRINT
+    PRINT "Changing Buffer Size."
+    DoKeys "%C"     ' Capture
+    DoKeys "B"      ' Buffer
+
+    ' do we need to conserve buffer size??  what if we are capturing fddi packets??
+    IF BufferSize% > 5 THEN
+        BufferSize% = 5
+        ' set the kept size down to 256 bytes
+        DoKeys "%R"                              ' frame kept size
+        DoKeys "{down}{down}{down}{down}"       ' to 256 bytes
+    END IF
+
+    DoKeys "%B"                              ' frame kept size
+    DoKeys STR$(BufferSize%)      ' size in meg
+
+    DoKeys "{Enter}"
+
+    PRINT "Starting Master Capture."
+    DoKeys "{f10}"
+
+
+END SUB
+
+
+
+'******************************************************************************
+STATIC SUB StartSlaveTest ( Bandwidth%, PacketSize%, NumFrames%, Iteration% )
+
+    PRINT "Starting Slave Test"
+    OPEN ControlPath$+MasterSyncRequestFile$ FOR OUTPUT as #2
+
+    PRINT #2, "Command=TRANSMIT"
+    PRINT #2, "Bandwidth="+STR$(Bandwidth%)
+    PRINT #2, "PacketSize="+STR$(PacketSize%)
+    PRINT #2, "NumberFrames="+STR$(NumFrames%)
+    PRINT #2, "Iteration="+STR$(Iteration%)
+    CLOSE #2
+
+END SUB
+
+
+'******************************************************************************
+STATIC SUB RemoveSlaveSync ()
+
+    IF EXISTS (ControlPath$+SlaveSyncResponseFile$) THEN
+        KILL ControlPath$+SlaveSyncResponseFile$
+    END IF
+
+END SUB
+
+
+'******************************************************************************
+STATIC FUNCTION WaitForTestComplete () AS INTEGER
+
+    NotDone% = 1
+    Count% = 0
+
+    WHILE NotDone%
+
+        SLEEP 1
+        Count% = Count% + 1
+
+        IF EXISTS (ControlPath$+SlaveSyncResponseFile$) THEN
+            NotDone% = 0
+            WaitForTestComplete = 0
+        END IF
+
+        IF Count% = 30 THEN
+            NotDone% = 0
+            WaitForTestComplete = TESTTIMEOUT
+        END IF
+
+    WEND
+
+    RemoveSlaveSync
+
+END FUNCTION
+
+'******************************************************************************
+STATIC SUB StopBHCapture ()
+
+    PRINT "Stopping Master Capture."
+    DoKeys "{f11}"
+
+END SUB
+
+
+'******************************************************************************
+STATIC SUB ExitBH ()
+
+    PRINT "Exiting Master BH."
+    DoKeys "%fX"
+    sleep 1
+    DoKeys "N"
+    sleep 1
+    DoKeys "N"
+    sleep 1
+    DoKeys "N"
+    sleep 1
+    DoKeys "N"
+
+END SUB
+
+
+'******************************************************************************
+STATIC FUNCTION GetBHFramesKept () AS INTEGER
+
+    DIM TheLine$
+
+    PRINT "Getting results"
+    IF EXISTS (BHFileDrive$+"\"+BHPrintFile$) THEN
+        KILL BHFileDrive$+"\"+BHPrintFile$
+    END IF
+
+    DoKeys "{F12}"      ' stop and view
+
+    ' Setup the display filter.
+    DoKeys "{f8}"
+    DoKeys "%X"             ' add eXpression
+    DoKeys "{right}{right}{tab}{tab}{tab}{tab}"     ' get on top of property
+    DoKeys "FF{enter}"      ' get on top of Frame
+    DoKeys "F%X%V"          ' get on top of Frame Data, Hex, Value entry
+    DoKeys "01 02 03 04 05 06 07{enter}{enter}"     ' enter and apply filter
+    DoKeys "%FP"            ' File Print
+    sleep 2
+    DoKeys "%F{tab}"
+    DoKeys BHFileDrive$+"\"+BHPrintFile$    ' enter target filename
+    DoKeys "%V"                 ' Advanced
+    DoKeys "%K%D%X{enter}"      ' No pagebreaks, No Detail, No Hex, do it...
+
+    NotDone% = 1
+    Count% = 0
+    WHILE NotDone%
+        hWnd% = GetActiveWindow()
+        Caption$ = rTrim$(GetText(hWnd%))
+        IF UCASE$ ( Caption$ ) = "PROCESSING" THEN
+
+            SLEEP 1
+
+            IF Count% = 60 THEN
+                PRINT "BH Print Timeout *****"
+                MsgBox "BH Print timeout", MB_OK, "Test Failure"
+                END
+
+            END IF
+        ELSE
+            NotDone% = 0
+        END IF
+        Count% = Count% + 1
+
+    WEND
+
+    ' we abort above internal to the WHILE... so if we are here, we are fine...
+
+    ' We need to count the number of lines in the output... use WC.exe.  We cannot
+    ' seem to just invoke it with all the parms, so make a batch file and execute it.
+    OPEN "DOIT.BAT" for output as #3
+    PRINT #3, "WC -l "+BHFileDrive$+"\"+BHPrintFile$+" >"+BHFileDrive$+"\"+BHPrintNum$
+    CLOSE #3
+
+    HwndWC% = WinExec("DOIT.BAT", SW_SHOW)
+
+    ' Great, now the file OUT.NUM has the number of lines in it.
+
+    sleep 6     ' let the filesystem settle down...
+
+    OPEN BHFileDrive$+"\"+BHPrintNum$ for INPUT as #4
+
+    Line Input #4, TheLine$
+    PRINT "Kept frames = "+ STR$(VAL (TheLine$))
+    GetBHFramesKept% = VAL ( TheLine$ )
+
+    CLOSE #4
+
+END FUNCTION

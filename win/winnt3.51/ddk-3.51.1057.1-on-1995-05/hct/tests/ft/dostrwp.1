@@ -1,0 +1,188 @@
+@rem ************************************************************************
+@rem
+@rem Copyright (c) 1991 Microsoft Corporation
+@rem
+@rem Module Name:
+@rem
+@rem   dostrwp.1   
+@rem
+@rem Abstract:
+@rem
+@rem   This is the phase 1 script for the stripe with parity tests.  This
+@rem   script formats the test drive, writes a file and reads it.  At the
+@rem   end, we setup for the next test to run and delete the test drive.
+@rem
+@rem   However, if the current tests are orphaning tests, a phase 2 is
+@rem   executed (called .11 since it does not always run).  That phase
+@rem   does a regenerate and verifies what is written here.
+@rem
+@rem Author:
+@rem
+@rem   Kenieth Peery (t-kenpe) 12-9-92
+@rem
+@rem Revision History:
+@rem
+@rem   steveko - 5/93 - support orphaning/badsectors
+@rem
+@rem *************************************************************************
+
+call doinit
+
+@rem
+@rem If NT1.0, then we must wait for swp to become healthy first.
+@rem
+
+if "%ft_version%" == "1.0" call dofstate %driveLetter1% %sizeMB% 1.2 %logfile%
+
+@rem
+@rem Format the partitions
+@rem
+
+call doformat %label% %fileSystem% %driveLetter1% %logfile% %FT_QFORMAT%
+
+@rem
+@rem If badsector variation, enable the badsectors.
+@rem
+
+if "%_options1%" == "badsectors" call dobadsec %driveLetter1% 256 %_options1% %logfile%
+if "%_options1%" == "failremaps" call dobadsec %driveLetter1% 256 %_options1% %logfile%
+
+@rem
+@rem If badsector variation, list the remaining badsectors.  FAIL_VERIFY
+@rem blocks should have been mapped out by the format.
+@rem
+
+if "%_options1%" == "badsectors" call dolstbad %logfile%
+if "%_options1%" == "failremaps" call dolstbad %logfile%
+
+@rem
+@rem If orphan_while_write variation, spawn the orphaning process
+@rem
+
+if "%_options1%" == "orphan_writes" call doorph %driveLetter1% %sizeMB% 0.08 %logfile%
+
+@rem
+@rem If we are doing orphaning, then only fill half the disk so that there
+@rem is free space on boot2 to do writes while the regeneration is ocurring.
+@rem
+
+if "%_options1%" == "orphan_writes" goto fill_half_now
+if "%_options1%" == "orphan_reads"  goto fill_half_now
+
+call dosetmap %driveLetter1%:\foo.bin %_fill_percent% %logfile% 
+goto continue1
+
+:fill_half_now
+echo.                                                            >> %logfile%
+echo TRACE: Write while regen is enabled, fill half the disk now >> %logfile%
+echo.                                                            >> %logfile%
+call dosetmap %driveLetter1%:\foo.bin 50 %logfile% 
+
+:continue1
+
+@rem
+@rem If orphan_while_writes, verify that registry says a member was orphaned,
+@rem and collect the .log output from that orphaning process.  Both of these
+@rem operations are performed by dochorph.cmd.
+@rem
+
+if "%_options1%" == "orphan_writes" call dochorph %logfile%
+
+@rem
+@rem If badsector variation, list the remaining badsectors.  FAIL_WRITE
+@rem blocks should have been mapped out by the call to fsetmap.
+@rem
+
+if "%_options1%" == "badsectors" call dolstbad %logfile%
+if "%_options1%" == "failremaps" call dolstbad %logfile%
+
+@rem
+@rem Do a dir for info in the logfile, just for visual verification.
+@rem
+
+call dodir %driveLetter1% %logfile%
+
+@rem
+@rem Now read the file.  First, if this is an orphan_while_reads variations,
+@rem spawn the orphaning process now.  Verify that the orphaning ocurred
+@rem afterwards.
+@rem
+
+if "%_options1%" == "orphan_reads" call doorph %driveLetter1% %sizeMB% 0.055 %logfile%
+
+call doendmd %driveLetter1%:\foo.bin %logfile% 
+
+if "%_options1%" == "orphan_reads" call dochorph %logfile%
+
+@rem
+@rem If badsector variation, list the remaining badsectors.  FAIL_READ
+@rem blocks should have been mapped out by the call to endtomd.
+@rem
+
+if "%_options1%" == "badsectors" call dolstbad %logfile%
+if "%_options1%" == "failremaps" call dolstbad %logfile%
+
+@rem
+@rem Run chkdsk
+@rem
+
+call dochkdsk %driveLetter1% %fileSystem% %logfile% 
+
+@rem
+@rem Clear the remaining badsectors on the swp (if any).  Note that
+@rem this clears the orphaning state as well, and note that this is
+@rem necessary.
+@rem
+
+if "%_options1%" == "badsectors"    goto clear_simbad
+if "%_options1%" == "failremaps"    goto clear_simbad
+if "%_options1%" == "orphan_reads"  goto clear_simbad
+if "%_options1%" == "orphan_writes" goto clear_simbad
+goto do_not_clear_simbad
+
+:clear_simbad
+call dolstbad %logfile%
+call doclrbad %logfile%
+
+:do_not_clear_simbad
+
+@rem
+@rem If we did any orphaning, then setup for the regenerate script
+@rem to run (dostrwp.11).
+@rem
+
+if "%_options1%" == "orphan_writes" goto orphaning_on
+if "%_options1%" == "orphan_reads"  goto orphaning_on
+goto no_orphaning
+
+:orphaning_on
+
+echo.                           >> %logfile%
+echo TRACE: About to regenerate >> %logfile%
+echo.                           >> %logfile%
+
+copy dostrwp.11 donext
+mtrun regen.pcd /h
+exit
+
+:no_orphaning
+
+@rem
+@rem Run parcomp.  Note, we already know that this is not an orphaning
+@rem variation.  And if this is a badsector variation, then all of them
+@rem should have been remapped when encountered, and if they were never
+@rem encounterd (not likely) they should now be disabled anyway).
+@rem
+
+if "%_options1%" == "badsectors" goto skip_the_parcomp
+if "%_options1%" == "failremaps" goto skip_the_parcomp
+call doparcmp %driveLetter1% %_options1% %logfile%
+:skip_the_parcomp
+
+@rem
+@rem Setup for the next variation to run.
+@rem 
+
+copy do.0 donext
+mtrun delete.pcd /h
+exit

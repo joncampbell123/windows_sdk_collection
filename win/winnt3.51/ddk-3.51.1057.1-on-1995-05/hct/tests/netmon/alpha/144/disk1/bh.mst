@@ -1,0 +1,817 @@
+'**************************************************************************
+'*                       MSSetup Toolkit Sample 1
+'**************************************************************************
+
+'' $DEFINE DEBUG  ''Define for script development/debugging
+
+'$INCLUDE 'setupapi.inc'
+'$INCLUDE 'msdetect.inc'
+
+''Dialog ID's
+CONST WELCOME       = 100
+CONST ASKQUIT       = 200
+CONST DESTPATH      = 300
+CONST EXITFAILURE   = 400
+CONST EXITQUIT      = 600
+CONST EXITSUCCESS   = 700
+CONST OPTIONS       = 800
+CONST BADPATH       = 6400
+
+
+CONST HELPWELCOME   = 1000
+CONST VERPATH       = 1100
+CONST EXITFAILNOTWIN31 = 1200
+CONST EXITFAILNOTENH = 1300
+CONST EXITFAILNOTINTEL = 1350
+CONST BHINST  = 1400
+CONST FREECELLINSTNOWIN32S = 1450
+CONST BHPATH  = 1500
+CONST HELPFREECELL  = 1600
+CONST SetupMessage$="Setup Message"
+CONST Continue$="CONTINUE"
+
+CONST NetMonEXE$="NETMON.EXE"
+CONST ConstSetup$="SETUP"
+
+''Bitmap ID
+CONST LOGO = 1
+
+GLOBAL DESTBH$       ''Bloodhound Root
+GLOBAL DESTSYS$      ''Windows\System directory.
+GLOBAL DEST32S$      ''Windows\System\Win32s directory
+GLOBAL DESTNTSYS32$  ''nt\System32 directory
+GLOBAL DESTNTDRIVER$
+GLOBAL EXTRACOSTS$  ''List of extra costs to add per drive
+GLOBAL COSTS$       ''List of costs per drive
+
+OnNT% = 0
+OnWin4% = 0
+OnWFW311% = 0
+OnNDIS20% = 0
+
+DECLARE SUB Install
+DECLARE SUB UpdateSystemIni
+DECLARE SUB RebootSystem
+DECLARE SUB DoModifyBHConfig
+DECLARE FUNCTION MakePath (szDir$, szFile$) AS STRING
+DECLARE FUNCTION MakeSystemIni LIB "INIUPD.DLL" (arg1$, arg2$) AS INTEGER
+DECLARE FUNCTION RestartWindows LIB "INIUPD.DLL" (arg1$) AS INTEGER
+DECLARE FUNCTION OnWindowsNT LIB "INIUPD.DLL" AS INTEGER
+DECLARE FUNCTION OnWin32Chicago LIB "INIUPD.DLL" AS INTEGER
+DECLARE FUNCTION OnWinNDIS20 LIB "INIUPD.DLL" (arg1$) AS INTEGER
+DECLARE FUNCTION StartExitMonitor LIB "INIUPD.DLL" ( arg1$ ) AS INTEGER
+
+'  ModifyBHConfig ( WindowsPath, BHRoot, WinVerMaj, WinVerMin, WinMode )
+DECLARE FUNCTION ModifyBHConfig LIB "INIUPD.DLL" (arg1$, arg2$ ) AS INTEGER
+DECLARE FUNCTION StopBHDriver LIB "INIUPD.DLL" ( arg1$ ) AS INTEGER
+'DECLARE FUNCTION MonitorStopDriver LIB "INIUPD.DLL" ( ) AS INTEGER
+DECLARE FUNCTION VerifyAdminStatus LIB "INIUPD.DLL" ( ) AS INTEGER
+
+
+INIT:
+    CUIDLL$ = "mscuistf.dll"            ''Custom user interface dll
+    HELPPROC$ = "FHelpDlgProc"          ''Help dialog procedure
+
+    SetBitmap CUIDLL$, LOGO
+    SetTitle "Microsoft Network Monitor Setup"
+
+
+    ' what type of windows are we on??
+    OnNT% = OnWindowsNT()
+
+    IF NOT OnNT% THEN
+        OnWin4% = OnWin32Chicago()
+        IF NOT OnWin4% THEN
+            OnNDIS20% = OnWinNDIS20 ( GetWindowsDir() )
+            IF NOT OnNDIS20% THEN
+                OnWFW311% = 1
+            END IF
+        END IF
+    END IF
+
+    '' are they installing for the correct processor model?
+    IF OnNT% THEN
+
+        i% = StopBHDriver( GetSymbolValue("STF_CWDDIR") )
+
+        '' get the CPU environment variable and
+        TheCPU$ = GetEnvVariableValue ( "PROCESSOR_ARCHITECTURE" )
+    ELSE
+        TheCPU$ = "x86"
+    ENDIF
+
+    i% = VerifyAdminStatus ()
+    IF i%=0 THEN
+        ' Not an admin... bail them now...
+        i% = DoMsgBox("You must be an Administrator to install the Network Monitor.  Please logon as an Administrator and rerun Setup.", "SETUP", MB_TASKMODAL+MB_ICONHAND+MB_OK)
+        ERR = 1
+        GOTO QUIT
+
+    END IF
+
+    EXTRACOSTS$ = "ExtraCosts"
+    FOR i% = 1 TO 26 STEP 1
+        AddListItem EXTRACOSTS$, "0"
+    NEXT i%
+
+    COSTS$ = "Costs"
+    FOR i% = 1 TO 26 STEP 1
+        AddListItem COSTS$, "0"
+    NEXT i%
+
+    'Test$ = GetSymbolValue("STF_SRCDIR") + "On" + TheCPU$ + ".flg"
+    'i% = DoMsgBox(Test$, "SETUP", MB_TASKMODAL+MB_ICONHAND+MB_OK)
+
+    i% = DoesFileExist ( GetSymbolValue("STF_SRCDIR") + "On" + TheCPU$ + ".flg", femExist )
+    IF ( i% <> 1 ) THEN  ' we have a problem
+
+        ' make it pretty
+        IF TheCPU$ = "x86" THEN
+            Pretty$ = "n Intel"
+        ELSEIF TheCPU$ = "MIPS" THEN
+            Pretty$ = " MIPS"
+        ELSEIF TheCPU$ = "ALPHA" THEN
+            Pretty$ = "n Alpha"
+        ELSE
+            Pretty$ = "n unknown CPU type"
+        END IF
+
+        i% = DoMsgBox("You are installing on a"+Pretty$+ " machine with non-"+TheCPU$+" binaries.  Please find the correct install set.", SetupMessage$, MB_TASKMODAL+MB_ICONHAND+MB_OK)
+        ERR = 1
+        GOTO QUIT
+    END IF
+
+    CPU$=""
+    szInf$ = GetSymbolValue("STF_SRCINFPATH")
+
+    IF szInf$ = "" THEN
+    szInf$ = GetSymbolValue("STF_CWDDIR") + "BH.inf"
+    END IF
+    ReadInfFile szInf$
+
+
+    DESTBH$ = "C:\NM\"
+
+    DESTSYS$ = GetWindowsSysDir()
+    DESTNTSYS32$ = GetWindowsDir() + "SYSTEM32\"
+
+    '' i%= DoMsgBox("Windows sys32 = ('"+DESTNTSYS32$+"').", "DEBUG", MB_TASKMODAL+MB_ICONHAND+MB_OK)
+
+
+    DEST32S$ = DESTSYS + "WIN32S\"
+
+' ' $IFDEF DEBUG
+'
+'    i% = SetSizeCheckMode(scmOnIgnore)    '' could use scmOff; def = scmOnFatal
+'    WinDrive$ = MID$(GetWindowsDir, 1, 1)
+'    IF IsDriveValid(WinDrive$) = 0 THEN
+'    i% = DoMsgBox("Drive ('"+WinDrive$+"') is not a valid drive.", SetupMessage$, MB_TASKMODAL+MB_ICONHAND+MB_OK)
+'    GOTO QUIT
+'    END IF
+' ' $ENDIF ''DEBUG
+
+CHECK:
+
+    ' see if we need to install win32s... then get the BH path so that we can evaluate disk space usage.
+
+    WIN32ENABLED% = 0
+    IF OnWin4% THEN
+        ExitCode% = EXITSUCCESS
+        WIN32ENABLED% = 1
+        GOTO GETBHPATH
+    END IF
+    IF GetWindowsMajorVersion < 3 THEN
+    ExitCode% = EXITFAILNOTWIN31
+    GOTO QUIT
+    END IF
+    IF GetWindowsMajorVersion = 3 AND GetWindowsMinorVersion < 1 THEN
+    ExitCode% = EXITFAILNOTWIN31
+    GOTO QUIT
+    END IF
+    IF GetWindowsMajorVersion >= 4 THEN
+        ExitCode% = EXITSUCCESS
+        WIN32ENABLED% = 1
+        GOTO GETBHPATH
+    END IF
+
+    IF GetWindowsMode < 2  THEN
+        IF OnNT% THEN
+           '' ExitCode% = EXITFAILNOTINTEL '' Running on Windows NT (on RISC)
+           ExitCode% = EXITSUCCESS
+           GOTO GETBHPATH
+        ELSE
+           ExitCode% = EXITFAILNOTENH   '' Standard Mode Windows
+        END IF
+        GOTO QUIT
+    END IF
+
+    IF OnNT% THEN
+        ExitCode% = EXITSUCCESS
+        WIN32ENABLED% = 1
+        GOTO GETBHPATH
+    END IF
+    ExitCode% = EXITSUCCESS
+
+    szOldVer$ = GetVersionOfFile( DESTSYS$ + "WIN32S16.DLL" )
+    szNewVer$ = GetVersionOfFile( GetSymbolValue("STF_SRCDIR") + "WIN32S16.DLL" )
+
+    IF "1" <> GetIniKeyString( DESTSYS$ + "WIN32S.INI", "Win32s", ConstSetup$) THEN
+    GOTO WELCOME
+    END  IF
+
+    IF szOldVer$ = "" THEN
+    GOTO WELCOME
+    END IF
+    IF szNewVer$ > szOldVer$ THEN
+        GOTO WELCOME
+    END IF
+    i% = DoesFileExist ( DESTSYS$ + "WIN32S\WIN32S.EXE", femExist )
+    IF i% = 0 THEN
+        GOTO WELCOME
+    END IF
+    WIN32ENABLED% = 1
+    GOTO GETBHPATH
+
+WELCOME:
+    sz$ = UIStartDlg(CUIDLL$, WELCOME, "FInfoDlgProc", HELPWELCOME, HELPPROC$)
+    IF sz$ = Continue$ THEN
+    UIPop 1
+    ELSE
+    GOSUB ASKQUIT
+    GOTO WELCOME
+    END IF
+
+
+GETWIN32SPATH:
+    SetSymbolValue "EditTextIn", DESTSYS$
+    SetSymbolValue "EditFocus", "END"
+
+GETPATHL1:
+    sz$ = UIStartDlg(CUIDLL$, VERPATH, "FDispDlgProc", HELPWELCOME, HELPPROC$)
+
+    IF sz$ = Continue$ THEN
+        IF IsDirWritable(DESTSYS$) = 0 THEN
+            GOSUB BADPATH
+            GOTO GETPATHL1
+        END IF
+        UIPop 1
+    ELSEIF sz$ = "REACTIVATE" THEN
+        GOTO GETPATHL1
+    ELSEIF sz$ = "BACK" THEN
+        UIPop 1
+        GOTO WELCOME
+    ELSE
+        GOSUB ASKQUIT
+        GOTO GETPATHL1
+    END IF
+
+
+GETBHPATH:
+
+    ' ask the BH Path here before copying the win32s files... we need
+    ' to evaluate the space on the drive
+
+    ' query the win.ini for the last path
+    LastPath$ = GetIniKeyString ("WIN.INI", "NetMon", "LastPath" )
+    IF len( LastPath$ ) > 0 THEN
+        DESTBH$ = LastPath$
+    END IF
+
+    SetSymbolValue "EditTextIn", DESTBH$
+    SetSymbolValue "EditFocus", "END"
+
+GETBHPATHL1:
+    sz$ = UIStartDlg(CUIDLL$, BHPATH, "FEditDlgProc", HELPFREECELL, HELPPROC$)
+
+    IF sz$ = Continue$ THEN
+        DESTBH$ = GetSymbolValue("EditTextOut")
+
+        'PRINT DESTBH$
+
+        IF MID$(DESTBH$, LEN(DESTBH$), 1) <> "\" THEN
+            DESTBH$ = DESTBH$ + "\"
+        END IF
+        ''Validate new path.
+        IF IsDirWritable(DESTBH$) = 0 THEN
+            GOSUB BADPATH
+            GOTO GETBHPATHL1
+        END IF
+
+        ' is this a new dir?  if so, ask them if they really want to create it.
+        i% = DoesDirExist ( DestBH$ )
+        IF i% = 0 THEN
+            i% = DoMsgBox("The directory " + DESTBH$ + " does not exist.  Do you want to create it?", SetupMessage$, 1+MB_TASKMODAL)
+            IF i% = 2 THEN
+                GOTO GETBHPATHL1
+            END IF
+        END IF
+
+        UIPop 1
+
+        ' do we already have a default.adr in the target directory??  If so, tell the user that we are
+        ' going to overwrite it and make a backup.
+
+        IF EXISTS (DestBH$+"DEFAULT.ADR" ) THEN
+            i% = DoMsgBox("The Default.ADR (Default Address Database) file will be backed up to "+DESTBH$+"DEFADR.BAK and overwritten.", SetupMessage$, MB_OK)
+            ' setup toolkit doesn't like to rename files if the target exists... kill it.
+            i% = IsFileWritable ( DestBH$+"DEFADR.BAK" )
+            IF i% = 1 THEN
+                'i% = DoMsgBox("writable.", SetupMessage$, MB_OK)
+                RemoveFile  DESTBH$+"DEFADR.BAK", cmoNone
+            ENDIF
+        END IF
+        GOTO EVALSPACE
+
+    ELSEIF sz$ = "REACTIVATE" THEN
+        GOTO GETBHPATHL1
+    ELSEIF sz$ = "CANCEL" THEN
+        UIPop 1
+        ERR=STFQUIT
+        GOTO QUIT
+    END IF
+
+
+EVALSPACE:
+
+    ' Evaluate the space needed on the drives.
+    '   1) eval out of space for win32s
+    '       if out of space, abort.
+    '   2) are win32s and bh on same drive?
+    '       if yes, eval space for both
+    '           no space?  go ask bh path again
+    '   3) if win32s drive != bh drive, then eval bh space
+    '       if no space, go ask bh path again
+
+    SrcDir$ = GetSymbolValue("STF_SRCDIR")
+
+    IF WIN32ENABLED% = 1 THEN
+        GOTO JUSTBHSPACE
+    END IF
+
+    ' get the win32s cost of files added to the copylist
+
+    AddSectionFilesToCopyList "WindowsSystem", SrcDir$, DESTSYS$
+    AddSectionFilesToCopyList "WindowsSystemWin32s", SrcDir$, DESTSYS$ + "WIN32S\"
+
+
+    ' it is assumed at this point that the copylist is either clear or it is not empty for a reason.
+    JUSTBHSPACE:
+
+        ' do an extra check on the files that we are going to put in the system dir...
+
+        AddSectionFilesToCopyList "BH", SrcDir$, DESTBH$
+        AddSectionFilesToCopyList "BHParsers", SrcDir$, DESTBH$+"PARSERS\"
+        AddSectionFilesToCopyList "BHCaptures", SrcDir$, DESTBH$+"CAPTURES\"
+
+        IF OnNT% THEN
+            AddSectionFilesToCopyList "NTCTL3D", SrcDir$, DESTNTSYS32$
+            AddSectionFilesToCopyList "BHAGENT", SrcDir$, DESTNTSYS32$
+            AddSectionFilesToCopyList "NTONLY", SrcDir$, DESTNTSYS32$
+            AddSectionFilesToCopyList "NTCPL", SrcDir$, DESTNTSYS32$
+            AddSectionFilesToCopyList "NDIS30", SrcDir$, DESTNTSYS32$
+            AddSectionFilesToCopyList "NMALL", SrcDir$, DESTNTSYS32$
+
+            DESTNTDRIVER$ = GetWindowsDir()
+
+            AddSectionFilesToCopyList "BHNTDRIVER", SrcDir$, DESTNTDRIVER$+"SYSTEM32\DRIVERS\"
+        ELSE
+            AddSectionFilesToCopyList "NMALL", SrcDir$, DESTSYS$
+            AddSectionFilesToCopyList "DOSCTL3D", SrcDir$, DESTSYS$
+            AddSectionFilesToCopyList "NONNT", SrcDir$, DESTSYS$
+
+            IF OnWin4% THEN
+                AddSectionFilesToCopyList "NDIS30", SrcDir$, DESTSYS$
+                AddSectionFilesToCopyList "WIN4", SrcDir$, DESTSYS$
+                AddSectionFilesToCopyList "WIN4INF", SrcDir$, GetWindowsDir() + "INF\"
+                AddSectionFilesToCopyList "BHAGENT", SrcDir$, DESTSYS$
+            ELSEIF NOT OnNDIS20% THEN     ' we are WfW3.11
+                AddSectionFilesToCopyList "NDIS30", SrcDir$, DESTSYS$
+                AddSectionFilesToCopyList "WIN16", SrcDir$, DESTSYS$
+            ELSE ' we are NDIS20
+                AddSectionFilesToCopyList "NDIS20", SrcDir$, DESTSYS$
+                AddSectionFilesToCopyList "WIN16", SrcDir$, DESTSYS$
+            END IF
+
+        END IF
+
+        ' OK, get the cost
+        Needed& = GetCopyListCost ("","","")
+        IF (Needed& <> 0 ) THEN
+            i% = DoMsgBox("The drive you are installing to does not have enough space to install.", SetupMessage$, MB_TASKMODAL+MB_ICONHAND+MB_OK)
+            ClearCopyList
+            GOTO GETBHPATH
+        END IF
+
+
+    SPACEDONE:
+
+    EXTRACOSTS$=" "
+    COSTS$=" "
+    ClearCopyList
+
+    ' space eval is done and OK.. copy the files...
+    IF WIN32ENABLED% = 1 THEN
+        GOTO COPYBLOODHOUND
+    END IF
+
+    'else fall into the win32s copy routine...
+
+
+COPYFILES:
+    CreateIniKeyValue DESTSYS$ + "WIN32S.INI", "Win32s", ConstSetup$, "0", cmoOverwrite
+
+    CreateDir DEST32S$, cmoNone
+    Install
+    UpdateSystemIni
+
+    CreateIniKeyValue DESTSYS$ + "WIN32S.INI", "Win32s", ConstSetup$, "1", cmoOverwrite
+    CreateIniKeyValue DESTSYS$ + "WIN32S.INI", "Win32s", "Version", szNewVer$, cmoOverwrite
+
+
+BLOODHOUND:
+    '  UIPop 1
+
+
+COPYBLOODHOUND:
+
+    ' write the last path back to the ini file
+    CreateIniKeyValue "WIN.INI", "NetMon", "LastPath", DESTBH$, cmoOverwrite
+
+    ' is there a bhsupp.dll in the root of their BH install??  If so and they
+    ' are on NT, then we have a problem.
+    IF OnNT% THEN
+        i% = DoesFileExist (DESTBH$+"BHSUPP.DLL", femExist )
+        IF i% = 0 THEN
+            i% = DoesFileExist (DESTBH$+"HOUND.EXE", femExist )
+        END IF
+        IF i% = 0 THEN
+            i% = DoesFileExist (DESTBH$+"DRIVERS\NMSUPP.386", femExist )
+        END IF
+        IF i% = 1 THEN
+            ' we have a problem.
+            i% = DoMsgBox("Some files must be removed before installing this build.  Remove them now?", SetupMessage$, 1+MB_TASKMODAL+MB_ICONHAND)
+            'result$ = str$(i%)
+            'i% = DoMsgBox (result$ , "DEBUG Message", 1+MB_TASKMODAL+MB_ICONHAND)
+            IF i% = 2 THEN
+                GOTO QUIT
+            END IF
+            'attempt the remove the files
+            RemoveFile  DESTBH$+"BHSUPP.DLL", cmoNone
+            RemoveFile  DESTBH$+"OBJMGR.DLL", cmoNone
+            RemoveFile  DESTBH$+"NAL.DLL", cmoNone
+            RemoveFile  DESTBH$+"CTL3D32.DLL", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\NDIS30.DLL", cmoNone
+            RemoveFile  DESTBH$+"SMB.HLP", cmoNone
+            RemoveFile  DESTBH$+"HOUND.EXE", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\NDIS20.DLL", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\NM.DOS", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\NMSUPP.386", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\NMSUPP4.386", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\NMTHUNK.DLL", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\NMWIN.386", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\NMWIN4.386", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\VNM.386", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\RNAL.DLL", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\BHNETB.DLL", cmoNone
+            ' remove the older renamed files too if they exist
+            RemoveFile  DESTBH$+"DRIVERS\BHSUPP.386", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\BHSUPP4.386", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\BHTHUNK.DLL", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\BHWIN.386", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\BHWIN4.386", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\BH.DOS", cmoNone
+            RemoveFile  DESTBH$+"DRIVERS\VBH.386", cmoNone
+
+        END IF
+    END IF
+
+    ClearCopyList
+    CreateDir DESTBH$, cmoNone
+
+    SrcDir$ = GetSymbolValue("STF_SRCDIR")
+
+    AddSectionFilesToCopyList "BH", SrcDir$, DESTBH$
+    AddSectionFilesToCopyList "BHParsers", SrcDir$, DESTBH$+"PARSERS\"
+    AddSectionFilesToCopyList "BHCaptures", SrcDir$, DESTBH$+"CAPTURES\"
+
+    IF OnNT% THEN
+        AddSectionFilesToCopyList "NTCTL3D", SrcDir$, DESTNTSYS32$
+        AddSectionFilesToCopyList "BHAGENT", SrcDir$, DESTNTSYS32$
+        AddSectionFilesToCopyList "NTONLY", SrcDir$, DESTNTSYS32$
+        AddSectionFilesToCopyList "NTCPL", SrcDir$, DESTNTSYS32$
+        AddSectionFilesToCopyList "NDIS30", SrcDir$, DESTNTSYS32$
+        AddSectionFilesToCopyList "NMALL", SrcDir$, DESTNTSYS32$
+
+        DESTNTDRIVER$ = GetWindowsDir()
+
+        AddSectionFilesToCopyList "BHNTDRIVER", SrcDir$, DESTNTDRIVER$+"SYSTEM32\DRIVERS\"
+    ELSE
+        AddSectionFilesToCopyList "NMALL", SrcDir$, DESTSYS$
+        AddSectionFilesToCopyList "DOSCTL3D", SrcDir$, DESTSYS$
+        AddSectionFilesToCopyList "NONNT", SrcDir$, DESTSYS$
+
+        IF OnWin4% THEN
+            AddSectionFilesToCopyList "NDIS30", SrcDir$, DESTSYS$
+            AddSectionFilesToCopyList "WIN4", SrcDir$, DESTSYS$
+            AddSectionFilesToCopyList "WIN4INF", SrcDir$, GetWindowsDir() + "INF\"
+            AddSectionFilesToCopyList "BHAGENT", SrcDir$, DESTSYS$
+        ELSEIF NOT OnNDIS20% THEN     ' we are WfW3.11
+            AddSectionFilesToCopyList "NDIS30", SrcDir$, DESTSYS$
+            AddSectionFilesToCopyList "WIN16", SrcDir$, DESTSYS$
+        ELSE ' we are NDIS20
+            AddSectionFilesToCopyList "NDIS20", SrcDir$, DESTSYS$
+            AddSectionFilesToCopyList "WIN16", SrcDir$, DESTSYS$
+        END IF
+
+    END IF
+
+    IF NOT OnNT% THEN
+        '' The setup toolkit does not seem to want to overwrite the CTL3d32 if the date of the
+        '' one to copy is newer...  Do it ourselves...
+
+        i% = DoesFileExist ( DESTSYS$+"CTL3D32.DLL", femExist )
+        IF i% = 1 THEN
+            ' evaluate if it is OLDER than the one we are copying...
+            DateCTL$ = GetDateOfFile ( DESTSYS$+"CTL3D32.DLL" )
+            DateCopy$= GetSectionKeyDate ("DOSCTL3D", "DOSCTL" )
+
+            'i% = DoMsgBox("date on system = "+DateCTL$+", date of install is "+DateCopy$, "SETUP", MB_TASKMODAL+MB_ICONHAND+MB_OK)
+
+            ForceCopy% = 0
+            Cmp1% = GetYearFromDate(DateCopy$)
+            Cmp2% = GetYearFromDate(DateCTL$)
+            IF Cmp1% > Cmp2% THEN
+                ForceCopy% = 1
+            ELSEIF Cmp1% = Cmp2% THEN
+                Cmp1% = GetMonthFromDate(DateCopy$)
+                Cmp2% = GetMonthFromDate(DateCTL$)
+
+                IF Cmp1% > Cmp2% THEN
+                    ForceCopy% = 1
+                ELSEIF Cmp1% = Cmp2% THEN
+                    Cmp1% = GetDayFromDate(DateCopy$)
+                    Cmp2% = GetDayFromDate(DateCTL$)
+
+                    IF Cmp1% > Cmp2% THEN
+                        ForceCopy% = 1
+                    END IF
+                END IF
+            END IF
+
+            IF ForceCopy% THEN
+                'i% = DoMsgBox("Forcing copy for ctl3d32.dll", "SETUP", MB_TASKMODAL+MB_ICONHAND+MB_OK)
+
+                i%= DoesFileExist (DESTSYS$+"CTL3D32.BAK", femExist )
+                IF i% = 1 THEN
+                    RemoveFile DESTSYS$+"CTL3D32.BAK", cmoNone
+                END IF
+
+                RenameFile DESTSYS$+"CTL3D32.DLL", "CTL3D32.BAK"
+                'i% = DoMsgBox("Did it... check it", "SETUP", MB_TASKMODAL+MB_ICONHAND+MB_OK)
+            END IF
+
+        'else there is no problem... it will copy in the new one...
+        ENDIF
+
+    END IF
+
+    ' Just before we copy the files, make sure that the NMAGENT has stopped... we have a
+    ' script running in the background making this happen... it will create a file when it
+    ' is done... (hack)
+    IF ( OnNT% ) THEN
+        NotDone% = 1
+        Count% = 0
+        WHILE ( NotDone% )
+            IF EXISTS (GetSymbolValue("STF_CWDDIR")+"RNALDead.TXT" ) THEN
+                NotDone% = 0
+            ELSE
+                Count% = Count% + 1
+                SLEEP 1
+                IF Count% = 2 THEN
+                    'i% = MonitorStopDriver ()
+                    ' this won't return until we are done...
+                    'NotDone% = 0
+                END IF
+                IF Count% = 16 THEN
+                    NotDone% = 0
+                END IF
+            END IF
+        WEND
+        RemoveFile  GetSymbolValue("STF_CWDDIR")+"RNALDead.TXT", cmoNone
+    END IF
+
+
+    CopyFilesInCopyList
+
+    Temp1$ = "Network Analysis Tools"
+    CreateProgmanGroup Temp1$, "", cmoNone
+    ShowProgmanGroup   Temp1$, 1, cmoNone
+    CreateProgmanItem  Temp1$, "Network Monitor", DESTBH$ + NetMonEXE$, "", cmoOverwrite
+
+    ' create the captures subdir below bh
+
+    CreateDir DESTBH$+"CAPTURES\", cmoNone
+
+    Temp1$="WIN.INI"
+    Temp2$="Extensions"
+
+    CreateIniKeyValue Temp1$, Temp2$, "CAP", DESTBH$+NetMonEXE$+" ^.CAP", cmoOverwrite
+    CreateIniKeyValue Temp1$, Temp2$, "ENC", DESTBH$+NetMonEXE$+" ^.ENC", cmoOverwrite
+    CreateIniKeyValue Temp1$, Temp2$, "TRC", DESTBH$+NetMonEXE$+" ^.TRC", cmoOverwrite
+    CreateIniKeyValue Temp1$, Temp2$, "FDC", DESTBH$+NetMonEXE$+" ^.FDC", cmoOverwrite
+
+    Temp1$=""
+    Temp2$=""
+    SrcDir$=""
+    DESTSYS$=""
+    DEST32S$=""
+    DESTNTSYS32$=""
+    DESTNTDRIVER$=""
+
+
+    ' handle the config.sys, protocol.ini, and system.ini changes.
+
+    DoModifyBHConfig
+
+    'i% = DoMsgBox("ERR = "+STR$(ERR), SetupMessage$, MB_OK+MB_TASKMODAL)
+
+QUIT:
+    ON ERROR GOTO ERRQUIT
+    IF ERR = 0 THEN
+        dlg% = ExitCode%
+    ELSEIF ERR = STFQUIT THEN
+        dlg% = EXITQUIT
+    ELSE
+        ' ErrStr$ = "Error out with err = " + STR$(ERR)
+        ' DoMsgBox (ErrStr$, "ErrorOut" ,MB_OK+MB_TASKMODAL)
+        dlg% = EXITFAILURE
+    END IF
+
+QUITL1:
+
+    IF ERR <> 0 THEN
+        GOTO SKIPTHIS
+    END IF
+
+    IF OnNT% OR OnWin4% THEN
+        i% = DoMsgBox("Network Monitor was successfully installed.", SetupMessage$, MB_OK+MB_TASKMODAL)
+    ELSE
+        i% = StartExitMonitor ( DESTBH$+"SRB.EXE" )
+
+    ENDIF
+
+SKIPTHIS:
+
+    IF WIN32ENABLED% = 1 THEN
+        UIPop 1
+        END
+    END IF
+
+    'sz$ = UIStartDlg(CUIDLL$, dlg%, "FInfo0DlgProc", 0, "")
+    'IF sz$ = "REACTIVATE" THEN
+    'GOTO QUITL1
+    'END IF
+    'UIPop 1
+
+    RebootSystem
+
+    END
+
+ERRQUIT:
+    i% = DoMsgBox("Setup sources were corrupted!", SetupMessage$, MB_OK+MB_TASKMODAL+MB_ICONHAND)
+    END
+
+
+
+BADPATH:
+    sz$ = UIStartDlg(CUIDLL$, BADPATH, "FInfo0DlgProc", 0, "")
+    IF sz$ = "REACTIVATE" THEN
+    GOTO BADPATH
+    END IF
+    UIPop 1
+    RETURN
+
+
+
+  ASKQUIT:
+    sz$ = UIStartDlg(CUIDLL$, ASKQUIT, "FQuitDlgProc", 0, "")
+
+    IF sz$ = "EXIT" THEN
+    UIPopAll
+    ERROR STFQUIT
+    ELSEIF sz$ = "REACTIVATE" THEN
+    GOTO ASKQUIT
+    ELSE
+    UIPop 1
+    END IF
+    RETURN
+
+
+
+'**
+'** Purpose:
+'**     Builds the copy list and performs all installation operations.
+'** Arguments:
+'**     none.
+'** Returns:
+'**     none.
+'*************************************************************************
+SUB Install STATIC
+
+    SrcDir$ = GetSymbolValue("STF_SRCDIR")
+
+    '' First evaluate the need to make a backup of the olecli.dll file.
+    i% = DoesFileExist ( GetWindowsSysDir()+"OLECLI.W31", femExist )
+    IF i% = 0 THEN
+        CopyFile GetWindowsSysDir()+"OLECLI.DLL", GetWindowsSysDir()+"OLECLI.W31", cmoNone, 0
+    ENDIF
+
+    AddSectionFilesToCopyList "WindowsSystem", SrcDir$, DESTSYS$
+    AddSectionFilesToCopyList "WindowsSystemWin32s", SrcDir$, DESTSYS$ + "WIN32S\"
+
+    t% = RestartWindows( GetWindowsSysDir() + "OLECLI.DLL" )
+    SetRestartDir GetWindowsDir()
+    CopyFilesInCopyList
+
+END SUB
+
+SUB UpdateSystemIni STATIC
+
+    VxDPath$ = DEST32S$ + "W32S.386"
+    SystemIniPath$ = GetWindowsDir()
+
+    t% = MakeSystemIni(SystemIniPath$, VxdPath$)
+    VxDPath$=" "
+
+END SUB
+
+SUB RebootSystem STATIC
+
+    i% = RestartListEmpty()
+    '  i% = ExitExecRestart()  don't restart until we can reboot
+
+END SUB
+
+
+'*************************************************************************
+'  Note that the STATIC is required (pg 223, MSTest users guide)
+
+SUB DoModifyBHConfig STATIC
+
+    '** Modify the Config.sys if we are not wfw 3.11
+
+'    DIM oufile%, infile%, StringVar$
+'
+'    infile = FREEFILE
+'    OPEN "c:\config.sys" FOR INPUT AS # infile
+'
+'    outfile = FREEFILE
+'    OPEN DESTBH$+"config.new" FOR OUTPUT AS # outfile
+'
+'    WHILE NOT ( EOF(infile) )
+'        INPUT #infile, StringVar
+'        PRINT # outfile, StringVar
+'        PRINT StringVar
+'    WEND
+'
+'    CLOSE #infile
+'    CLOSE #outfile
+
+    SystemIniPath$ = GetWindowsDir()
+    BHConfig% = ModifyBHConfig (SystemIniPath$, DestBH$ )
+
+    IF BHConfig% = 0 THEN
+        ERR = STFQUIT
+    ELSE
+        ERR = 0
+    END IF
+
+END SUB
+
+'*************************************************************************
+
+'**
+'** Purpose:
+'**     Appends a file name to the end of a directory path,
+'**     inserting a backslash character as needed.
+'** Arguments:
+'**     szDir$  - full directory path (with optional ending "\")
+'**     szFile$ - filename to append to directory
+'** Returns:
+'**     Resulting fully qualified path name.
+'*************************************************************************
+FUNCTION MakePath (szDir$, szFile$) STATIC AS STRING
+    IF szDir$ = "" THEN
+    MakePath = szFile$
+    ELSEIF szFile$ = "" THEN
+    MakePath = szDir$
+    ELSEIF MID$(szDir$, LEN(szDir$), 1) = "\" THEN
+    MakePath = szDir$ + szFile$
+    ELSE
+    MakePath = szDir$ + "\" + szFile$
+    END IF
+END FUNCTION
+
+
+
+

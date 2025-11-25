@@ -1,0 +1,84 @@
+@rem ************************************************************************
+@rem
+@rem Copyright (c) 1991 Microsoft Corporation
+@rem
+@rem Module Name:
+@rem   dostrwp.11   
+@rem
+@rem Abstract:
+@rem
+@rem   This command script is invoked on the second boot of stripe with
+@rem   parity variations, only if orphaning is enabled.
+@rem
+@rem   At this point, the swp should be regenerated and we will read
+@rem   the file and chkdsk to ensure no corruption has ocurred.
+@rem
+@rem Revision History:
+@rem
+@rem   steveko - original version - 5/10/93
+@rem
+@rem *************************************************************************
+
+call doinit
+
+call dodir %driveLetter1%:\ %logfile%
+
+@rem
+@rem Swp should now be initializing.  If user requested write_while_regen,
+@rem spawn async writes to foo2.bin to fill the rest of the diskspace.
+@rem Note that output must be collected to different file and gathered
+@rem later since it is asynchronous.
+@rem
+
+if "%_options1%" == "orphan_reads"  goto do_writes_now
+if "%_options1%" == "orphan_writes" goto do_writes_now
+goto no_writes_now
+
+:do_writes_now
+echo.                                                              >> %logfile%
+echo TRACE: Write while regen is enabled, spawn writer process now >> %logfile%
+echo.                                                              >> %logfile%
+call domapasy %driveLetter1%:\foo2.bin 100 async.log
+
+:no_writes_now
+
+@rem
+@rem Read the file written on previous boot
+@rem
+
+call doendmd %driveLetter1%:\foo.bin %logfile% 
+
+
+@rem
+@rem Need to add coverage that regeneration is ok when writes are happening.
+@rem Right now it cannot be done because the file written consumes the whole
+@rem disk and there is no room left.
+@rem
+
+:wait_awhile
+if exist xymapasy.sig goto stop_waiting
+sleep 5
+echo This is a 5 sec pause for xymapasy.sig  >> %logfile%
+goto wait_awhile
+
+:stop_waiting
+
+@rem
+@rem Run chkdsk to verify the parition is in a consitent state
+@rem
+
+call dochkdsk %driveLetter1% %fileSystem% %logfile% 
+
+echo --------  Following is the output from the previously >> %logfile%
+echo --------  ran async fsetmap                           >> %logfile%
+type async.log                                             >> %logfile%
+
+@rem
+@rem Be sure the swp has become healthy after the regen.
+@rem
+
+call dofstate %driveLetter1% %sizeMB% 1.2 %logfile%
+
+copy do.0 donext
+mtrun delete.pcd /h
+exit

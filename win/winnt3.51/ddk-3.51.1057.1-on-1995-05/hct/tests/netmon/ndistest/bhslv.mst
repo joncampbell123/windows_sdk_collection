@@ -1,0 +1,458 @@
+'******************************************************************************
+'*
+'* Bloodhound Card/Driver tester
+'*
+'* History:
+'* 06-8-94               Created
+'* 06-13-94              Modified: added error detection
+'* 06-18-93              Modified: changed to lookup table for Transmit info
+'*
+'* By
+'* James A. Evanston
+'*
+'******************************************************************************
+'$INCLUDE 'DECLARES.INC'
+
+'   THIS IS THE _ONLY_ THING THAT CAN BE CHANGED !!!
+'       This is where the Control files MUST be located !
+'   change what is in the "the quotes only" and it can be a unc
+CONST   ControlFile$ = "\\bh_server\bhtest\bhctl.txt"
+'******************************************************************************
+CONST   MasterSyncRequestFile$ = "Master.snc"
+CONST   SlaveSyncResponseFile$ = "Slave.snc"
+
+
+
+
+CONST   MaxEthernetPacket = 1514
+CONST   MaxTokenRingPacket = 4192
+CONST   MaxFDDIPacket = 16384
+
+
+Global  MaxMediaPacket%     ' set in init function
+
+GLOBAL  TestControl$
+GLOBAL  ControlShare$
+GLOBAL  TestShare$
+GLOBAL  LogDir$
+GLOBAL  LogName$
+
+GLOBAL  ControlPath$
+GLOBAL  HwndBH%
+GLOBAL  Bandwidth%
+GLOBAL  PacketSize%
+GLOBAL  NumberFrames%
+GLOBAL  StrFile$
+GLOBAL  Media$
+GLOBAL  Iteration$
+
+DECLARE FUNCTION ReadControlFile() AS INTEGER
+DECLARE FUNCTION InitControl() AS INTEGER
+DECLARE FUNCTION WaitForTestComplete () AS INTEGER
+DECLARE FUNCTION GetTransmitInfo() AS INTEGER
+DECLARE SUB WaitForSlaveStart ()
+DECLARE SUB MasterSync()
+DECLARE SUB StartTransmitTest ()
+DECLARE SUB RemoveMasterSync()
+Declare SUB CreateSlaveSync ()
+
+
+'********************************** Main control*******************************
+'   Read control file
+'   init
+'   Read log
+'   verify existence of Master
+'   test loop
+'
+
+    ' use the viewport as a debugging/test status tool
+    VIEWPORT ON
+    VIEWPORT CLEAR
+    StartOver:
+    PRINT
+    PRINT
+    PRINT "*************************************************************"
+    PRINT DATETIME$
+    PRINT
+    PRINT "Bloodhound PMode tester, Version 1. Slave "
+    PRINT "Steve Hiskey, James A. Evanston"
+    PRINT
+
+
+'   This is where I Kill any old Sync File before I start
+    RemoveMasterSync
+
+'   This is where I get the Control File
+    ReadControlFile
+
+
+'   This where I wait for the SlaveStart file from Master
+    WaitForSlaveStart
+
+    'loop on the test...
+    NotDone% = 1
+    WHILE NotDone%
+
+        'get master.snc
+        Failure% =  GetTransmitInfo ()
+
+        IF Failure% THEN
+            END ' Nope... bail.. assume the master needs a new card and a new control file.
+
+        END IF
+
+            ' do test
+        StartTransmitTest
+
+            'Create Slave Sync file to Tell master that I am ready
+        CreateSlaveSync
+
+    WEND
+
+    END
+'******************************** End Main control*****************************
+
+'******************************************************************************
+'
+'       Get the Test Paramatures from the Control File on \\bh_server\bhtest
+'        ( the Server can be changed )
+'******************************************************************************
+
+STATIC FUNCTION ReadControlFile() AS INTEGER
+
+    DIM TheLine$
+    DIM Target$
+    DIM Equal%
+    DIM Failure%
+
+    ' assume that the control file is in the SAME directory that we are in.
+    'retry to read if file is in error and if this works then add a loop for 5 times then bail
+
+    Counter% = 0
+    'retry to read if file is in error and if this works then add a loop for 5 times then bail
+        SLEEP 1
+    retry:
+
+    Counter% = Counter% + 1
+    IF Counter% = 300 THEN GOTO DEATH
+
+
+        'This will pop-up and tell user where it thinks control file should
+    Print "Read Control File ( " + ControlFile$ + " ) ***********"
+        IF NOT EXISTS (ControlFile$) THEN
+            MsgBox "You Must have a BhCtrl.txt File on ( " + ControlFile$ + " )"
+         END
+        END IF
+    Open ControlFile$ for Input as #1
+
+    WHILE  NOT EOF(1)
+        Line Input #1, TheLine$
+        Print TheLine$
+
+        ' the file has items in it like "BHPath=c:\bh\hound"... find the BHPath
+
+        IF len ( TheLine$ ) > 0 THEN
+
+            ' find the =
+            Equal% = INSTRB(TheLine$, "=")
+
+            IF Equal% THEN
+
+                Target$ = left$ ( TheLine$, Equal% - 1)
+
+                SELECT CASE UCASE$( Target$ )
+
+                    CASE "BHPATH"
+                        BHPath$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "TESTCONTROL"
+                        TestControl$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "CONTROLSHARE"
+                        ControlShare$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "TESTSHARE"
+                        TestShare$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "LOGDIR"
+                        LogDir$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "MEDIA"
+                        Media$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "CARD"
+                        Card$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "LOGNAME"
+                        LogName$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                END SELECT
+
+            END IF
+        END IF
+    WEND
+
+    Failure% = 0
+
+    ' did we get all the variables that we wanted??
+    IF len(BHPath$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " BHPath"
+    END IF
+
+    IF len(TestControl$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " TestControl"
+    END IF
+
+    IF len(ControlShare$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " ControlShare"
+    END IF
+
+    IF len(TestShare$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " TestShare"
+    END IF
+
+    IF len(LogDir$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " LogDir"
+    END IF
+
+    IF len(Media$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " Media"
+    END IF
+
+    IF len(Card$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " Card"
+    END IF
+
+    IF len(Logname$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " Logname"
+    END IF
+
+    IF Failure% THEN
+        ' If I get a failure lets try again and if this works then I will add a loop to retry 5 times before I bail
+        goto retry
+'        Print "There are some missing variables from the "+ ControlFile$ +" Control File.  The missing variables are ("+ VariablesMissing$+" )", MB_OK, "Init Failure"
+    END IF
+
+    Close #1
+
+    ReadControlFile = Failure%
+    ControlPath$ = "\\"+TestControl$+"\"+ControlShare$+"\"
+
+    DEATH:
+END FUNCTION
+
+
+'******************************************************************************
+'
+'          This is where I Wait for Slave Start File from Master
+'
+'******************************************************************************
+
+STATIC SUB WaitForSlaveStart
+
+    PRINT "Wait for Start File From Master"
+    NotDone% = 1
+
+    WHILE NotDone%
+
+        SLEEP 5
+
+        IF EXISTS (ControlPath$+MasterSyncRequestFile$) THEN
+            Print "Master Sync File Found !"
+            NotDone% = 0
+        END IF
+    WEND
+    RemoveMasterSync
+    Print ""
+    CreateSlaveSync
+END SUB
+
+
+
+
+'******************************************************************************
+'
+'          This is where I determin which Parms I need to give to the Test.tps
+'
+'******************************************************************************
+
+STATIC SUB StartTransmitTest ( )
+
+    PRINT "Starting Transmit Test"
+
+     IF EXISTS ("DONE.TXT") THEN
+         Kill ( "DONE.TXT" )
+     END IF
+
+     OPEN "GO.BAT" FOR OUTPUT AS #4
+
+
+
+     PRINT #4, "ECHO Starting Test..."
+     PRINT #4, "SET CARD="
+     PRINT #4, "SET TP_RANDOM_ADDRESS=11-22-33-44-55-66"
+     PRINT #4, "SET TP_SERVER_ADDRESS=00-DD-11-22-33-44"
+     PRINT #4, "SET BANDWIDTH="+right$(str$(BandWidth%), len(str$(BandWidth%))-1 )
+     PRINT #4, "SET PACKETSIZE="+right$(str$(PacketSize%), len(str$(PacketSize%))-1 )
+     PRINT #4, "SET MEDIA="MEDIA$
+     PRINT #4, "Call TableGen.Bat"
+     PRINT #4, "TPCTL.EXE TEST.TPS"
+     'LET MASTER KNOW I'M DONE WITH TRANSMIT
+     PRINT #4, "ECHO DONE > DONE.TXT"
+     CLOSE #4
+        StartTransmit% = WinExec("GO.BAT", SW_SHOW)
+        'loop waiting for existence of the file DONE.TXT before telling Master that the test is complete...
+        Print "Transmiting Iteration "(Iteration$)" on "(media$) " At" (Bandwidth%) "and a Packet Size of" (PacketSize%)
+        NotFound%=1
+        WHILE NotFound%
+            SLEEP 1
+            IF EXISTS ("DONE.TXT") THEN
+                NotFound% = 0   'exit the while loop
+            END IF
+        WEND
+
+
+        RemoveMasterSync
+
+
+END SUB
+'******************************************************************************
+'
+'          I need to nuke the Master Sync file to get ready for next test
+'
+'******************************************************************************
+STATIC SUB RemoveMasterSync ()
+
+    IF EXISTS (ControlPath$+MasterSyncRequestFile$) THEN
+        KILL ControlPath$+MasterSyncRequestFile$
+    END IF
+
+END SUB
+
+
+
+'******************************************************************************
+STATIC SUB CreateSlaveSync ()
+
+    PRINT "Creating Slave sync file"
+    OPEN ControlPath$+SlaveSyncResponseFile$ FOR OUTPUT as #2
+
+    PRINT #2, "Command=SYNC"
+    CLOSE #2
+
+END SUB
+
+
+'******************************************************************************
+'
+'                get transmit iteration info
+'
+'******************************************************************************
+STATIC FUNCTION GetTransmitInfo () AS INTEGER
+
+    DIM BandwidthStr$
+    DIM PacketSizeStr$
+    DIM TheLine$
+    DIM Target$
+
+    PRINT "Wait for Start File From Master"
+    NotDone% = 1
+    Counter%=0
+    'I will try to get the info again and if this works then I will loop this 5 times then bail
+    Retry:
+    WHILE NotDone%
+
+        SLEEP 1
+        Counter% = Counter% + 1
+
+        IF EXISTS (ControlPath$+MasterSyncRequestFile$) THEN
+            Print "Master Sync File Found !"
+            NotDone% = 0
+        END IF
+
+        IF Counter% = 360 THEN
+            NotDone = 1
+            Failure% = 1
+            GOTO EXITSUB
+        END IF
+    WEND
+
+    Open ControlPath$+MasterSyncRequestFile$ for Input as #2
+
+    WHILE  NOT EOF(2)
+        Line Input #2, TheLine$
+        Print TheLine$
+
+        ' the file has items in it like "BHPath=c:\bh\hound"... find the BHPath
+
+        IF len ( TheLine$ ) > 0 THEN
+
+            ' find the =
+            Equal% = INSTRB(TheLine$, "=")
+
+            IF Equal% THEN
+
+                Target$ = left$ ( TheLine$, Equal% - 1)
+
+                SELECT CASE UCASE$( Target$ )
+
+                    CASE "BANDWIDTH"
+                        BandwidthStr$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "PACKETSIZE"
+                        PacketSizeStr$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                    CASE "NUMBERFRAMES"
+                        NumberFramesStr$ = MID$ ( TheLine$, Equal% + 1, len(TheLine$)-Equal%)
+
+                END SELECT
+            END IF
+        END IF
+    WEND
+
+    Failure% = 0
+
+    ' did we get all the variables that we wanted??
+
+    IF len(BandwidthStr$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " Bandwidth"
+    ELSE
+        Bandwidth% = VAL ( BandwidthStr$ )
+    END IF
+
+    IF len(PacketSizeStr$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " PacketSize"
+    ELSE
+        PacketSize% = VAL ( PacketSizeStr$ )
+    END IF
+
+    IF len(NumberFramesStr$) = 0 THEN
+        Failure% = 1
+        VariablesMissing$ = VariablesMissing$ + " NumberFrames"
+    ELSE
+        NumberFrame% = VAL ( NumberFrameStr$ )
+    END IF
+
+    IF Failure% THEN
+        Print "There are some missing variables from the "+ ControlFile$ +" Control File.  The missing variables are ("+ VariablesMissing$+" )", MB_OK, "Init Failure"
+
+
+    GOTO Retry
+    END IF
+
+    Close #2
+
+    EXITSUB:
+    GetTransmitInfo = Failure%
+
+End FUNCTION
