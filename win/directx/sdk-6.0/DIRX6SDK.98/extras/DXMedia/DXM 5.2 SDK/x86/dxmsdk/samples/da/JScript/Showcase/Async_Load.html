@@ -1,0 +1,152 @@
+<HTML> 
+<HEAD>
+<TITLE>DirectAnimation SDK, JScript sample</TITLE>
+<SCRIPT LANGUAGE="JScript">
+<!--
+if (window.top.frames.length!=0 && window.top.frames[0].ShowNoButtons!=null)
+    window.top.frames[0].ShowNoButtons();
+//-->
+</SCRIPT>
+</HEAD>	 
+
+<BODY BGCOLOR=Black TEXT=White LINK="#0033CC" TOPMARGIN=15 LEFTMARGIN=20>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE=3>
+
+<CENTER>
+<P><FONT SIZE=4>Asynchronous Loading</FONT></P>
+This sample demonstrates how an asynchronous importation API uses an animation
+to mask load time. In this example, it is masking the time needed for importing a movie. 
+If you are running the demo locally or with a fast network connection, there could be very 
+little latency for the media load, which means the latency masking animation might not be
+displayed.  To see the animation change the source url (movieURL) to your favorite movie 
+on the web.<BR>
+
+<OBJECT ID="DAControl" WIDTH=400 HEIGHT=350
+  CLASSID="CLSID:B6FFC24C-7E13-11D0-9B47-00C04FC2F51D">
+</OBJECT>
+
+</CENTER>
+
+<SCRIPT LANGUAGE="JScript">
+<!--
+
+  // The DirectAnimation library in meter mode.
+  m = DAControl.MeterLibrary;
+
+  movieURL = "../../../../media/movie/movie.avi";
+
+  progressMod = m.ModifiableBehavior(m.DANumber(0));
+
+  standinImg = getImage(progressMod);
+  movie = m.ImportMovieAsync(movieURL,standinImg,m.Silence)
+  progressMod.SwitchTo(movie.Progress);
+
+  // Set the image to the movie, which, until the movie loads,
+  // will be the animation.
+  DAControl.Image = movie.Image;
+
+  // Set the sound to the movie sound, which, until the movie loads,
+  // will be silence.
+  DAControl.Sound = movie.Sound;
+   
+  // Set the background in case of a non-windowless browser (such as IE3).
+  //DAControl.BackgroundImage = m.SolidColorImage(m.Blue);  
+     
+  // Start the animation       
+  DAControl.Start();
+
+  function getImage(progress)  {
+    intro = new Array("Direct", "X", "Media", "for Animation", "loading...please wait");
+	  info = new Array("Integrated","2D","3D","and","Audio","for","Scripting");
+    
+	  size = new Array(40, 75, 40, 20, 15);
+    startPos = new Array(-500,50,  0,500,  500,50,  6,-10,  0,-50);
+    endPos = new Array(-98,50,  0,50, 100,50,  6,-10,  0,-50);
+    trigger = new Array(.5, 1.5, 2.5, 4, 5);
+	  introImgs = new Array(intro.length);
+
+	  for(i=0; i<intro.length; i++)  {
+      startPt = m.Point2Anim(m.Mul(m.DANumber(startPos[2*i]),m.Pixel), 
+	      m.Mul(m.DANumber(startPos[2*i+1]),m.Pixel));
+      endPt = m.Point2Anim(m.Mul(m.DANumber(endPos[2*i]),m.Pixel), 
+	      m.Mul(m.DANumber(endPos[2*i+1]),m.Pixel));
+	    fs = m.Font("Arial", size[i], m.Blue).Bold();
+      
+	    textIm = m.StringImage(intro[i], fs);
+      introImgs[i] = move(textIm, startPt, endPt, 1, trigger[i]);
+    }
+
+    introImgs[3] = introImgs[3].OpacityAnim(ramp(trigger[3],.3));
+    introImgs[4] = introImgs[4].OpacityAnim(m.Mul(ramp(trigger[4],1),
+	    m.Sin(m.Mul(m.DANumber(4),m.LocalTime))));
+
+    // Compose the text images together and overlay them on a black background.
+    introImg = m.OverlayArray(introImgs);
+    introImg = m.Overlay(introImg, m.SolidColorImage(m.Black));      
+
+    // Add a progress status indicator to the introImg.
+    statPos = m.Vector2(0, -.02);
+
+    fs = m.Font("Arial", 10, m.Green);
+    statusImg = m.StringImageAnim(m.ConcatString(m.Mul(progress,m.DANumber(100)).ToString(2), 
+	    m.DAString("% complete")), fs).OpacityAnim(ramp(trigger[4],1));
+
+    statusImg = statusImg.Transform(m.Compose2(m.Translate2Vector(statPos),m.Scale2Uniform(.8)));
+    introImg = m.Overlay(statusImg, introImg);
+
+    // The radarImg has two parts.  The infoImg composes of a few text
+    // images clipped to a path of a rotating pie.  The lineImg draws the
+    // rotating edge of the pie.
+    infoImg = m.EmptyImage;
+    for(i=0; i<info.length; i++)  {
+      infoImg = m.Overlay(radiate(info[i], (2*Math.PI*i/info.length)+.3), infoImg);
+    }
+    infoImg = m.Overlay(infoImg, m.solidColorImage(m.Black));
+    origin = m.Ray(m.Point2(0.5,0));
+    pie = m.Concat(origin,m.ArcRadiansAnim(m.DANumber(0), m.Mod(m.LocalTime, 
+	  m.DANumber(2*Math.PI)),m.DANumber(1), m.DANumber(1)));
+    infoImg = infoImg.clip(m.FillMatte(pie));
+
+    // Create a line of length 0.05 meter then rotate it at the same rate
+    // the pie is rotating.
+    ln = m.Ray(m.Point2(.05,0));
+    lineImg = ln.Draw(m.DefaultLineStyle.WidthAnim(m.DANumber(.0008)).Color(m.White));
+    radarImg = m.Overlay(lineImg.Transform(m.Rotate2Anim(m.LocalTime)), infoImg);
+
+    // Delay the animation to create a more interesting effect.
+    radarImg = m.Until(m.EmptyImage, m.Timer(6), radarImg);
+    introImg = m.Overlay(radarImg, introImg);
+    return m.Until(m.SolidColorImage(m.Black), m.Timer(1),introImg);
+  }
+
+  // This function creates an image from the given text string.  It then
+  // moves the image to the position defined by the given radians.
+  function radiate(text, radians)  {
+
+    // Rotate the vector (0.04, 0) by the given radians, that's where we'll
+    // translate the image to.
+    vec = m.Vector2(.04,0).Transform(m.Rotate2(radians));
+
+    fs = m.DefaultFont.Family("Arial").Color(m.Red).Bold();
+    img = m.StringImage(text,fs).Transform(m.Scale2Uniform(1.3));
+
+    return img.Transform(m.Translate2Vector(vec));
+  }
+
+  // Move the given image from the start position to the end position
+  // after second at the given rate.
+  function move(img,start,end,rate,trigger)  {
+    startVec = m.SubPoint2(start, m.Origin2)
+    path = m.AddVector2(startVec, m.SubPoint2(end,start).MulAnim(ramp(0,rate)));
+    path = m.Until(startVec, m.Timer(trigger),path);
+    return img.Transform(m.Translate2Vector(path));
+  }
+
+  function ramp(trigger, rate)  {
+    return m.Sequence(m.DANumber(0).Duration(trigger), m.SlowInSlowOut(0,1,rate,.5));
+  }
+-->
+</SCRIPT>
+</FONT>
+</BODY>
+</HTML>

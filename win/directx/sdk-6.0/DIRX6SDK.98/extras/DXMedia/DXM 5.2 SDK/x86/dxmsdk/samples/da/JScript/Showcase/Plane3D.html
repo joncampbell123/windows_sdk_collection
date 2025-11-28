@@ -1,0 +1,112 @@
+<HTML> 
+<HEAD>
+<TITLE>DirectAnimation SDK, JScript sample</TITLE>
+<SCRIPT LANGUAGE="JScript">
+<!--
+if (window.top.frames.length!=0 && window.top.frames[0].ShowNoButtons!=null)
+    window.top.frames[0].ShowNoButtons();
+//-->
+</SCRIPT>
+</HEAD>	 
+
+<!--TOOLBAR_START-->
+<!--TOOLBAR_EXEMPT-->
+<!--TOOLBAR_END-->
+
+<BODY BGCOLOR=WHITE TOPMARGIN=15 LEFTMARGIN=20>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE=2> 
+<CENTER>
+<H1>Plane travelling in 3D</H1>
+</CENTER>
+    
+
+<OBJECT ID="DAControl"
+  STYLE="position:absolute; left:0; top:0;width:900;height:560;" 
+  CLASSID="CLSID:B6FFC24C-7E13-11D0-9B47-00C04FC2F51D">
+</OBJECT>
+        
+<SCRIPT LANGUAGE="JScript">
+<!--
+  // The DirectAnimation library
+  m = DAControl.MeterLibrary;
+
+  // commonly used constants
+  pi = Math.PI;
+  cm = 0.01;
+  period = 7.5; // time to complete the loop in secs
+  radius = 9*cm; // trajectory loop
+  zeroNum = m.DANumber(0);
+  oneNum = m.DANumber(1);
+  
+  // returns a 3D version of image of equal dimensions
+  function ImgToGeo(img) {
+    squareGeo = m.ImportGeometry(geoBase + "square.x");
+    imgBbox = img.BoundingBox;
+    return(squareGeo
+             .Transform(m.Scale3Anim(imgBbox.Max.X, imgBbox.Max.Y, oneNum))
+             .Texture(img.MapToUnitSquare()));
+  }
+
+  // returns normalized 3D vector
+  function Normalize(vec3) {
+    return vec3.DivAnim(m.Sqrt(m.Add(m.Mul(vec3.X, vec3.X),
+                                     m.Add(m.Mul(vec3.Y, vec3.Y),
+                                           m.Mul(vec3.Z, vec3.Z)))));
+  }
+
+  // import the needed media files
+  mediaBase = "..\\..\\..\\..\\media\\";
+  sndBase = mediaBase + "sound\\";
+  imgBase = mediaBase + "image\\";
+  geoBase = mediaBase + "geometry\\";
+
+  planeImg = m.ImportImage(imgBase + "plane3.gif");
+  planeGeo = ImgToGeo(planeImg);
+
+  // angle that repeatedly spans circle in period time
+  eval = m.SlowInSlowOut(0, 2*pi, period, 0).RepeatForever();
+  // 3D point that repeatedly travels around circle in period time
+  pos = m.Point3SphericalAnim(eval, zeroNum, m.DANumber(radius)).
+            transform(m.Compose3(m.Translate3(0, radius/3, 0),    // raise it a bit
+                                 m.Rotate3(m.XVector3, pi/8)));   // tilt it off horizontal
+
+  // use the depth of point to control Z order with the text
+  depth = m.Mul(pos.Z, m.DANumber(100));    // zIndex doesn't work with small numbers
+  depth = depth.AnimateProperty("DAControl.style.zIndex", "JScript", false, 0.05);
+  DAControl.AddBehaviorToRun(depth);
+
+  // find orientation parameters along tangent to trajectory
+  direction = Normalize(m.DerivativePoint3(pos));
+  normal = m.CrossVector3(m.XVector3, direction);
+  angle = m.Acos(m.DotVector3(m.XVector3, direction));
+
+  // get the plane to travel along trajectory with proper orientation
+  flyingPlaneGeo = planeGeo.Transform(m.Compose3(
+                              m.Translate3Point(pos), 
+                              m.Rotate3Anim(normal, angle)));
+
+  // render plane with a camera and ambient light
+  camera = m.PerspectiveCamera(radius+3*cm, radius+1*cm);
+  finalImg = m.UnionGeometry(flyingPlaneGeo, m.AmbientLight).render(camera); 
+  DAControl.Image = finalImg;   
+  
+  // construct sound that pans with horizontal and gains with depth
+  planeSnd = m.ImportSound(sndBase + "plane.mp2").Sound;
+  panFac = m.Div(pos.X, m.DANumber(radius)); 
+  gainFac = m.Abs(m.Div(pos.Z, m.DANumber(radius)));
+  finalSnd = planeSnd.Loop().GainAnim(gainFac).PanAnim(panFac);
+  DAControl.Sound = finalSnd;
+     
+  // start the animation       
+  DAControl.Start()
+//-->
+</SCRIPT>
+
+<DIV ID="Text"
+  STYLE="position=absolute; z-index=0">
+<P>
+An image of a airplane is textured onto both sides of a squared geometry.  The Point3SphericalAnim() is then used to construct a path along which the geometry is moved.  The z-index of the DAControl object is being updated dynamically with the z-coordinate of the path the geometry is on.  This makes the geometry move in front of and behind the text.  The panning of the sound you hear varies with the x-coordinate of the path the geometry is on.  To give the plane the correct orientation, the Normalize(), CrossVector3(), DotVector3() are use to calculate the correct angle of rotation.
+</DIV>
+</FONT>
+</BODY>
+</HTML>
