@@ -1,0 +1,267 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Unhandled Exception Filter Not Called Inside Debugger </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q173652">
+<META NAME="KBModify" CONTENT="1997/09/11">
+<META NAME="KBCreate" CONTENT="1997/09/09">
+<META NAME="Keywords" CONTENT="BseExcept">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Win32 processes can install an unhandled exception filter function to catch exceptions that are not handled in a __try/__except block on a process-wide basis. When debugging such a process, you find that the unhandled exception filter is never exec...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAY5,QBV8,QAB9,QAH4,QBVV,QAIF,QAJ9,QAHC,QAMA,QAH6,QAD7,QDL9,QBWO,QBWN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Unhandled Exception Filter Not Called Inside Debugger</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 11, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q173652</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT versions 3.50, 3.51, 4.0
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Win32 processes can install an unhandled exception filter function to catch
+exceptions that are not handled in a __try/__except block on a process-wide
+basis. When debugging such a process, you find that the unhandled exception
+filter is never executed, even when you put a breakpoint inside it.
+However, when the process is not being debugged, its unhandled exception
+filter is called as expected.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+When called from a process being debugged, the UnhandledExceptionFilter()
+Win32 API function does not call the application-installed unhandled
+exception filter.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+UnhandledExceptionFilter should call the application-installed unhandled
+exception filter for processes that are being debugged in addition to those
+not being debugged.
+<P>
+One way to debug an unhandled exception filter function is to put a
+__try/__except block around all of the code inside the main() or WinMain()
+function as follows:
+<P>
+<PRE>   void main (int argc, char **argv)
+   {
+      __try
+      {
+      // all of code normally inside of main or WinMain here...
+
+      }
+      __except (MyUnFilter (GetExceptionInformation()))
+      {
+         OutputDebugString ("executed filter function\n");
+      }
+   }
+
+</PRE>This work around behaves slightly differently from an unhandled exception
+filter in that it will only be called for the thread executing the main()
+or WinMain() function. If you are debugging a multithreaded application,
+then you will need to add a similar __try/__except block inside of each
+thread function.
+<P>
+If you don't want to add new __try/__except blocks to debug an unhandled
+exception filter, you should use other methods such as assert, trace
+outputs, and debugging code to validate the behavior of the exception
+handler.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The purpose of an unhandled exception filter function is to give a process
+the opportunity to respond to exceptions that occur outside any
+__try/__except block. Unhandled exception filters are process-wide; if any
+thread causes an exception, but does not handle it, the unhandled exception
+filter will get called. Once called, the filter function can fix the cause
+of the exception and continue execution, or it can pass the error to the
+default unhandled exception handler, which terminates the process.
+<P>
+Win32 applications can install a process-wide unhandled exception filter
+with the SetUnhandledExceptionFilter() API function. The Microsoft Visual
+C++ C Runtime (CRT) library startup code implements a __try/__except block
+around the main() function. When an exception is caught by this block, its
+exception filter function, named _XcptFilter, is called. _XcptFilter does
+two things: it maps the Win32 exceptions to signals used by the signal()
+CRT function, and dispatches signals to their appropriate handlers. If a
+signal's handler is set to SIG_DFL (as is the case by default), _XcptFilter
+calls the UnhandledExceptionFilter() API.
+<P>
+The UnhandledExceptionFilter() API determines whether the process is being
+debugged. If it is, then UnhandledExceptionFilter passes the exception
+first to the debugger, and then is supposed to call the process's unhandled
+exception filter.
+<P>
+If the process isn't being debugged, then UnhandledExceptionFilter calls
+the process's unhandled exception filter. Depending on the filter
+function's return, UnhandledExceptionFilter either continues execution at
+the point of the exception, or displays a system-modal dialog box informing
+the user that the application is to be terminated due to an unhandled
+exception.
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+<P>
+Compile the following sample code, and then set a breakpoint inside
+MyUnFilter. Observe that the breakpoint never gets hit.
+<P>
+<PRE>   /*
+      Demonstrates how to use SEH so that unhandled exception filter
+      can trap unhandled instructions.
+   */
+
+   #include &lt;windows.h&gt;
+   #include &lt;stdio.h&gt;
+
+   LONG WINAPI MyUnFilter (struct _EXCEPTION_POINTERS *lpExceptionInfo);
+
+   void main (void)
+   {
+      LPBYTE lpBuff = NULL;
+
+      SetUnhandledExceptionFilter (MyUnFilter);
+
+      *lpBuff = 54;
+   }
+
+
+   LONG WINAPI MyUnFilter (struct _EXCEPTION_POINTERS *lpExceptionInfo)
+   {
+      static int s_SigCount = 0;
+
+      DWORD dwExceptCode = lpExceptionInfo -&gt; ExceptionRecord -&gt;
+                           ExceptionCode;
+      LONG  lResult;
+
+      if (dwExceptCode == EXCEPTION_ACCESS_VIOLATION)
+      {
+         printf ("access violation caught by MyUnFilter\n");
+
+         ++s_SigCount;
+
+         // test case to keep this from going on forever (since we're not
+         // fixing the AV)
+            if (s_SigCount &lt; 5)
+               lResult = EXCEPTION_CONTINUE_EXECUTION;
+            else
+               lResult = EXCEPTION_EXECUTE_HANDLER;
+
+      }
+      else
+         lResult = EXCEPTION_CONTINUE_SEARCH;
+
+      return lResult;
+   }
+
+</PRE> 
+<PRE>Keywords          : BseExcept
+Version           : WINDOWS NT:3.50,3.51,4.0
+Platform          : NT WINDOWS
+Issue type        : kbbug</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 11, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,273 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Find the URL of ActiveX Document from Inside the Server </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q178059">
+<META NAME="KBModify" CONTENT="1998/03/05">
+<META NAME="KBCreate" CONTENT="1997/12/12">
+<META NAME="Keywords" CONTENT="AXSDKDocObjects kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; ie_dev">
+<META NAME="Description" CONTENT="  This article describes how to find the URL of an ActiveX document from inside the server.  MORE INFORMATION  ActiveX document servers often need to know the full URL of the currently open document file. For example, when an ActiveX document is host...">
+<META NAME="Product" CONTENT="Internet Explorer (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAHV,QAUD,QAYY,QAY2,QAVZ,QBFY,QA56,QA55,QBWA,QBV9,QA59,QAPN,QADK,QAHT,QBRJ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Find the URL of ActiveX Document from Inside the Server</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 5, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q178059</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Internet Explorer (Programming), versions 3.0, 3.01, 3.02, 4.0
+<LI>Internet Client SDK, versions 4.0, 4.01
+<LI>Microsoft ActiveX SDK, version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes how to find the URL of an ActiveX document from
+inside the server.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+ActiveX document servers often need to know the full URL of the currently
+open document file. For example, when an ActiveX document is hosted inside
+the Internet Explorer frame, Internet Explorer downloads the data for the
+document from the World Wide Web, invokes the server for that particular
+document type, and then passes the data to the ActiveX document.
+Specifically, the server may need to know that the data was actually pulled
+from "<B><A href="http://example.microsoft.com/test.doc">http://example.microsoft.com/test.doc</A></B>".
+<P>
+In most cases, an ActiveX document server needs the moniker that represents
+the current document source. You can use the IMoniker::GetDisplayName()
+method to determine the correct URL or file path of the document. This
+information is especially important to ActiveX document servers that need
+to access additional supporting data files from locations relative to the
+URL of the current ActiveX document file. Once the ActiveX document has
+retrieved the URL from GetDisplayName, it can determine a new absolute URL
+for any extra data files it may need.
+<P>
+This article discusses two possible ways of obtaining a moniker to the
+document source:
+
+<OL><P><LI>Implement the IPersistMoniker interface.
+<P>
+</OL>IPersistMoniker is one of the newest OLE/COM persistence mechanisms. It
+allows an ActiveX document server (or other OLE server) to decide how it
+persists itself into data, and it gives the server complete control over
+how that data is obtained. As a result, the server will have a moniker that
+represents the source of the data.
+<P>
+When navigating to an ActiveX document structured storage file, Internet
+Explorer first reads a piece of the data file to determine the CLSID of the
+ActiveX document. If the CLSID is available, Internet Explorer will have
+enough information to load the document's server. Because Web documents may
+take a long time to download completely, the server is usually created
+before all of the data is available.
+<P>
+After the server is created, Internet Explorer performs a QueryInterface on
+the server's document object for IPersistMoniker. If IPersistMoniker is not
+supported, Internet Explorer reverts to the standard IPersistFile loading
+mechanism. If IPersistMoniker is supported, Internet Explorer calls the
+IPersistMoniker::Load method with the moniker it used to begin downloading
+the data file. The ActiveX document server can then use the same moniker to
+re-bind to the data file, which usually does not result in a second
+download. Note that the server can retrieve the data from the supplied
+moniker using whatever method it chooses.
+<P>
+The following sample code demonstrates the implementation of
+IPersistMoniker::Load in a Visual C++ 5.0 MFC-based ActiveX document:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   // Necessary INCLUDES
+   #include &lt;comdef.h&gt;
+   #include &lt;afxconv.h&gt;
+   #include &lt;urlmon.h&gt;
+
+   // BEGIN_INTERFACE_MAP section for CPP file:
+   BEGIN_INTERFACE_MAP(CAxDoc, COleServerDoc)
+      // Other entries...
+      INTERFACE_PART(CAxDoc, IID_IPersistMoniker, PersistMoniker)
+   END_INTERFACE_MAP()
+
+   STDMETHODIMP CAxDoc::XPersistMoniker::Load(BOOL fFullyAvailable,
+                                      IMoniker __RPC_FAR *pimkName,
+                                          LPBC pibc, DWORD grfMode)
+   {
+      USES_CONVERSION;
+      METHOD_PROLOGUE_EX_(CAxDoc, PersistMoniker)
+
+      if (NULL == pimkName)
+         return E_FAIL;
+
+      // This is not efficient, but all data must be available
+      // If S_FALSE is returned, then a call back is made
+      // when the data is available
+      if (!fFullyAvailable)
+         return S_FALSE;
+
+      LPOLESTR strDisplayName;
+      pimkName-&gt;GetDisplayName(NULL, NULL, &amp;strDisplayName);
+      pThis-&gt;m_strDataURL = OLE2T(strDisplayName);
+
+      try {
+         // Use the moniker to download the persisted data
+         // and obtain an IStorage on that data
+         IStoragePtr pStorage;
+         pimkName-&gt;BindToStorage(pibc, NULL, IID_IStorage,
+                                 (void**)&amp;pStorage);
+
+         // Now use the default MFC implementation of IPersistStorage
+         // From this point forward, assume that
+         // IPersistStorage was used to persist the data.
+         IPersistStoragePtr pPersistStorage;
+         pThis-&gt;InternalQueryInterface(&amp;IID_IPersistStorage,
+                                      (void**)&amp;pPersistStorage);
+         pPersistStorage-&gt;Load(pStorage);
+      }
+      catch(...)
+      {
+         return E_FAIL;
+      }
+
+      return S_OK;
+   }
+
+</PRE><P><LI>Use the IOleClientSite::GetMoniker method.
+<P>
+</OL>OLE/COM servers have used this method for some time and it is also
+available to ActiveX document servers.
+<P>
+The following sample code demonstrates the implementation of
+IOleClientSite::GetMoniker in a Visual C++ 5.0 MFC-based ActiveX document:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   LPMONIKER CAxDoc::GetMoniker()
+   {
+      LPMONIKER pmkThis = NULL;
+      if (m_lpClientSite &amp;&amp;
+          m_lpClientSite-&gt;GetMoniker(OLEGETMONIKER_FORCEASSIGN,
+                                     OLEWHICHMK_OBJFULL,
+                                     &amp;pmkThis)  != S_OK)
+      {
+         // To be safe, always set moniker to NULL on failure
+         pmkThis = NULL;
+      }
+
+      return pmkThis;
+   }
+
+</PRE></OL><h2>REFERENCES</h2>
+ 
+<P>
+In some sample code, this article uses Visual C++ 5.0 Smart Pointers
+(IxxxPtr). For more information on Visual C++ 5.0 Smart Pointers and other
+COM compiler features available in Visual C++ 5.0, please review the
+following documentation:
+<P>
+<PRE>   Visual C++ Books Online: Visual C++; Visual C++ Programmer's Guide;
+   Adding Program Functionality; Overviews; Compiler COM Support: Overview
+
+</PRE> 
+<PRE>Keywords          : AXSDKDocObjects kbcode
+Technology        : kbInetDev
+Version           : WINDOWS:3.0,3.01,3.02,4.0
+Platform          : WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 5, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

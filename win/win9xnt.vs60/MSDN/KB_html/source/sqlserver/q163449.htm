@@ -1,0 +1,425 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Use of Thread Local Storage in an Ext. Stored Procedure </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q163449">
+<META NAME="KBModify" CONTENT="1997/04/10">
+<META NAME="KBCreate" CONTENT="1997/02/11">
+<META NAME="Keywords" CONTENT="kbother kbprg kbusage SSrvODS SSrvProg SSrvStProc">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  Thread Local Storage (TLS) can be a very tricky subject. When working in a thread pooling environment, it is very important that you understand the ramifications of TLS and the thread interactions.  It is highly suggested you avoid TLS in a thread ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAUQ,QABM,QAIF,QAB9,QAY5,QAUD,QA28,QATJ,QBW6,QAKD,QBWS,QBV8,QBVV,QA2Q V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Use of Thread Local Storage in an Ext. Stored Procedure</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q163449</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Thread Local Storage (TLS) can be a very tricky subject. When working in a
+thread pooling environment, it is very important that you understand the
+ramifications of TLS and the thread interactions.
+<P>
+It is highly suggested you avoid TLS in a thread pooling environment such
+as Microsoft SQL Server. However, if you must use TLS, please carefully
+read this document and consult the online documentation in the Win32 SDK
+for the TLS and DLL main functions.
+<P>
+Also, the compiler directive __declspec(thread) is not supported in an
+extended stored procedure. When LoadLibarary takes place, the
+__declspec(thread) definition is not properly initialized. See "Advanced
+Widows" by Jeffrey Ricter for more details.
+<P>
+NOTE: Any extension to SQL Server, including extended stored procedures,
+may never make a call to DisableThreadLibraryCalls().
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+As documented, the TlsAlloc function returns an index value that is used in
+function calls to TlsSetValue and TlsGetValue. The documentation suggests
+that you call the TlsAlloc function in your DLLMain function when
+ul_reason_for_call = DLL_PROCESS_ATTACH. By default, DLL_PROCESS_ATTACH is
+called when the DLL is initially loaded.
+<P>
+In DLL_PROCESS_ATTACH and DLL_THREAD_ATTACH, you should allocate memory and
+call TlsSetValue. This is specifically where the thread pooling starts to
+cause some problems in the scenario.
+<P>
+Below is an example scenario that applies to any application that does
+thread pooling. This example uses the Microsoft SQL Server application.
+<P>
+The following are a few basics for the example that you must understand.
+These are all documented in more detail in the Win32 SDK documentation
+under the DLLMain function.
+
+<UL><LI>When a DLL is loaded, it calls DLL_PROCESS_ATTACH.
+
+<LI>All subsequent threads (spawned after the DLL is loaded) call
+   DLL_THREAD_ATTACH.
+
+<LI>Currently running threads (spawned before the DLL is loaded) do not call
+   DLL_THREAD_ATTACH.
+
+<LI>All threads call DLL_THREAD_DETACH, even if they never called
+   DLL_THREAD_ATTACH.
+<P>
+</UL>For example, suppose the following chart shows the order and usage of the
+worker thread pool of SQL Server:
+<P>
+<PRE>   Thread     ATTACH CALLED     COMMAND     USER
+
+     1              NO           select      Joe
+     2             YES          xp_test     Mary
+     3             YES           select     Adam
+
+     1              NO          xp_test     Lynn
+
+</PRE>Joe starts a long-running select statement. No one has used the xp_test
+extended stored procedure yet, so there is no way for the DLL_ATTACH
+process to be called.
+<P>
+While Joe's select is running, Mary runs xp_test. The thread pooling
+mechanism determines that a new thread should be spawned to service Mary's
+request. SQL Server then calls the LoadLibrary function to load the
+Xproc.dll file. In doing so, thread 2 is the first thread to attach to the
+DLL, so DLL_PROCESS_ATTACH is called. As discussed earlier, TlsAlloc can be
+called to initialize the extended stored procedure's TLS index value.
+<P>
+While Joe's and Mary's commands are running, Adam submits his own select.
+Again, a new thread is spawned to handle Adam's request. Because thread 3
+is spawned after the LoadLibrary took place, thread 3 calls
+DLL_THREAD_ATTACH. As documented, this is where you would allocate the
+memory for thread 3 and call TlsSetValue.
+<P>
+Now, suppose Joe's select has completed, so worker thread 1 is free for
+use. Lynn submits the xp_test command, and is assigned thread 1. Thread 1
+never calls DLL_PROCESS_ATTACH or DLL_THREAD_ATTACH, because the thread was
+spawned before the LoadLibrary was called.
+<P>
+From this example, you can see that any attempt by thread 1 to access the
+TLS memory with TlsGetValue results in a NULL pointer being returned. If
+the extended stored procedure is not properly written to check for this
+condition, you will encounter an access violation (AV) when you try to
+write to the NULL address.
+<P>
+Below are several points that need to be mentioned about TLS and thread
+pooling.
+<P>
+If you are using TLS in a pooling environment, you must always check the
+TlsGetValue for a NULL return value. When you get a NULL, you must
+correctly allocate memory and call TlsSetValue to handle those threads that
+where spawned before the LoadLibrary took place.
+<P>
+Another caveat not directly addressed in the documentation is that you will
+allocate the TLS memory in the DLLMain function for every thread spawned
+after the LoadLibarary, even if the thread never uses the functions in the
+DLL. The example above shows this with thread 3. It only ran a select, but
+it called DLL_THREAD_ATTACH, which allocated the TLS memory for the
+extended stored procedure.
+<P>
+If you place this design in a thread pooling environment, you may allocate
+memory that may never be used.
+<P>
+The following is the best way to optimize the allocation of memory:
+
+<OL><P><LI>In DLL_PROCESS_ATTACH, obtain the correct TLS index value from TlsAlloc.
+
+<P><LI>Do not allocate memory in DLL_PROCESS_ATTACH or DLL_THREAD_ATTACH.
+
+<P><LI>Design a generic function to get the TLS value; if it is NULL, correctly
+   allocate it and call TlsSetValue.
+<P>
+   This step restricts the allocation of memory to those threads that
+   actually use it. This may reduce the overhead and startup time of worker
+   threads significantly. It also builds in the redundancy to correctly
+   handle those threads that were spawned before the LoadLibrary took
+   place.
+
+<P><LI>Because DLL_PROCESS_DETACH and DLL_THREAD_DETACH are always called, free
+   memory in those processes.
+<P>
+</OL>The only other thing that may still be unclear is the call to TlsAlloc.
+Reading the documentation, it may appear that the TLS index value returned
+is a global value. It is a global value, but each call to TlaAlloc returns
+a different index value. This allows two extended stored procedures to have
+their own TLS index value and correctly handle their own TLS data without
+affecting the others.
+<P>
+The following is an extended stored procedure that shows the behavior
+described in the example:
+<P>
+<PRE>   //
+   //    1. Start SQL Server from the command prompt to see the output:
+   //       ...\Mssql\Binn\Sqlservr -c
+   //
+   //    2. Run Xproctst.cmd to show the behavior.
+   //
+   #include "windows.h"
+   #include "stdio.h"
+   #include "srv.h"
+
+   #define           TLS_FAIL    0xFFFFFFFF
+
+   DWORD          dwTlsIndex     =  TLS_FAIL;
+   DWORD          dwCounter      =  0;
+   CRITICAL_SECTION  csSync;
+
+   //
+   //    Cleanup TLS memory
+   //
+   void vCleanUpTls(void)
+   {
+      char *   strData     =  NULL;
+
+      if(TLS_FAIL != dwTlsIndex)
+      {
+         strData = TlsGetValue(dwTlsIndex);
+         if(NULL != strData)
+         {
+            free(strData);
+            printf("\n &gt;&gt;&gt; Tls memory released by thread %ld",
+   GetCurrentThreadId());
+         }
+      }
+
+   }
+
+   //
+   //    Setup the TLS pointer
+   //
+   void vSetUpTls(void)
+   {
+      char *      strData  =  NULL;
+
+      if(TLS_FAIL == dwTlsIndex)
+      {
+         dwTlsIndex = TlsAlloc();
+      }
+
+      //
+      //    Are we ready to go
+      //
+      if(TLS_FAIL != dwTlsIndex)
+      {
+         strData = (char *) calloc(256,1);
+
+         if(strData)
+         {
+            printf("\n &gt;&gt;&gt; Tls memory allocated by thread %ld",
+   GetCurrentThreadId());
+
+            if(TRUE == TlsSetValue(dwTlsIndex, strData))
+            {
+               //
+               //    Protect the counter.
+               //
+               EnterCriticalSection(&amp;csSync);
+               sprintf(strData, "Counter = %ld", ++dwCounter);
+               LeaveCriticalSection(&amp;csSync);
+
+            }
+            else
+            {
+               printf("\n &gt;&gt;&gt; *** Serious error *** TlsSetValue
+               failed.\n");
+            }
+
+         }
+         else
+         {
+            printf("\n &gt;&gt;&gt; *** Serious error *** can not allocate
+            memory.\n");
+         }
+
+      }
+      else
+      {
+         printf("\n &gt;&gt;&gt; *** Serious error *** TlsAlloc failed.\n");
+      }
+
+   }
+
+   //
+   //    DLLMain
+   //
+   BOOL APIENTRY DllMain(HANDLE hInst, ULONG ul_reason_for_call, LPVOID
+   lpReserved)
+   {
+      char  strInfo[256]   =  "";
+
+      switch(ul_reason_for_call)
+      {
+
+         case DLL_PROCESS_ATTACH:
+            InitializeCriticalSection(&amp;csSync);
+
+            vSetUpTls();
+            sprintf(strInfo, "\n &gt;&gt;&gt; DLL_PROCESS_ATTACH Thread: %ld",
+   GetCurrentThreadId());
+            break;
+
+         case DLL_THREAD_ATTACH:
+            vSetUpTls();
+            sprintf(strInfo, "\n &gt;&gt;&gt; DLL_THREAD_ATTACH Thread: %ld",
+   GetCurrentThreadId());
+            break;
+
+         case DLL_PROCESS_DETACH:
+
+            vCleanUpTls();
+
+            if(TLS_FAIL != dwTlsIndex)
+               TlsFree(dwTlsIndex);
+
+            DeleteCriticalSection(&amp;csSync);
+
+            sprintf(strInfo, "\n &gt;&gt;&gt; DLL_PROCESS_DETACH Thread: %ld",
+   GetCurrentThreadId());
+            break;
+
+         case DLL_THREAD_DETACH:
+            vCleanUpTls();
+            sprintf(strInfo, "\n &gt;&gt;&gt; DLL_THREAD_DETACH Thread: %ld",
+   GetCurrentThreadId());
+            break;
+      }
+
+      printf(strInfo);
+
+      return TRUE;
+   }
+
+   //
+   //    DLL function in the extended stored procedure to show TLS trap
+   //
+   __declspec(dllexport) SRVRETCODE xp_Tls(SRV_PROC *pSrvProc)
+   {
+      char  strInfo[256]   =  "";
+      char *   strData        =  NULL;
+
+      sprintf(strInfo, "\n &gt;&gt;&gt; Invoking xp_Tls on Thread: %ld",
+   GetCurrentThreadId());
+      printf(strInfo);
+
+      if(TLS_FAIL != dwTlsIndex)
+      {
+         strData = TlsGetValue(dwTlsIndex);
+         if(NULL != strData)
+         {
+            sprintf(strInfo, "\n &gt;&gt;&gt; %s", strData);
+            printf(strInfo);
+         }
+         else
+         {
+            printf("\n &gt;&gt;&gt; *** Serious error *** TlsGetValue returned NULL,
+   thread pooling not handled correctly.\n");
+         }
+
+      }
+
+      return 1;
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: ODS<BR>
+Keywords            : kbother kbprg kbusage SSrvODS SSrvProg SSrvStProc<BR>
+Version             : 6.0 6.5<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

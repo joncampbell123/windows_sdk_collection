@@ -1,0 +1,279 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: _vmalloc() May Fail on Block Allocations </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q127201">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1995/03/14">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When using virtual memory allocation function _vmalloc() in the C runtime library, the program may fail on _vmalloc() if all of the following conditions are met :   - You use _vmalloc() to do block allocation instead of page allocation.   - You reu...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDJD,QDH9,QAHC,QBW6,QAI4,QAKP,QAX0,QAA8,QAH4,QACJ,QAGB,QBSO,QANY,QBFY,QAVX V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: _vmalloc() May Fail on Block Allocations</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q127201</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.50 1.51 1.52
+MS-DOS
+kbprg kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The C Run-time, included with:
+   Microsoft Visual C++ for Windows, versions 1.50, 1.51 and 1.52
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When using virtual memory allocation function _vmalloc() in the C runtime
+library, the program may fail on _vmalloc() if all of the following
+conditions are met :
+
+<UL><LI>You use _vmalloc() to do block allocation instead of page allocation.
+
+<LI>You reuse the virtual memory without repeatedly calling _vheapinit() and
+   _vheapterm().
+
+<LI>You use _vmalloc() to allocate an array of memory blocks that has a
+   minimum of 1000 elements. The pseudo code for the algorithm could
+   resemble this:
+<P>
+   _vheapinit(...);
+<P>
+<PRE>   // _vmalloc() fails on the second iteration when j=512.
+   for ( i=0; i&lt;2; i++ )
+   {
+     for ( j=0; j&lt;1000; j++ )
+       handle[j] = _vmalloc(...);
+
+     for ( j=0; j&lt;1000; j++ )
+       _vfree( handle[j] );
+   }
+
+   _vheapterm();
+
+</PRE></UL>The program allocates and frees the virtual memory blocks correctly for the
+first iteration of the outer For loop, but fails on the second iteration of
+the outer For loop when the inner For loop goes to iteration 512.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To work around the problem, use one of these two suggestions:
+
+<UL><LI>Use page allocation instead of block allocation. This could be done by
+   allocating a memory block with size greater than 2042 bytes. The virtual
+   memory manager adds six bytes for the block header to the size of the
+   allocation and rounds the result up to the next multiple of the virtual
+   page size (2048 bytes).
+<P>
+   -or-
+
+<LI>Call _vheapinit() and _vheapterm() to reinitialize the virtual memory
+   manager when virtual memory needs to be reallocated. For example:
+<P>
+   for ( i=0; i&lt;2; i++ )
+   {
+<P><PRE>     _vheapinit(...);
+</PRE><P>
+<P><PRE>     for ( n=0; n&lt;1000; n++ )
+       handle[n] = _vmalloc(...);
+</PRE><P>
+<P><PRE>     for ( n=0; n&lt;1000; n++ )
+       _vfree( handle[n] );
+</PRE><P>
+<P><PRE>     _vheapterm();
+</PRE>   }
+<P>
+</UL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this problem and will
+post new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code to Reproduce Problem</h3>
+ 
+<P>
+<PRE>/* Compile options needed: None
+*/
+
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;vmemory.h&gt;
+
+#define NUM_ELEMENT 1000
+#define SIZE        2042
+
+</PRE>_vmhnd_t vm_handle[NUM_ELEMENT];
+<P>
+<PRE>int main()
+</PRE>{
+<PRE>   int i;
+   unsigned long n;
+   unsigned hmem = NUM_ELEMENT;
+   char __far *pntr;
+
+   printf("\nTest allocating virtual memory");
+
+   // Initializing virtual memory managers.
+   if(_vheapinit(0, _VM_ALLDOS, _VM_ALLSWAP)==0)
+   {
+     printf("\nError initializing virtual memory manager\n");
+     exit(-1);
+   }
+
+   printf("\nVirtual memory manager initialization done");
+
+   // Allocating virtual memory.
+   for ( i=0; i&lt;2; i++ )
+   {
+     printf("\n\nAllocating memory... ");
+     for( n=0; n&lt;hmem; n++ )
+     {
+       vm_handle[n] = _vmalloc(SIZE);
+       if ( vm_handle[n]==_VM_NULL )
+       {
+         printf("Cannot allocate virtual memory. Entry = %d\n", n);
+         _vheapterm();
+         exit(-1);
+       }
+     }
+     printf("Done\n");
+
+     // Testing the virtual memory allocation.
+     printf("Testing... ");
+     for ( n=0; n&lt;hmem; n++ )
+     {
+       pntr = (char __far *)_vload(vm_handle[n], _VM_DIRTY);
+       if( pntr==NULL )
+       {
+         printf("Error in testing %d", n);
+         exit(-1);
+       }
+     }
+     printf("Done\n");
+
+    // Deleting virtual memory allocated earlier.
+    for ( n=0; n&lt;hmem; n++ )
+      _vfree(vm_handle[n]);
+
+    printf("Memory freed...Done\n");
+  }
+
+  _vheapterm();
+
+  return(1);
+</PRE>}
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For more information on virtual memory block allocation and page
+allocation, please see the following article in the Microsoft Knowledge
+Base:
+<P>
+ARTICLE-ID: <B><A href="../visualc/q93211.htm">Q93211</A></B>
+<PRE>TITLE     : INF: _vmalloc() May Allocate Larger Memory Block Than Expected
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.50 1.51 buglist8.00<BR>
+KBCategory: kbprg kbbuglist<BR>
+KBSubCategory: VirtualMem<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

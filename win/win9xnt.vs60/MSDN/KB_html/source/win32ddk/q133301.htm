@@ -1,0 +1,359 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Debug User-Mode Drivers Using WinDbg and WinDbgRm </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q133301">
+<META NAME="KBModify" CONTENT="1995/08/07">
+<META NAME="KBCreate" CONTENT="1995/07/27">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32ddk">
+<META NAME="Description" CONTENT="  This article is written mainly in the context of Windows NT printer drivers, but applies to all Windows NT user-mode drivers, as the debugging process is exactly the same.  It describes the prerequisites and steps to do source-level debugging of Wi...">
+<META NAME="Product" CONTENT="Win32 DDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QAU9,QBWS,QDN1,QAVX,QBXS,QADF,QAY2,QAOX,QA39,QAH4,QBV8,QAB9,QABI,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Debug User-Mode Drivers Using WinDbg and WinDbgRm</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 7, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q133301</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Device Driver Kit (DDK) for Windows NT,
+   versions 3.5 and 3.51
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article is written mainly in the context of Windows NT printer
+drivers, but applies to all Windows NT user-mode drivers, as the debugging
+process is exactly the same.
+<P>
+It describes the prerequisites and steps to do source-level debugging of
+Windows NT user-mode drivers using the WinDbg debugger and the WinDbgRm
+remote debugger utilities, which are included with the Microsoft Win32
+Software Development Kit (SDK). This information is to be used in addition
+to WinDbg's online help, the "Programmer's Guide" from the Microsoft Win32
+DDK, and the "Tools User's Guide" from the Microsoft Win32 SDK.
+<P>
+The Windows NT DDK includes sample source code for an assortment of Windows
+NT printer drivers, display drivers, multimedia drivers, and the Build
+utility.
+<P>
+The Microsoft Visual C++ compiler (version 2.0 or greater) is required to
+build Windows NT drivers.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Requirements for Remote Debugging</h3>
+ 
+<P>
+Two computers are required to perform debugging of user-mode drivers. This
+is because WinDbg must attach to, and occasionally halt, the Client-server
+run-time server subsystem (CSRSS.EXE) that owns Win32 user-mode drivers.
+CSRSS.EXE also handles local procedure calls (LPCs), and when halted it
+cannot handle LPCs or input, which effectively freezes the machine being
+debugged. However, the target computer running WinDbgRm can communicate to
+the Host (running WinDbg) via network or null-modem serial communications
+to resume operation.
+<P>
+You may use either the Free or Checked build of Windows NT on the target
+computer, where the free build gives much faster response, and the checked
+build helps to locate those really nasty bugs. You should use the Free
+build of Windows NT on the host computer.
+<P>
+<P><h3>Configuring the Target for Remote Debugging</h3>
+ 
+<P>
+To allow WinDbg (on the host) to attach and debug via CSRSS.EXE on the
+target computer, you must run REGEDT32.EXE and modify the following flag in
+the registry of the target computer:
+<P>
+<PRE>   HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SessionManager
+
+</PRE>Double-click the GlobalFlag, and change it as follows:
+<P>
+<PRE>   NT 3.5  -- from 0x211a0000 to 0x21120000  (clear bit 0x80000)
+   NT 3.51 -- from 0x00000000 to 0x00030000
+
+</PRE>This flag enables the ability to debug the affected computer's CSRSS.EXE
+file. Do not modify this flag on the host to prevent accidentally attaching
+WinDbg to the host's CSRSS.EXE file, which will cause the host computer to
+hang. You must shut down and reboot the target computer for this setting to
+take effect.
+<P>
+Use Print Manager in Control Panel to configure the target computer for the
+printer you will be using. Be sure to connect the printer to a local (not a
+network) port or FILE:, so that your printer driver will be used during
+later debugging.
+<P>
+Before initiating remote debugging, save any open files and exit any
+nonessential applications.
+<P>
+<P><h3>Debugger Configuration</h3>
+ 
+<P>
+Perform the following steps in the order listed to verify that both
+computers are configured properly for remote debugging:
+<P>
+On the Target:
+
+<OL><P><LI>Start WinDbgRm on the target computer.
+
+<P><LI>On the Options menu, choose Transport DLL. Select the appropriate
+   transport layer in the Known Transport Layers window. Select the
+   Default Transport Layer check box to retain this setting for future
+   sessions.
+<P>
+</OL>On the Host:
+
+<OL><P><LI>Start WinDbg on the host computer.
+
+<P><LI>On the Options menu, choose Debugger DLLs, and configure the matching
+   communications settings in the Transport Layer list.
+<P>
+   NOTE: If you use TLPIPES you do not need the "\\" prefix for the host or
+   target computer name.
+
+<P><LI>On the Options menu, choose User DLLs. To inform WinDbg where the .DBG
+   symbol files can be found for host system components, specify the path
+   in the Symbol Search Path field of the User DLLs dialog box.
+
+<P><LI>On the Program menu, choose Save As to save a workspace that will
+   include your communications configuration so that you can retrieve it
+   later by choosing Open from the Program menu.
+
+<P><LI>On the Window menu, choose Command to pop up a Command window.
+
+<P><LI>At the Command window prompt, enter ".attach -1" to attach to the
+   CSRSS.EXE process on the target. If connecting to the target computer is
+   successful, "Module load: CSRSS.DBG (symbols loaded)" will be displayed
+   on the host computer's WinDbg Command window.
+<P>
+   As an alternative, on the Run menu, choose Attach. Select "-1 csrss.exe"
+   in the Process Selection Dialog box that appears. Then click the Select
+   button. When the WinDbg Process Attach message box appears, click Yes.
+
+<P><LI>After the system DLLs are loaded, the WinDbg Command window on the host
+   reports "Process attached -- stopped" and provides a prompt. Be sure
+   that the above connection and other steps work before proceeding.
+<P>
+   NOTE: WinDbg and WinDbgRm cannot detach from an attached process, and
+   therefore there is no convenient way to end a debugging session. No
+   matter what you do to end the session, you will probably cause the
+   target computer to hang and have to turn off the computer. On the host,
+   you may be able to close WinDbg; if not, you should be able to terminate
+   WinDbg by choosing End Task from the Windows NT's Task List. (Press
+   CTRL+ESC or double-click in unused screen space to bring up the Task
+   List.) Ordinarily, you should not have to reboot the host. WinDbg for
+   future versions of Windows NT should be able to detach from attached
+   processes.
+<P>
+   Further information on the configuration of the two computers can be
+   found in WinDbg's Help menu, the "Programmer's Guide," and the "Tools
+   User's Guide."
+<P>
+</OL><h3>Loading a Checked Driver</h3>
+ 
+
+<OL><P><LI>Follow the "Programmer's Guide" for building a checked version of your
+   driver.
+
+<P><LI>On both the host and target, change to the directory containing the
+   existing driver such as \%SystemRoot%\SYSTEM32\SPOOL\DRIVERS\W32X86\1
+   for the x86 PostScript driver PSCRIPT.DLL.
+
+<P><LI>Save the original driver.
+
+<P><LI>Copy the newly built checked driver from %DDK%\lib\*\checked into the
+   appropriate directory on both the target and host. The copy on the
+   target will be run during debugging; the copy on the host will be used
+   by WinDbg for getting debugging information. (A future version of WinDbg
+   may allow communicating symbolic information from the target to the
+   host.) More sophisticated methods of installing the driver are possible,
+   but are not covered in this article.
+<P>
+   NOTE: If you have not printed since booting up, you can move, delete, or
+   rename the printer driver; otherwise, you can use "net stop spooler"
+   from the command line to unload the spooler and your driver. Then remove
+   the original printer driver. Use "net start spooler" to reload the
+   spooler and your new driver.
+<P>
+   NOTE: When testing and replacing your printer driver via the "net
+   stop/start" commands, if your driver fails to unload properly this
+   command may not work. This is because there may still be a handle to
+   your (now corrupt) driver in memory, which can be seen with the PVIEW
+   utility (included with the Win32 SDK) for the CSRSS.EXE process on the
+   target. You should then shut down and reboot the machine.
+<P>
+</OL><h3>Debugging</h3>
+ 
+<P>
+Keep in mind that you will be running a checked driver and a test
+application on the target computer running WinDbgRm. The host computer,
+running WinDbg, is for debugging purposes.
+
+<OL><P><LI>Attach the host to the target as noted above if not already connected.
+
+<P><LI>On the host, choose Debug from the Options menu, and fill in your Source
+   Search Paths in the Debugger Options dialog box to inform WinDbg where
+   the source code is located.
+<P>
+   NOTE: the source code should not be located on the target machine.
+
+<P><LI>On the host, choose Open from the File menu to open your source code in
+   a window. Scroll to the desired line(s) in your code and choose
+   Breakpoints from the Debug menu, or select the Breakpoint icon (stop
+   hand) on the toolbar. The line will then be selected.
+<P>
+   NOTE: breakpoints can be set or cleared only when the target is halted.
+   If the target is running, click the Halt (square) icon on the toolbar.
+   If the target is not running, the Halt icon will be disabled.
+<P>
+   NOTE: There is currently no way to step into the DrvEnableDriver
+   function for user-mode drivers such as display drivers and some
+   multimedia drivers that are started at boot-time. This is because the
+   driver is already loaded in the system before you can run WinDbgRm. You
+   cannot break into this function using kernel-mode debugging either. The
+   current method is to use debug print statements in this function while
+   starting up the target in kernel-debugger mode. See the "Programmer's
+   Guide" for enabling kernel debugging on the target.
+
+<P><LI>Save your workspace as noted above.
+
+<P><LI>Enter "g" in WinDbg's Command window on the host, or click the Go icon
+   (arrow) on the toolbar to continue.
+
+<P><LI>On the target, run a test application such as Notepad and print. This
+   assumes the correct printer driver is already installed, selected, and
+   connected to a local port or to FILE:. Before printing starts, WinDbg's
+   Command window on the host should show that the driver and its symbols
+   are loaded.
+<P>
+   NOTE: if you get an Unresolved Breakpoint dialog box in WinDbg on the
+   host, choose the Quiet Defer button.
+
+<P><LI>WinDbg on the host may break several times for exceptions; to continue,
+   enter "gn" in the Command window to ignore the (typically harmless)
+   exceptions.
+<P>
+   To automate this, choose Exceptions from the Options menu. Add the
+   exception number and name in the appropriate fields. Choose Enable from
+   the Action list. Enter "gn" in the First and Second Chance Command
+   entries. Windows NT exceptions are defined in %DDK%\src\inc\ntstatus.h.
+<P>
+   NOTE: An exception commonly found in the sample PostScript printer
+   driver is 0xC0000037, STATUS_PORT_DISCONNECTED. This is because the
+   PostScript sample uses kernel-mode debug print statements. When you are
+   debugging in user-mode, the kernel-mode print statements (to the debug
+   port) cause this (harmless) exception. However, if the checked build
+   PostScript driver is run without the debugger attached, the test
+   application will generate the exception and terminate. The kernel-mode
+   debug print statements are stripped out in a free build.
+<P>
+   The choice of kernel-mode debug print statements in combination with (or
+   instead of) user-mode debug print statements is clearly a personal
+   choice, as long as you understand their use. Debug print statements are
+   detailed in the "Programmer's Guide."
+
+<P><LI>When a breakpoint is hit, source level debugging of your user-mode
+   driver proceeds in a manner similar to that used in local source code
+   debugging of applications or DLLs, but interacts with the debuggee on
+   the target instead of on the host.
+<P>
+</OL>NOTE: if you missed the breakpoint, check to ensure that your Source Search
+Paths and your Symbol Search Paths are correct, and that your symbols match
+on the target and host.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.50 3.51<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: ntddkdebug ntddkprnt ntddkmmedia ntddkvideo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 7, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

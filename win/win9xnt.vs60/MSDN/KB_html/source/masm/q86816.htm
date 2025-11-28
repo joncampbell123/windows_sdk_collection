@@ -1,0 +1,248 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Mixed C and MASM with MASM Main Language, C Run-Time </TITLE>
+
+<!--STYLE_BEGIN-->
+<LINK REL="STYLESHEET" href="/support/kbstyle.css" TYPE="text/css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q86816 ">
+<META NAME="KBModify" CONTENT="1995/01/23">
+<META NAME="KBCreate" CONTENT="1992/07/19">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; masm">
+<META NAME="Description" CONTENT="  The following steps should be considered when doing mixed-language programming between the Microsoft Macro Assembler (MASM) and Microsoft C with MASM as the main language, but the C startup code is to be brought in to enable the assembly module to ...">
+<META NAME="Product" CONTENT="Macro Assembler">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBFY,QAGI,QAH4,QA7R,QAPN,QBII,QBC7,QAIF,QAHE,QAMA,QAYA,QAEF,QDIV,QBC9,QBC8 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Mixed C and MASM with MASM Main Language, C Run-Time</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 23, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q86816 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Macro Assembler for MS-DOS, versions 5.0, 5.1, 5.1a, 6.0,
+   6.0a, and 6.0b
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The following steps should be considered when doing mixed-language
+programming between the Microsoft Macro Assembler (MASM) and Microsoft
+C with MASM as the main language, but the C startup code is to be
+brought in to enable the assembly module to call a C run-time routine:
+
+<OL><P><LI>Include the statement
+<P>
+<P><PRE>      .MODEL &lt;model&gt;, c
+</PRE><P>
+   in the assembly module to ensure that C naming and calling
+   conventions are used and that the modules use the same default
+   segments. The &lt;model&gt; will be small, medium, compact, or large.
+
+<P><LI>Use the END directive in the assembly module, but do not specify
+   the entry point.
+
+<P><LI>The start of the assembly module should be labeled
+<P>
+<P><PRE>      main:
+</PRE><P>
+   -or-
+<P>
+<P><PRE>      main PROC
+</PRE><P>
+   and the label should be made public with the following statement:
+<P>
+<P><PRE>      PUBLIC main
+</PRE>
+<P><LI>Include the following statement to force a load of the C startup
+   code:
+<P>
+<P><PRE>      EXTRN _acrtused:abs
+</PRE>
+<P><LI>Assemble the assembly module with /Mx to preserve the case of
+   nonlocal names. If using MASM version 6.0 or later, use /Cx to
+   preserve the case of nonlocal names.
+<P>
+</OL>Note that the stack declaration comes from the C startup code. The
+entry point is in the C startup code, so no entry point should be
+specified in the assembler module with the END directive. Doing so
+will cause only a part of the necessary initialization to be performed
+(that is, a stack will be created, but SS will not get its segment
+value).
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following is a mixed-language example. There is one C module and
+one assembly module that must be compiled and then linked together. No
+special link options are needed.
+<P>
+The example declares two words, arg1 and arg2, calls the C run-time
+routine printf to print out their values to the screen, and passes
+their addresses to a C routine. The C routine swaps the values of arg1
+and arg2. The values of arg1 and arg2 are printed out a second time to
+show that they have been swapped.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed: none
+*/
+
+void ptrswap( int *ptr1, int *ptr2 )
+</PRE></OL>{
+<PRE>    int temp;
+
+    temp = *ptr1;
+    *ptr1 = *ptr2;
+    *ptr2 = temp;
+</PRE>}
+<P>
+ 
+<P>
+; Assemble options needed: /Mx
+<P>
+<PRE>        .MODEL small, c
+
+        .DATA
+
+arg1    DW     1234
+arg2    DW     4321
+format1 DB     "Arg1: %d", 10, 0      ; Format string for printf
+format2 DB     "Arg2: %d", 10, 10, 0  ; Format string for printf
+
+EXTRN  _acrtused:abs              ; Bring in C startup
+
+        .CODE
+
+EXTRN  ptrswap:proc               ; External C routine
+EXTRN  printf:proc                ; External C run-time routine
+PUBLIC main                       ; C startup requires the name _main
+
+</PRE>main:
+<PRE>        MOV    ax, arg1
+        PUSH   ax                 ; Push 2nd argument (C convention)
+        MOV    bx, offset format1
+        PUSH   bx                 ; Push 1st argument (C convention)
+        CALL   printf             ; Call C run-time routine
+
+        MOV    ax, arg2
+        PUSH   ax                 ; Push 2nd argument (C convention)
+        MOV    bx, offset format2
+        PUSH   bx                 ; Push 1st argument (C convention)
+        CALL   printf             ; Call C run-time routine
+
+        MOV    bx, offset arg2
+        PUSH   bx                 ; Push 2nd argument (C convention)
+        MOV    bx, offset arg1
+        PUSH   bx                 ; Push 1st argument (C convention)
+        CALL   ptrswap            ; Call C routine from module
+
+        MOV    ax, arg1
+        PUSH   ax                 ; Push 2nd argument (C convention)
+        MOV    bx, offset format1
+        PUSH   bx                 ; Push 1st argument (C convention)
+        CALL   printf             ; Call C run-time routine
+
+        MOV    ax, arg2
+        PUSH   ax                 ; Push 2nd argument (C convention)
+        MOV    bx, offset format2
+        PUSH   bx                 ; Push 1st argument (C convention)
+        CALL   printf             ; Call C run-time routine
+
+        MOV    ah, 4ch            ; Terminate program
+        int    21h
+
+        END                       ; Entry point will be specified by
+                                  ;    the C startup code
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf non-local 5.00 5.10 5.10a 6.00 6.00a<BR>
+6.00b<BR>
+KBCategory: kbprg<BR>
+KBSubCategory: MASMLngIss<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 23, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

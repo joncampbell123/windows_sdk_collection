@@ -1,0 +1,190 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Implementing a Unique, Increasing Key Value </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q75164 ">
+<META NAME="KBModify" CONTENT="1997/04/25">
+<META NAME="KBCreate" CONTENT="1991/08/12">
+<META NAME="Keywords" CONTENT="kbusage SSrvLock SSrvProg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  It is sometimes necessary for a table to have a unique key value for every row. This is usually some type of ID column. When that unique value is not related to the data in the row, this can present a challenge.  This article describes a method for...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAKD,QAXB,QAKH,QABM,QA5V,QACI,QAC1,QBD2,QA9N,QASR,QAPN,QAGU,QAKC,QBXJ,QAYL V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Implementing a Unique, Increasing Key Value</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q75164 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+It is sometimes necessary for a table to have a unique key value for
+every row. This is usually some type of ID column. When that unique
+value is not related to the data in the row, this can present a challenge.
+<P>
+This article describes a method for creating a unique value for each row.
+These values are generated as each new row is inserted, and can be
+implemented in a stored procedure or a trigger. Note that this method
+guarantees unique values in a multi-user environment.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+If you use this method, you must use a table to store the current maximum
+value.
+<P>
+Create this table using:
+<P>
+<PRE>   CREATE TABLE MAX_ID_TABLE (MAX_ID INT)
+
+</PRE>This MAX_ID_TABLE needs only one row in it. Add that one row with an
+initial value of zero using:
+<P>
+<PRE>   INSERT INTO MAX_ID_TABLE (MAX_ID) VALUES (0)
+
+</PRE>In a single-user environment, the solution is simple; one user just
+increments this maximum value, then uses that value in the next row to
+be inserted. However, SQL Server is a multi-user database. With many
+users accessing and updating the table simultaneously, you need to
+guarantee that no two users obtain the same maximum value.
+<P>
+This method takes advantage of the locking mechanisms of SQL Server to
+ensure that each user obtains a unique key value. When a user does a
+BEGIN TRANSACTION, SQL Server maintains all page locks until the COMMIT
+TRANSACTION is performed. The basis of this method is the following
+transaction:
+<P>
+<PRE>   BEGIN TRANSACTION
+      UPDATE MAX_ID_TABLE SET MAX_ID = MAX_ID + 1
+      DECLARE @MAX INT
+      SELECT @MAX = MAX_ID FROM MAX_ID_TABLE
+      INSERT INTO INFO_TABLE (UNIQUE_ID,...)
+         VALUES (@MAX,...)
+   COMMIT TRANSACTION
+
+</PRE>In the transaction listed above, immediately following the BEGIN
+TRANSACTION is an UPDATE statement. This UPDATE gets an exclusive lock on
+the page that contains the current MAX_ID, and increments the value in one
+step. This exclusive lock keeps all other users from reading or updating
+this page (and thus MAX_ID), and is maintained until the COMMIT
+TRANSACTION. Then it declares a local variable @MAX, and stores the new
+unique value in that variable using a SELECT statement. The local variable
+is then used to INSERT the new row with the unique key value. The final
+step is to issue the COMMIT TRANSACTION, which releases all locks and
+allows the next user to access the MAX_ID value.
+<P>
+Below is a variation of this transaction that minimizes the time inside the
+BEGIN TRANSACTION..COMMIT TRANSACTION, thereby also minimizing the length
+of time that page locks are held. Note that with this transaction, the risk
+of creating "holes" in the list of unique values exists. This occurs when
+the UPDATE succeeds in incrementing the maximum value but the INSERT fails.
+<P>
+<PRE>   BEGIN
+      DECLARE @MAX INT
+      BEGIN TRANSACTION
+         UPDATE MAX_ID_TABLE SET MAX_ID = MAX_ID + 1
+         SELECT @MAX = MAX_ID FROM MAX_ID_TABLE
+      COMMIT TRANSACTION
+      INSERT INTO INFO_TABLE (UNIQUE_ID,...)
+         VALUES (@MAX,...)
+   END
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: performance optimization and tuning<BR>
+Keywords            : kbusage SSrvLock SSrvProg<BR>
+Version             : 4.2<BR>
+Platform            : OS/2<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,292 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Drawing Transparent Bitmaps </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q79212 ">
+<META NAME="KBModify" CONTENT="1997/07/23">
+<META NAME="KBCreate" CONTENT="1991/12/15">
+<META NAME="Keywords" CONTENT="GdiBmp kb16bitonly kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="   A portion of a graphic image that does not change the contents of the screen is termed  transparent.  The DrawIcon function can create an image that contains transparent portions. It is also possible to obtain this functionality using the BitBlt f...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAG9,QBE7,QBE6,QAI4,QAB2,QAY5,QADR,QA9N,QAH4,QASB,QAEF,QAPG,QBXS,QAU4,QAY4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Drawing Transparent Bitmaps</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 23, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q79212 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows, versions
+   3.0 and 3.1
+</UL> 
+<P>
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+A portion of a graphic image that does not change the contents of the
+screen is termed "transparent." The DrawIcon function can create an
+image that contains transparent portions. It is also possible to
+obtain this functionality using the BitBlt function; however, there
+are some additional steps involved.
+<P>
+The first step is to obtain the contents of the area where the bitmap
+will be drawn and to store this background image in a memory display
+context (DC). Mask out the area of the background that corresponds to
+the nontransparent portion of the image bitmap and mask out all
+transparent pixels from the image bitmap. Use the XOR raster operation
+to merge the image bitmap into the background bitmap. Finally, use the
+BitBlt function to move the merged image to the destination DC.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following nine steps describe a process used to draw transparent
+bitmaps:
+
+<OL><P><LI>Create a DC to hold the image bitmap.
+
+<P><LI>Select the image bitmap into the DC.
+
+<P><LI>Create a memory DC to hold the final image. This is the destination
+   DC.
+
+<P><LI>Copy the portion of the screen that will be covered by the image
+   into the destination DC.
+
+<P><LI>Create an "AND mask" that contains the mask of the colors to draw
+   (the nontransparent portions of the image). To do this, perform
+   the following three steps:
+<P>
+   a. Set the background color of the image DC to the color that will
+<P><PRE>      be transparent in the image.
+</PRE><P>
+   b. Create a monochrome DC.
+<P>
+   c. BitBlt the image into the monochrome DC.
+<P>
+   This will create an AND mask of the bitmap by setting pixels that
+   match the background color to white (1), and setting all other
+   pixels to black (0).
+
+<P><LI>Use BitBlt with the SRCAND raster operation code to copy the AND
+   mask onto the destination DC.
+
+<P><LI>Use BitBlt with the SRCAND raster operation code to copy the
+   inverse of the AND mask onto the image DC.
+
+<P><LI>Use BitBlt with the SRCPAINT raster operation code to copy the
+   image DC onto the destination DC.
+
+<P><LI>Use BitBlt to copy the contents of the destination DC to the
+   appropriate portion of the screen.
+<P>
+</OL>The following code is a function that demonstrates the above steps:
+<P>
+<PRE>   void DrawTransparentBitmap(HDC hdc, HBITMAP hBitmap, short xStart,
+                           short yStart, COLORREF cTransparentColor)
+   {
+   BITMAP     bm;
+   COLORREF   cColor;
+   HBITMAP    bmAndBack, bmAndObject, bmAndMem, bmSave;
+   HBITMAP    bmBackOld, bmObjectOld, bmMemOld, bmSaveOld;
+   HDC        hdcMem, hdcBack, hdcObject, hdcTemp, hdcSave;
+   POINT      ptSize;
+
+   hdcTemp = CreateCompatibleDC(hdc);
+   SelectObject(hdcTemp, hBitmap);   // Select the bitmap
+
+   GetObject(hBitmap, sizeof(BITMAP), (LPSTR)&amp;bm);
+   ptSize.x = bm.bmWidth;            // Get width of bitmap
+   ptSize.y = bm.bmHeight;           // Get height of bitmap
+   DPtoLP(hdcTemp, &amp;ptSize, 1);      // Convert from device
+                                     // to logical points
+
+   // Create some DCs to hold temporary data.
+   hdcBack   = CreateCompatibleDC(hdc);
+   hdcObject = CreateCompatibleDC(hdc);
+   hdcMem    = CreateCompatibleDC(hdc);
+   hdcSave   = CreateCompatibleDC(hdc);
+
+   // Create a bitmap for each DC. DCs are required for a number of
+   // GDI functions.
+
+   // Monochrome DC
+   bmAndBack   = CreateBitmap(ptSize.x, ptSize.y, 1, 1, NULL);
+
+   // Monochrome DC
+   bmAndObject = CreateBitmap(ptSize.x, ptSize.y, 1, 1, NULL);
+
+   bmAndMem    = CreateCompatibleBitmap(hdc, ptSize.x, ptSize.y);
+   bmSave      = CreateCompatibleBitmap(hdc, ptSize.x, ptSize.y);
+
+   // Each DC must select a bitmap object to store pixel data.
+   bmBackOld   = SelectObject(hdcBack, bmAndBack);
+   bmObjectOld = SelectObject(hdcObject, bmAndObject);
+   bmMemOld    = SelectObject(hdcMem, bmAndMem);
+   bmSaveOld   = SelectObject(hdcSave, bmSave);
+
+   // Set proper mapping mode.
+   SetMapMode(hdcTemp, GetMapMode(hdc));
+
+   // Save the bitmap sent here, because it will be overwritten.
+   BitBlt(hdcSave, 0, 0, ptSize.x, ptSize.y, hdcTemp, 0, 0, SRCCOPY);
+
+   // Set the background color of the source DC to the color.
+   // contained in the parts of the bitmap that should be transparent
+   cColor = SetBkColor(hdcTemp, cTransparentColor);
+
+   // Create the object mask for the bitmap by performing a BitBlt
+   // from the source bitmap to a monochrome bitmap.
+   BitBlt(hdcObject, 0, 0, ptSize.x, ptSize.y, hdcTemp, 0, 0,
+          SRCCOPY);
+
+   // Set the background color of the source DC back to the original
+   // color.
+   SetBkColor(hdcTemp, cColor);
+
+   // Create the inverse of the object mask.
+   BitBlt(hdcBack, 0, 0, ptSize.x, ptSize.y, hdcObject, 0, 0,
+          NOTSRCCOPY);
+
+   // Copy the background of the main DC to the destination.
+   BitBlt(hdcMem, 0, 0, ptSize.x, ptSize.y, hdc, xStart, yStart,
+          SRCCOPY);
+
+   // Mask out the places where the bitmap will be placed.
+   BitBlt(hdcMem, 0, 0, ptSize.x, ptSize.y, hdcObject, 0, 0, SRCAND);
+
+   // Mask out the transparent colored pixels on the bitmap.
+   BitBlt(hdcTemp, 0, 0, ptSize.x, ptSize.y, hdcBack, 0, 0, SRCAND);
+
+   // XOR the bitmap with the background on the destination DC.
+   BitBlt(hdcMem, 0, 0, ptSize.x, ptSize.y, hdcTemp, 0, 0, SRCPAINT);
+
+   // Copy the destination to the screen.
+   BitBlt(hdc, xStart, yStart, ptSize.x, ptSize.y, hdcMem, 0, 0,
+          SRCCOPY);
+
+   // Place the original bitmap back into the bitmap sent here.
+   BitBlt(hdcTemp, 0, 0, ptSize.x, ptSize.y, hdcSave, 0, 0, SRCCOPY);
+
+   // Delete the memory bitmaps.
+   DeleteObject(SelectObject(hdcBack, bmBackOld));
+   DeleteObject(SelectObject(hdcObject, bmObjectOld));
+   DeleteObject(SelectObject(hdcMem, bmMemOld));
+   DeleteObject(SelectObject(hdcSave, bmSaveOld));
+
+   // Delete the memory DCs.
+   DeleteDC(hdcMem);
+   DeleteDC(hdcBack);
+   DeleteDC(hdcObject);
+   DeleteDC(hdcSave);
+   DeleteDC(hdcTemp);
+   }
+
+</PRE></OL>The following is an example of how the DrawTransparentBitmap function
+might be called:
+<P>
+<PRE>   DrawTransparentBitmap(hdc,         // The destination DC.
+                         hBitmap,     // The bitmap to be drawn.
+                         xPos,        // X coordinate.
+                         yPos,        // Y coordinate.
+                         0x00FFFFFF); // The color for transparent
+                                      // pixels (white, in this
+                                      // example).
+
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : GdiBmp kb16bitonly kbprg<BR>
+Version             : 3.0 3.1<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 23, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

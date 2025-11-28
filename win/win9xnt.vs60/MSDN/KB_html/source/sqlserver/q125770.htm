@@ -1,0 +1,283 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Locking Behavior of Updates and Deletes in SQL Server </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q125770">
+<META NAME="KBModify" CONTENT="1997/04/15">
+<META NAME="KBCreate" CONTENT="1995/02/05">
+<META NAME="Keywords" CONTENT="kbprg SQLFAQ SSrvLock SSrvWinNT kbfaq">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  UPDATE and DELETE statements that require a table scan result in an exclusive lock held on the modified table.  MORE INFORMATION  Page 103 the SQL Server  Troubleshooting Guide  states:     ...an exclusive table lock is usually acquired for a mass ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAXB,QA28,QATJ,QABT,QAC1,QAA8,QBD2,QALQ,QAN0,QABM,QBE7,QBE6,QAK7,QAJ6,QAA5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Locking Behavior of Updates and Deletes in SQL Server</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 15, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q125770</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 4.21
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+UPDATE and DELETE statements that require a table scan result in an
+exclusive lock held on the modified table.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Page 103 the SQL Server "Troubleshooting Guide" states:
+<P>
+<PRE>   ...an exclusive table lock is usually acquired for a mass update
+   as a result.
+
+</PRE>Updates and deletes that do not use an index to search for rows that
+require modifications also require an exclusive table lock. This lock is
+not generated as a result of page lock promotion, but rather an immediate
+exclusive table lock.
+<P>
+Consider the following example from the pubs database:
+<P>
+<PRE>   set showplan on
+   go
+   begin tran
+   update authors
+   set city = 'Ft. Worth'
+   where au_id = '172-32-1176'
+   go
+
+</PRE>The results of the query show that a clustered index on au_id can be
+used to satisfy the search for a row to update:
+<P>
+<PRE>   STEP 1
+   The type of query is BEGINXACT
+   STEP 1
+   The type of query is UPDATE
+   The update mode is direct
+   FROM TABLE
+   authors
+   Nested iteration
+   Using Clustered Index
+   TO TABLE
+   authors
+
+</PRE>Since the clustered index is used, only exclusive page locks are
+necessary for a consistent transaction.
+<P>
+The output from running the sp_lock command with this transaction
+active is as follows:
+<P>
+<PRE>spid   locktype             table_id    page        dbname
+</PRE>------ -------------------- ----------- ----------- ---------------
+<PRE>5      Ex_intent            16003088    0           pubs
+5      Ex_page              16003088    352         pubs
+5      Update_page          16003088    352         pubs
+
+</PRE>NOTE: An exclusive intent lock is held on the table to prevent
+another exclusive table lock.
+<P>
+However, if the table authors has no index that can be used for
+au_id, then the same query will require a table scan:
+<P>
+<PRE>   STEP 1
+   The type of query is BEGINXACT
+   STEP 1
+   The type of query is UPDATE
+   The update mode is deferred
+   FROM TABLE
+   authors
+   Nested iteration
+   Table Scan
+   TO TABLE
+   authors
+
+</PRE>The query in this example requires an exclusive table lock on authors,
+because the server must perform a table scan to see which rows are
+required for modification. Because no index is available for au_id, the
+optimizer does not have any information to determine that only one row
+needs to be modified.
+<P>
+The output from running the sp_lock command with this transaction
+active is as follows:
+<P>
+<PRE>spid   locktype             table_id    page        dbname
+</PRE>------ -------------------- ----------- ----------- ---------------
+<PRE>5      Ex_table             16003088    0           pubs
+
+</PRE>To avoid an exclusive table lock in this type of scenario, proper index
+design should be evaluated similar to considerations for SELECT queries. If
+the column modified in the SET clause is the same as the one used for
+searching, the performance trade offs associated with maintenance
+of the index must be evaluated with concurrency benefits.
+<P>
+Statements other than updates and deletes can also require exclusive or
+shared table locks. The following table is a summary of locking behavior
+for INSERT, SELECT, UPDATE, DELETE, and other Transact-SQL statements for
+SQL Server. The table also contains information about which lock types are
+allowed concurrently between transactions and information about lock
+promotions.
+<P>
+<PRE>               Statement                  Table Lock      Page Lock
+</PRE> 
+<P>
+<PRE>               Insert                     IX              X
+ Using         Select                     IS              S
+ Index         Select w/Holdlock          IS              S
+               Update                     IX              U,X
+               Delete                     IX              X
+ Without       Select                     IS              S
+ Using         Select w/Holdlock          S               --
+ Index         Update                     X               --
+               Delete                     X               --
+               Create clust. Index        X               --
+               Create non-cl. Index       S               --
+
+</PRE>Lock Compatibility - Table Locks
+<P>
+<PRE>                IS      IX      S      X
+</PRE> 
+<P>
+<PRE>   IS           YES     YES     YES    NO
+   IX           YES     YES     NO     NO
+   S            YES     NO      YES    NO
+   X            NO      NO      NO     NO
+
+</PRE>Lock Compatibility - Page Locks
+<P>
+<PRE>                S      U      X
+</PRE> 
+<P>
+<PRE>   S            YES    YES    NO
+   U            YES    NO     NO
+   X            NO     NO     NO
+
+</PRE><h3>Lock Types</h3>
+ 
+<P>
+IS = Intent Shared; Intent locks flag at table level type of page
+<PRE>     locks held
+</PRE>IX = Intent Exclusive
+S  = Shared
+X  = Exclusive
+U  = Update; Used for read/modify/write operations
+<P>
+Lock Promotion: Server will try to satisfy requests with page locks first.
+During a transaction, if more than 200 page locks per SDES are held, it
+will escalate to a Shared or Exclusive table lock instead, which lowers
+lock overhead.
+<P>
+This table can also be found on the Microsoft TechNet CD under the
+title "Summary of Locks on SQL Server."
+<P>
+For additional information regarding concurrency and locking topics, please
+see the following articles in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q75722.htm">Q75722</A></B>
+   TITLE     : INF: Reducing Lock Contention in SQL Server
+
+   ARTICLE-ID: <B><A href="../sqlserver/q122485.htm">Q122485</A></B>
+   TITLE     : INF: Identifying SPID Responsible for Lock Chain
+
+   ARTICLE-ID: <B><A href="../sqlserver/q45542.htm">Q45542</A></B>
+   TITLE     : INF: Shared Access to Modified Data
+
+   ARTICLE-ID: <B><A href="../sqlserver/q43199.htm">Q43199</A></B>
+   TITLE     : INF: Concurrency and Consistency and SQL Server Alternatives
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Windows NT<BR>
+Keywords            : kbprg SQLFAQ SSrvLock SSrvWinNT kbfaq<BR>
+Version             : 4.21 4.21a<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 15, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

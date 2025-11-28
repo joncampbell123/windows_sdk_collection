@@ -1,0 +1,351 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Control Access to a Windows NT Service </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q180116">
+<META NAME="KBModify" CONTENT="1998/01/29">
+<META NAME="KBCreate" CONTENT="1998/01/29">
+<META NAME="Keywords" CONTENT="BseSecurity BseService kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Windows NT Services are securable objects in that they are associated with a Security Descriptor and a Discretionary Access Control List (DACL). The DACL associated with the Service has sole control over access to the Service. No special user right...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QACK,QATX,QAMB,QA1S,QAI5,QBW7,QBWP,QDN9,QBWG,QAI4,QDIT,QA7O,QAW6,QAPN,QAOE V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Control Access to a Windows NT Service</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 29, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q180116</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Windows NT Services are securable objects in that they are associated with
+a Security Descriptor and a Discretionary Access Control List (DACL). The
+DACL associated with the Service has sole control over access to the
+Service. No special user rights or privileges are needed to manipulate a
+Service. An application requests a handle to a Service via the OpenService
+or CreateService API. If the user has the requested access to the Service
+object, a valid handle is returned. If the requested access is denied by
+the system, an error code 5 or "access denied" is returned. The following
+specific access types are defined for a Service:
+<P>
+<PRE>   Access                        Description
+   ---------------------------------------------------------------
+   SERVICE_CHANGE_CONFIG         Change Service configuration
+                                 information
+   SERVICE_ENUMERATE_DEPENDENTS  Enumerate all Services dependent
+                                 on the Service
+   SERVICE_INTERROGATE           Ask the Service to report status
+                                 immediately
+   SERVICE_PAUSE_CONTINUE        Pause or continue
+   SERVICE_QUERY_CONFIG          Query Service configuration
+                                 information
+   SERVICE_QUERY_STATUS          Query the status
+   SERVICE_START                 Start
+   SERVICE_STOP                  Stop
+   SERVICE_USER_DEFINED_CONTROL  Send a user defined control
+
+</PRE>Other access types defined for a Service include READ_CONTROL, WRITE_OWNER,
+WRITE_DAC, and DELETE. These access types apply to all securable objects.
+Please refer to the Platform SDK Documentation for more information.
+<P>
+When installing a Service through the CreateService API, the operating
+system creates a DACL for the Service. The following DACL is created:
+<P>
+<PRE>   User or Group                 Access
+   ---------------------------------------------------------------
+   The Everyone Group            SERVICE_ENUMERATE_DEPENDENTS
+                                 SERVICE_INTERROGATE
+                                 SERVICE_QUERY_CONFIG
+                                 SERVICE_QUERY_STATUS
+                                 SERVICE_USER_DEFINED_CONTROL
+                                 READ_CONTROL
+
+   The Power Users Group         SERVICE_ENUMERATE_DEPENDENTS
+   LocalSystem (System)          SERVICE_INTERROGATE
+                                 SERVICE_PAUSE_CONTINUE
+                                 SERVICE_QUERY_CONFIG
+                                 SERVICE_QUERY_STATUS
+                                 SERVICE_START
+                                 SERVICE_STOP
+                                 SERVICE_USER_DEFINED_CONTROL
+                                 READ_CONTROL
+
+   The Administrators Group      SERVICE_CHANGE_CONFIG
+
+   The System Operators Group    SERVICE_ENUMERATE_DEPENDENTS
+                                 SERVICE_INTERROGATE
+                                 SERVICE_PAUSE_CONTINUE
+                                 SERVICE_QUERY_CONFIG
+                                 SERVICE_QUERY_STATUS
+                                 SERVICE_START
+                                 SERVICE_STOP
+                                 SERVICE_USER_DEFINED_CONTROL
+                                 READ_CONTROL
+                                 WRITE_OWNER
+                                 WRITE_DAC
+                                 DELETE
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+An application can create or modify the DACL associated with a Service
+object to control access. Unfortunately, the CreateService API does not
+allow you to pass a SECURITY_ATTRIBUTES or SECURITY_DESCRIPTOR structure.
+The DACL associated with a Service object can be obtained via the
+QueryServiceObjectSecurity API and can be set via the
+SetServiceObjectSecurity API. Any changes made to the SECURITY_DESCRIPTOR
+associated with the Service object are persistent until the Service is
+removed from the system.
+<P>
+The following sample code creates and sets a new DACL for the Service
+specified in the command line. The sample code merges one Access Control
+Entry (ACE) to the existing DACL for the Service. The new ACE grants the
+Guest account start, stop, delete and READ_CONTROL access to the specified
+Service. Access to the Service can be modified by the AccessPermissions
+parameter passed to BuildExplicitAccessWithName().
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+Libraries required: ADVAPI32.LIB
+<P>
+<PRE>   #include &lt;windows.h&gt;
+   #include &lt;aclapi.h&gt;
+   #include &lt;stdio.h&gt;
+   #include &lt;tchar.h&gt;
+
+   void DisplayError(DWORD dwError, LPTSTR pszAPI)
+   {
+      LPVOID lpvMessageBuffer;
+
+      FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                    FORMAT_MESSAGE_FROM_SYSTEM,
+                    NULL, dwError,
+                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+             (LPTSTR)&amp;lpvMessageBuffer, 0, NULL);
+
+      //Now display this string.
+      _tprintf(TEXT("ERROR: API        = %s.\n"), pszAPI);
+      _tprintf(TEXT("       error code = %u.\n"), dwError);
+      _tprintf(TEXT("       message    = %s.\n"),
+                   (LPTSTR)lpvMessageBuffer);
+
+      // Free the buffer allocated by the system.
+      LocalFree(lpvMessageBuffer);
+
+      ExitProcess(dwError);
+   }
+
+   void _tmain(int argc, TCHAR *argv[])
+   {
+      BOOL                 bDaclPresent   = FALSE;
+      BOOL                 bDaclDefaulted = FALSE;
+      DWORD                dwError        = 0;
+      DWORD                dwSize         = 0;
+      EXPLICIT_ACCESS      ea;
+      PACL                 pacl           = NULL;
+      PACL                 pNewAcl        = NULL;
+      PSECURITY_DESCRIPTOR psd;
+      SC_HANDLE            schManager     = NULL;
+      SC_HANDLE            schService     = NULL;
+      SECURITY_DESCRIPTOR  sd;
+
+      if (argc != 2){
+         _tprintf(TEXT("Usage: %s [service name]\n"), argv[0]);
+         return;
+      }
+
+      //
+      // Obtain a handle to the Service Controller.
+      //
+      schManager = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
+      if (schManager == NULL)
+         DisplayError(GetLastError(), TEXT("OpenSCManager"));
+
+      //
+      // Obtain a handle to the service.
+      //
+      schService = OpenService(schManager, argv[1],
+                               READ_CONTROL | WRITE_DAC);
+      if (schService == NULL)
+         DisplayError(GetLastError(), TEXT("OpenService"));
+
+      //
+      // Get the current security descriptor.
+      //
+      if (!QueryServiceObjectSecurity(schService,
+            DACL_SECURITY_INFORMATION, psd, 0, &amp;dwSize)){
+         if (GetLastError() == ERROR_INSUFFICIENT_BUFFER){
+            psd = (PSECURITY_DESCRIPTOR)HeapAlloc(GetProcessHeap(),
+                   HEAP_ZERO_MEMORY, dwSize);
+            if (psd == NULL){
+               DisplayError(0, TEXT("HeapAlloc"));
+               // note HeapAlloc does not support GetLastError()
+            }
+
+            if (!QueryServiceObjectSecurity(schService,
+               DACL_SECURITY_INFORMATION, psd, dwSize, &amp;dwSize))
+               DisplayError(GetLastError(),
+                            TEXT("QueryServiceObjectSecurity"));
+         }
+         else
+            DisplayError(GetLastError(),
+                               TEXT("QueryServiceObjectSecurity"));
+      }
+
+      //
+      // Get the DACL.
+      //
+      if (!GetSecurityDescriptorDacl(psd, &amp;bDaclPresent, &amp;pacl,
+                                     &amp;bDaclDefaulted))
+         DisplayError(GetLastError(), TEXT("GetSecurityDescriptorDacl"));
+
+      //
+      // Build the ACE.
+      //
+      BuildExplicitAccessWithName(&amp;ea, TEXT("GUEST"),
+         SERVICE_START | SERVICE_STOP | READ_CONTROL | DELETE,
+         SET_ACCESS, NO_INHERITANCE);
+
+      dwError = SetEntriesInAcl(1, &amp;ea, pacl, &amp;pNewAcl);
+      if (dwError != ERROR_SUCCESS)
+         DisplayError(dwError, TEXT("SetEntriesInAcl"));
+
+      //
+      // Initialize a NEW Security Descriptor.
+      //
+      if (!InitializeSecurityDescriptor(&amp;sd, SECURITY_DESCRIPTOR_REVISION))
+         DisplayError(GetLastError(),
+                      TEXT("InitializeSecurityDescriptor"));
+
+      //
+      // Set the new DACL in the Security Descriptor.
+      //
+      if (!SetSecurityDescriptorDacl(&amp;sd, TRUE, pNewAcl, FALSE))
+         DisplayError(GetLastError(), TEXT("SetSecurityDescriptorDacl"));
+
+      //
+      // Set the new DACL for the service object.
+      //
+      if (!SetServiceObjectSecurity(schService, DACL_SECURITY_INFORMATION,
+                                    &amp;sd))
+         DisplayError(GetLastError(), TEXT("SetServiceObjectSecurity"));
+
+      //
+      // Close the handles.
+      //
+      if (!CloseServiceHandle(schManager))
+         DisplayError(GetLastError(), TEXT("CloseServiceHandle"));
+
+      if (!CloseServiceHandle(schService))
+         DisplayError(GetLastError(), TEXT("CloseServiceHandle"));
+
+      //
+      // Free buffers.
+      //
+      LocalFree((HLOCAL)pNewAcl);
+      HeapFree(GetProcessHeap(), 0, (LPVOID)psd);
+   }
+
+</PRE> 
+<PRE>Keywords          : BseSecurity BseService kbcode
+Version           : WINNT:4.0
+Platform          : winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 29, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

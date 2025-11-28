@@ -1,0 +1,327 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Modify the Table Header from FoxPro </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q139758">
+<META NAME="KBModify" CONTENT="1998/03/06">
+<META NAME="KBCreate" CONTENT="1995/11/15">
+<META NAME="Keywords" CONTENT="FxprgTable kbcode kbhowto kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  Sometimes, the FoxPro error  Not a Database File,  can be corrected by modifying the table header with a hexadecimal editor. If no hexadecimal editor is available, the header can be modified by using FoxPro's low-level file functions. This article ...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QALG,QDI1,QA7O,QA7N,QA5V,QAZZ,QA2S,QAH4,QBVV,QAML,QAB9,QA6A,QAY5,QAVK,QAKC V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Modify the Table Header from FoxPro</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 6, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q139758</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+2.50 2.50a 2.50b 2.60 2.60a | 2.00 2.50 2.50a 2.50b 2.60 2.60a
+<PRE>WINDOWS                     | MS-DOS
+</PRE>kbprg kbhowto kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft FoxPro for MS-DOS, versions 2.0, 2.5, 2.5a, 2.5b, 2.6, 2.6a
+<LI>Microsoft FoxPro for Windows, versions 2.5, 2.5a, 2.5b, 2.6, 2.6a
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Sometimes, the FoxPro error "Not a Database File," can be corrected by
+modifying the table header with a hexadecimal editor. If no hexadecimal
+editor is available, the header can be modified by using FoxPro's low-level
+file functions. This article shows by example how to modify the structure
+of the table header.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+WARNING: ANY USE BY YOU OF THE CODE PROVIDED IN THIS ARTICLE IS AT YOUR OWN
+RISK. Microsoft provides this code "as is" without warranty of any kind,
+either expressed or implied, including but not limited to the implied
+warranties of merchantability and/or fitness for a particular purpose.
+<P>
+<P><h3>Con_from.prg Sample Code</h3>
+ 
+<P>
+Create a program file called Con_from.prg that contains this code:
+<P>
+<PRE>   FUNCTION con_from
+   PARAMETERS filename
+   * This function uses low-level file I/O to retrieve the table
+   * header information and stores it in a .dbf file called Change.
+   * A Browse window will automatically appear with the byte number, ASCII
+   * value, and character representation for each byte. Changes to the
+   * ASCII value from the Browse window will not change the database header
+   * until the function CON_TO is called. A description of each byte in the
+   * Browse window is presented later in this article.
+   PRIVATE ALL
+   IF !"."$filename
+      filename=filename+'.dbf'
+   ENDIF
+   handle=FOPEN(filename,2)
+   IF handle&gt;0
+      byte=FREAD(handle,32)
+      offset=ASC(SUBSTR(byte,9,1))+(ASC(SUBSTR(byte,10,1))*256)-1
+      byte1=FREAD(handle,offset-32)
+      byte=byte+byte1
+      CREATE TABLE CHANGE (byte_num N(2),ASCII N(4))
+      FOR i=1 TO offset
+         APPEND BLANK
+         REPLACE byte_num WITH IIF(MOD(i,32)=0,32,MOD(i,32))
+         REPLACE ASCII WITH ASC(SUBSTR(byte,i,1))
+      ENDFOR
+      =FCLOSE(handle)
+      GO TOP
+      BROWSE FIELDS byte_num,ASCII,char=CHR(ASCII)
+      USE
+   ELSE
+      WAIT WINDOW "File not opened, Please check File Name and Path"
+   ENDIF
+   RETURN
+
+</PRE>The records in the Browse window are broken down into 32-byte sections. The
+first 32-byte section holds the file information. All other 32-byte
+sections hold field information. If your table has five fields, you should
+have a total of six 32-byte sections (one for the file and five for the
+fields).
+<P>
+<P><h3>Description of File Bytes</h3>
+ 
+<P>
+<PRE>Byte Number     Description
+</PRE> 
+<PRE>1               File-type identifier:
+
+                  3 - .dbf without memo (FoxBase+/FoxPro/dBASE III
+                                        PLUS/dBASE IV)
+                131 - .dbf with memo    (FoxBase+/dBASE III Plus)
+                139 - .dbf with memo    (dBASE III)
+                245 - .dbf with memo    (FoxPro)
+
+2               Year of last update
+3               Month of last update
+4               Day of last update
+5- 8            Number of records in file*
+9-10            Offset to start of data**
+11-12           Size of record***
+13-28           Not used
+29              Flag for compound index (.cdx)
+
+                0 - No .cdx file attached to the database
+                1 - .cdx file attached to the database
+
+30-32           Not used
+
+</PRE>*  The number of records are calculated with the following formula:
+<PRE>   (byte#5)+(byte#6 * 256)+(byte#7 * 256 * 256)+ (byte#8 * 256 * 256 * 256)
+
+</PRE>** The offset to the start of data is computed from the beginning
+<PRE>   of the file to the first data record. The offset is
+   calculated with the formula (byte#9)+(byte#10 * 256)
+
+</PRE>***The size of the records is calculated with the formula
+<PRE>   (byte#11)+(byte#12 * 256). This number represents the sum of
+   the field sizes plus 1. The extra 1 is the deletion flag.
+
+</PRE><h3>Description of Field Bytes</h3>
+ 
+<P>
+<PRE>1-10            Field Name
+11              Must be 0
+12              Field Type:
+
+                67 - C - Character
+                68 - D - Date
+                76 - L - Logical
+                66 - M - Memo
+                78 - N - Numeric
+                71 - G - General
+
+13-14           Offset of field from beginning of record*
+15-16           Not used
+17-18           Field length (non-numeric fields)**
+17              Field length (numeric fields)
+18              Field decimals (numeric fields)
+19-32           Not used
+
+</PRE>*  The offset is calculated with the following formula:
+<PRE>   (byte#13)+(byte#14 * 256)
+
+</PRE>** The non-numeric field length is calculated with the following
+<PRE>   formula:  (byte#16) + (byte#17 * 256)
+
+</PRE><h3>Con_to.prg Sample Code</h3>
+ 
+<P>
+Create a Program file called CON_to.prg that contains the following code:
+<P>
+<PRE>   FUNCTION con_to
+   PARAMETERS filename
+   * This function takes the contents from the Change table and creates a
+   * new header. WARNING: You are about to change the table header.
+   PRIVATE ALL
+   IF !"."$filename
+      filename=filename+'.dbf'
+   ENDIF
+   SELECT 0
+   USE CHANGE
+   GO TOP
+   handle=FOPEN(filename,2)
+   IF handle&gt;0
+      byte=""               &amp;&amp; No spaces between the quotation marks
+      FOR i=1 TO RECCOUNT()
+         byte=byte+CHR(ASCII)
+         SKIP
+      ENDFOR
+      =FWRITE(handle,byte)
+      =FCLOSE(handle)
+   ENDIF
+   RETURN
+
+</PRE>After the previous functions have been typed, use the following steps to
+change the header:
+
+<OL><P><LI>Make a back up of your table. (This is strongly recommended, but it is
+   not required.)
+
+<P><LI>In the Command window, type:
+<P>
+   =CON_FROM(filename)
+<P>
+   Here are two examples:
+<P>
+   =CON_FROM("C:/FPW26/TUTORIAL/CUSTOMER")
+   =CON_FROM("C:/FPW26/TUTORIAL/CUSTOMER.DBF")
+<P>
+   The file name does not require the .dbf extension, although it will
+   accept it.
+
+<P><LI>Make any necessary changes in the Browse window. Refer to the previous
+   table for an explanation of each byte.
+
+<P><LI>Close the Browse window.
+
+<P><LI>If changes were made, type the following in the Command window:
+<P>
+   =CON_TO(filename)
+<P>
+   Here are two examples:
+<P>
+   =CON_TO("C:/FPW26/TUTORIAL/CUSTOMER")
+   =CON_TO("C:/FPW26/TUTORIAL/CUSTOMER.DBF")
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+For more information about how to modify the header of a .dbf file, please
+see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../foxpro/q98743.htm">Q98743</A></B>
+   TITLE     : "Not a Database File"; How to Modify Database Header
+
+</PRE></OL>For more information on table structures please see the following:
+<P>
+Visual FoxPro version 3.x Help; search on: "HELP FILE STRUCTURES"; topic:
+Table Files Structure (.DBC, .DBF, .FRX, .LBX, .MNX, .PJX, .SCX, .VCX)
+<P>
+Visual FoxPro version 5.x Help; search on: "HELP FILE STRUCTURES"; topic:
+Table Files Structure (.DBC, .DBF, .FRX, .LBX, .MNX, .PJX, .SCX, .VCX)
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: FoxWin FoxDos 2.00 2.50 2.50a 2.50b 2.60 2.60a<BR>
+KBCategory: kbprg kbhowto kbcode<BR>
+KBSubcategory: FxprgTable<BR>
+Keywords          : FxprgTable kbcode kbhowto kbprg<BR>
+Version           : 2.50 2.50a 2.50b 2.60 2.60a | 2.<BR>
+Platform          : MS-DOS WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 6, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

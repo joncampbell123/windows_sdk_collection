@@ -1,0 +1,234 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Direction Flag Is Not Cleared When an Exception Occurs </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q106262">
+<META NAME="KBModify" CONTENT="1997/09/16">
+<META NAME="KBCreate" CONTENT="1993/11/04">
+<META NAME="Keywords" CONTENT="CRTIss kbbuglist kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Functions called in an exception handler can cause unexpected behavior such as access violations.  CAUSE =====  The direction flag bit may not be cleared when the exception occurs.  RESOLUTION  Clear the direction flag bit within either the excepti...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEF,QAJX,QADR,QAHE,QATS,QAY5,QAH4,QBV8,QAB9,QAUD,QAI4,QBXS,QBVV,QATX,QASR V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Direction Flag Is Not Cleared When an Exception Occurs</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 16, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q106262</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00
+WINDOWS NT
+kbprg kbfixlist kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The C Run-time (CRT), included with:
+   Microsoft Visual C++ 32-bit Edition, version 1.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Functions called in an exception handler can cause unexpected behavior
+such as access violations.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The direction flag bit may not be cleared when the exception occurs.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Clear the direction flag bit within either the exception handler or
+the termination handler. The sample code shown below illustrates
+clearing the flag in an exception handler.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the products listed at the
+beginning of this article. This problem was corrected in Visual C++ version
+2.0.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+On Intel processors, the direction flag bit in the flags register
+modifies the behavior of the string instructions. When the direction
+flag (DF) is 0 (zero), the string instructions operate on
+incrementally higher addresses. When DF is 1, the string instructions
+operate on incrementally lower addresses. On Intel chips, DF can be
+set to 1 with the STD instruction and can be cleared to 0 with the CLD
+instruction.
+<P>
+If a function sets DF to 1, it should clear DF before terminating.
+This allows all functions to make the assumption that DF is always 0.
+<P>
+All C run-time functions correctly clear DF upon termination. However,
+if an exception occurs before a function has a chance to clear DF, the
+flag will still be set when the exception handler is executed. This
+will cause code in the handler (which assumes that DF is 0) to fail.
+The manner in which the code fails depends on what the code is trying
+to do. In the example shown below, the printf() function called in the
+exception handler causes a memory access violation.
+<P>
+The problem can be worked around by clearing DF upon entry into an
+exception or termination handler. In the sample code shown below, the
+exception handler checks the value of the do_cld variable to determine
+whether or not it will clear DF. The do_cld variable is set to 0 or 1
+depending on whether or not the CLD command-line argument is specified
+when the sample is run. To illustrate the problem with DF being set to
+1, run the sample without any command-line arguments. To allow the
+sample to run correctly, specify the CLD command-line argument.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compiler options needed: /D_X86_
+*/
+
+#include &lt;windows.h&gt;
+#include &lt;memory.h&gt;
+#include &lt;string.h&gt;
+#include &lt;stdio.h&gt;
+
+int handling = 0;
+int do_cld = 0;
+
+</PRE>LONG MyFilter(LPEXCEPTION_POINTERS except_pointers)
+{
+<PRE>    EXCEPTION_RECORD* er = except_pointers-&gt;ExceptionRecord;
+
+    if (do_cld)
+    {
+        __asm cld
+    }
+
+    if (er-&gt;ExceptionCode==EXCEPTION_ACCESS_VIOLATION &amp;&amp; handling==0)
+    {
+        handling = 1;
+        printf("We're in the filter now and printing out a long"
+               "string that's long enough to cause a problem\n");
+        handling = 0;
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+    else return EXCEPTION_CONTINUE_SEARCH;
+</PRE>}
+<P>
+<PRE>int main(int argc,char** argv)
+</PRE>{
+<PRE>    if ( argc==2 &amp;&amp; ((strcmp(argv[1],"cld")==0) ||
+                     (strcmp(argv[1],"CLD")==0)))
+        do_cld = 1;
+
+    __try
+    {
+        printf("Starting the test\n");
+        memcpy((void*)4,(void*)0,8);
+        printf("After exception");
+    }
+    __except (MyFilter(GetExceptionInformation()))
+    {
+        printf("In the handler now\n");
+    }
+
+    return 0;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00 structured handling protection fault<BR>
+KBCategory: kbprg kbbuglist kbfixlist<BR>
+KBSubcategory: CRTIss<BR>
+Keywords          : CRTIss kbbuglist kbfixlist kbprg<BR>
+Version           : 1.00<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 16, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

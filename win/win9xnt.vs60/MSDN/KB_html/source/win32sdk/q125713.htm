@@ -1,0 +1,364 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Common File Mapping Problems and Platform Differences </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q125713">
+<META NAME="KBModify" CONTENT="1995/09/25">
+<META NAME="KBCreate" CONTENT="1995/02/02">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article addresses some common problems encountered when using file mapping. It also points out some platform differences in the file mapping implementation.  This article does not describe the procedures for performing file mapping. For inform...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAC2,QAPN,QAW6,QBWP,QADK,QAR5,QBVV,QBWD,QBBI,QDL9,QBWO,QBWN,QBW4,QAJQ,QAUD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Common File Mapping Problems and Platform Differences</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 25, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q125713</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT version 3.51
+    - Microsoft Windows 95 version 4.0
+    - Microsoft Win32s version 1.3
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article addresses some common problems encountered when using file
+mapping. It also points out some platform differences in the file mapping
+implementation.
+<P>
+This article does not describe the procedures for performing file mapping.
+For information on using file mapping, please see the File Mapping
+overview in the Microsoft Win32 Programmer's Reference. Also see the
+descriptions for CreateFileMapping(), OpenFileMapping(), MapViewOfFile(),
+MapViewOfFileEx(), UnmapViewOfFile(), and FlushViewOfFile().
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Name Space Conflicts</h3>
+ 
+<P>
+The names of event, semaphore, mutex, and file-mapping objects share
+the same name space, so it is not possible to have two different object
+types with the same name. It is an error to attempt to create or open an
+object of one type using a name that is already being used by an object of
+another type.
+<P>
+CreateFileMapping() and OpenFileMapping() will fail if they specify an
+object name that is in use by an object of another type. In both cases,
+GetLastError() will return ERROR_INVALID_HANDLE (6).
+<P>
+To avoid conflicts between object types, one solution is to include
+the object type in the name. For example, use "EV_myapp_block_ready" for an
+event object name and "FM_myapp_missile_data" for a file mapping object
+name.
+<P>
+<P><h3>Necessity of Unmapping All Views of a Mapped File</h3>
+ 
+<P>
+Windows maintains an internal handle to a file mapping object for each
+view of that object, whether created by MapViewOfFile() or
+MapViewOfFileEx(). This internal handle is kept in addition to the handle
+returned by CreateFileMapping(). The internal handle is not closed until
+the view associated with the handle is unmapped by calling
+UnmapViewOfFile(). To completely close a file mapping object requires that
+all handles for the object, including internal handles, be closed. Thus, to
+close a file mapping object, all views of that object must be unmapped, and
+the handle returned by CreateFileMapping() must be closed.
+<P>
+Extant unmapped views of a file mapping object will NOT cause a
+CloseHandle() on the object's handle to fail. In other words, when your
+handle to the object is closed successfully, it is not necessarily true
+that all views have been unmapped, so the file mapping object has not
+necessarily been freed.
+<P>
+Failure to properly unmap all views of the object and to close the handle
+to the object will cause leaks in the application's paged pool,
+nonpaged pool, virtual bytes, and also in the system wide committed bytes.
+<P>
+<P><h3>Restrictions on the Size of File Mapping Objects</h3>
+ 
+<P>
+The size of a file mapping object backed by the system paging file is
+limited to available system virtual memory (meaning the amount of memory
+that could be committed with a call to VirtualAlloc()).
+<P>
+On Windows NT, the size of a file mapping object backed by a named disk
+file is limited by available disk space. The size of a mapped view of
+an object is limited to the largest contiguous block of unreserved
+virtual memory in the process performing the mapping (at most, 2GB minus
+the virtual memory already reserved by the process).
+<P>
+On Win32s, the size of a file mapping object backed by a named disk
+file is limited to available system virtual memory, due to the virtual
+memory management implementation of Win32s. Win32s allocates regular
+virtual memory for the memory mapped section even though it does not
+need swap space, and the amount of VM set by Windows is too small to use
+for mapping large files. As with Windows NT, available disk space will
+also impose a limitation.
+<P>
+On Windows 95, the size of a file mapping object backed by a named disk
+file is limited to available disk space. The size of a mapped view of
+an object is limited to the largest contiguous block of unreserved
+virtual memory in the shared virtual arena. This block will be at most
+1GB, minus any memory in use by other components of Windows 95 which use
+the shared virtual arena (such as 16-bit Windows-based applications). Each
+mapped view will use memory from this arena, so this limit applies to the
+total size of all non-overlapping mapped views for all applications running
+on the system.
+<P>
+<P><h3>Mapped File May Not be Automatically Grown</h3>
+ 
+<P>
+If the size specified for a file mapping object backed by a named disk
+file in a call to CreateFileMapping() is larger than the size of the
+file used to back the mapping, the file will normally be grown to the
+specified size by the CreateFileMapping() call.
+<P>
+On Windows NT only, if PAGE_WRITECOPY is specified for the fdwProtect
+parameter, the file will not automatically be grown. This will cause
+CreateFileMapping() to fail, and GetLastError() will return
+ERROR_NOT_ENOUGH_MEMORY (8). To set the size of the file before calling
+CreateFileMapping(), use SetFilePointer() and SetEndOfFile().
+<P>
+<P><h3>MapViewOfFileEx() and Valid Range of lpvBase</h3>
+ 
+<P>
+On Windows NT, views of file mapping objects are mapped in the address
+range of 0-2 GB. Passing an address outside of this range as the
+lpvBase parameter to MapViewOfFileEx() will cause it to fail, and
+GetLastError() will return ERROR_INVALID_PARAMETER (87).
+<P>
+On Windows 95, views of file mapping objects are mapped in the address
+range of 2-3 GB (the shared virtual arena). Passing an address outside of
+this range will cause MapViewOfFileEx() to fail, and GetLastError() will
+return ERROR_INVALID_ADDRESS (487). Note that future updates to Windows 95
+may change the mapping range to 0-2 GB, as on Windows NT.
+<P>
+<P><h3>MapViewOfFileEx() and Allocation Status of lpvBase</h3>
+ 
+<P>
+If an address is specified for the lpvBase parameter of MapViewOfFileEx(),
+and there is not a block of unreserved virtual address space at that
+address large enough to satisfy the number of bytes specified in the
+cbMap parameter, then MapViewOfFileEx() will fail, and GetLastError() will
+return ERROR_NOT_ENOUGH_MEMORY (8). This does not mean that the system is
+low on memory or that the process cannot allocate more memory. It simply
+means that the virtual address range requested has already been reserved
+in that process.
+<P>
+Prior to calling MapViewOfFileEx(), VirtualQuery() can be used to determine
+an appropriate range of unreserved virtual address space.
+<P>
+<P><h3>MapViewOfFileEx() and Granularity of lpvBase</h3>
+ 
+<P>
+For the lpvBase parameter specified in a call to MapViewOfFileEx(), you
+should use an integral multiple of the system's allocation granularity. On
+Windows NT, not specifying such a value will cause MapViewOfFileEx() to
+fail, and GetLastError() to return ERROR_MAPPED_ALIGNMENT (1132). On
+Windows 95, the address is rounded down to the nearest integral multiple of
+the system's allocation granularity.
+<P>
+To determine the system's allocation granularity, call GetSystemInfo().
+<P>
+<P><h3>Addresses of Mapped Views</h3>
+ 
+<P>
+When mapping a view of a file (or shared memory), it is possible to either
+let the operating system determine the address of the view, or to specify
+an address as the lpvBase parameter of the MapViewOfFileEx() function. If
+the file mapping is going to be shared among multiple processes, then
+the recommended method is to use MapViewOfFile() and let the operating
+system select the mapping address for you. There are good reasons for doing
+so:
+
+<UL><LI>On Windows NT, views are mapped independently into each process's
+   address space. While it may be convenient to try to map the view at
+   the same address in each process, the specified virtual address range
+   may not be free in all of the processes involved. Therefore, the mapping
+   could fail in one (or more) of the processes trying to share the
+   file mapping.
+
+<LI>On Windows 95, file mapping objects exist in the 2-3 GB address range
+   (the shared virtual arena). Therefore, once the initial address for the
+   view is determined, additional views of the mapping will be mapped to
+   the same address in each process anyway, and there is no benefit in
+   trying to force the initial mapping to a specific address. For the
+   second and subsequent views of a mapping object, if the address
+   specified for lpvBase does not match the actual address where Windows 95
+   has mapped the view, then MapViewOfFileEx() fails, and GetLastError()
+   returns ERROR_INVALID_ADDRESS (487). Additionally, when attempting to
+   map the first view at a pre-determined address, that address may already
+   be in use by other components of Windows 95 which use the shared virtual
+   arena. Note that future updates to Windows 95 may change the mapping
+   range to 0-2 GB, as on Windows NT.
+<P>
+</UL>If it is absolutely necessary to create the mappings at the same address
+in multiple processes under Windows NT, here are two possible approaches:
+
+<OL><P><LI>Pick an appropriate address and manage the virtual address space so that
+   this address is left available. This means basing your DLLs, allocating
+   memory at specific locations, and using a tool such as Process Walker to
+   observe the virtual address space pattern. As soon as possible in the
+   execution of the application, either reserve the desired address space
+   or perform the mapping. One good place to do this is in the
+   PROCESS_ATTACH handling in a DLL, because it is called before the
+   executable itself is started. NOTE: There is still no guarantee that
+   some DLL will not have already loaded at the address in question. If not
+   all involved processes can map at the predetermined address, they can
+   either fail or try a new address.
+<P>
+   -or-
+
+<P><LI>Have all processes involved negotiate an appropriate address. The
+   processes can all use the VirtualQuery() function to scan their
+   address spaces until a common address is found in each process
+   that has a large enough unreserved block. This requires that all
+   processes involved map the address at the same time. A process that
+   starts after the address has been determined must map at that address,
+   and fail if it cannot do so. Alternatively, the negotiation process
+   could be repeated, with each process remapping at the new address. Then,
+   all pointers into the mapping must be readjusted.
+<P>
+</OL>The second method is far more likely to succeed. It can also be combined
+with the first to make it more likely that an appropriate address will be
+found quickly.
+<P>
+When views are mapped to different addresses under Windows NT, the
+difficulty that arises is storing pointers to the mapping within the
+mapping itself. This is because a pointer in one process does not point
+to the same location within the mapping in another process. To overcome
+this problem, store offsets rather than pointers in the mapping, and
+calculate actual addresses in each process by adding the base address of
+the mapping to the offset. It is also possible to used based pointers and
+thus perform the base + offset conversion implicitly. A short SDK sample
+called BPOINTER demonstrates this technique.
+<P>
+<P><h3>Additional Platform Differences</h3>
+ 
+<P>
+Additional limitations when performing file mapping under Windows 95:
+
+<OL><P><LI>The dwOffsetHigh parameters of MapViewOfFile() and MapViewOfFileEx() are
+   not used, and should be zero. Windows 95 uses a 32-bit file system.
+
+<P><LI>The dwMaximumSizeHigh parameter of CreateFileMapping() is not used,
+   and should be zero. Again, this is due to the 32-bit file system.
+
+<P><LI>The SEC_IMAGE and SEC_NOCACHE flags for the fdwProtect parameter of
+   CreateFileMapping() are not supported.
+
+<P><LI>If the FILE_MAP_COPY flag is used to map a view of a file mapping
+   object, the object must have been created using PAGE_WRITECOPY
+   protection. Additionally, the object must be backed by a named
+   file rather than the system paging file (in other words, a valid file
+   handle, not (HANDLE)0xFFFFFFFF, must be specified for the hFile
+   parameter of CreateFileMapping()). Failure to do either of these
+   causes MapViewOfFile() to fail, and GetLastError() to return
+   ERROR_INVALID_PARAMETER (87).
+
+<P><LI>If two or more processes map a PAGE_WRITECOPY view of the same file
+   mapping object (by using a named object, for example), they are able
+   to see changes made to the view by the other process(es). The actual
+   disk file is not modified, however. Under Windows NT, if one process
+   writes to the view, it receives its own copy of the modified pages and
+   will not affect the pages in the other process(es) or the disk file.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.30 3.50 4.00 95<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: BseMm<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 25, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

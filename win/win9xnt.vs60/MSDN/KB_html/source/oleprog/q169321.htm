@@ -1,0 +1,597 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: COM Servers Activation and NT Windows Stations </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q169321">
+<META NAME="KBModify" CONTENT="1997/11/21">
+<META NAME="KBCreate" CONTENT="1997/05/29">
+<META NAME="Keywords" CONTENT="BseSecurity kbenv kbinterop kbprg kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  When a client requests a class object for a registered class, COM either returns an existing class object or launches a process that is registered as containing the requested class object. The process of obtaining a class object reference for a req...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QARL,QAJQ,QBWS,QAGU,QBWP,QAHQ,QABO,QAAD,QA7K,QAW6,QAPN,QAGQ,QANN,QACK V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: COM Servers Activation and NT Windows Stations</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 21, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q169321</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE Libraries 4.0 included with:
+   - Microsoft Win32 Software Development Kit (SDK)
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When a client requests a class object for a registered class, COM either
+returns an existing class object or launches a process that is registered
+as containing the requested class object. The process of obtaining a class
+object reference for a requesting client (whether or not that results in
+process creation or "launching") is called "activation."
+<P>
+Under certain conditions, COM may launch a new server process even when an
+existing class object is running and has been registered as multiple use.
+Moreover, when COM creates a new process that process may be launched in a
+new security environment known as a "window station" rather than sharing an
+existing window station such as the interactive window station. (For more
+information on window stations, search the Win32 SDK documentation for that
+phrase.)
+<P>
+Understanding COM's algorithms for creating new processes and window
+stations during an activation request is important for several reasons.
+First, COM may create more than one process instance of a multiple-use
+class object because of security issues. Second, "single-use" servers will
+always be launched in separate processes, but they may or may not be
+launched in separate window stations. This difference might manifest itself
+to application code in certain unusual cases, such as when two COM servers
+try to communicate via window messages or secure communication facilities
+such as COM or RPC. Third, since the number of window stations that can
+simultaneously be created in Windows NT is limited, it is important to know
+when your COM server gets a new window station.
+<P>
+This article examines different activation scenarios and explains when new
+processes and window stations are created.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When COM creates a new server process or assigns a new window station to a
+new server process depends on several factors:
+
+<OL><P><LI>The security identity under which the COM class is set to start. The
+   identity of a class can be set via the DCOMCNFG tool and is specified by
+   the RunAs named value under the AppID key for the class.
+
+<P><LI>Single-use vs multiple-use registration by class objects.
+
+<P><LI>The Security Identifier(SID) of the client process (this is the numeric
+   value that represents a particular user account/security
+   identity/principal in a Windows NT environment).
+
+<P><LI>The Logon Identifier (LUID) of the client process.(A new logon
+   identifier is generated for each unique logon to a computer running
+   Windows NT. This logon could be either through a user typing in a user
+   name and password at the NT logon prompt, or through a call to the win32
+   API LogonUser.)
+
+<P><LI>Local vs remote activation.
+
+<P><LI>The window station of the client.
+<P>
+</OL><h3>Multiple-use Classes</h3>
+ 
+<P>
+A multiple-use class is a class that is registered with COM (via
+CoRegisterClassObject() API) specifying the REGCLS_MULTIPLEUSE flag. For
+such a class, COM normally uses the same instance of the server process for
+all client activation requests. However, for classes configured to run
+under the security of the launching users and in a few other cases, COM
+launches a new instance of the server process to service activation
+requests. When a new instance of the server process is thus launched, it is
+possible that the server process gets a new window station as well. We will
+examine the various scenarios below, but first we will discuss briefly why
+COM launches new processes containing requested class objects when an
+instance of the class object is already registered as a "multiple-use"
+class.
+<P>
+First, when a COM class (more accurately, when an AppID associated with a
+COM class) is registered with the system to be run as "the launching user,"
+the system administrator has set a certain security policy with respect to
+that class. The policy is that an activator should receive a class object
+inside a process that is running in the same security context as the
+activating code.
+<P>
+This security policy can come into conflict with the server-defined
+behavior of having only one class factory object for all activation
+requests (as indicated by REGCLS_MULTIPLEUSE). COM prioritizes the security
+policy over application behavior. As a result, multiple-use servers
+registered to run as "the launching user" will not behave according to the
+normal rules of multiple-use. A new process will be launched for each
+activating security principal.
+<P>
+Second, if a process not launched by COM running in a security context
+different from the one specified for the given CLSID registers that CLSID,
+that registration will fail(CoRegisterClassObject will return an error code
+CO_E_WRONG_SERVER_IDENTITY in this case). And, if an activation request
+later arrives a new process will be launched by COM with the security
+context specified for the CLSID/AppID. COM can't trust code calling
+CoRegisterClassObject() (an unsecured operation), it can only trust the
+registry setting (the registry is a secure database) to determine which
+class object to use and how to run it. This behavior prevents illicit
+machine-wide spoofing of class objects by unauthorized users.
+<P>
+With that in mind, we now return to the issue of when new processes and
+window stations are created when multiple-use servers are launched by COM.
+Notice that the LUID of the client does not matter in any way in the
+multiple-use class case.
+
+<OL><P><LI>"Interactive user" security identity.
+<P>
+   In the case where a multiple-use COM class's AppID is configured to run
+   as the "Interactive User" identity, the very first server process and
+   its class object will be used by COM to service all subsequent
+   activation requests. This server instance will have the interactive
+   window station, if one exists (if no user is logged on locally then all
+   activation requests will fail).
+<P>
+   As noted above, if a process not launched by COM and not running in the
+   interactive window station registers the CLSID, that registration will
+   fail. And, if an activation request later arrives, a new process will be
+   launched with the security context of the Interactive User. This
+   behavior prevents illicit spoofing of class objects.
+<P>
+   Since no additional server processes are ever started by COM, the
+   question of new window stations is moot. The SID of the client, its LUID
+   or whether it is local or remote does not matter in this case.
+
+<P><LI>"This user" security identity.
+<P>
+   Similarly, if a multiple-use COM class's AppID is configured to run as
+   "this user" (a predefined security ID), the first server process and its
+   class object will be used by COM to service all subsequent activation
+   requests. This first server instance will have its own window station
+   created as part of the first process creation. Since no additional
+   server processes are ever started by COM, the question of additional
+   window stations is moot. The SID of the client, its LUID or whether it
+   is local or remote does not matter in this case.
+<P>
+   Note that a new window station will be created when you launch the first
+   instance of a class/AppID configured to run as "This user," even if the
+   same user is currently logged on in the interactive winstation. COM
+   never uses the interactive winstation to launch a server configured to
+   run as "This user" because that would result in different behavior for
+   the class depending upon the unrelated issue of the identity of the
+   currently logged on user.
+<P>
+   As noted above, if a process not launched by COM and not running in the
+   account specified in "This user" attempts to register the CLSID, that
+   registration will fail and if an activation request later arrives a new
+   process will be launched in the "This user" account. This behavior
+   prevents illicit spoofing of class objects.
+<P>
+   On the other hand, if the process registered for a given CLSID/APPID is
+   configured to run as "This user," is created in the appropriate user
+   account by some agent other than COM (for example, it is run by the
+   interactive user when the interactive user is the same user as "This
+   user" or it is started via CreateProcess() by a service running in the
+   same security context as "this user"), and it then registers its
+   REGCLS_MULTIPLEUSE class objects, COM will use the existing running
+   class object to satisfy subsequent incoming activation requests from any
+   client.
+
+<P><LI>"Launching user" security identity.
+<P>
+   In this case, the class's AppID is set to launch under the "Launching
+   User" idenitity (this is also known as an "Activate as Activator"
+   class).
+<P>
+   a. Local client.
+<P>
+<P><PRE>      First consider the local machine case. There are two rules:
+</PRE><P>
+<P><PRE>      1. Each different activation client SID will cause COM to launch a
+<PRE></PRE>         new instance of the server process even in the same window
+         station.
+
+      2. Even for matching SIDs (such as the case where the same user is
+         logged on more than once to a single NT machine), each different
+         local client window station will cause COM to launch a new
+         instance of the server process.
+
+      In other words, launching user identity multiple-use servers are
+      never shared across window stations. All client processes with the
+      same SID and same window stations will share a single server process
+      in the same window station. Since the server shares the window
+      station of the client no new window stations are created.
+
+      For example, assume that you are interactively logged on as
+      a_domain\a_user. You run multiple instances of the client, all of
+      which will connect to the same instance of the server(which has the
+      interactive window station). Now let's say you have a client, which
+      is a service, that is set to launch start under a_domain\a_user. This
+      service will launch a new instance of the COM server. This happens
+      because COM will cause a new instance of the server to be launched
+      since the service process has a window station other than the
+      interactive window station--even though the identity of the
+      service(client) process is the same as the identity of the running
+      server process (a_domain\a_user). However, note that no new window
+      station is created for the COM server process. The server will still
+      inherit the window station of the service. If the service is set to
+      start under LocalSystem and to interact with the desktop (refer to
+      "Allow Service to Interact with Desktop" check box in the Service
+      applet in control panel), then the service will run in the
+      interactive window station or winsta0. In this case COM will still
+      start a new instance of the server (client's SID which is LocalSystem
+      in this case is different from that of the server's SID which is
+      a_domain\a_user)in the interactive window station.
+
+   b. Remote client.
+
+      In the case of remote activation, COM ignores the window station of
+      the client because the client is remote, unlike the local case above.
+      The rule here is that each new client SID will cause a new instance
+      of the server process to be launched and each new server process will
+      get a new window station. Subsequent activation requests by remote
+      clients with the same SID will reuse the existing registered class
+      object as well as its process and window station. For example, assume
+      that you are logged on as a_domain\a_user on 10 different machines.
+      The clients from all these machines will connect to the same instance
+      of the server on the server machine. A client from a a_domain\b_user
+      machine will launch a new server instance and a new window station.
+
+      Remote callers with the same SID as a local user that has launched
+      the COM server registered for the requested CLSID will reuse the
+      existing class object. However, the order in which the COM server is
+      started is important in this case. If the server is launched by the
+      local client first, then the remote client with the same SID will
+      connect to this server. On the other hand, if the server is launched
+      by the remote client first, then a local client with the same SID
+      will start a new instance of the server. This goes back to the window
+      station rules mentioned above. For local clients, the window station
+      of the client and the server must match, for remote clients the
+      window station of the client is ignored. For example, if local client
+      a_domain\a_user launches the server first, then remote client
+      a_domain\a_user will connect to the server. Conversely, if remote
+      client a_domain\a_user launches the server first, then local client
+      a_domain\a_user will launch a new server instance and a new window
+      station.
+
+      The LUID of the client does not matter in this case.
+
+</PRE><P><LI>Service-based COM servers.
+<P>
+   A COM class/AppID that is packaged in a Win32 service is by practical
+   necessity a multiple-use server since services can be launched only
+   once. In this case, at the first activation request a new process is
+   launched in its own window station. There are two exceptions to this:
+<P>
+   a. If the service is set to launch under the LocalSystem account, it
+<P><PRE>      will inherit a system pre-defined window station.
+</PRE><P>
+   b. If the service is set to launch under the LocalSystem account and can
+<P><PRE>      interact with the desktop, it will inherit the interactive window
+      station or winsta0. All subsequent activation requests, whether local
+      or remote, are handled by the service's class object.
+</PRE><P>
+   As noted above, if a process not launched by COM and not running as the
+   specified service registers the CLSID, that registration will fail and
+   if an activation request later arrives the registered service will be
+   launched. This behavior prevents illicit spoofing of class objects.
+<P>
+</OL><h3>Single-Use Classes</h3>
+ 
+<P>
+NOTE: Single-Use classes should be avoided as much as possible. Single-use
+registration is a legacy setting and is intended to support older COM
+applications and to ease the porting of legacy non-COM applications to COM.
+It is strongly recommended that new classes be designed to support multiple-
+use class object registration. This is especially true in the case of
+servers with "This User" identity, where single-use classes cause the exact
+opposite effect of multi-use classes. They create a new server process and
+new window station per activation and, as we discuss below, this can cause
+resource problems under Windows NT.
+<P>
+A single-use class is one that is registered with COM (via the
+CoRegisterClassObject() API) specifying the REGCLS_SINGLEUSE flag. For such
+a class, COM will always start a new instance of the class's server process
+for each activation request from any client (local or remote). For purposes
+of this article, the remaining question is: when will the server get a new
+window station as well?
+
+<OL><P><LI>"Interactive user" security identity.
+<P>
+   Take the case in which the single-use class is set via its AppID to
+   start under the "Interactive User" identity. For this case, each new
+   instance of the server process will always share the interactive window
+   station, if one exists (if no user is logged on locally then all
+   activation requests will fail). No new window station will be created by
+   COM.
+
+<P><LI>"This user" security identity.
+<P>
+   Now consider the case where the single-use COM class's AppId is set to
+   run under the "This User" identity. In this case, the rule is very
+   simple. Every new client activation launches a new process in a new
+   window station. This is true regardless of whether the user specified as
+   "This User" is logged on to the interactive window station at the time
+   of any of the activation requests.
+
+<P><LI>"Launching user" security identity.
+<P>
+   a. Local client.
+<P>
+<P><PRE>      In the local machine activation scenario, the server process will
+      always get the window station of the client. No new window stations
+      are ever created. For example, assume that you are interactively
+      logged on as a_domain\a_user and you run multiple instances of the
+      client program. Each new resulting instance of the server will get
+      the interactive window station. Now assume that the client is a
+      service running under the local system account. The COM server in
+      this case will share the window station of the service process.
+</PRE><P>
+<P>
+   b. Remote client.
+<P>
+<P><PRE>      In the remote activation case, COM ignores the window station of the
+      client since the client is remote. As always, a new server instance
+      process will be started for each remote activation. The rules are:
+</PRE><P>
+<P><PRE>      1. For each new remote client SID, a new window station will be
+<PRE></PRE>         created for the server process.
+      2. For each new remote client LUID, a new window station will be
+         created for the server process.
+      3. All remote clients with the same SID/LUID pair will create servers
+         that will share the same window station.
+
+       For example, you are logged on the remote client machine as
+       a_domain\a_user. This client launches the remote server that will
+       get a new window station. Now, if a_domain\a_user starts a second
+       instance of the client application from the same client machine
+       which in turn launches a new copy of the server on the remote
+       machine, this server will share the original server's window
+       station. Now assume you log on to another machine again as
+       a_domain\a_user, and run the client from there. The corresponding
+       server instance will have a new window station. This demonstrates
+       that even if the client SIDs are the same, since the second client
+       has a different LUID, its server process will get a new window
+       station.
+
+</PRE><P><LI>Service-based COM servers.
+<P>
+   Single-use classes should never be implemented as Windows NT services.
+   It makes no sense, because it is not possible to run multiple instances
+   of an Windows NT service process.
+<P>
+</OL><h3>Table Summarizing Scenarios</h3>
+ 
+<P>
+ 
+<PRE>       |                      Multiple-Use Server
+       |             (class factory has requested reuse)
+       |                       Activation Modes
+       |-------------------------------------------------------------------
+       |   Interactive     | As "This       |As "Launching    | Win32
+Client |      User         |   User"        |   user"         | service
+</PRE></OL> 
+<PRE>Local  | Process launched  | Process        | Process         | Service
+       | in the            | launched in a  | launched client | started on
+       | interactive window| new window     | window station  | first
+       | station on first  | station on     | on first        | activation
+       | activation        | first          | request,        | request
+       | request,          | activation     | subsequent      | (new winsta
+       | subsequent        | request,       | requests from   | or system/
+       | requests get      | subsequent     | the same SID/   | interactive
+       | existing class    | requests get   | window station  | winsta
+       | object,           | existing class | get existing    | depending
+       | activations fail  | object         | class object, no| on service
+       | if no user logged |                | sharing of class| config),
+       | on locally        |                | objects across  | subsequent
+       |                   |                | window stations | requests
+       |                   |                | even if same SID| get
+-------|                   |                |-----------------| existing
+Remote |                   |                | Process launched| class
+       |                   |                | in new winsta on| objects
+       |                   |                | first activation|
+       |                   |                | request by a    |
+       |                   |                | SID, subsequent |
+       |                   |                | remote requests |
+       |                   |                | by the same SID |
+       |                   |                | get existing    |
+       |                   |                | class object;   |
+       |                   |                | class launched  |
+       |                   |                | by local user   |
+       |                   |                | reused by remote|
+       |                   |                | callers with    |
+       |                   |                | same SID        |
+</PRE> 
+<P>
+ 
+<PRE>       |                      Single-Use Server
+       |          (new process created for each activation request)
+       |                       Activation Modes
+       |-------------------------------------------------------------------
+       |   Interactive     | As "This       |As "Launching    | Win32
+Client |      User         |   User"        |   user"         | service
+</PRE> 
+<PRE>Local  | Process always    | Process always | Process always  | N/A(only
+       | launched in the   | launched in a  | launched in     | one
+       | interactive       | new window     | the window      | activation
+       | window station,   | station        | station of      | possible)
+       | if no interactive |                | client process  |
+       | window station    |                |                 |
+       | activation fails  |                |                 |
+-------|                   |                |-----------------|
+Remote |                   |                | if both SID and |
+       |                   |                | LUID of the     |
+       |                   |                | client match    |
+       |                   |                | previous client |
+       |                   |                | activation,     |
+       |                   |                | process launched|
+       |                   |                | in existing     |
+       |                   |                | window station, |
+       |                   |                | otherwise in new|
+       |                   |                | windowstation   |
+</PRE> 
+<P>
+<P><h3>Window Stations and Windows NT Resources</h3>
+ 
+<P>
+In this section we will examine the implications of creating new window
+stations under Windows NT and how that should affect the configuration of
+your COM server. As you will see, there is a limit to the number of window
+stations that can be created on a Windows NT machine. When that limit is
+exceeded, Windows NT will fail an attempt by COM to launch a new instance
+of the server process. Typically, an error message like the following
+appears:
+<P>
+<PRE>   Initialization of the dynamic link library
+   d:\winnt\system32\kernel32.dll failed. The process is terminating
+   abnormally.
+
+</PRE>Under Windows NT, each window station has at least one desktop associated
+with it. Windows NT uses a special memory heap for all windows applications
+running on a desktop. By default, each desktop heap consumes 3MB of memory.
+Windows NT has a non-configurable limit of 48MB for creating desktop heaps.
+This means that the maximum number of window stations that can be created
+on a Windows NT machine is 16 (probably less because a window station can
+contain more than one desktop). To increase this number, you can reduce the
+default desktop heap size by editing the registry using the Registry
+Editor.
+<P>
+WARNING: Using Registry Editor incorrectly can cause serious, system-wide
+problems that may require you to reinstall Windows NT to correct them.
+Microsoft cannot guarantee that any problems resulting from the use of
+Registry Editor can be solved. Use this tool at your own risk.
+<P>
+The named value you need to edit appears under the following key:
+<P>
+<PRE>   HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session
+   Manager\SubSystems
+
+</PRE>You need to edit the "Windows" named value. It is a REG_SZ string. Edit the
+string and look for "Shared Section=1024,3072". Modify this to read "Shared
+Section=1024,3072,512". You need to restart the machine for this change to
+take effect. By making this change, you are specifying 3MB (default) heap
+size for the interactive window station's desktop and 512 KB for all non-
+interactive desktops (the first parameter is obsolete but should not be
+changed). This change will allow the creation of approximately less than
+48MB/512KB or 96 window stations.
+<P>
+NOTE: A window station can contain multiple desktops within it. In the
+discussion of "Launching User" servers above, wherever the window station
+of the local client process is mentioned, it should be considered as a
+shorter form for "window station and desktop". "Launching User" setting is
+really meant for legacy non-DCOM aware servers and should be used rarely.
+Such legacy servers expect to run in their own desktops. Thus, for
+MULTIPLEUSE "Launching User" servers, each client process in a different
+desktop within the same window station causes a new server process to be
+started in that window station/desktop. For SINGLEUSE "Launching User"
+servers, again, the server inherits the windows station/desktop of the
+client process.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For additional information about the desktop heap issue, please see the
+following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../winnt/q142676.htm">Q142676</A></B>
+   TITLE     : Overcome User32.dll Initialization Failure Errors
+</PRE> 
+<PRE>Keywords          : BseSecurity kbenv kbinterop kbprg kbusage
+Technology        : kbole
+Version           : 4.0
+Platform          : NT WINDOWS
+Issue type        : kbinfo</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 21, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,203 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: Serial Communications on Windows CE HPC devices </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q175551">
+<META NAME="KBModify" CONTENT="1997/10/24">
+<META NAME="KBCreate" CONTENT="1997/10/22">
+<META NAME="Keywords" CONTENT="BseCommapi">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Unlike other Win32 platforms, the Windows CE serial driver is implemented as overlapped. This means it can handle multiple concurrent I/O requests even though file handles must be opened as non-overlapped.  MORE INFORMATION  On most Win32 platforms...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QDL9,QBWO,QBWN,QDJ9,QAL2,QBWQ,QAB5,QBFN,QAZM,QAZL,QAYY,QAUQ,QALG,QAJZ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: Serial Communications on Windows CE HPC devices</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 24, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q175551</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows CE, versions 1.0, 2.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Unlike other Win32 platforms, the Windows CE serial driver is implemented
+as overlapped. This means it can handle multiple concurrent I/O requests
+even though file handles must be opened as non-overlapped.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+On most Win32 platforms, the I/O manager serializes non-overlapped serial
+communications. This implies that if there is an I/O request that is
+blocked, any subsequent I/O request will also be blocked until the pending
+I/O request completes. This is true even if each request was made from a
+separate thread.
+<P>
+While the Windows CE API does not support overlapped I/O, the serial driver
+is implemented as overlapped, that is, it can handle multiple concurrent
+I/O requests even though file handles are opened as non-overlapped.
+Therefore, serial communications programs on Windows CE devices have the
+following implementation option, which will not work on other Win32
+platforms. A reading thread may call WaitCommEvent and when a RX_CHAR event
+arrives then call ReadFile to read characters from the port. The exact
+amount of data to read can be obtained by calling ClearCommError. A
+separate thread may simultaneously write to the port without hanging. The
+following sample code demonstrates this read technique.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   DWORD WINAPI
+   ReadThread (LPVOID pvarg)
+   {
+     DWORD   BytesTransferred;
+     DWORD   fdwCommMask;
+     DWORD   dwErrors;
+     COMSTAT Stat;
+     COMMTIMEOUTS CommTimeouts;
+     DWORD   t;
+     BYTE    ReadBuffer[1024];
+
+     GetCommTimeouts (hPort, &amp;CommTimeouts);
+     CommTimeouts.ReadIntervalTimeout = MAXDWORD;
+     CommTimeouts.ReadTotalTimeoutMultiplier = 0;
+     CommTimeouts.ReadTotalTimeoutConstant = 0;  // Read timeout at 50msec
+     SetCommTimeouts (hPort, &amp;CommTimeouts);
+
+     SetCommMask (hPort, EV_RXCHAR | EV_CTS | EV_DSR | EV_RLSD | EV_RING);
+
+     while (!v_bStopThread) {
+        WaitCommEvent (hPort, &amp;fdwCommMask, 0);
+
+        // Reset the comm Mask
+        SetCommMask (hPort, EV_RXCHAR | EV_CTS | EV_DSR | EV_RING);
+
+        if (fdwCommMask &amp; EV_RXCHAR) {
+            // Loop getting data.
+
+         // Need to loop because our buffer is only 1024 bytes
+                while (TRUE)
+                {
+                    ClearCommError( hPort,&amp;dwErrors,&amp;Stat);
+                    if (!Stat.cbInQue)
+                        break;
+                    else
+                    {
+                        ReadFile (  hPort,
+                                    &amp;ReadBuffer,
+                                    (Stat.cbInQue&gt;1024)?1024:Stat.cbInQue,
+                                    &amp;BytesTransferred,
+                                    0
+                                    );
+                            // do something with data
+                    }
+                   // Loop around and check for more data
+                   // In case additional byte has arrived while reading.
+                }
+        }
+
+     }
+
+     return 0;
+   }
+
+</PRE> 
+<PRE>Keywords          : BseCommapi
+Version           : WINNT:
+Platform          : winnt
+Issue type        : kbinfo</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 24, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,347 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Troubleshooting Scheduled Backups </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q138118">
+<META NAME="KBModify" CONTENT="1997/05/01">
+<META NAME="KBCreate" CONTENT="1995/10/11">
+<META NAME="Keywords" CONTENT="kbtool kbusage SSrvAdmin SSrvMon">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  In Microsoft SQL Server version 4.2x, scheduled backups are managed and run by the backup engine that is part of the SQL Monitor service, which acts as a SQL Server client on your behalf.  This article explains the limitations of scheduled events (...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAL4,QABM,QAO4,QAB4,QAPN,QBVV,QAAP,QAIJ,QABA,QDIU,QA6A,QA3W,QAUR,QA2O,QAU3 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Troubleshooting Scheduled Backups</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 1, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q138118</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 4.2x
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In Microsoft SQL Server version 4.2x, scheduled backups are managed
+and run by the backup engine that is part of the SQL Monitor service,
+which acts as a SQL Server client on your behalf.
+<P>
+This article explains the limitations of scheduled events (backups) and
+gives solutions to common problems with scheduled events.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+NOTE: For clarity, this article is organized as follows:
+<P>
+<PRE>PART      TOPIC
+----      ----------------------------------------------------
+A         Limitations of scheduled events
+B         Causes of not being able to manage scheduled events
+C         Causes of one or more scheduled events not occurring
+D         Causes of all scheduled events failing or not occurring
+
+</PRE>PART A:
+<P>
+Here is a list of the by-design limitations of scheduled events:
+
+<OL><P><LI>A scheduled event does not always start at the scheduled time. This is
+   because of the wake-up time of the backup engine. The backup engine
+   wakes up every X minutes and runs the stored procedure sp_MSbackup_now
+   which returns scheduled events that should be started, where X is set
+   either by the BackupTime registry value or the -B command line switch.
+   The BackupTime registry value exists in
+   HKEY_LOCAL_MACHINE\Software\Microsoft\SQLServer\SQLMonitor\Parameters.
+   For example, suppose the wake-up time is fifteen minutes (which is the
+   default), the SQL Monitor service is started at 10:00 AM, and an
+   event is scheduled at 10:20 AM. In this case, the backup engine wakes
+   up at 10:15 AM and every fifteen minutes thereafter. Because the event
+   is scheduled at 10:20 AM, the first time the sp_MSbackup_now stored
+   procedure will return the event to be run is at 10:30 AM. This start
+   time is written into the history log, which is the Actual_start_time
+   column of the MSscheduled_backups_log table.
+
+<P><LI>If the time of a scheduled event is modified after the scheduled event
+   has occurred, the scheduled event will not occur again until the next
+   day, depending on the frequency, at the new time. This is because the
+   sp_MSbackup_now stored procedure performs a datediff in units of days
+   between the Last_dump column of the MSscheduled_backups table and the
+   current date and time. For additional information about the structure of
+   the MSscheduled_backups table, please see the following article in the
+   Microsoft Knowledge Base:
+<P>
+   ARTICLE-ID: <B><A href="../sqlserver/q122527.htm">Q122527</A></B>
+<PRE>   TITLE     : INF: Understanding MSscheduled_Backups Entries
+
+
+</PRE><P><LI>Only one scheduled event can occur at a time, so if multiple scheduled
+   events are returned by the sp_MSbackup_now stored procedure, the events
+   are run one at a time in order of scheduled time and Event_id.
+
+<P><LI>Error messages returned while performing a scheduled event are returned
+   to the backup engine of SQL Monitor, and are not always recorded in the
+   history log, which is the Message column of the MSscheduled_backups_log
+   table.
+<P>
+</OL>PART B:
+<P>
+Here is a list of common error messages, their causes, and workarounds of
+situations which disable the ability to manage scheduled events in SQL
+Administrator:
+
+<OL><P><LI>If you get a dialog in SQL Administrator with the error "The SQL Server
+   Monitor is not started on this server" or "The database selected for the
+   scheduled backup is not permitted to sa," start the SQLMonitor service
+   with either the SQL Service Manager application or the Services
+   application in the Windows NT Control Panel.
+
+<P><LI>If Step 1 fails or you get any of the following errors, then the sa
+   password has been changed and SQL Monitor needs to be notified.
+<P>
+<P><PRE>       - A dialog is displayed with the title "Services" and the message
+<PRE></PRE>         "The SQLMonitor service terminated with service-specific error 1."
+
+       - The NT Event Viewer shows the following error in the System Log:
+         Event Id: 7024
+         Source: Service Control Manager
+         Type: Error
+         Category: None
+         Description: The SQLMonitor service terminated with service-
+         specific error 1.
+
+       - The NT Event Viewer shows the following error in the Application
+         Log:
+         Event Id: 0
+         Source: SQLMonitor
+         Type: Error
+         Category: (1)
+         Description: The description for event id (0) in source
+        (SQLMonitor)could not be found. It contains the following insertion
+         string(s): Can't Log on to ., user: sa.
+
+   To change the sa password for SQL Monitor, use the NET START SQLMONITOR
+   command from a Command Prompt with the /NEWPASSWORD switch, as
+   documented in the SQL Server Release Notes help file.
+
+</PRE><P><LI>If the connection to SQL Server is made using the TCP/IP Sockets Net-
+   Library, please see the following article in the Microsoft Knowledge
+   Base for more information:
+<P>
+   ARTICLE-ID: <B><A href="../sqlserver/q118386.htm">Q118386</A></B>
+<PRE>   TITLE     : BUG: SQL Admin Reports SQL Monitor Not Started
+
+</PRE><P><LI>Reinstall the SQL Server client software or run Setup to rebuild SQL
+   Server's registry keys according to page 144 of the "Configuration
+   Guide."
+
+<P><LI>Try another Net-Library to connect to SQL Server
+
+<P><LI>If SQL Administrator gives a dialog with the error "The connection
+   to the SQL Monitor has timed out, do you wish to continue?", determine
+   if the master database is out of space by running the following query:
+<P>
+<P><PRE>      USE master
+      GO
+      CREATE TABLE test1105 (a int)
+      GO
+      INSERT test1105 VALUES (1)
+      GO
+      DROP TABLE test1105
+</PRE><P>
+   If this query fails with an 1105 error, then truncate the transaction
+   log of the master database or increase the size of the master database.
+
+<P><LI>If displaying the scheduled events history log, please see the following
+   article in the Microsoft Knowledge Base for more information:
+<P>
+   ARTICLE-ID: <B><A href="../sqlserver/q114662.htm">Q114662</A></B>
+<PRE>   TITLE     : PRB: SQL Admin Can Not Display History for Scheduled Dumps
+
+
+</PRE></OL>PART C:
+<P>
+Here is a list of common errors and their workarounds of situations which
+will cause one or more scheduled events not to occur:
+
+<OL><P><LI>Check the history log for errors in the message column.
+
+<P><LI>If the history log contains the error "DUMP DATABASE has been
+   interrupted by a USER ATTENTION signal," confirm that the SQLTimeout
+   value is enough in seconds to complete the longest event. This value
+   exists in
+   HKEY_LOCAL_MACHINE\Software\Microsoft\SQLServer\SQLMonitor\Parameters.
+
+<P><LI>If the history log or the SQL Server error log contain device errors,
+   see Knowledge Base articles <B><A href="../sqlserver/q123405.htm">Q123405</A></B> ("INF: How to Troubleshoot SQL
+   Server Tape Read/Write Errors") and <B><A href="../sqlserver/q124023.htm">Q124023</A></B> ("INF: Testing Methods for
+   SQL Server Tape Dumps or Loads") for more information.
+
+<P><LI>If the history log shows that the scheduled event seems to skip
+   alternate occurrences, confirm that the scheduled event does not cross a
+   date line. For example, the scheduled event actually starts at 11:00
+   P.M. and finishes at 12:15 A.M. The workaround for this is to make sure
+   that all scheduled events complete on the same day they start. With the
+   example event above, this could be accomplished be scheduling the event
+   at 10:30 P.M. or 12:00 A.M.
+
+<P><LI>If the history log shows that a scheduled event to tape returns the
+   error "Unknown!", see Knowledge Base article <B><A href="../sqlserver/q114027.htm">Q114027</A></B> ("BUG: Scheduled
+   Tape Dumps Fail w/ Error Unknown") for more information.
+
+<P><LI>If the history log shows no error and the query "SELECT @@version"
+   returns version 4.21.006 or 4.21.007, article <B><A href="../sqlserver/q119266.htm">Q119266</A></B> ("BUG:
+   sp_MSbackup_now Fails on Scheduled Dumps to Same Device") may provide a
+   solution. NOTE: This issue has been fixed in Microsoft SQL Server
+   version 4.21a.
+
+<P><LI>If events that are scheduled near 12:00 A.M. do not occur, see Knowledge
+   Base article <B><A href="../sqlserver/q90484.htm">Q90484</A></B> ("BUG: Scheduled Backup Near Midnight Does Not
+   Occur") for more information.
+
+<P><LI>If monthly scheduled events skip alternate occurrences, and the query
+   "SELECT @@version" returns version 4.2, see Knowledge Base article
+   <B><A href="../sqlserver/q107710.htm">Q107710</A></B> ("FIX: Monthly Scheduled Backups Skip Alternate Months) for more
+   information. NOTE: This issue has been fixed in Microsoft SQL Server
+   version 4.21.
+
+<P><LI>If the actual startup time for scheduled events is not near the
+   scheduled time, see Knowledge Base article <B><A href="../sqlserver/q87834.htm">Q87834</A></B> ("FIX: SQL Admin:
+   Actual Startup Time for Scheduled Backups") for more information. Note:
+   This issue has been fixed in Microsoft SQL Server for OS/2 version 4.2a.
+<P>
+</OL>PART D:
+<P>
+Here is a list of common errors and their workarounds of situations which
+will cause all scheduled events to not occur:
+
+<OL><P><LI>If the SQLMonitor service is not started or fails to start, see PART B
+  (earlier in this article), Steps 1 and 2 for more information.
+
+<P><LI>Confirm if the master database has a 1105 error using query in PART B,
+   Step 6.
+
+<P><LI>If the scheduled event is a dump to a device that has removable media
+   (tape drive or floppy drive), the query "sp_who" shows a process
+   running a DUMP DATABASE or DUMP TRANSACTION command, the status is
+   Sleeping and it is not blocked, and there is no activity to the device,
+   place new media in the device. If the scheduled event completes
+   successfully, the problem was that the media did not have enough space
+   to complete the event and was waiting for new media to continue the
+   scheduled event. If the scheduled event does not complete but there was
+   activity to the device, retry this step.
+
+<P><LI>If the scheduled event is to a tape device and it is not appending to
+   the tape and the media retention setting of sp_configure disables the
+   use of the media, see Knowledge Base article <B><A href="../sqlserver/q117515.htm">Q117515</A></B> ("FIX: Scheduled
+   Backups May Hang w/ Unexpired Tapes") for more information.
+
+<P><LI>If a tape device is available, attempt to dump the master database to
+   tape using the SQL Administrator interface. If the dump completes
+   successfully, skip to step 5.
+
+<P><LI>Stop and restart the SQLMonitor service.
+
+<P><LI>Create a new scheduled event to dump the master database to a disk
+   device within the next couple of minutes. If the scheduled event
+   completes successfully, recreate all scheduled events.
+
+<P><LI>If scheduled events stop occurring after 4/14/93, see article <B><A href="../sqlserver/q99113.htm">Q99113</A></B>
+   ("FIX: Scheduled Backups Stop Working After 4/14/93") for more
+   information. NOTE: This issue has been fixed in Microsoft SQL Server for
+   OS/2, version 4.2b.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Dump Monitor SQLMonitor Task<BR>
+Keywords            : kbtool kbusage SSrvAdmin SSrvMon<BR>
+Version             : 4.2 4.21 4.21a<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 1, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

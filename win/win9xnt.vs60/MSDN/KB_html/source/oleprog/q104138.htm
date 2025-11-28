@@ -1,0 +1,302 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Reference Counting Rules </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q104138">
+<META NAME="KBModify" CONTENT="1995/05/17">
+<META NAME="KBCreate" CONTENT="1993/09/08">
+<META NAME="Keywords" CONTENT="kbole kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  In the component object model, an interface's lifetime is controlled through reference counting. The reference count for an interface is manipulated through the AddRef() and Release() member functions inherited from IUnknown. The AddRef() member in...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAO2,QAO3,QAY5,QAYL,QA9N,QASB,QBBS,QAUD,QAPF,QAY2,QBV8,QAB9,QAIB,QAB3,QAG8 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Reference Counting Rules</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 17, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q104138</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE Libraries for Windows and Win32s, version 2.0
+<LI>Microsoft OLE Libraries, included with:
+<P><PRE>    - Microsoft Windows NT, versions 3.5 and 3.51
+    - Microsoft Windows 95
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In the component object model, an interface's lifetime is controlled
+through reference counting. The reference count for an interface is
+manipulated through the AddRef() and Release() member functions
+inherited from IUnknown. The AddRef() member increments an interface's
+reference count, and the Release() method decrements it. Once an
+interface's reference count goes to zero, there are no longer any
+valid pointers to that interface. If the reference count on all of an
+object's interfaces is zero, then the object can be freed because
+there are no longer any pointers to the object.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Reference Counting Rules</h3>
+ 
+<P>
+The following list is a copy of the reference counting rules (taken
+from pages 83 and 84 of the OLE 2.0 specification) that must be
+followed. Small code samples have been added in this article to help
+clarify the rules.
+
+<OL><P><LI>Every new copy of an interface pointer must be AddRef()'d, and
+   every destruction of an interface pointer must be Release()'d
+   except where subsequent rules explicitly permit otherwise.
+<P>
+   a. In-Out parameters to functions: The caller must AddRef() the
+<P><PRE>      actual parameter, because it will be Release()'d by the callee
+      when the out-value is stored on top of it.
+</PRE><P>
+<P><PRE>      LPOLEOBJECT lpObject;
+<PRE></PRE>         .
+         .  // Get pointer to IOleObject.
+         .
+      LPVIEWOBJECT lpView = lpObject;
+
+      lpObject-&gt;AddRef()
+
+      // GetViewObject is a theoretical function that takes a
+      // pointer to anything derived from IUnknown, and then
+      // returns a pointer to IViewObject in the same variable
+      // passed as the parameter. The AddRef() above is needed so
+      // that the original pointer to IOleObject is not freed.
+
+      GetViewObject(lpView);
+
+   b. Fetching a global variable: The local copy of an interface
+      pointer fetched from an existing copy of the pointer in a global
+      variable must be independently reference counted because called
+      functions might destroy the copy in the global while the local
+      copy is still alive.
+
+      void function()
+      {
+      // Get a pointer to IOleObject from a global variable.
+      LPOLEOBJECT lpOleObject = glpObject;
+
+      // This AddRef() is needed so that the interface
+      // pointed to by the global variable, glpObject,
+      // does not get released by a different part of
+      // the applications code.
+
+      lpOleObject-&gt;AddRef();
+         .
+         . // use lpOleObject;
+         .
+      lpOleObject-&gt;Release();
+      }
+
+   c. New pointers synthesized out of "thin air": A function that
+      synthesizes an interface pointer using special internal
+      knowledge rather than obtaining it from some other source must
+      do an initial AddRef() on the newly synthesized pointer.
+      Important examples of such routines include instance creation
+      routines, implementations of IUnknown::QueryInterface, and so
+      forth.
+
+      STDMETHDOIMP IUnknown::QueryInteface( REFIID iidInterface,
+                                         LPVOID FAR *ppvObj)
+      {
+      *ppvObj = NULL;
+      SCODE sc = E_NOINTERFACE;
+
+      if (iidInterface == IUnknown)
+          {
+          *ppvObj = this;
+
+          // This AddRef() is needed because a new pointer
+          // was just created.
+
+          AddRef();
+         sc = S_OK;
+          }
+
+      return ResultFromScode(sc);
+      }
+
+   d. Returning a copy of an internally stored pointer: Once the
+      pointer has been returned, the callee has no idea how its
+      lifetime relates to that of the internally stored copy of the
+      pointer. Thus, the callee must AddRef() the pointer copy before
+      returning to it.
+
+      // m_lpOleObject is a private member variable of a C++ class.
+      // GetOleObject is a member function to return access to this
+      // pointer.
+
+      void GetOleObject (LPVOID FAR *ppObject)
+      {
+          *ppObject = m_lpOleObject;
+
+          // This AddRef() is needed due to this rule.
+
+          m_lpOleObject-&gt;AddRef();
+       }
+
+</PRE><P><LI>Special knowledge on the part of a piece of code about the
+   relationships of the beginnings and endings of the lifetimes of two
+   or more copies of an interface pointer can allow AddRef()/Release()
+   pairs to be omitted.
+<P>
+   a. In-parameters to functions: The copy of an interface pointer
+<P><PRE>      that is passed as an actual parameter to a function has a
+      lifetime that is nested in that of the pointer used to
+      initialize the value. Therefore, the actual parameter need not
+      be separately reference counted.
+</PRE><P>
+<P><PRE>      void function (LPOLEOBJECT lpOleObject)
+      {
+</PRE><P>
+<P><PRE>      // Can use lpOleObject in this function
+      // without doing AddRef() and Release().
+</PRE><P>
+<P><PRE>      }
+</PRE><P>
+   b. Out-parameters from functions, including return values: To set
+<P><PRE>      the out parameter, the function itself by Rule 1 must have a
+      stable copy of the interface pointer. On exit, the
+      responsibility for releasing the pointer is transferred from the
+      callee to the caller. Thus, the out parameter need not be
+      referenced counted.
+</PRE><P>
+<P><PRE>      LPVIEWOBJECT lpView;
+</PRE><P>
+<P><PRE>      HERROR hErr = lpOleObject-&gt;QueryInterface(IID_IViewObject,
+<PRE></PRE>                                                (LPVOID FAR *)lpView);
+
+      if (hErr = NOERROR)
+          {
+          // The QueryInterface succeeded. lpView does not have
+          // to be AddRef()'d because it has already been done
+          // by the QueryInterface method.
+          }
+
+   c. Local variables: A function implementation clearly has
+      omniscient knowledge of the lifetimes of each of the pointer
+      variables allocated on the stack frame. It can therefore use
+      this knowledge to omit redundant AddRef()/Release() pairs.
+
+      void function()
+      {
+      LPOLEOBJECT lpTempObject;
+         .
+         .
+         .
+      lpTempObject = lpObject;
+         .
+         .  // lpTempObject can be used
+         .  // without reference counting as long as
+         .  // it is known that the lifetime of lpObject
+         .  // outside of this function call.
+         .
+      }
+
+   d. Backpointers. Some data structures are of the nature of
+      containing two components, A and B, each with a pointer to the
+      other. If the lifetime of one component (A) is known to contain
+      the lifetime of the other (B), then the pointer from the second
+      component back to the first (from B to A) need not be reference
+      counted. Often, avoiding the cycle that would otherwise be
+      created is important in maintaining the appropriate freeing
+      behavior.
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.00 3.50 4.00<BR>
+KBCategory: kbole kbprg<BR>
+KBSubcategory: LeTwoCom<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 17, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,284 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Modify VxD in VKD_Define_Hot_Key to Detect All Keys </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q153380">
+<META NAME="KBModify" CONTENT="1996/07/10">
+<META NAME="KBCreate" CONTENT="1996/07/08">
+<META NAME="Keywords" CONTENT="kbprg kbhowto kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32ddk">
+<META NAME="Description" CONTENT="  In Windows 95, the keyboard input is handled by the keyboard driver and is virtualized by the VxD called (default) VKD.VXD. At ring 0, a VxD can call VKD_Define_Hot_Key to set a call back on certain keystrokes. This may seem not to work on some key...">
+<META NAME="Product" CONTENT="Win32 DDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAQT,QAH4,QA7R,QA6E,QAMN,QAGI,QABG,QAVX,QAYA,QDL9,QBXN,QBWO,QBWN,QAEF,QAVW V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Modify VxD in VKD_Define_Hot_Key to Detect All Keys</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 10, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q153380</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Device Development Kit (DDK) for Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In Windows 95, the keyboard input is handled by the keyboard driver and is
+virtualized by the VxD called (default) VKD.VXD. At ring 0, a VxD can call
+VKD_Define_Hot_Key to set a call back on certain keystrokes. This may seem
+not to work on some key combinations or events. This article provides
+sample code showing how to modify the VKD source code supplied with the
+Windows 95 DDK to trace the hot key evaluation and see all the scan codes
+as they are typed. With modification, this should also work in the Windows
+version 3.1 DDK sample.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The VxDCall VKD_Define_Hot_Key uses the VMM list services to create a list
+of all hot keys currently set. When a key is changed (pressed or released)
+the routine Chk_Hot_Keys in VKDHK.ASM is called to compare it to the list.
+<P>
+Certain key combinations do not register as a single event, so drivers that
+need to detect them must keep track of the key history. The following
+sample code, replacing the first part of Chk_Hot_Keys, sends out the exact
+scan code and shift state for reference on every key event as well as
+advisory messages as to hot key detection.
+<P>
+The code was tested by building in the SDK95/DDK95/MASM6.11 environment,
+using WDEB386 as the debugger. Note the use of conditional trace outs.
+Remember also, that you will most likely be calling VKD_Reflect_Hot_Key ("I
+am not doing anything with this key now but pass it on") or
+VKD_Cancel_Hot_Key ("I have handled this key - no further system action")
+as part of your call back routine.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+BeginProc Chk_Hot_Keys
+<P>
+;!!! key trace
+<PRE>   trace_out "Chk_Hot_Keys key #AX"
+</PRE>;!!! end
+<P>
+<PRE>   VK_HK_Queue_Out "Chk_Hot_Keys key scan code = #AX ..."
+
+   push  eax
+
+</PRE>;!!! key trace
+<PRE>   mov   eax,[vkd_gbl_shift_state]
+   trace_out "Chk_Hot_Keys ... shift state = #AX"
+   pop   eax
+   push  eax
+</PRE>;!!! end
+<P>
+<PRE>   test  [VKD_gbl_shift_state], SS_Shift_mask + SS_Toggle_Dn_mask
+                   ;Q: are any shift state keys down?
+</PRE>;!!! key trace
+<PRE>   trace_outNZ "---------- Shift State keys DOWN"
+</PRE>;!!! end
+<P>
+<PRE>   jnz   short chkhk_1         ; Y:
+   and   eax, (NOT SC_Break AND 0FFh) OR VK_Extended
+                   ; clear all but Extended bit &amp;
+                   ; base scan code
+
+   cmp   eax, Pause_HK         ;Q: special single key hot key?
+</PRE>;!!! key trace
+<PRE>   trace_outZ "---------- NO CHECK performed (special key)"
+</PRE>;!!! end
+<PRE>   jz DEBFAR je_don_t_check       ; N: (chained short jumps)
+
+</PRE>chkhk_0:
+<PRE>   mov   eax, [esp]         ; retrieve saved eax value
+</PRE>chkhk_1:
+IFDEF DEBUG
+<PRE>   push  ebx
+   mov   ebx, [esp+8]
+   VK_HK_Queue_Out 'Chk_Hot_Keys #ax, called from ?ebx'
+   pop   ebx
+</PRE>ENDIF
+<PRE>   test  al, SC_Break          ;Q: key being released?
+   jz short continue_check
+   TestMem [VKD_flags], VKDf_HK_hold   ;Q: already in hot key state?
+</PRE>je_don_t_check:
+<PRE>   je DEBFAR don_t_check       ; N: don't enter hot key state
+                   ;    on just the release!
+
+</PRE>continue_check:
+;!!! key trace
+<PRE>   trace_out "---------- CHECK performed"
+</PRE>;!!! end
+<PRE>   pushad
+   mov   edi, esi        ; point edi at CB data
+   mov   cx, ax             ; save virtual key
+   mov   esi, [Hot_Key_List]
+   VMMCall List_Get_First
+   jz short no_hot_keys     ; jump if no hot keys defined
+
+;
+</PRE>; if extended, is all we need to know
+; so leave VK_Extended bit in modifier byte and NON SC_Break bits in the
+; scan code byte
+;
+<PRE>   and   cx, VK_Extended + (0FFh XOR SC_Break)
+</PRE>.errnz (VK_Extended + (0FFh XOR SC_Break)) - 807Fh
+<P>
+chk_key:
+<PRE>   cmp   cl, [eax.Hot_Key_scan_code] ;Q: scan codes match?
+   jne   short no_key          ; N:
+   cmp   [eax.Hot_Key_extended], AllowExtended_B ;Q: ignore extended flag?
+   je short accept_key      ;        Y:
+   cmp   ch, [eax.Hot_Key_extended]  ;Q: same ext status?
+   jne   short no_key          ; N:
+</PRE>accept_key:
+<PRE>   mov   ebx, [VKD_gbl_shift_state]
+   and   bx, [eax.Hot_Key_SS_Mask]
+   cmp   bx, [eax.Hot_Key_SS_Compare] ;Q: correct shift state?
+   je short hot_key_fnd     ; Y:
+</PRE>no_key:
+<PRE>   VMMCall List_Get_Next          ; EAX is next key definition
+   jnz   chk_key
+</PRE>no_hot_keys:
+<PRE>   clc                ; failed!
+   jmp   short chk_exit
+
+</PRE>hot_key_fnd:
+;!!! key trace
+<PRE>   trace_out "---------- HOT KEY found! = #EAX"
+</PRE>;!!! end
+<PRE>   VK_HK_Queue_Out "Chk_Hot_Keys Hot key detected #eax"
+
+   mov   ebx, [eax.Hot_Key_Local_Flag]
+   bt [edi.disabled_hot_keys], ebx ;Q: key disabled?
+   jnc   short hot_not_disabled      ; N: match found
+
+   test  byte ptr [esp.Pushad_EAX], SC_Break ;Q: release hot key?
+</PRE>IFDEF DEBUG
+<PRE>   jnz   SHORT D00_handle_up_on_disabled
+   VK_HK_Queue_Out "Chk_Hot_Keys Hot key disabled"
+   jmp   no_key
+</PRE>D00_handle_up_on_disabled:
+ELSE
+<PRE>   jz no_key
+</PRE>ENDIF
+<PRE>   and   [eax.Hot_Key_call_mask], NOT Hot_Key_Down   ; flag as key up
+   mov   bl, byte ptr [esp.Pushad_EAX]
+   mov   [VKD_last_key], bl
+   jmp   no_key
+
+</PRE>hot_not_disabled:
+<PRE>   TestMem  [eax.Hot_Key_call_mask], Monitor_Key ; monitoring only?
+   jnz   Hot_Key_Activate_Monitor    ; Y: Handle internally
+   stc
+   mov   [esp.Pushad_EBX], eax       ; return handle of hot key
+
+</PRE>chk_exit:
+<PRE>   popad
+</PRE>don_t_check:
+<PRE>   pop   eax
+   ret
+
+</PRE>EndProc Chk_Hot_Keys
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+Windows 95 DDK
+sample code in KEYB\SAMPLES\VKD
+related sample in KEYB\SAMPLES\VKXD
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words:<BR>
+KBCategory: kbprg kbcode kbhowto<BR>
+KBSubcategory: DdkKb
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 10, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

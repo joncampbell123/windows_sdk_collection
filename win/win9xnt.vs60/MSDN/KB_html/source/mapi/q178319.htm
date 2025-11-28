@@ -1,0 +1,247 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Cause EFD Forms to Display Named Props Set from Ext. MAPI </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q178319">
+<META NAME="KBModify" CONTENT="1998/01/08">
+<META NAME="KBCreate" CONTENT="1997/12/18">
+<META NAME="Keywords" CONTENT="kbcode EMAPI MAPIForm">
+<META NAME="KBArea" CONTENT="Support; KB; mapi">
+<META NAME="Description" CONTENT="  A Form created by the Electronic Forms Designer (EFD) creates properties on its messages. It also sets a property that the developer of the form does not know about. This property is often called MS_EXCHANGE_01. As long as the message is being comp...">
+<META NAME="Product" CONTENT="mapi">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QBXS,QAEV,QAGC,QAH4,QAYC,QBWC,QDOL,QAI4,QAGI,QBVV,QAUJ,QAL7,QAKP,QAKJ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Cause EFD Forms to Display Named Props Set from Ext. MAPI</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 8, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q178319</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Extended Messaging Application Programming Interface (MAPI), version 1.0
+<LI>Exchange Development Kit (EDK), version 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+A Form created by the Electronic Forms Designer (EFD) creates properties on
+its messages. It also sets a property that the developer of the form does
+not know about. This property is often called MS_EXCHANGE_01. As long as
+the message is being composed and sent by the form there is no problem
+because the form knows about this property and sets it appropriately.
+<P>
+However, when sending a message from Extended MAPI, you must include code
+to set this property in order for other custom properties in your message
+to be read into their fields on the form.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following code works for one named property. You can modify it for more
+then one property. This code calls separate functions to set the standard
+properties on the message and to set the recipients of the message. You may
+substitute your own functions for these.
+<P>
+The key to making this work is the MS_EXCHANGE_01 property. If you look at
+the VB source to your Form you will find that it checks for this property
+to be set on the message. If this property is not set, your other
+properties will not be read into their fields.
+<P>
+This code does not free all its memory or release its objects. You should
+of course add this as would be appropriate to your application:
+<P>
+<PRE>    HRESULT SendMapiMessage()
+    {
+       HRESULT            hr;
+       LPMESSAGE          lpMsg = NULL;
+       MAPINAMEID         NamedID;
+       LPMAPINAMEID       lpNmid = &amp;NamedID;
+       LPMAPIFORMINFO     lpFormInfo = NULL;
+       LPMAPIFORMMGR      lpMgr = NULL;
+       SPropValue         pProp;
+       LPSPropTagArray    lpNamedPropTags = NULL;
+       SMAPIFormPropArray *lpFrmPropAry =NULL;
+
+       // Create a new message
+       hr=lpFolder-&gt;CreateMessage(NULL,MAPI_DEFERRED_ERRORS,&amp;lpMsg);
+       if(FAILED(hr)) goto oops;
+
+       // Open Forms Manager
+       hr=MAPIOpenFormMgr(poSession,&amp;lpMgr);
+       if(FAILED(hr)) goto oops;
+
+       // Get the Forms Info object
+       hr=lpMgr-&gt;ResolveMessageClass("IPM.NOTE.MyNote",
+                      MAPIFORM_EXACTMATCH,lpFolder,&amp;lpFormInfo);
+       if(FAILED(hr)) goto oops;
+
+       // Get all the published properties of the form
+       hr = lpFormInfo-&gt;CalcFormPropSet(0,&amp;lpFrmPropAry );
+       if (FAILED(hr)) goto oops;
+
+       // Set First Property for demonstration purposes
+       // You could set all the properties here if you wished
+       // by using each element in the aFormProp array
+       NamedID = lpFrmPropAry -&gt;aFormProp[0].nmid;
+
+       // Get Tags for these properties
+       hr = lpMsg-&gt;GetIDsFromNames(1, &amp;lpNmid, MAPI_CREATE,
+                                   &amp;lpNamedPropTags);
+       if(hr) goto oops;
+
+       // Create a typed property tag
+       pProp.ulPropTag = PROP_TAG(PT_STRING8,
+                   PROP_ID(lpNamedPropTags-&gt;aulPropTag[0]));
+       pProp.dwAlignPad = 0L;
+       pProp.Value.lpszA = "Your string here";
+
+       // Set the property
+       hr = HrSetOneProp(lpMsg, &amp;pProp);
+
+       // Set EFD property to allow EFD to read and set fields.
+       // You should check your VB code to ensure that this is
+       // the correct name of the field in your project
+       NamedID.lpguid = (LPGUID) &amp;PS_PUBLIC_STRINGS;
+       NamedID.ulKind = MNID_STRING;
+       NamedID.Kind.lpwstrName = L"MS_EXCHANGE_01";
+
+       // Once again, get the ID
+       hr = lpMsg-&gt;GetIDsFromNames(1, &amp;lpNmid , MAPI_CREATE,
+                                   &amp;lpNamedPropTags);
+       if(hr) goto oops;
+
+       // Once again create a typed property tag
+       pProp.ulPropTag = PROP_TAG(PT_BOOLEAN,
+                   PROP_ID(lpNamedPropTags-&gt;aulPropTag[0]));
+       pProp.dwAlignPad = 0L;
+       pProp.Value.b    = 1;
+
+       // And once again set the property
+       // Normally you would want to use one call to SetProps
+       // with an array of propeties to set
+       hr = HrSetOneProp(lpMsg, &amp;pProp);
+
+       // Set Message Class - this could be set with other props
+       // Setting here for illustration purposes
+       pProp.ulPropTag = PR_MESSAGE_CLASS;
+       pProp.dwAlignPad = 0L;
+       pProp.Value.lpszA = "IPM.NOTE.MyNote";
+
+       hr = HrSetOneProp(lpMsg, &amp;pProp);
+       if (hr) goto oops;
+
+       // Here you would set all other outgoing Message props
+       hr = SetOutgoingProps(lpMsg);
+       if (hr) goto oops;
+
+       // Here you would set the recipients of your message
+       hr = SetRecips(lpMsg);
+       if (hr) goto oops;
+
+       // Finally, sumbit the message
+       hr = lpMsg-&gt;SubmitMessage(0);
+       if (hr) goto oops;
+
+    oops:
+       // Normally you would free up your memory and
+       // Release your objects
+
+       return S_OK;
+    }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Form forms EFD designer exchange display named<BR>
+property<BR>
+Keywords          : kbcode EMAPI MAPIForm<BR>
+Version           : WINDOWS:1.0,5.0<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 8, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

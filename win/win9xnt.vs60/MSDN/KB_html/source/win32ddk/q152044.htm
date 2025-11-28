@@ -1,0 +1,236 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Create a PCI Device Driver for Windows NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q152044">
+<META NAME="KBModify" CONTENT="1998/02/17">
+<META NAME="KBCreate" CONTENT="1996/06/01">
+<META NAME="Keywords" CONTENT="NTDDKKMode">
+<META NAME="KBArea" CONTENT="Support; KB; win32ddk">
+<META NAME="Description" CONTENT="  This article describes how to create a PCI Device driver for Windows NT. A device driver must perform many functions, such as creating a device object, etc. In addition, there are many more functions that a driver must perform during driver initial...">
+<META NAME="Product" CONTENT="Win32 DDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAB5,QAGI,QDJV,QBWP,QAHC,QAU9,QADN,QDMR,QBW5,QAIM,QBVV,QAHB,QABH,QBW6,QAIF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Create a PCI Device Driver for Windows NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 17, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q152044</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Device Driver Kit (DDK), versions 3.5, 3.51
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes how to create a PCI Device driver for Windows NT. A
+device driver must perform many functions, such as creating a device
+object, etc. In addition, there are many more functions that a driver must
+perform during driver initialization to support a PCI device. Note that
+some of the functions mentioned below are also used in non-PCI drivers.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Following are the steps necessary to accomplish this task:
+
+<OL><P><LI>Find the PCI device with HalGetBusData:
+<P>
+   Scan all the buses and slots to find the location of your PCI device. In
+   the buffer returned by HalGetBusData, look for a match to your device's
+   PCI VendorId and DeviceId.
+<P>
+   If your device driver requires additional information from the PCI
+   configuration space, use HalGetBusData or HalGetBusDataByOffset. Fields
+   in the PCI configuration space can be set with HalSetBusData or
+   HalSetBusDataByOffset.
+<P>
+   IMPORTANT: Do not set the base address registers (BARs) or the interrupt
+   information in the PCI configuration space. Also, do not expect the BARs
+   original settings to be those that will be used for your device. Since
+   PCI is dynamically configurable, the operating system reserves the right
+   to move the BARs as it sees fit.
+<P>
+   Find the PCI device with 3 FOR loops: one for the bus, one for the
+   device number, and one for the function number. Note that the structure
+   PCI_SLOT_NUMBER contains the device number and function number
+   information.
+
+<P><LI>Claim the device resources with HalAssignSlotResources:
+<P>
+   Once the PCI device is located, pass the bus and slot information to
+   HalAssignSlotResources. This API will ensure that there are no conflicts
+   with the resources specified in the configuration space. Note that the
+   HAL may move your memory or port ranges, so don't use the values
+   directly from the configuration space. Instead, use the values returned
+   in the resource list and translate them as indicated below.
+
+<P><LI>Parse the resource list for the device resources:
+<P>
+   HalAssignSlotResources will claim the PCI device resources and return
+   the claimed resources in a CM_RESOURCE_LIST structure. The driver will
+   have to parse this resource list to get the interrupt, memory range, and
+   I/O range information. Note that a single PCI device can have multiple
+   memory and I/O ranges. If necessary, save this information in the
+   driver's device extension for later translation. Do not use the raw
+   resource information to access the I/O or memory spaces.
+<P>
+   At this point, if the driver were to examine the PCI configuration
+   space, the BARs should be the same as those returned in the
+   CM_RESOURCE_LIST structure. However, use the information returned in the
+   resource list.
+
+<P><LI>For each memory range claimed, call HalTranslateBusAddress and
+   MmMapIoSpace:
+<P>
+   HalTranslateBusAddress translates a bus-specific address into the
+   corresponding system-logical address. After the call to this API, check
+   the fourth parameter. On entry to the API, zero indicates memory space.
+   On exit from the API, if the value is still zero, as is the normal case
+   for memory translation, the driver must also call MmMapIoSpace.
+<P>
+   Save the translated memory range information in a driver-accessible area
+   like the device extension. Use the translated range to access the memory
+   space.
+
+<P><LI>For each I/O range claimed, call HalTranslateBusAddress, and if needed,
+   MmMapIoSpace:
+<P>
+   Mapping is similar to that for memory space. However, on entry to
+   HalTranslateBusAddress, the fourth parameter is one, which indicates I/O
+   space. On exit, the API may have changed this parameter to zero, in
+   which case the driver must also call MmMapIoSpace.
+<P>
+   Save the translated I/O range information in a driver-accessible area
+   like the device extension. Use the translated range to access the I/O
+   space.
+<P>
+   On some RISC-based systems, there is no I/O space: I/O space is mapped
+   to memory space. In this situation, the fourth parameter will change to
+   indicate that the I/O space has been mapped to memory space. On an x86-
+   based system, translating an I/O space will use HalTranslateBusAddress,
+   but not MmMapIoSpace. On some RISC-based systems, both
+   HalTranslateBusAddress and MmMapIoSpace might be called. It is important
+   to check the fourth parameter of HalTranslateBusAddress after the call
+   to this API.
+<P>
+   This is a common problem when porting from x86-based machines to RISC
+   platforms. Driver writers sometimes assume that if they are translating
+   I/O ranges, they will never need to call MmMapIoSpace. This is an
+   incorrect assumption.
+
+<P><LI>If the device supports interrupts, call HalGetInterruptVector and
+   IoConnectInterrupt:
+<P>
+   Once IoConnectInterrupt has been called, the driver's interrupt service
+   routine (ISR) might be called if the PCI device is interrupting. For
+   this reason, it is best to connect the interrupt after translating all
+   the device registers. If the previous translation has not occurred or
+   the information is not available to the ISR (if, for example, the
+   translated memory and I/O ranges are not saved in the device extension),
+   the ISR will not be able to check the PCI device registers and clear the
+   interrupt. If the interrupt is not cleared, the system will hang.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+Please see the Windows NT Device Driver Kit, Kernel-mode Drivers, Design
+Guide for an overview of Windows NT device drivers. The APIs mentioned
+above are explained in detail in the Windows NT Device Driver Kit, Kernel-
+mode Drivers, Reference section.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: PCI HAL<BR>
+Keywords          : NTDDKKMode<BR>
+Version           : WINNT:3.5,3.51;<BR>
+Platform          : winnt<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 17, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

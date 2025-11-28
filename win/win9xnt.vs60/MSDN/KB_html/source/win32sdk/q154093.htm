@@ -1,0 +1,469 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How To Call 32-bit Code from 16-bit Code in Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q154093">
+<META NAME="KBModify" CONTENT="1997/01/24">
+<META NAME="KBCreate" CONTENT="1996/07/29">
+<META NAME="Keywords" CONTENT="kbprg kbhowto kbtshoot">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  It is often desirable to port Win16 applications and DLLs to Win32 a little at a time rather than all at once. For example, you may want to port 16-bit DLLs to Win32 but still be able to call them from 16-bit code. This article discusses the mechan...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDNQ,QAH4,QAGI,QAOT,QAY5,QAUD,QA3P,QAHE,QDNN,QAB9,QBV8,QAY2,QAPN,QBFY,QAIF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How To Call 32-bit Code from 16-bit Code in Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 24, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q154093</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) for:
+<P><PRE>    - Microsoft Windows 95
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+It is often desirable to port Win16 applications and DLLs to Win32 a little
+at a time rather than all at once. For example, you may want to port 16-bit
+DLLs to Win32 but still be able to call them from 16-bit code. This article
+discusses the mechanism by which 16-bit DLLs can call 32-bit DLLs. The
+mechanism is called a thunk and the method implemented under Windows 95 is
+called a flat thunk.
+<P>
+The three major steps in writing the thunk code are:
+
+<OL><P><LI>Creating the thunk Script.
+
+<P><LI>Building the 16-bit DLL.
+
+<P><LI>Building the 32-bit DLL.
+<P>
+</OL><h2>MORE INFORMATION</h2>
+ 
+<P>
+A flat thunk consists of a 16-bit and a 32-bit DLL that work together. A
+Win16 application calls the 16-bit DLL and the 16-bit DLL calls an exported
+function in the 32-bit DLL. When the function in the 32-bit DLL returns, it
+returns back to the 16-bit DLL, which in turn returns back to the Win16
+application. The 16-bit and 32-bit DLLs work by calling the Windows 95 16-
+bit and 32-bit kernels to handle all of the low-level details necessary to
+make the transition from 16-bit to 32-bit code and back.
+<P>
+Designing a new flat thunk involves creating a thunk script (.THK file).
+This script is compiled with the thunk compiler into an assembly-language
+file which is assembled twice; one time with each of two flags: -DIS_16 and
+-DIS_32. The result is a 16-bit and a 32-bit object module. These object
+modules are linked into the 16-bit and 32-bit DLLs respectively. The
+following diagram summarizes the files involved in building the DLLs:
+<P>
+<PRE>                       +------------+
+                       | 16to32.THK |
+                       +------------+
+                             |
+                       +------------+
+                       | 16to32.ASM |
+                       +------------+
+                        /          \
+               -DIS_16 /            \ -DIS_32
+                      /              \
+                 +-----------+ +-----------+
+                 | 16THK.OBJ | | 32THK.OBJ |
+                 +-----------+ +-----------+
+                       /                  \
+      +-------+    +-------+             +-------+
+      | APP16 | -&gt; | DLL16 | -- THUNK -- | DLL32 |
+      +-------+    +-------+             +-------+
+
+</PRE></OL><h3>Tools Needed to Build Flat Thunks</h3>
+ 
+
+<OL><P><LI>Microsoft Visual C++ 1.5x (16-bit compiler) for the 16-
+   bit side of the thunk. The 16-bit side of the thunk is a
+   16-bit DLL.
+
+<P><LI>Microsoft Visual C++ 2.x or higher (32-bit compiler) for
+   the 32-bit side of the thunk. The 32-bit side of the
+   thunk is a 32-bit DLL.
+
+<P><LI>Thunk compiler (thunk.exe) from the Microsoft Win32 SDK
+   for compiling thunk scripts.
+
+<P><LI>Microsoft Macro Assembler (MASM) version 6.1 or higher
+   for assembling the assembly-language output of the thunk
+   compiler.
+
+<P><LI>The 16-bit RC.EXE from the BINW16 directory of the
+   Microsoft Win32 SDK for marking the 16-bit thunk DLL as
+   version 4.0.
+<P>
+</OL><h3>Creating the Thunk Script</h3>
+ 
+<P>
+You need to create a script that will be used by the thunk compiler to
+create a thunk. A thunk script is a text file that contains type
+definitions, the function prototypes of the functions you wish to call via
+thunks and a specification of the direction of the parameters for each
+function. For example, some functions require both input and output
+parameters while others may only require input parameters. Thunk scripts
+use special syntax to describe whether parameters are input, output, or
+both input and output.
+<P>
+A thunk script for 16-&gt;32 thunks begins with the following statement:
+<P>
+<PRE>   enablemapdirect1632 = true;
+
+</PRE></OL>By default, the 32-bit DLL is loaded only when a thunk to it is executed
+for the first time. Because this late binding is used, 16-bit code must not
+depend on any action taken by the initialization of the 32-bit DLL. Because
+the 32-bit DLL will load only when the first thunk to it executes, problems
+in loading the 32-bit DLL will not be detected when the 16-bit DLL first
+loads. To disable late binding of the 32-bit DLL, add the following line in
+your thunk script:
+<P>
+<PRE>   preload32=true;
+
+</PRE>The thunk compiler expects that the 16-bit side of the thunk is declared as
+__far __pascal, and that the 32-bit side is __stdcall. (The WINAPI
+declaration takes care of this on both sides.) The __cdecl and __fastcall
+calling conventions are not supported by the thunk compiler. Note, however,
+that the thunk compiler does not actually accept the __far, __pascal, or
+__stdcall keywords; they are assumed.
+<P>
+The following thunk script describes a function with no parameters:
+<P>
+<PRE>   enablemapdirect1632 = true;
+
+   void MyThunk32()
+   {
+   }
+
+</PRE>The equivalent declaration would be:
+<P>
+<PRE>   C   language:    void WINAPI MyThunk32(void);
+   C++ Language:    extern "C" void WINAPI MyThunk32();
+
+</PRE>The function in the following example script takes two parameters and
+returns a value. The second parameter is an output parameter and contains a
+pointer that is passed back to the 16-bit DLL:
+<P>
+<PRE>   enablemapdirect1632 = true;
+
+   typedef int   BOOL;
+   typedef char *LPSTR;
+
+   BOOL MyThunk32(LPSTR lpstrInput, LPSTR lpstrOutput)
+   {
+      lpstrInput  = input;   // optional; input is default
+      lpstrOutput = output;
+   }
+
+</PRE>The statement "lpstrOutput = output" tells the thunk compiler that the 32-
+bit function will return an address that needs to be converted from a 32-
+bit linear address to a selector:offset pointer.
+<P>
+The following thunk script uses more complex parameter types such as
+structures. This example also shows how to specify input and output
+parameters:
+<P>
+<PRE>   enablemapdirect1632 = true;
+
+   typedef unsigned int UINT;
+   typedef char *LPSTR;
+
+   typedef struct _POINT {
+      UINT x;
+      UINT y;
+   }POINT, *LPPOINT;
+
+   typedef struct _CIRCLE {
+      POINT center;
+      UINT  radius;
+   }CIRCLE, *LPCIRCLE;
+
+   void MyThunk32( LPCIRCLE lpCircleInOut)
+   {
+      lpCircleInOut = inout;
+   }
+
+</PRE>The statement "lpCircleInOut = inout" tells the thunk compiler that this
+pointer is going to be used for input and output. This causes the thunk
+compiler to convert lpCircleInOut from a 16-bit far (selector:offset)
+pointer to a 32-bit linear address when the function is called and then
+back to a 16-bit far pointer when the function returns. The conversion is
+handled by the thunk created by the thunk compiler.
+<P>
+<P><h3>Using the Thunk Compiler</h3>
+ 
+<P>
+The thunk compiler usage is as follows:
+<P>
+<PRE>   thunk.exe /options &lt;inputfile&gt; -o &lt;outputfile&gt;
+
+</PRE>The following line shows how to compile a 16-&gt;32 thunk script. This line
+takes a script named 16to32.thk and produces an assembly-language file
+named 16to32.asm:
+<P>
+<PRE>   thunk -t thk 16to32.thk -o 16to32.asm
+
+</PRE>The "-t thk" option tells the thunk compiler to prefix the thunk functions
+in the assembly-language file with "thk_". This prefix is used when linking
+multiple thunk scripts into a pair of DLLs and is useful for creating a
+pair of DLLs that contain both 16-&gt;32 and 32-&gt;16 thunks.
+<P>
+<P><h3>Building the 16-bit DLL</h3>
+ 
+
+<OL><P><LI>The 16-bit DLL must export a function named
+   "DllEntryPoint". This function must make a call to a
+   function created by the thunk compiler named
+   thk_ThunkConnect16 ("thk" is the prefix from the thunk
+   compiler -t switch) every time DllEntryPoint is called:
+<P>
+<PRE>   // prototype for function in .OBJ from the thunk script
+   BOOL WINAPI __export thk_ThunkConnect16(LPSTR lpDll16,
+                                           LPSTR lpDll32,
+                                           WORD  hInst,
+                                           DWORD dwReason);
+
+    BOOL WINAPI thk_thunkConnect16(LPSTR, LPSTR, WORD, DWORD);
+
+    BOOL WINAPI __export DllEntryPoint(DWORD dwReason,
+                                       WORD  hInst,
+                                       WORD  wDS,
+                                       WORD  wHeapSize,
+                                       DWORD dwReserved1,
+                                       WORD  wReserved 2)
+    {
+       if (!thk_ThunkConnect16("DLL16.DLL", "DLL32.DLL",
+                               hInst, dwReason))
+          return FALSE;
+
+        return TRUE;
+    }
+
+</PRE><P><LI>Include the following lines in the IMPORTS section of the
+   module definition (DEF) file for the 16-bit DLL:
+<P>
+<PRE>   C16ThkSL01      = KERNEL.631
+   ThunkConnect16  = KERNEL.651
+
+</PRE><P><LI>Include the following lines in the EXPORTS section of the
+   module definition (.DEF) file for the 16-bit DLL.
+   THK_THUNKDATA16 is defined in the object file that is
+   assembled from the output of the thunk compiler. Both of
+   these symbols must have the RESIDENTNAME keyword, but can
+   have any ordinal number:
+<P>
+   THK_THUNKDATA16 @1  RESIDENTNAME
+<PRE>   DllEntryPoint   @2  RESIDENTNAME
+
+</PRE><P><LI>Add the thunk functions that the Win16 application will
+   call to the EXPORTS statement of the 16-bit DLL's module
+   definition (DEF) file. Be sure they are declared and
+   defined as __far __pascal __export (or WINAPI __export).
+   If the DLL is written in C++, be sure to declare them as
+   extern "C" as well.
+
+<P><LI>Compile the thunk as follows (if not already compiled):
+<P>
+   thunk -t thk 16to32.thk -o 16to32.asm
+
+<P><LI>Next, assemble the assembly-language file produced by the
+   thunk compiler as a 16-bit object module. The following
+   line shows an example:
+<P>
+   ml /DIS_16 /c /W3 /nologo /Fo thk16.obj 16to32.asm
+
+<P><LI>Link this object module as part of the 16-bit DLL.
+
+<P><LI>Mark the 16-bit DLL as version 4.0. To do this, use the
+   resource compiler (RC.EXE). The following line shows the
+   syntax:
+<P>
+   rc -40 &lt;DLL file&gt;
+<P>
+   This -40 option is available in the resource compiler
+   that is provided with the Win32 SDK.
+<P>
+   NOTE: Be sure to use the RC.EXE in the BINW16 directory so that the DLL
+   is marked with version 4.0. The RC.EXE that ships with 16-bit versions
+   of Microsoft Visual C++ will not mark the DLL as version 4.0.
+<P>
+</OL><h3>Building the 32-bit DLL</h3>
+ 
+
+<OL><P><LI>In the DllMain of your 32-bit DLL, you must make a call
+   to a function created by the thunk compiler named
+   thk_ThunkConnect32 every time DllMain is called, as
+   shown here ("thk" is the prefix from the thunk compiler -
+   t switch):
+<P>
+<PRE>   // prototype for function in .OBJ from the thunk script
+   BOOL WINAPI thk_ThunkConnect32 (LPSTR     lpDll16,
+                                   LPTSR     lpDll32,
+                                   HINSTANCE hDllInst,
+                                   DWORD     dwReason);
+
+   BOOL WINAPI DllMain (HINSTANCE hDLLInst,
+                        DWORD     dwReason,
+                        LPVOID    lpvReserved)
+   {
+      if (!thk_ThunkConnect32("DLL16.DLL",
+                              "DLL32.DLL",
+                              hDLLInst,
+                              dwReason))
+      {
+         return FALSE;
+      }
+      switch (dwReason)
+      {
+         case DLL_PROCESS_ATTACH:
+            break;
+
+         case DLL_PROCESS_DETACH:
+            break;
+
+         case DLL_THREAD_ATTACH:
+            break;
+
+         case DLL_THREAD_DETACH:
+            break;
+      }
+      return TRUE;
+   }
+
+</PRE><P><LI>Include the following lines in the EXPORTS section of the
+   module definition (.DEF) file for the 32-bit DLL:
+<P>
+   thk_ThunkData32
+
+<P><LI>Export the functions to which you are thunking. You can
+   use either the 32-bit DLL's module definition (DEF) file
+   or the __declspec(dllexport) keyword. Be sure they are
+   declared and defined as __stdcall. If the 32-bit DLL is
+   written in C++, be sure to declare them as extern "C" as
+   well. These functions are called by the 16-bit side of
+   the thunk.
+
+<P><LI>Compile the thunk script as follows (if not already
+   compiled):
+<P>
+   thunk -t thk 16to32.thk -o 16to32.asm
+
+<P><LI>Assemble the assembly-language file produced by the thunk
+   compiler as a 32-bit object module. The following line
+   shows an example:
+<P>
+   ml /DIS_32 /c /W3 /nologo /coff /Fo thk32.obj 16to32.asm
+
+<P><LI>Link this object module as part of the 32-bit DLL.
+
+<P><LI>Link thunk32.lib as part of the 32-bit DLL. This is the
+   32-bit import library provided in the Win32 SDK that
+   contains references to the 32-bit thunking APIs that the
+   code created by the thunk compiler uses.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+For information about how to debug flat thunks, please refer to the
+following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q133722.htm">Q133722</A></B>
+   TITLE     : How to Debug Flat Thunks
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbhowto kbtshoot<BR>
+KBSubcategory: BseThunks<BR>
+Additional reference words: 4.00 95 flat thunk win16 debug
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 24, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

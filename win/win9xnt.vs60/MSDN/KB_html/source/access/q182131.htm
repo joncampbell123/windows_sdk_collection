@@ -1,0 +1,363 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC97: Datasheet of Chart Not Synchronized with Form or Report </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q182131">
+<META NAME="KBModify" CONTENT="1998/03/06">
+<META NAME="KBCreate" CONTENT="1998/03/05">
+<META NAME="Keywords" CONTENT="IntpGrph">
+<META NAME="KBArea" CONTENT="Support; KB; access, convert, crossnet, dbweb, odbc, winprint, setup, vbapp, office, officevba">
+<META NAME="Description" CONTENT="  Advanced: Requires expert coding, interoperability, and multiuser skills.  During the Current event of a form, there is a one-record difference between the values displayed in the chart on the form and the values contained in the datasheet of the c...">
+<META NAME="Product" CONTENT="Access">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA5V,QAPN,QA7O,QDNX,QBWS,QBJZ,QA7N,QAVX,QAKD,QAE1,QAH4,QAQG,QAO4,QAZW,QAEF P1 P2 P3 P4 P5 P6 T2 P7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC97: Datasheet of Chart Not Synchronized with Form or Report</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 6, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q182131</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access 97
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Advanced: Requires expert coding, interoperability, and multiuser skills.
+<P>
+During the Current event of a form, there is a one-record difference
+between the values displayed in the chart on the form and the values
+contained in the datasheet of the chart. The datasheet's values reflect
+data from the previous record, not the current record. This behavior also
+occurs during the Format or Print event of the detail section of a report.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The chart itself displays the correct values because Microsoft Access
+populates it directly from its row source, which is a SQL statement or a
+saved query. During the Current, Format, and Print events, the data sheet
+of the chart does not yet contain the data from the row source that appears
+in the chart itself.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+If you need to modify a chart characteristic that depends on the data in
+the current record or on any state produced by an OnCurrent, OnFormat, or
+OnPrint procedure, you must clear the datasheet of the chart and repopulate
+it. The following example uses a Visual Basic for Applications procedure to
+clear and repopulate the datasheet of a chart during the Current event of
+the form.
+
+<OL><P><LI>Follow steps 1 - 19 in the "Steps to Reproduce Behavior" section later
+   in this article.
+
+<P><LI>Set the OnCurrent property of the form to the following event procedure:
+<P>
+<P><PRE>      Private Sub Form_Current()
+<PRE></PRE>         Dim chtObj As Object, strRowSource As String
+         Dim rsRowSourceFiltered As Recordset
+         Dim intMaxShippers As Integer
+         Dim i As Integer, j As Integer
+         Set chtObj = Me!chtSync.Object
+         intMaxShippers = 3
+
+         ' In the chart's RowSource, insert a WHERE
+         ' clause based on the value of the form
+         ' field contained in the chart control's
+         ' LinkMasterFields property.
+         strRowSource = Left(Me!chtSync.RowSource, _
+            InStr(Me!chtSync.RowSource, "GROUP BY") - 1) _
+            &amp; "WHERE " &amp; Me!chtSync.LinkChildFields &amp; _
+            " = '" &amp; Me(Me!chtSync.LinkMasterFields) &amp; _
+            "'" &amp; " " &amp; Right(Me!chtSync.RowSource, _
+            Len(Me!chtSync.RowSource) _
+            - InStr(Me!chtSync.RowSource, "GROUP BY") + 1)
+         Set rsRowSourceFiltered = CurrentDb. _
+            OpenRecordset(strRowSource, dbOpenSnapshot)
+
+         ' Check to see if the filtered recordset has any records.
+         If rsRowSourceFiltered.BOF And _
+               rsRowSourceFiltered.EOF Then
+            MsgBox "There are no records to chart."
+            Exit Sub
+         End If
+
+         ' Clear the rows required for the maximum number of
+         ' data rows. The first row contains the column
+         ' headers. Data rows begin at the second row.
+         With chtObj.Application.DataSheet
+            For i = 1 To intMaxShippers
+               .Rows(i + 1).Include = False
+            Next
+         End With
+
+         ' Ensure the RecordCount value is updated.
+         rsRowSourceFiltered.MoveLast
+         ' Populate the chart's datasheet with the
+         ' filtered recordset, starting with the
+         ' datasheet's second row.
+         rsRowSourceFiltered.MoveFirst
+         For i = 1 To rsRowSourceFiltered.RecordCount
+            For j = 0 To rsRowSourceFiltered.Fields.Count - 1
+               ' Assign data to the datasheet cells starting
+               ' at row 2, column 1.
+               chtObj.Application.DataSheet. _
+                  Cells(i + 1, j + 1).Value = _
+
+                  rsRowSourceFiltered.Fields(j).Value
+            Next
+            rsRowSourceFiltered.MoveNext
+         Next
+
+        With Me!chtSync.Object.Application
+           ' Each datasheet row contains two columns for the
+           ' shipper's CompanyName and SumProductSales. The first
+           ' row contains the column headers.
+           Debug.Print "*** OnCurrent Values ***"
+           For i = 1 To 4
+              Debug.Print .DataSheet.Cells(i, 1).Value &amp; _
+                " - " &amp; .DataSheet.Cells(i, 2).Value
+           Next
+        End With
+
+     End Sub
+
+</PRE><P><LI>Open the form in Form view and press CTRL+G to display the Debug window.
+   Note that the values in the Debug window correspond to those that you
+   see in the chart on the form.
+<P>
+</OL><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+<P>
+CAUTION: Following the steps in this example will modify the sample
+database Northwind.mdb. You may want to back up the Northwind.mdb file
+and perform these steps on a copy of the database.
+<P>
+<PRE>  1. Open the Product Sales for 1995 query in the sample database
+     Northwind.mdb.
+
+  2. Add the Shippers table to the query. Microsoft Access automatically
+     creates a join between the ShipVia field in the Orders table and the
+     ShipperID field in the Shippers table.
+
+  3. Drag the CompanyName field from the Shippers table to the first empty
+     column on the query design grid. Leave the Total row for this field
+     set to the default value of Group By.
+
+  4. Save and close the query.
+
+  5. Create a new form based on the Categories table. Include only the
+     CategoryID and CategoryName fields in the detail section of the form.
+
+  6. On the Insert menu, click Chart to create a chart in the detail
+     section of the form.
+
+  7. On the first screen of the Chart Wizard, click Queries and select
+     Product Sales for 1995. Click Next.
+
+  8. Move the CompanyName field from the Available Fields list to the
+     Fields For Chart list. Then move the ProductSales field from the
+     Available Fields list to the Fields For Chart list. Click Next.
+
+  9. Click Next in the chart type screen to select the default type of
+     Column Chart.
+
+ 10. On the layout screen of the Chart Wizard, click Next.
+
+ 11. Click OK if you receive the following message:
+
+       You must add field CategoryID if you want to use this link.
+
+ 12. In the Form Fields list, click CategoryName; in the Chart Fields list,
+     click CategoryName, and then click Finish.
+
+ 13. On the View menu, click Properties and change the Name property of the
+     chart to "chtSync" (without the quotation marks).
+
+ 14. Save the form as frmChartSync.
+
+ 15. On the Edit menu, click Select Form. On the View menu, click
+     Properties, and then click the Event tab.
+
+ 16. Click the OnCurrent property box, and then click the Build (...)
+     button.
+
+ 17. In the Choose Builder dialog box, click Code Builder. Click OK to
+     display the Form_frmChartSync class module.
+
+ 18. On the Tools menu, click References.
+
+ 19. In the References dialog box, scroll down the Available References
+     list and select the Microsoft Graph 8.0 Object Library. Click OK.
+
+ 20. Set the OnCurrent property of the form to the following event
+     procedure:
+
+       Private Sub Form_Current()
+          Dim i As Integer
+          With Me!chtSync.Object.Application
+             ' Each datasheet row contains two columns for the
+             ' shipper's CompanyName and SumProductSales. The first
+             ' row contains the column headers.
+             Debug.Print "*** OnCurrent Values ***"
+             For i = 1 To 4
+                Debug.Print .DataSheet.Cells(i, 1).Value &amp; _
+                   " - " &amp; .DataSheet.Cells(i, 2).Value
+             Next
+          End With
+       End Sub
+
+ 21. Close the module and insert a command button on the form.
+
+ 22. View the property sheet of the command button and change the Name
+     property to "cmdGraphData" (without the quotation marks) and the
+     Caption property to "Current Graph Data" (without the quotation
+     marks).
+
+ 23. Click the OnCurrent property box, and then click the Build (...)
+     button.
+
+ 24. In the Choose Builder dialog box, click Code Builder. Click OK to
+     display the Form_frmChartSync class module.
+
+ 25. Set the OnClick property of cmdGraphData to the following event
+     procedure:
+
+       Private Sub cmdGraphData_Click()
+          Dim i As Integer
+          With Me!chtSync.Object.Application
+             ' Note that this code is the same as
+             ' that in the Current event procedure.
+             Debug.Print "*** Form View Values ***"
+             For i = 1 To 4
+                Debug.Print .DataSheet.Cells(i, 1).Value &amp; _
+                   " - " &amp; .DataSheet.Cells(i, 2).Value
+             Next
+          End With
+       End Sub
+
+ 26. Save the form and switch to Form view.
+
+ 27. Press CTRL+G to display the Debug window. Note that the Debug window
+     displays the East, West, and North values that correspond to the
+     sample data instead of the actual values that correspond to the
+     current record on the form.
+
+ 28. Go to the next record. Note that the Debug window now displays
+     Shippers data, but it does not match the data displayed in the chart
+     on the form. The data in the Debug window corresponds to the previous
+     record.
+
+ 29. Click Current Graph Data. Note that the chart data displayed in the
+     Debug Window now matches that of the current record.
+
+</PRE></OL><h2>REFERENCES</h2>
+ 
+<P>
+For further information about manipulating a chart with Visual Basic for
+Applications code, see the file Vba8grp.hlp. This file is located in the
+Morehelp subfolder of the Valupack folder on your Microsoft Office 97
+Professional Edition compact disc or your Microsoft Access 97 compact disc.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: out of synch incorrect not synchronized behind<BR>
+Keywords          : IntpGrph<BR>
+Version           : WINDOWS:97<BR>
+Platform          : WINDOWS<BR>
+Hardware          : x86<BR>
+Issue type        : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 6, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

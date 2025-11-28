@@ -1,0 +1,211 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Updating Cached Private Profiles (.INI Files) </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q68827 ">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1991/01/30">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="  Under Windows version 3.1, the first time a private profile (.INI file) is accessed, the system will call the GetFileTime() API and store this value. The WriteProfileString() API will then call the GetFileTime() API and compare the return value to ...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QDJ2,QBF0,QAXB,QDL9,QBWO,QBWN,QA0B,QA63,QAY5,QAJH,QAIF,QBW7,QAI5,QBWQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Updating Cached Private Profiles (.INI Files)</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q68827 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+3.00 3.10
+WINDOWS
+kbprg SR# G910109-169
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   versions 3.1 and 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Under Windows version 3.1, the first time a private profile (.INI file) is
+accessed, the system will call the GetFileTime() API and store this value.
+The WriteProfileString() API will then call the GetFileTime() API and
+compare the return value to the stored value. If the two values match, the
+file is considered valid for two seconds. The function makes the changes
+and writes the new contents to disk. If the two values do not match, the
+profile is reread into a buffer and the change is made. The same principle
+holds true for reading values from a private profile.
+<P>
+The reasoning behind the two second limit is that most applications read
+private profiles in a burst, at application startup, and write in a burst,
+at application shutdown. The penalty of one read in a twenty read sequence
+is considered acceptable, given the benefits.
+<P>
+In Windows version 3.0, an application that has a private profile will not
+respond to changes made to that private profile by a text editor. When a
+text editor updates a private profile, the file on disk is modified.
+However, GetPrivateProfileString() and GetPrivateProfileInt() do not read
+from the disk file, instead the functions read from a copy of the file in a
+cache. WritePrivateProfileString() will update the appropriate sections in
+both the cached file and the disk file, however, the functions will not
+reload the disk file into the cache unless the entire cache is invalidated.
+The information included below discusses how to force a private profile to
+be recached from a disk file.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Windows caches .INI files to reduce access time. This design allows
+the file to remain in memory until a different .INI file is loaded or
+until an application forces recaching of the file.
+<P>
+To force an .INI file to be recached, make the following call (where
+&lt;fname.ini&gt; is the name of the application's private profile):
+<P>
+<PRE>   WritePrivateProfileString(NULL, NULL, NULL, &lt;fname.ini&gt;)
+
+</PRE>This call will force the entire .INI file that is in the cache to be
+invalidated. The next call to either GetPrivateProfileString() or
+GetPrivateProfileInt() will cause the disk file to be recached.
+<P>
+While .INI files are cached to optimize access time, the following are
+examples of how and when an .INI file could be recached.
+
+<OL><P><LI>The application could update the cache from disk each time the
+   application requires information from the profile. Calling the
+   WritePrivateProfileString function as outlined above would clear
+   the cache.
+<P>
+   NOTE: Because the file is recached with every access, the benefit
+   of the cache is lost with this method.
+
+<P><LI>Create a separate program or function that the user would invoke to
+   explicitly invalidate the cache. The following is some code for
+   that purpose that could be placed into the GENERIC sample
+   application supplied with the Windows Software Development Kit (SDK):
+<P>
+   BOOL InitInstance(HANDLE hInstance, int nCmdShow)
+   {
+<P><PRE>      LPSTR lpApplicationName, lpKeyName, lpDefault, lpReturnedString;
+<PRE></PRE>      int   nSize;
+
+      /* initialize variables */
+      ...
+
+      WritePrivateProfileString(NULL, NULL, NULL, "MY.INI");
+      GetPrivateProfileString(lpApplicationName, lpKeyName,
+         lpDefault, lpReturnedString, nSize, "MY1.INI");
+      MessageBox(NULL, "Cache Refreshed", szApp,
+         MB_ICONINFORMATION | MB_OK);
+      return TRUE;
+   }
+
+   Using a program or function like this will cause the .INI file to be
+   recached only when it is changed by an editor, therefore the benefit
+   of the cache is retained. However, it is necessary for the user to
+   call another application or function after the profile is changed
+   with an editor.
+
+</PRE><P><LI>If neither of these techniques is suitable, the application could
+   check the time and date stamp on the .INI file before each access to
+   see if cache invalidation is necessary. This option provides the
+   benefits of the cache without requiring the user to call another
+   program. The overhead required to read the time and date stamp is
+   minimal compared to recaching the file with every call to either
+   the GetPrivateProfileString or GetPrivateProfileInt functions.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.10 3.x SR# G910109-169<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: KrFileIO<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

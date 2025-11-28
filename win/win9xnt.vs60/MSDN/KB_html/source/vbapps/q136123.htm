@@ -1,0 +1,274 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC: How to Find a Record Using a Bound Control (95/97) </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q136123">
+<META NAME="KBModify" CONTENT="1997/08/28">
+<META NAME="KBCreate" CONTENT="1995/08/31">
+<META NAME="Keywords" CONTENT="JetFind kbusage PgmHowTo FmsHowTo FmsEvnt">
+<META NAME="KBArea" CONTENT="Support; KB; vbapps">
+<META NAME="Description" CONTENT="  Moderate: Requires basic macro, coding, and interoperability skills.  This article demonstrates how to use a single bound control for both finding records and for entering data in a form. You can use this technique to find whether the value entered...">
+<META NAME="Product" CONTENT="vbapps">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA5V,QA7O,QAKD,QA1S,QAB5,QAOE,QAMN,QAY5,QAGB,QDMH,QAPN,QDN9,QBXS,QBFY,QBV8 P1 P2 P3 P4 P5 P6 T2 P7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC: How to Find a Record Using a Bound Control (95/97)</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 28, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q136123</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access versions 7.0, 97
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Moderate: Requires basic macro, coding, and interoperability skills.
+<P>
+This article demonstrates how to use a single bound control for both
+finding records and for entering data in a form. You can use this technique
+to find whether the value entered in a field already exists in another
+record. If the value does exist in another record, the record containing
+that value is displayed. If the value does not exist in another record, you
+can continue entering data for the current record.
+<P>
+This article assumes that you are familiar with Visual Basic for
+Applications and with creating Microsoft Access applications using the
+programming tools provided with Microsoft Access. For more information
+about Visual Basic for Applications, please refer to your version of the
+"Building Applications with Microsoft Access" manual.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The Microsoft Access online Help system demonstrates how to use the Combo
+Box Wizard to find records in your database by selecting a key value from a
+list. (See "Value List," and then "Finding a Record by Selecting a Value
+from a List" in the Microsoft Access Help system.) This method is limited
+in that it is designed to be used with a control not based on any table or
+query (unbound control). The following example demonstrates how to use a
+single, bound control to achieve the same functionality.
+<P>
+NOTE: The field to which the control is bound cannot be a required field,
+and it cannot have a validation rule that allows Null values. Make sure
+that the field's Required property is set to No and that its ValidationRule
+property does not allow Null values.
+<P>
+To use a single bound control for both finding records and for entering
+data in a form, follow these steps:
+
+<OL><P><LI>Open the sample database Northwind.mdb.
+
+<P><LI>Create a new module with the following declarations and functions:
+<P>
+<P><PRE>      ' *******************************************************
+      ' DECLARATIONS SECTION
+      ' *******************************************************
+      Option Explicit
+      Dim Found
+</PRE><P>
+<P><PRE>      Function Find_BeforeUpdate (F As Form)
+<PRE></PRE>         Dim RS As Recordset, C As Control
+         Set C = Screen.ActiveControl
+         Set RS = F.RecordsetClone
+
+         On Error Goto Err_Find_BeforeUpdate
+
+         ' Try to find a record with a matching value.
+         Select Case RS.Fields(C.ControlSource).Type
+            ' Find using Numeric data type key value?
+            Case DB_INTEGER, DB_LONG, DB_CURRENCY, DB_SINGLE, _
+            DB_DOUBLE, DB_BYTE
+               RS.FindFirst "[" &amp; C.ControlSource &amp; "]=" &amp; C
+            ' Find using Date data type key value?
+            Case DB_DATE
+               RS.FindFirst "[" &amp; C.ControlSource &amp; "]=#" &amp; C &amp; "#"
+            ' Find using Text data type key value?
+            Case DB_TEXT
+               RS.FindFirst "[" &amp; C.ControlSource &amp; "] = """ &amp; C &amp; """"
+            Case Else
+               MsgBox "ERROR: Invalid data type for '" &amp; C.Name &amp; "'!"
+               DoCmd.CancelEvent
+               Exit Function
+         End Select
+
+         ' If a record is found, save the found record's bookmark.
+         If RS.NoMatch Then
+            Found = Null
+         Else
+            Found = RS.Bookmark
+         End If
+
+         ' If the record is found...
+         ' ...cancel the BeforeUpdate event
+         ' ...undo changes made to the current record
+         ' ...and TAB to the next control to trigger the OnExit routine.
+         If Not IsNull(Found) Then
+            DoCmd.CancelEvent
+            SendKeys "{ESC 2}{TAB}", False
+         End If
+
+         Exit Function
+
+      Err_Find_BeforeUpdate:
+         MsgBox "ERROR: Err " &amp; Err &amp; ": " &amp; Error$, 48
+         DoCmd.CancelEvent
+         Exit Function
+
+      End Function
+
+      Function Find_OnExit ()
+         ' If the record is found, cancel the OnExit routine to stay
+         ' in the control and go find the record.
+         If Not IsNull(Found) And Len(Found) &lt;&gt; 0 Then
+            DoCmd.CancelEvent
+
+            ' Synchronize the form record with the found record.
+            Screen.ActiveForm.Bookmark = Found
+
+            Found = Null
+         End If
+      End Function
+
+</PRE><P><LI>Open the Customers form in Design view, and set the properties for the
+   Customer ID field as follows:
+<P>
+<P><PRE>      BeforeUpdate: =Find_BeforeUpdate(Form)
+      OnExit: =Find_OnExit()
+</PRE>
+<P><LI>View the Customers form in Form view. In the CustomerID field, type
+   "AROUT" (without the quotation marks), and then press ENTER. Note that
+   Microsoft Access finds and displays the Around The Horn customer.
+
+<P><LI>In the CustomerID field, type "POPSI" (without the quotation marks),
+   and then press ENTER. Because this key value does not exist, you can
+   continue entering data for the record.
+<P>
+</OL><h3>How the Sample Functions Work</h3>
+ 
+<P>
+The Find_BeforeUpdate() function uses the FindFirst method to search the
+recordset the form is based on to see if the value entered in the control
+exists in the table.
+<P>
+If the value does not exist, the global variable Found is set to NULL and
+the function exits. If the value does exist, the global variable Found is
+set to the bookmark of the found record to be used by the Find_OnExit()
+function.
+<P>
+Before the found record can be presented, the BeforeUpdate event must be
+canceled, and a SendKeys action must send two ESC keys to undo changes to
+the current record.
+<P>
+Next, the SendKeys action sends a TAB key to exit the field. This event
+triggers the Find_OnExit() function, which checks to see if the find was
+successful. If it was, the CancelEvent action is run to prevent exiting the
+control, and then the form record is synchronized with the found record by
+setting its bookmark equal to the bookmark of the found record. Found is
+then reset back to NULL.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For more information about this topic in Microsoft Access version 2.0,
+please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../access/q115189.htm">Q115189</A></B>
+   TITLE     : ACC2: How to Find a Record Using a Bound Control
+</PRE></OL> 
+<PRE>Keywords          : JetFind kbusage PgmHowTo FmsHowTo FmsEvnt
+Version           : 7.0 97
+Platform          : WINDOWS
+Hardware          : x86
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 28, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

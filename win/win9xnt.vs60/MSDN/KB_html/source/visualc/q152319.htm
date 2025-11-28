@@ -1,0 +1,235 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: ReadString Gives Wrong Result Reading Long Strings </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q152319">
+<META NAME="KBModify" CONTENT="1997/09/19">
+<META NAME="KBCreate" CONTENT="1996/06/11">
+<META NAME="Keywords" CONTENT="MfcFileIO kbbuglist kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Reading long strings (greater than 128 characters) from a CStdioFile with the ReadString method can result in truncated or incorrect data being returned in the string.  CAUSE =====  The pointer math used in calculating buffer offsets was incorrect ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QATX,QAH4,QALG,QAAP,QBFN,QAR4,QAH6,QACI,QBFY,QAVX,QAVW,QAUD,QAL3,QBJQ,QANY V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: ReadString Gives Wrong Result Reading Long Strings</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 19, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q152319</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+4.00
+WINDOWS NT
+kbprg kbbuglist kbfixlist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   Microsoft Visual C++, 32-bit Edition, version 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Reading long strings (greater than 128 characters) from a CStdioFile with
+the ReadString method can result in truncated or incorrect data being
+returned in the string.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The pointer math used in calculating buffer offsets was incorrect in the
+code for CStdioFile::ReadString(CString&amp; rString) in FILETXT.CPP.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+The solution was a rewriting of the MFC code for
+CStdioFile::ReadString(CString&amp; rString). The following code is from the
+MFC 4.1 source:
+<P>
+<PRE>   BOOL CStdioFile::ReadString(CString&amp; rString)
+   {
+        ASSERT_VALID(this);
+
+        rString = &amp;afxChNil;    // empty string without deallocating
+        const int nMaxSize = 128;
+        LPTSTR lpsz = rString.GetBuffer(nMaxSize);
+        LPTSTR lpszResult;
+        int nLen;
+        for (;;)
+        {
+             lpszResult = _fgetts(lpsz, nMaxSize+1, m_pStream);
+             rString.ReleaseBuffer();
+
+             // handle error/eof case
+             if (lpszResult == NULL &amp;&amp; !feof(m_pStream))
+             {
+                  clearerr(m_pStream);
+                  AfxThrowFileException(CFileException::generic, _doserrno,
+                       m_strFileName);
+             }
+
+             // if string is read completely or EOF
+             if (lpszResult == NULL ||
+                  (nLen = lstrlen(lpsz)) &lt; nMaxSize ||
+                  lpsz[nLen-1] == '\n')
+             {
+                  break;
+             }
+
+             nLen = rString.GetLength();
+             lpsz = rString.GetBuffer(nMaxSize + nLen) + nLen;
+        }
+
+        // remove '\n' from end of string if present
+        lpsz = rString.GetBuffer(0);
+        nLen = rString.GetLength();
+        if (nLen != 0 &amp;&amp; lpsz[nLen-1] == '\n')
+             rString.GetBufferSetLength(nLen-1);
+
+        return lpszResult != NULL;
+   }
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This bug was corrected in the Microsoft
+Foundation Classes (MFC), included with: Microsoft Visual C++, 32-bit
+Edition, version 4.1.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When you invoke ReadString, CStdioFile::ReadString(CString&amp; rString) enters
+an infinite loop that breaks when the string is completely read in or EOF
+is reached. It reads your string in chunks of 128 bytes, but the pointer
+that ReadString uses to position the next read into the string is being
+shifted by 256 bytes. This results in bytes 129 through 256 being
+undefined.
+<P>
+Since only 128 of the 140 bytes have been read before the shifting, the
+last 12 bytes (140 - 128 = 12) are read into the wrong location in the
+string. Depending upon what happens to be in positions 129-256, the string
+is either truncated or shows invalid characters.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following code demonstrates the problem. It assumes you have a CString
+that has a large buffer already allocated for it, such as 256 bytes. You
+want to read a line that contains 140 bytes:
+<P>
+<PRE>   void ReadStringBug()
+   {
+        CString strBuffer;
+        CStdioFile sfMyFile( "C:\\test.txt", CFile::modeRead );
+
+        sfMyFile.ReadString( strBuffer );
+        AfxMessageBox( strBuffer );
+        sfMyFile.ReadString( strBuffer );
+        AfxMessageBox( strBuffer );
+   }
+
+</PRE>You must supply a file (titled c:\test.txt in the example) that contains at
+least two strings with more than 128 characters in each string for the
+problem to be manifested.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00<BR>
+KBCategory: kbprg kbbuglist kbfixlist<BR>
+KBSubcategory: MfcFileIO
+<P>
+
+Keywords          : MfcFileIO kbbuglist kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 4.00<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 19, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

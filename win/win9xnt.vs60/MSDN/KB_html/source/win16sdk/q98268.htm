@@ -1,0 +1,268 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Metafiles and Palettes </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q98268 ">
+<META NAME="KBModify" CONTENT="1997/07/23">
+<META NAME="KBCreate" CONTENT="1993/05/02">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="  The metafile list inside of GDI's heap grows by a WORD.  CAUSE =====  This happens each time an application selects a palette into a metafile device context (DC).  RESOLUTION  If a palette is never deleted, then this block is never freed and keeps ...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPG,QAUD,QDL9,QBWO,QBWN,QAH2,QBW6,QANY,QAH4,QAE1,QBWQ,QAGI,QAJH,QAKJ,QBFD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Metafiles and Palettes</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 23, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q98268 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+3.00 3.10
+WINDOWS
+kbprg kbprb kbcode
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   versions 3.0 and 3.1
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The metafile list inside of GDI's heap grows by a WORD.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This happens each time an application selects a palette into a metafile
+device context (DC).
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+If a palette is never deleted, then this block is never freed and keeps on
+growing until GDI's heap fills and the system crashes.
+<P>
+This problem is heightened by the fact that the application typically
+selects the default stock palette back in so the application can free its
+custom palette. Because an application cannot delete the default stock
+palette, this memory is never freed inside of GDI's heap.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Below is the code necessary to correct the problem. There are no rules
+regarding when to call FlushGDIHeap(); however, Microsoft recommends
+doing this after a major operation, such as after saving a file or
+printing. Determining whether you need to flush the GDI heap depends
+on how often your application selects in a palette in a metafile.
+Optionally, you could periodically call TOOLHELP and see if the GDI
+resources are greater than X%.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>SEG       segGDI, segNil;
+HANDLE    hPalSys;
+int       iPal;
+BOOL      fEnableFlushHeap;
+
+/* ---------------------------------------------
+   The following code is used to initialize the
+   FlushGDIHeap function.
+   --------------------------------------------- */
+</PRE>API VOID InitOLE(VOID)
+{
+<PRE>  HANDLE hGDISegment;
+
+  /* Called once during application initialization.  Sets up the
+     state for FlushGDIHeap.  */
+  /* Make sure this version of Windows has the bug. */
+  if (wWinVer &gt;= 0x400)
+          return;
+
+  /* This is from MSDN and it gets GDI's DS.
+   * The module handle return by LoadLibrary is actually the module's DS.
+   */
+  hGDISegment = LoadLibrary("GDI.EXE");
+  if (hGDISegment &lt;= HINSTANCE_ERROR)
+          return;
+
+  FreeLibrary(hGDISegment);
+
+  Glob(segGDI) = HIWORD(GlobalLock(hGDISegment));
+  if (Glob(segGDI) != segNil)
+  {
+    GlobalUnlock(hGDISegment);
+    Glob(hPalSys) = GetStockObject(DEFAULT_PALETTE);
+    // Debug version of Windows has palette metafile list
+    // heap handle in different offset than in retail Windows
+    // versions greater than 3.0.
+    // The offset is in WORD's.
+    Glob(iPal) = (GetSystemMetrics(SM_DEBUG) != 0 &amp;&amp;
+            FGTWinVer30()) ? 11 : 9;
+    Glob(fEnableFlushHeap) = TRUE;
+  }
+
+</PRE>} // end InitOLE
+<P>
+<PRE>/*=========================================================================
+</PRE> 
+FlushGDIHeap
+ 
+=*/
+STATIC VOID NEAR FlushGDIHeap(VOID)
+{
+<PRE>  HANDLE hPal;
+  SEG segTmp;
+  WORD *pPal, *pw, w2, iPal;
+
+  /* If the flush heap operation is not enabled then return. */
+  if (!Glob(fEnableFlushHeap))
+          return;
+
+  /* Switch to GDI's heap for Local memory functions. */
+  segTmp = Glob(segGDI);
+  hPal = Glob(hPalSys);
+  /* Offset in Pal data structure to second metafile list handle.
+  * This varies between debug and retail (see InitOLE).
+  */
+  iPal = Glob(iPal);
+  _asm {
+          push ds
+          mov  ds,segTmp
+       }
+
+  /* Shrink the metafile list table down for the system palette. */
+  if ((pPal = (WORD *)LocalLock(hPal)) != NULL)
+  {
+     /* First free memory from the standard object metafile list.
+      * All GDI objects have this list associated with them if
+      * they are selected into metafiles.
+      */
+
+     if (pPal[4] != hNil)
+     {
+        if ((pw = (WORD *)LocalLock(pPal[4])) != NULL)
+        {
+           w2 = *pw;
+           LocalUnlock(pPal[4]);
+           LocalReAlloc(pPal[4], (w2+1) * sizeof(WORD), LHND);
+        }
+     }
+
+     /* Second, free memory from the secondary metafile list.
+      * Only palettes have this list.
+      */
+
+     if (pPal[iPal] != hNil)
+     {
+       if ((pw = (WORD *)LocalLock(pPal[iPal])) != NULL)
+       {
+          w2 = *pw;
+          LocalUnlock(pPal[iPal]);
+          LocalReAlloc(pPal[iPal], (w2+1) * sizeof(WORD), LHND);
+       }
+     }
+
+     LocalUnlock(hPal);
+  }
+
+  /* Restore application's data segment. */
+  _asm {
+         pop ds
+       }
+</PRE>} // end FlushGDIHeap
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.10<BR>
+KBCategory: kbprg kbprb kbcode<BR>
+KBSubcategory: GdiMeta<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 23, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

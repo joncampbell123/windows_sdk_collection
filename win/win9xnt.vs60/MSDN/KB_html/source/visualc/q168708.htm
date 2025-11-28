@@ -1,0 +1,224 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Performing Transactions with SQL Server 6.x </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q168708">
+<META NAME="KBModify" CONTENT="1997/09/30">
+<META NAME="KBCreate" CONTENT="1997/05/20">
+<META NAME="Keywords" CONTENT="MfcDatabase kbprg kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  This article discusses topics related to performing transactions with the Microsoft SQL Server 6.0 and 6.5 using the MFC ODBC classes.  Please refer to the following documentation for more information on MFC database transactions prior to this arti...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QBXJ,QA9E,QA5C,QAUD,QAGI,QAU9,QA6A,QAO2,QABA,QBWP,QAZV,QAXB,QAPN,QAL3 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Performing Transactions with SQL Server 6.x</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 30, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q168708</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual C++, 32-bit Editions, versions 2.0, 2.1, 2.2, 4.0,
+   4.1, 4.2, 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article discusses topics related to performing transactions with the
+Microsoft SQL Server 6.0 and 6.5 using the MFC ODBC classes.
+<P>
+Please refer to the following documentation for more information on MFC
+database transactions prior to this article:
+<P>
+<PRE>   In the Microsoft Knowledge Base:
+   ARTICLE-ID: <B><A href="../visualc/q128208.htm">Q128208</A></B>
+   TITLE     : How to Perform Transactions with the MFC Database Classes
+
+   MFC Tech Note #47 - "Relaxing Database Transaction Requirements."
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+Below is a list of transaction related values the SQL Server ODBC driver
+returns via SQLGetInfo().
+<P>
+<PRE>                             SQL Server ODBC
+InfoType                     Driver Version     Return Value
+</PRE> 
+<PRE>SQL_TXN_CAPABLE                  2.50           SQL_TC_DML*
+                                 2.65           SQL_TC_ALL*
+
+SQL_CURSOR_COMMIT_BEHAVIOR       2.50           SQL_CB_CLOSE
+                                 2.65           SQL_CB_CLOSE
+
+SQL_CURSOR_ROLLBACK_BEHAVIOR     2.50           SQL_CB_CLOSE
+                                 2.65           SQL_CB_CLOSE
+
+</PRE>*SQL_TC_DML = Transactions can only contain Data Manipulation Language
+<PRE>              (DML) statements (SELECT, INSERT, UPDATE, DELETE). Data
+              Definition Language (DDL) statements encountered in a
+              transaction cause an error.
+
+</PRE>*SQL_TC_ALL = Transactions can contain DDL statements and DML statements
+<PRE>              in any order.
+</PRE> 
+<P>
+SQL_CB_CLOSE, which is the ANSI-specified default behavior, means that the
+cursor is closed after a commit or rollback. As a result, an MFC recordset
+will not have a valid cursor after CommitTrans() or Rollback() is called.
+No operations should be performed on a recordset prior to calling
+Requery().
+<P>
+An application may want to preserve cursors across transaction commits and
+rollbacks. The default behavior can be overridden for the SQL Server ODBC
+driver by using a driver-specific connection option, SQL_PRESERVE_CURSORS.
+This option can be set by calling SQLSetConnectOption(), as shown below:
+<P>
+<PRE>  CMyDatabase db;
+
+  db.Open( NULL, FALSE, FALSE,"ODBC;", FALSE  );  // Select  SQL Server
+                                                  // 6.x data source
+  // rcode will equal 0 (SQL_SUCCESS) if call succeeds
+  int rcode = ::SQLSetConnectOption (db.m_hdbc,1204, 1L );
+
+  // 1204 = SQL_PRESERVE_CURSORS, 1L = SQL_PC_ON
+  // values for driver-specific options are given in the driver help file
+
+  // if NOT using MFC 4.2, need to enable transaction support
+  // look at <B><A href="../visualc/q128208.htm">Q128208</A></B> for more information
+  // db.SetTransactions();
+
+  BOOL bCanTrans = db.CanTransact();
+
+  if (bCanTrans)
+  {
+    CMyRecordset rs(&amp;db);
+    BOOL ret = db.BeginTrans();
+    rs.Open( CRecordset::dynaset );
+    rs.Edit();
+    // change some fields
+    rs.Update();
+    db.Rollback();
+
+    // since the cursor is preserved, we do NOT have
+    // to call Requery
+    rs.MoveFirst();
+  }
+
+</PRE>Note that SQL_PRESERVE_CURSORS works only for server-side cursors. As a
+result, even after setting this connection option, the ODBC driver will
+return SQL_CB_CLOSE when queried for SQL_CURSOR_COMMIT_BEHAVIOR. For
+additional information, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q138280.htm">Q138280</A></B>
+   TITLE     : INF: SQLGetInfo Returned with SQL_PRESERVE_CURSORS
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+MFC Technote #47 - "Relaxing Database Transaction Requirements."
+MFC Technote #68 - "Performing Transactions with the Microsoft Access 7
+ODBC Driver"
+<P>
+MFC Encyclopedia articles:
+
+<UL><LI>"Transaction"
+<LI>"Transaction: Performing a Transaction in a Recordset"
+<LI>"Transaction: How Transactions Affect Updates"
+</UL> 
+<PRE>Keywords          : MfcDatabase kbprg kbusage
+Version           : WINDOWS NT: 2.0, 2.1, 2.2, 4.0, 4.1, 4.2, 5.0
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 30, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

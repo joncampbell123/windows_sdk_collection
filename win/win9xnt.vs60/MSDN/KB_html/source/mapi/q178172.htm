@@ -1,0 +1,384 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Create an Entry in the Personal Address Book </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q178172">
+<META NAME="KBModify" CONTENT="1998/01/06">
+<META NAME="KBCreate" CONTENT="1997/12/16">
+<META NAME="Keywords" CONTENT="kbcode EMAPI MAPIIAB">
+<META NAME="KBArea" CONTENT="Support; KB; mapi">
+<META NAME="Description" CONTENT="  This article details the process of creating an entry in the Personal Address Book using Extended MAPI and C++. Below are step-by-step instructions and sample code for the process.  MORE INFORMATION  Step-by-Step Instructions  1. Initialize MAPI Su...">
+<META NAME="Product" CONTENT="mapi">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBUP,QAI4,QAD2,QAUD,QAGI,QBXB,QAPN,QAK9,QAXC,QA36,QAH6,QAD7,QAR5,QAL7,QAH7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Create an Entry in the Personal Address Book</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 6, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q178172</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Extended Messaging Application Programming Interface (MAPI), version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article details the process of creating an entry in the Personal
+Address Book using Extended MAPI and C++. Below are step-by-step
+instructions and sample code for the process.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Step-by-Step Instructions</h3>
+ 
+
+<OL><P><LI>Initialize MAPI Subsystem with the MAPIInitialize() function.
+
+<P><LI>Start a MAPI session by calling the MAPILogonEx() function.
+
+<P><LI>Call IMAPISession::OpenAddressBook() to get an IAddrBook interface.
+
+<P><LI>Open the root address book container by calling IAddrBook::OpenEntry().
+   Pass NULL as the EntryID to specify the root. This returns an
+   IABContainer interface.
+
+<P><LI>Get a list of all of the sub-containers of the root address book
+   containers by calling IABContainer::GetHierarchyTable(). This returns a
+   populated MAPITable.
+
+<P><LI>Next, set up a restriction on the table to find the "Personal Address
+   Book." Once found, get its EntryID.
+
+<P><LI>Use IAddrBook::OpenEntry() to open the Personal Address Book (PAB). Pass
+   OpenEntry() the EntryID from the step above to specify the PAB. This
+   returns an IABContainer interface.
+
+<P><LI>Now you need to find the template for the address type you wish to add.
+   To do this, call IABContainer::OpenProperty(). OpenProperty() returns a
+   MAPITable of all of its templates.
+
+<P><LI>Setup a restriction to find the EntryID of the template you want.
+
+<P><LI>Call IABContainer::CreateEntry() with the EntryID from the previous
+   step to create the new entry. This new entry still needs to be
+   populated with data. The call to CreateEntry() will return a IMAPIProp
+   interface.
+
+<P><LI>Set the following three properties on the new entry via the IMAPIProp
+   interface:
+<P>
+<P><PRE>     - PR_DISPLAY_NAME
+     - PR_EMAIL_ADDRESS
+     - PR_ADDRTYPE
+</PRE>
+<P><LI>Call IMAPIProp::SaveChanges() to write the changes to the object.
+<P>
+</OL><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   // NOTE: You will need to add Mapi32.lib as an input module in the
+   // Link tab of the Project Settings dialog box.
+
+   #define INITGUID
+   #define USES_IID_IMAPITable
+
+   // See the "References" section below for information on
+   // obtaining this header file.
+   #include "MAPIASST.H" // For MAPI_ASSERT_EX and SHOWTABLE
+
+   #include &lt;stdio.h&gt;
+   #include &lt;mapiutil.h&gt;
+   #include &lt;conio.h&gt;   // Just for getch()
+
+   #include &lt;mapidefs.h&gt;
+   #include &lt;mapiguid.h&gt;
+
+   HRESULT AddToPab(LPTSTR lpszDisplayName, LPTSTR lpszAddress,
+           LPTSTR lpszAddrType);
+
+   // This gives an example of calling the AddToPab function.
+   void main()
+   {
+     HRESULT      hr = S_OK;
+     char sDone[64];
+
+     hr = AddToPab("Created By MyCode", "email@domain.com", "SMTP");
+     sprintf(sDone, "Done, hr=0x%x\n", hr);
+     OutputDebugString(sDone);
+     getch();
+   }
+
+   HRESULT AddToPab(LPTSTR lpszDisplayName, LPTSTR lpszAddress,
+           LPTSTR lpszAddrType)
+   {
+    HRESULT      hr = S_OK;
+    LPMAPISESSION   lpSession = NULL;
+    LPADRBOOK      lpAddrbk = NULL;
+    LPMAPICONTAINER   lpAddrRoot = NULL;
+    LPMAPITABLE      lpBooks = NULL;
+    ULONG      ulCount = NULL;
+    ULONG      ulObjType = NULL;
+    LPSRowSet      pRows =   NULL;
+    SRestriction           srName;
+    SPropValue      spv;
+    LPSPropValue    lpProp;
+    LPABCONT      lpABC = NULL;
+    LPMAPITABLE      lpTPLTable = NULL;
+    LPMAPIPROP      lpNewEntry = NULL;
+
+    SizedSPropTagArray(2, Columns) =
+            {2, {PR_DISPLAY_NAME, PR_ENTRYID}};
+    SizedSPropTagArray(2, TypeColumns) =
+            {2, {PR_ADDRTYPE, PR_ENTRYID}};
+
+   // Initialize MAPI Subsystem.
+   hr = MAPIInitialize(NULL);
+   MAPI_ASSERT_EX(hr);
+
+   // Logon to MAPI.
+   hr = MAPILogonEx(0,NULL,NULL,MAPI_LOGON_UI,&amp;lpSession);
+   MAPI_ASSERT_EX(hr);
+
+   hr = lpSession-&gt;OpenAddressBook(0,NULL,0,&amp;lpAddrbk);
+   MAPI_ASSERT_EX(hr);
+
+   // Open root address book (container).
+   hr = lpAddrbk-&gt;OpenEntry(0L,NULL,NULL,0L,&amp;ulObjType,
+                  (LPUNKNOWN*)&amp;lpAddrRoot);
+   MAPI_ASSERT_EX(hr);
+
+   // Get a table of all of the Address Books.
+   hr = lpAddrRoot-&gt;GetHierarchyTable(0, &amp;lpBooks);
+   MAPI_ASSERT_EX(hr);
+   //SHOWTABLE(lpBooks);
+
+   // Restrict the table to just it's name and ID.
+   hr = lpBooks-&gt;SetColumns((LPSPropTagArray)&amp;Columns, 0);
+   MAPI_ASSERT_EX(hr);
+
+   // Build a restriction to find the Personal Address Book.
+   srName.rt = RES_PROPERTY;
+   srName.res.resProperty.relop = RELOP_EQ;
+   srName.res.resProperty.ulPropTag = PR_DISPLAY_NAME;
+   srName.res.resProperty.lpProp = &amp;spv;
+   spv.ulPropTag = PR_DISPLAY_NAME;
+   spv.Value.lpszA = "Personal Address Book";  // Address Book to open
+
+   // Apply the restriction
+   hr = lpBooks-&gt;Restrict(&amp;srName,0);
+   MAPI_ASSERT_EX(hr);
+
+   // Get the total number of rows returned. Typically, this will be 1.
+   hr = lpBooks-&gt;GetRowCount(0,&amp;ulCount);
+   MAPI_ASSERT_EX(hr);
+
+   // Get the row properties (trying to get the EntryID).
+   hr = lpBooks-&gt;QueryRows(ulCount,0,&amp;pRows);
+   MAPI_ASSERT_EX(hr);
+
+   // Get a pointer to the properties.
+   lpProp = &amp;pRows-&gt;aRow[0].lpProps[1];   // Point to the EntryID Prop
+
+   // Open the Personal Address Book (PAB).
+   hr = lpAddrbk-&gt;OpenEntry(lpProp-&gt;Value.bin.cb,
+                  (ENTRYID*)lpProp-&gt;Value.bin.lpb,
+                  NULL,MAPI_MODIFY,&amp;ulObjType,
+                  (LPUNKNOWN FAR *)&amp;lpABC);
+   MAPI_ASSERT_EX(hr);
+
+   // Get a table of templates for the address types.
+   hr = lpABC-&gt;OpenProperty( PR_CREATE_TEMPLATES,
+                  (LPIID) &amp;IID_IMAPITable,
+                   0, 0,
+                  (LPUNKNOWN *)&amp;lpTPLTable);
+   MAPI_ASSERT_EX(hr);
+   //SHOWTABLE(lpTPLTable);
+   // Restrict the table to just it's name and ID
+   hr = lpTPLTable-&gt;SetColumns((LPSPropTagArray)&amp;TypeColumns, 0);
+   MAPI_ASSERT_EX(hr);
+
+   // Get the EntryID of the Internet Mail Address Template
+   // Build a restriction to find the SMTP Template
+   srName.rt = RES_PROPERTY;
+   srName.res.resProperty.relop = RELOP_EQ;
+   srName.res.resProperty.ulPropTag = PR_ADDRTYPE;
+   srName.res.resProperty.lpProp = &amp;spv;
+   spv.ulPropTag = PR_ADDRTYPE;
+   spv.Value.lpszA = lpszAddrType;   // Name of Template ID you want
+                                     // passed into the function
+
+   // Apply the restriction
+   hr = lpTPLTable-&gt;Restrict(&amp;srName,0);
+   MAPI_ASSERT_EX(hr);
+   // Get the total number of rows returned. Typically, this will be 1.
+   hr = lpTPLTable-&gt;GetRowCount(0,&amp;ulCount);
+   MAPI_ASSERT_EX(hr);
+
+   // Get the row properties (trying to get the EntryID).
+   hr = lpTPLTable-&gt;QueryRows(ulCount,0,&amp;pRows);
+
+   // Get a pointer to the properties.
+   lpProp = &amp;pRows-&gt;aRow[0].lpProps[1];   // Point to the EntryID of
+                                         // the template.
+
+   // Now, you can actually create the new entry.
+   // It is blank when created.
+   hr = lpABC-&gt;CreateEntry(lpProp-&gt;Value.bin.cb,
+               (ENTRYID*)lpProp-&gt;Value.bin.lpb,
+               CREATE_CHECK_DUP_LOOSE,
+               &amp;lpNewEntry);
+   MAPI_ASSERT_EX(hr);
+
+   if (S_OK == hr &amp;&amp; lpNewEntry)
+   {
+      // Ok, now you need to set some properties on the new Entry.
+      const unsigned long cProps = 3;
+      SPropValue   aPropsMesg[cProps];
+      LPSPropProblemArray   lpPropProblems = NULL;
+
+      // Setup your properties.
+      aPropsMesg[0].dwAlignPad   = 0;
+      aPropsMesg[0].ulPropTag   = PR_EMAIL_ADDRESS;
+      aPropsMesg[0].Value.LPSZ   = lpszAddress;
+      aPropsMesg[1].dwAlignPad   = 0;
+      aPropsMesg[1].ulPropTag   = PR_DISPLAY_NAME;
+      aPropsMesg[1].Value.LPSZ   = lpszDisplayName;
+      aPropsMesg[2].dwAlignPad   = 0;
+      aPropsMesg[2].ulPropTag   = PR_ADDRTYPE;
+      aPropsMesg[2].Value.LPSZ   = lpszAddrType;
+
+      // Set the properties on the object.
+      hr = lpNewEntry-&gt;SetProps(cProps, aPropsMesg, &amp;lpPropProblems);
+      MAPI_ASSERT_EX(hr);
+
+      // Explictly save the changes to the new entry.
+      hr = lpNewEntry-&gt;SaveChanges(NULL);
+      if (MAPI_E_COLLISION == hr)
+      {
+       // You tried to add an entry that already exists.
+       OutputDebugString("Collision! The entry Already Exists.\n");
+       hr = S_OK;   // Handled the error....
+      }
+      MAPI_ASSERT_EX(hr);
+     }
+
+     // Cleanup
+     if (lpNewEntry) lpNewEntry-&gt;Release();
+     if (lpTPLTable) lpTPLTable-&gt;Release();
+     if (lpABC) lpABC-&gt;Release();
+     if (lpBooks) lpBooks-&gt;Release();
+     if (lpAddrRoot) lpAddrRoot-&gt;Release();
+     if (lpAddrbk) lpAddrbk-&gt;Release();
+     if (lpSession) lpSession-&gt;Release();
+
+     FreeProws(pRows);
+     return hr;
+    }
+
+</PRE></OL><h2>REFERENCES</h2>
+ 
+<P>
+For information on how to obtain the Mapiasst.h header file that contains
+helpful debugging routines, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../mapi/q177542.htm">Q177542</A></B>
+   TITLE     : FILE: MAPIASST.EXE: MAPI ASSERT Debug Routines
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Personal Address Book PAB CreateEntry Create Entry<BR>
+Add<BR>
+Keywords          : kbcode EMAPI MAPIIAB<BR>
+Version           : WINDOWS:1.0<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 6, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,237 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: _mktemp() May Return the Same Name Between Threads </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q114374">
+<META NAME="KBModify" CONTENT="1996/01/18">
+<META NAME="KBCreate" CONTENT="1994/05/02">
+<META NAME="Keywords" CONTENT="kbprg kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When calling _mktemp() with the same template name in different threads of the same process, _mktemp() may return the same file name to each thread.  CAUSE =====  The _mktemp() function is used to generate temporary file names. Starting with a user...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAJQ,QAUJ,QAUQ,QA36,QAFI,QAUD,QA4H,QAYV,QARM,QAH6,QAI4,QBWS,QBFY,QA28,QA2O V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: _mktemp() May Return the Same Name Between Threads</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 18, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q114374</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>The C Run-time (CRT), included with:
+   Microsoft Visual C++ 32-bit Edition, version 1.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When calling _mktemp() with the same template name in different threads of
+the same process, _mktemp() may return the same file name to each thread.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The _mktemp() function is used to generate temporary file names. Starting
+with a user supplied template consisting of a base followed by six X's,
+_mktemp() generates temporary file names by concatenating a five digit
+value to the specified base. To ensure that unique names are generated
+between processes, the process id is encoded into the file name. In a multi-
+threaded application, the scheme of using only the process id makes it
+possible for threads to receive the same temporary file name. This could
+occur whenever one of the file names returned by _mktemp had not actually
+been used to open a file yet.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+In Visual C++ 2.0, _mktemp() uses the thread id in generating the name, so
+this problem will not occur.
+<P>
+In Visual C++ 1.0, the work-around is to pass in a different template name
+to _mktemp() in each thread. A convenient way to create a unique template
+name for a thread would be to use the thread id to generate the template
+name. In the code fragment below, the thread id is obtained and used as an
+index into a set of characters which are used as the first two characters
+in the template name.
+<P>
+<PRE>#define DIG_LEN 37
+
+</PRE>static char digits [ DIG_LEN + 1 ] =
+<PRE>                           "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_";
+
+
+// Within the thread, generate a template name
+// using the thread id.
+
+     char templte[9];
+     unsigned tid = GetCurrentThreadId();
+
+     strcpy ( templte , "@@XXXXXX" ); // initialize template name
+
+     templte[0] = digits [ tid % DIG_LEN ];     // assign first character
+                                           // in template name using
+                                           // the tid to index into
+                                           // the digits array
+     templte[1] =
+          digits [ ( tid / DIG_LEN ) % DIG_LEN ];  // second character
+
+    path1 = _mktemp(templte);
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed:    /MT /D_CONSOLE
+*/
+#include &lt;windows.h&gt;
+#include &lt;process.h&gt;    /* _beginthread, _endthread */
+#include &lt;io.h&gt;         /* _mktemp */
+#include &lt;stdio.h&gt;
+
+void Check1(void *);
+void Check2(void *);
+char *path1, *path2, *path3;
+char templateName[4][9] = {"fnXXXXXX","fnXXXXXX","fnXXXXXX",
+                 "tnXXXXXX"};
+void main()
+</PRE>{
+<PRE>  _beginthread(Check1, 0, NULL );
+  _beginthread(Check2,0,NULL);
+  Sleep(200L);
+  printf("Program finished\n");
+</PRE>}
+<P>
+<PRE>/* Check */
+void Check1( void * dummy  )
+</PRE>{
+<PRE>  FILE *fp;
+
+  path1 = _mktemp(templateName[0]);
+
+  Sleep(100L);  // Give thread 2 a chance to call mktemp before the
+                  // the file is actually opened
+  if (path1 != NULL)
+     if ((fp = fopen(path1,"w")) == NULL) {
+     printf("Thread 1 - Failed to open file %s\n",path2);
+       _endthread();
+     }
+  fclose(fp);
+  remove(path1);
+  printf("Thread 1 - File %s successfully opened\n",path1);
+  _endthread();
+</PRE>}
+<P>
+<PRE>/* Check 2 */
+void Check2( void * dummy  )
+</PRE>{
+<PRE>  FILE *fp;
+
+  // Path2 is set to the same as path1 which is INCORRECT
+  path2 = _mktemp(templateName[2]);
+
+  // Workaround is to specify an unused template name
+
+  if (path2 != NULL)
+     if ((fp = fopen(path2,"w")) == NULL) {
+     printf("Thread 2 - Failed to open file %s\n",path2);
+       _endthread();
+     }
+  fclose(fp);
+  remove(path2);
+  printf("Thread 2 - File %s successfully opened\n",path2);
+  _endthread();
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00<BR>
+KBCategory: kbprg kbprb<BR>
+KBSubcategory: CRTIss<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 18, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

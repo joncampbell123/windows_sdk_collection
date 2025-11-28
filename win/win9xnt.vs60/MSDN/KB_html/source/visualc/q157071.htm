@@ -1,0 +1,238 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: GetFieldValue Returns Empty String for SQL_LONGVARCHAR </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q157071">
+<META NAME="KBModify" CONTENT="1997/07/10">
+<META NAME="KBCreate" CONTENT="1996/10/04">
+<META NAME="Keywords" CONTENT="MfcDatabase kbbuglist kbprg kbtshoot">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  CRecordset::GetFieldValue() incorrectly returns an empty string for SQL_LONGVARCHAR data that is 1 character long.  CAUSE =====  GetFieldValue() allocates a buffer and then calls CRecordset::GetData() to retrieve data from the field into this buffe...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAYY,QAUD,QAY2,QBVV,QABO,QALW,QAY5,QACJ,QAIF,QA2O,QABA,QA9N,QASB,QALG V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: GetFieldValue Returns Empty String for SQL_LONGVARCHAR</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q157071</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+4.20
+WINDOWS NT
+kbprg kbtshoot kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   Microsoft Visual C++, 32-bit Edition, version 4.2
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+CRecordset::GetFieldValue() incorrectly returns an empty string for
+SQL_LONGVARCHAR data that is 1 character long.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+GetFieldValue() allocates a buffer and then calls CRecordset::GetData() to
+retrieve data from the field into this buffer. For long binary and
+character data, the length of the data is not known in advance, so
+GetFieldValue() does not know what size of buffer to allocate.
+<P>
+Therefore, for SQL_LONGVARCHAR and SQL_LONGVARBINARY data, GetFieldValue()
+calls GetData() with a buffer length of 1. GetData() tries to retrieve the
+data and will likely fail because the buffer is too small. Whether
+GetData() fails or not, it returns the actual length of the data in the
+field excluding the NULL termination byte. GetFieldValue() then calls the
+function CRecordset::GetLongCharDataAndCleanup() to reallocate the buffer
+and retrieve the rest of the data, if necessary.
+<P>
+GetLongCharDataAndCleanup() must determine whether GetData() was able to
+retrieve the data by checking whether the actual data length is larger than
+the buffer length:
+<P>
+<PRE>   // If long data, may need to call SQLGetData again
+   if (nLen &lt; nActualSize &amp;&amp;
+       (nSQLType == SQL_LONGVARCHAR || nSQLType == SQL_LONGVARBINARY))
+
+</PRE>For 1-character SQL_LONGVARCHAR data, GetData() will fail because the
+buffer must be large enough to hold the data plus the NULL termination
+byte. Then, GetData() returns an actual size of 1, which does not include
+the NULL byte.
+<P>
+GetLongCharDataAndCleanup() fails to consider the space required for the
+NULL termination byte. If the data length is 1, then both nLen and
+nActualSize are 1, which means that GetLongCharDataAndCleanup() will not
+attempt to get the additional data.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Override the GetLongCharDataAndCleanup() function and change the length
+comparison above from "&lt;" to "&lt;=". See the MORE INFORMATION section below
+about how to implement this workaround.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following steps detail one method of making the needed changes to
+GetFieldValue():
+
+<OL><P><LI>If you do not currently have a class derived from CRecordset, create
+   one. If you have multiple classes derived from CRecordset, you may want
+   to create a new base class derived from CRecordset and modify your
+   existing recordset classes to be derived from this new base class so
+   that you do not have to make the changes to every recordset class.
+<P>
+   For example, create GetSet.H:
+<P>
+   class CGetSet : public CRecordset
+   {
+   public:
+<P><PRE>       CGetSet(CDatabase* pDatabase = NULL);
+</PRE>   };
+<P>
+   and GetSet.CPP:
+<P>
+<PRE>   #include "stdafx.h"
+   #include "GetSet.h"
+
+   CGetSet::CGetSet(CDatabase* pdb)
+       : CRecordset(pdb)
+   {
+   }
+
+</PRE><P><LI>Copy the prototypes of the CRecordset GetFieldValue() and
+   GetLongCharDataAndCleanup() functions from MSDEV\MFC\SRC\AFXDB.H to your
+   recordset .H file as public member functions. Note that all four of the
+   GetFieldValue() prototypes must be copied.
+
+<P><LI>Copy the implementations of the CRecordset::GetFieldValue() and
+   CRecordset::GetLongCharDataAndCleanup() functions from
+   MSDEV\MFC\SRC\DBCORE.CPP to your recordset .CPP file. Change the
+   "CRecordset::" prefix to your new class name. Note that all four of the
+   GetFieldValue() implementations must be copied.
+
+<P><LI>In your implementation of GetLongCharDataAndCleanup(), replace "&lt;" with
+   "&lt;=".
+<P>
+   Change:
+<P>
+<PRE>   // If long data, may need to call SQLGetData again
+   if (nLen &lt; nActualSize &amp;&amp;
+       (nSQLType == SQL_LONGVARCHAR || nSQLType == SQL_LONGVARBINARY))
+
+   to:
+
+   // If long data, may need to call SQLGetData again
+   if (nLen &lt;= nActualSize &amp;&amp;
+       (nSQLType == SQL_LONGVARCHAR || nSQLType == SQL_LONGVARBINARY))
+
+</PRE><P><LI>If you were using the CRecordset class directly, you will need to change
+   your application to use the new class instead.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.20 vcbuglist420 kbdsd<BR>
+KBCategory: kbprg kbtshoot kbbuglist<BR>
+KBSubcategory: MfcDatabase<BR>
+Keywords            : MfcDatabase kbbuglist kbprg kbtshoot<BR>
+Technology          : kbMfc<BR>
+Version             : 4.20<BR>
+Platform            : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

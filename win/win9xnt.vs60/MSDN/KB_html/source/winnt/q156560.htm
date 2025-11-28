@@ -1,0 +1,250 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Free Space Required to Convert FAT to NTFS </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q156560">
+<META NAME="KBModify" CONTENT="1997/10/16">
+<META NAME="KBCreate" CONTENT="1996/09/25">
+<META NAME="Keywords" CONTENT="ntfilesys NTSrvWkst ntutil kbenv">
+<META NAME="KBArea" CONTENT="Support; KB; winnt, crossnet, iis">
+<META NAME="Description" CONTENT="  The conversion of a disk partition from the FAT file system to NTFS requires a certain amount of free disk space be available in order to build the NTFS disk structures. This article provides a description of the process Convert.exe uses to convert...">
+<META NAME="Product" CONTENT="Windows NT">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBW5,QABX,QA7T,QDJB,QAJ5,QAEQ,QDIV,QALM,QAKC,QAIJ,QAJ6,QBVV,QBC6,QALQ,QAJQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Free Space Required to Convert FAT to NTFS</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 16, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q156560</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows NT Workstation version 4.0
+<LI>Microsoft Windows NT Server version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The conversion of a disk partition from the FAT file system to NTFS
+requires a certain amount of free disk space be available in order to build
+the NTFS disk structures. This article provides a description of the
+process Convert.exe uses to convert FAT to NTFS and discusses the space
+required for conversion.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+FAT and NTFS use very different on-disk structures to represent the
+allocation of space for files. These structures are often referred to as
+meta-data or file system overhead.
+The FAT file system's meta-data consists of a boot sector, one or more File
+Allocation Tables, a fixed-size root directory structure, and a variable
+amount of space for each sub-directory related to the number of files in
+the sub-directory.
+<P>
+Another kind of overhead associated with both FAT and NTFS is related to
+the fact that both file systems allocate disk space in clusters of a fixed
+size. The exact size of these allocation units or clusters is determined at
+format time, and the defaults are dependent on the size of the volume. The
+default cluster size for NTFS is smaller than the default for FAT on
+similarly sized volumes.
+<P>
+Because space for file data can only be allocated in whole cluster amounts,
+even a one byte file will end up using a cluster's worth of disk space on a
+FAT volume. The NTFS case is similar, but slightly more complicated and
+will not be covered in detail in this article.
+<P>
+Like FAT, NTFS has a certain amount of fixed size overhead and a certain
+amount of per-file overhead. In order to support the advanced features of
+NTFS, such as recoverability, security, support for very large volumes, and
+so forth, the NTFS meta-data overhead is somewhat larger than the FAT meta-
+data overhead. On the other hand, because NTFS cluster overhead is smaller
+than FAT cluster overhead, it is often possible to store as much, if not
+more data on an NTFS volume as on a FAT volume, even without using NTFS
+file compression.
+<P>
+In order to guard against the possibility of corruption caused by failure
+during conversion, Convert.exe must build the NTFS meta-data using only
+that space which is considered free space by the FAT file system. In this
+way, if the conversion fails to complete, the FAT representation of the
+user files is still valid. Complicating this strategy is that one sector of
+NTFS data must occupy a specific location on the disk, and a very limited
+number of other structures must occupy contiguous sectors.
+<P>
+The general outline of the conversion process is as follows:
+
+<OL><P><LI>Create holes (that is, relocate FAT clusters) for the fixed-location
+   NTFS structure and other contiguous data (if necessary) and save the new
+   FAT. If the necessary sectors cannot be made available due to being
+   unreadable, for example, the conversion process will fail and the FAT
+   volume will remain in the same state it was in before the attempted
+   conversion.
+
+<P><LI>Create NTFS elementary data structures in FAT free space. These are the
+   fixed-size tables and structures common to any NTFS volume. The size of
+   these tables may vary depending on the size of the volume, but do not
+   depend on the number of files on the volume.
+
+<P><LI>Create the NTFS master file table and directory listings in the FAT free
+   space. The space required for this step is variable and depends on the
+   total number of files on the FAT volume.
+
+<P><LI>Mark as free in the NTFS bitmap those NTFS clusters being used by FAT-
+   specific structures. After the conversion is complete, the FAT meta-data
+   overhead can be reclaimed as free space to NTFS.
+
+<P><LI>Write NTFS boot sector. This is the final action that causes the volume
+   to be recognized as NTFS rather than FAT. If the conversion fails at any
+   step prior to this, the volume will still be a valid FAT volume and will
+   be recognized as such.
+<P>
+</OL>Because a crash can occur at any time, the process described above
+minimizes the chance of disk corruption.
+<P>
+NOTE: Almost all writes are to FAT free space, so a failure will preserve
+the FAT intact.
+<P>
+The only times at which we write to non-free space, for example, the times
+at which a failure might cause problems are:
+
+<UL><LI>At the end of step 1, when CONVERT overwrites the FAT. The algorithm for
+   relocating clusters guarantees that if a failure does take place during
+   this stage, CHKDSK will be able to fix the disk without any loss of
+   data.
+
+<LI>In step 5, while writing the boot sector. If a failure occurs during
+   this step, and the volume being converted is the system partition (the
+   active, primary partition used to boot the system) there is a chance
+   that the system could be left in a state where it would not start. In
+   the unlikely event that this takes place, it should still be possible to
+   start the system using a boot floppy disk.
+<P>
+</UL>Convert.exe performs a computation based on the number of preexisting files
+on the FAT volume and size of the volume to figure out how much free space
+is required before starting the conversion process. For standard hardware
+(hard drives with 512 bytes per sector) the equation boils down to the
+following:
+
+<OL><P><LI>Start by taking the size of the volume, in bytes, and dividing by 100.
+   If this value is less than 1,048,576, use 1,048,576. If it is larger
+   than 4,194,304, use 4,194,304.
+
+<P><LI>Add to the above the size of the volume in bytes divided by 803.
+
+<P><LI>Add to the above the number of files and directories on the volume
+   multiplied by 1280.
+
+<P><LI>Add to the above 196,096.
+<P>
+</OL>In addition to the above, if there is extended attribute information on the
+FAT volume, Convert.exe will take into account the additional space that
+will be required. Extended attribute information is normally not present
+and would only be a consideration if the system had been running OS/2 and
+extended attributes were in use.
+<P>
+The above computation closely mirrors the computation performed by
+Convert.exe. The exact result obtained on a given system may differ
+slightly.
+<P>
+NOTE: This is the free space required by Convert.exe before it will attempt
+a conversion. The computation includes an allowance for the possibility
+that bad sectors may be encountered in the FAT free space. However, in
+cases where a volume has just enough free space to begin the conversion,
+and a significant fraction of drive space is discovered to be unusable, the
+conversion process may fail. As discussed above, this should not result in
+any disk corruption. The volume should automatically fall back to being
+recognized as FAT.
+ 
+<PRE>Keywords          : ntfilesys NTSrvWkst ntutil kbenv
+Version           : WinNT:4.0
+Platform          : winnt</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 16, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,259 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Detecting when IE holds Controls and Pages in Memory </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q167230">
+<META NAME="KBModify" CONTENT="1997/04/22">
+<META NAME="KBCreate" CONTENT="1997/04/21">
+<META NAME="Keywords" CONTENT="AXSDKControls kbprg msient msiew95">
+<META NAME="KBArea" CONTENT="Support; KB; ie_dev">
+<META NAME="Description" CONTENT="  Internet Explorer (IE), versions 3.0 and 3.01, maintains a most-recently used memory cache of up to four viewed pages in order to optimize navigation back and forth between the same set of pages. What this means to the Web site programmer is that A...">
+<META NAME="Product" CONTENT="Internet Explorer (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAHV,QA7O,QAMN,QAB5,QBWA,QAOE,QAYS,QAHR,QBV9,QBW6,QBWT,QATK,QBRJ,QBF0,QAY2 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Detecting when IE holds Controls and Pages in Memory</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q167230</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Internet Explorer (Programming), versions 3.0, 3.01, 3.02
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Internet Explorer (IE), versions 3.0 and 3.01, maintains a most-recently
+used memory cache of up to four viewed pages in order to optimize
+navigation back and forth between the same set of pages. What this means to
+the Web site programmer is that ActiveX controls on a cached page stay
+loaded in memory for as long as that page remains in the "memory cache."
+Likewise, ActiveX Document servers remain open as long as that page is
+still held in memory.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+For most controls and documents, this is not an issue. This optimization
+improves performance for browsing the Web site. However, an ActiveX control
+might need to know when its host Web document is no longer visible. For
+example, an ActiveX control that plays a background sound might want to
+turn that sound off when its host page is no longer visible. All forms of
+navigation demonstrate this behavior--clicking the Back or Forward buttons,
+typing a URL directly, and clicking on a link.
+<P>
+For ActiveX documents, the recommended method for determining that a page
+has just been hidden is to respond to the OLECMDID_STOP command sent
+through the IOleCommandTarget interface. MFC ActiveX document servers make
+it easy to detect this event: just add an entry to your OLECMD_MAP for
+OLECMDID_STOP. Use this entry to map OLECMDID_STOP to a command such as
+ID_OLECMD_STOP, which you can handle as usual.
+<P>
+When the ActiveX document is refreshed from the memory cache,
+OLECMDID_REFRESH is sent to IOleCommandTarget::Exec. This can be handled in
+an analogous fashion to OLECMDID_STOP. Here is an MFC example of using
+both:
+<P>
+<PRE>   BEGIN_MESSAGE_MAP(CYourDoc, COleServerDoc)
+       // ... other stuff
+
+       // Add the two following entries to your control's message map.
+       // Then, define ID_OLECMD_STOP and ID_OLECMD_REFRESH command
+       // IDs in resource.h file.  They are for OLECMDID_STOP
+       // and OLECMDID_REFRESH command.
+       ON_COMMAND(ID_OLECMD_STOP, OnStop)
+       ON_COMMAND(ID_OLECMD_REFRESH, OnRefresh)
+   END_MESSAGE_MAP()
+
+   // Add the following OLECMD_MAP to the .cpp file of your
+   // COleServerDoc-derived class:
+   BEGIN_OLECMD_MAP(CYourDoc, COleServerDoc)
+       ON_OLECMD(NULL, OLECMDID_STOP, ID_OLECMD_STOP)
+       ON_OLECMD(NULL, OLECMDID_REFRESH, ID_OLECMD_REFRESH)
+   END_OLECMD_MAP()
+
+   // Add DECLARE_OLECMD_MAP() to the .h file of your
+   // COleServerDoc-derived  class, and declarations and
+   // definitions for  the following two functions:
+   void CYourDoc::OnStop()
+   {
+       // This control's page was navigated away from, but still remains in
+       // the memory cache. Stop playing background sounds, animations,
+       // timers.
+       TRACE("Stopped!\n");
+   }
+
+   void CYourDoc::OnRefresh()
+   {
+       // This control's page was navigated to and is being displayed
+       // again. Do whatever is necessary: start playing sounds,
+       // animations, timers
+       TRACE("Refreshed!\n");
+   }
+
+
+</PRE>ActiveX Controls typically do not support the IOleCommandTarget interface.
+Alternatively, a control can watch for the HIDE and SHOW verbs sent to
+IOleObject::DoVerb. An MFC ActiveX Control can use the ON_STDOLEVERB
+message map entry to hook into the default handling of OLEIVERB_HIDE and
+OLEIVERB_SHOW.
+<P>
+Here is an MFC example to detect that Internet Explorer is hiding an
+ActiveX control instead of unloading it:
+<P>
+<PRE>   BEGIN_MESSAGE_MAP(CYourOcxCtrl, COleControl)
+       // ... other stuff
+
+       // Add the two following entries to your control's message map
+       ON_STDOLEVERB(OLEIVERB_SHOW, OnVerbShow)
+       ON_STDOLEVERB(OLEIVERB_HIDE, OnVerbHide)
+   END_MESSAGE_MAP()
+
+   // Add definitions and declarations for the following two functions.
+   BOOL CYourOcxCtrl::OnVerbShow(LPMSG lpMsg, HWND hWndParent,
+                                 LPCRECT lpRect)
+   {
+       // Do what COleControl would have done in default case
+       // taken from COleControl::XOleObject::DoVerb in CTLOBJ.CPP
+       HRESULT hr = OnOpen(TRUE, lpMsg);      // Try in-place first
+
+       // This control's page was navigated to and is being displayed
+       // Do whatever is necessary: start playing sounds,
+       // animations, timers
+       TRACE("VERB: SHOW\n");
+       return !(FAILED(hr));
+   }
+
+   BOOL CYourOcxCtrl::OnVerbHide(LPMSG lpMsg, HWND hWndParent,
+                                 LPCRECT lpRect)
+   {
+       // This control's page was navigated away from, but still remains in
+       // the memory cache. Stop playing background sounds, animations,
+       // timers.
+       TRACE("VERB: HIDE\n");
+
+       // Do what COleControl would have done in default case
+       // taken from COleControl::XOleObject::DoVerb in CTLOBJ.CPP
+       HRESULT hr = m_xOleInPlaceObject.UIDeactivate();
+       return !(FAILED(hr));
+   }
+
+</PRE>These steps are all that is necessary to reliably detect when a page held
+in memory is shown or hidden. Note that it is not guaranteed in all cases
+that ActiveX Documents and ActiveX Controls will be held in memory. There
+are some complications to the scheme that Internet Explorer uses to
+determine when to dump a page or control or hold it in memory:
+<P>
+- Controls that are scripted are always unloaded when navigating off of a
+<PRE>  page on Internet Explorer 3.01 for Windows NT.
+
+</PRE>- ActiveX Documents specified in a frame remain in memory as expected.
+However, when returning to the original page with the ActiveX Document in a
+frame, Internet Explorer unloads that server it held in memory and then
+reloads that server immediately with the specified document. This is what
+would occur if the Back button and then the Forward button were pushed.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For information on ActiveX Document and ActiveX Control, search the
+following topics in Microsoft Developer Studio:
+<P>
+Internet First Steps: ActiveX Documents
+Internet First Steps: ActiveX Controls
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : AXSDKControls kbprg msient msiew95<BR>
+Technology          : kbInetDev<BR>
+Version             : 3.0 3.01 3.02<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

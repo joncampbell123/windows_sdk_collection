@@ -1,0 +1,321 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Assertion Failed, Line 475  of Sockcore.cpp </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q139692">
+<META NAME="KBModify" CONTENT="1997/09/18">
+<META NAME="KBCreate" CONTENT="1995/11/14">
+<META NAME="Keywords" CONTENT="MfcSockets kbbuglist kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  An MFC application that uses the socket classes and makes sequential calls to close and create sockets encounters an assertion failure:  In MFC 3.1 and 3.2, the assertion appears as:     Assertion Failed:           : File sockcore.cpp, Line 475  In...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEV,QAGB,QAYC,QAAW,QAH6,QALQ,QAJQ,QBWS,QAGI,QAFY,QBVV,QAY5,QAR4,QAYX,QAYW V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Assertion Failed, Line 475  of Sockcore.cpp</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q139692</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+<PRE>1.52    | 2.10 2.20
+</PRE>WINDOWS | WINDOWS NT
+kbprg kbbuglist kbfixlist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+<P>
+<P><PRE>    - Microsoft Visual C++ for Windows, version 1.52
+    - Microsoft Visual C++, 32-bit Edition, versions 2.1, 2.2
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+An MFC application that uses the socket classes and makes sequential
+calls to close and create sockets encounters an assertion failure:
+<P>
+In MFC 3.1 and 3.2, the assertion appears as:
+<P>
+<PRE>   Assertion Failed: &lt;app name&gt;: File sockcore.cpp, Line 475
+
+</PRE>In MFC 2.52, the assertion appears as:
+<P>
+<PRE>   Assertion Failed: &lt;app name&gt;: File sockcore.cpp, Line 456
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+MFC maintains a map of dead sockets. (A dead socket is a socket that was
+open but that has been closed.) The purpose of this map is described in
+further detail in the "More Information" section of this article.
+<P>
+If an application closes and opens sockets in the same thread without
+yielding to process messages, then it is possible that an attempt will be
+made to close a socket that has already been closed. MFC does not properly
+handle this because it can only have one entry in the map of dead sockets.
+The resulting assertion failure is checking whether there is already an
+entry in the map of dead sockets:
+<P>
+<PRE>   ASSERT(CAsyncSocket::LookupHandle(hSocket, TRUE) == NULL);
+   // The TRUE means it is looking for a dead socket handle,
+   // thus the assertion failure occurs.
+
+</PRE><h2>RESOLUTION</h2>
+ 
+<P>
+There are four possible resolutions:
+
+<UL><LI>The problem occurs only if you are closing and opening sockets
+   sequentially without yielding to process messages. If you are doing this
+   to send many small packets of data, there might be other approaches that
+   would work better. See the "More Information" section of this article
+   for further details.
+<P>
+   -or-
+
+<LI>One pretty simple resolution is to suspend the closing of any sockets
+   until all sockets have been opened. This prevents any new SOCKET from
+   being opened (and subsequently closed) that happens to have the same
+   SOCKET handle as a previously closed socket.
+<P>
+   -or-
+
+<LI>You can write a routine to process all pending socket messages
+   immediately after calling Close and before continuing with code
+   execution. This could be done, for example, in the Close member function
+   of your own CAsyncSocket-derived or CSocket-derived class:
+<P>
+<PRE>   #include &lt;afxpriv.h&gt;
+
+   void CMySocket::Close()
+   {
+     // For the socket about to be closed.
+     SOCKET hDeadSocket = m_hSocket;
+
+     CAsyncSocket::Close();
+     // or for CSocket-derived class:
+     // CSocket::Close();
+
+     MSG msg;
+     CSocket::ProcessAuxQueue();
+     while(::PeekMessage(&amp;msg,NULL,
+             WM_SOCKET_NOTIFY,WM_SOCKET_DEAD,PM_REMOVE))
+     {
+       ::DispatchMessage(&amp;msg);
+       if( (msg.message==WM_SOCKET_DEAD) &amp;&amp;
+           ((SOCKET)msg.wParam==hDeadSocket))
+         break;
+     }
+   }
+
+   The virtual destructor should also be overridden to make sure the
+   correct Close is called:
+
+   CMySocket::~CMySocket()
+   {
+     if (m_hSocket != INVALID_SOCKET)
+       Close();
+   }
+
+   Note that this will cause CAsyncSocket-overriden and CSocket-overridden
+   callbacks (for example, OnReceive, OnAccept) to be called for any
+   currently open sockets that have notification messages pending in the
+   queue.
+
+   -or-
+
+</PRE><LI>Restructure the code so that the Close/Open operations are not in a non-
+   yielding sequence. This could be done by providing a message handler for
+   a user-defined message and by performing a specific operation in that
+   message handler. Rather than just proceeding with the thread of
+   execution, a function call that Closes or Destroys a
+   CAsyncSocket/CSocket object should be followed by a PostMessage with the
+   user-defined message. This way all other messages (including the
+   WM_SOCKET_DEAD message) will be processed before the subsequent socket
+   operations are performed.
+<P>
+</UL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This problem was corrected in the version
+of MFC that ships with Microsoft Visual C++, 32-bit Edition, version 4.0.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sending Small Packets of Data</h3>
+ 
+<P>
+If you are just interested in sending small packets of data back and forth,
+then opening and closing several STREAM type sockets might not be the best
+solution. STREAM sockets were created for sending large amounts of data
+reliably. Two alternate solutions (using one persistent connection or using
+DATAGRAM sockets) might be more suitable and would probably provide better
+performance than you would get by opening and closing many STREAM type
+socket connections.
+<P>
+<P><h3>Using One Persistent Connection</h3>
+ 
+<P>
+If you are sending this data between the same processes, you can do
+something like what the Chatter and ChatSrvr samples do. They both have a
+Message Structure defined. They open a socket connection and leave it open.
+Then they just send multiple Message Structures back and forth to each
+other through the socket until one or the other side decides to disconnect
+permanently. Then the LastMessage bit is set in the Message Structure and
+sent to the other process. The other process then closes down gracefully.
+<P>
+<P><h3>Using DATAGRAM Sockets</h3>
+ 
+<P>
+You can open a single unconnected DATAGRAM socket, and use the SendTo and
+ReceiveFrom functions to send little bits of data between processes.
+<P>
+This might be a better approach because it does not require you to use the
+overhead of opening or closing a socket connection for every message you
+send. You can just use an unconnected DATAGRAM socket, and use SendTo when
+you need to send the data. Additionally, DATAGRAM sockets are generally
+faster than STREAM sockets. The primary catch here is that DATAGRAM sockets
+do not guarantee delivery of your data -- although on many systems, they
+are almost as reliable as STREAM sockets.
+<P>
+<P><h3>The WM_SOCKET_DEAD Mechanism</h3>
+ 
+<P>
+MFC has a mechanism for preventing a problem that occurs when a socket has
+been closed while there were still notification messages in the
+application's message queue that were bound for that socket.
+<P>
+The problem is that a new socket could be opened that has the same handle
+as the socket that was closed. The messages that still existed in the
+message queue are eventually received, and they appear to be destined for
+the newly opened socket. This can cause a variety of problems. For example,
+OnReceive might be called for a socket that actually has nothing to
+receive.
+<P>
+MFC's appraoch to handling this problem uses a special message called
+WM_SOCKET_DEAD. Whenever a socket is closed, the following occurs:
+
+<OL><P><LI>The SOCKET handle is removed from the map of attached sockets.
+
+<P><LI>The SOCKET handle is placed in the map of dead sockets.
+
+<P><LI>The WM_SOCKET_DEAD message is posted to the application's message queue
+   with a wParam indicating the closed SOCKET handle.
+<P>
+</OL>NOTE: These first three steps are implemented in CAsyncSocket::KillSocket,
+in Sockcore.cpp.
+
+<OL><P><LI>The message routing mechanism for MFC's hidden socket notification
+   window ignores all messages for a SOCKET handle while the SOCKET
+   handle is in the map of dead sockets.
+
+<P><LI>The SOCKET handle is not removed from the map of dead sockets until the
+   WM_SOCKET_DEAD message is received.
+<P>
+</OL>By POSTING the WM_SOCKET_DEAD message, MFC causes all pending socket
+messages for that particular SOCKET handle to be ignored until the
+WM_SOCKET_DEAD message is received. The effect of this is to ignore any
+notifications that were pending for the now-dead socket. Any messages
+received after that are notifications for the open socket and those
+messages will be properly handled.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.52 2.10 2.20 3.10 3.20 4.00 CSocket<BR>
+CAsyncSocket<BR>
+KBCategory: kbprg kbbuglist kbfixlist<BR>
+KBSubcategory: MfcSockets<BR>
+Keywords          : MfcSockets kbbuglist kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.52    | 2.10 2.20<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,209 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>SNA Server Performance Degrades Running LUA Application </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q156967">
+<META NAME="KBModify" CONTENT="1997/04/17">
+<META NAME="KBCreate" CONTENT="1996/10/03">
+<META NAME="Keywords" CONTENT="kb3rdparty kbprg snalua">
+<META NAME="KBArea" CONTENT="Support; KB; sna">
+<META NAME="Description" CONTENT="  When you run an LUA application (or 3270 application that uses the LUA flavor of the SNA Server 3270 Emulator Interface Specification), SNA Server performance may degrade if the application is receiving a large number of frames and SNA exception re...">
+<META NAME="Product" CONTENT="SNA Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAJH,QAAZ,QAH6,QBXS,QBWS,QBVV,QAY5,QA5V,QA26,QAYY,QAU3,QAMR,QAJX,QAEF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>SNA Server Performance Degrades Running LUA Application</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q156967</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SNA Server for Windows NT, versions 2.0, 2.1, 2.11, 2.11
+   Service Pack 1, and 3.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When you run an LUA application (or 3270 application that uses the LUA
+flavor of the SNA Server 3270 Emulator Interface Specification), SNA Server
+performance may degrade if the application is receiving a large number of
+frames and SNA exception response protocol is being used on the session.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This problem can occur if exception response protocol is used on an LU type
+0, 1, 2, or 3 session, and the application does not periodically send
+"courtesy acknowledgments" to SNA Server, as documented in the SNA
+Considerations section in Chapter 2 of the SNA Server “LUA Programmer's
+Guide” (included below).
+<P>
+If an LUA application developer encounters this problem, the application
+should issue "courtesy acknowledgments" periodically (say, after every 10
+frames received or so), as described below.
+<P>
+If a customer suspects a problem in this area, see the information below
+for instructions on generating SNA Server traces to provide to the LUA
+application developer or to SNA Server support personnel.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Chapter 2 of the SNA Server “LUA Programmer's Guide” includes the following
+information regarding "courtesy acknowledgments":
+<P>
+"SNA Server keeps a record of requests received from the host in order to
+correlate any response sent by the application with the appropriate
+request. When the application sends a response, SNA Server correlates the
+response with the data from the original request, and can then free the
+storage associated with it.
+<P>
+If the host specifies exception response only (a negative response may be
+sent but a positive response should not be sent), SNA Server must still
+keep a record of the request in case the application subsequently sends a
+negative response. If the application does not send a response, the storage
+associated with this request cannot be freed.
+<P>
+Because of this, SNA Server allows the LUA application to issue a positive
+response to an exception-response-only request from the host (this is known
+as a courtesy acknowledgment). The response is not sent to the host, but
+is used by LUA to clear the storage associated with the request."
+<P>
+If the LUA application does not issue courtesy acknowledgments in this
+scenario, the following behavior may be observed using Microsoft Windows NT
+Performance Monitor utility:
+
+<UL><LI>The "private bytes" memory counter for the SNASERVR.EXE process will
+   steadily increase while the LUA application receives data.
+
+<LI>Processor CPU usage may steadily increase
+
+<LI>Data throughput on the LUA session will decrease
+<P>
+</UL>Also, if SNA Server tracing is enabled, the SNA Server may encounter
+unexpected delays up to 45 seconds before responding to client requests.
+<P>
+To determine if this problem is occurring, the following traces should be
+captured and provided to the LUA application developer, or to SNA Server
+support personnel:
+
+<UL><LI>Stop the LUA application
+
+<LI>Run SNATRACE, focus on the SNA Server service and turn on Data Link
+   Control (DLC) and 3270 message tracing, set the trace file size to
+   a large value (say, 5000000 or 5 MB) and select Apply.
+
+<LI>Start the LUA application and run a sample transaction.
+
+<LI>Return to SNATRACE and select Clear All. The resulting trace files can
+</UL>be found in &lt;Snaroot&gt;\System\Nodemsg?.trc.
+<P>
+To send a courtesy acknowledgment, the LUA application should write a
+response containing a zero-length data message, setting the RH to indicate
+a response and by setting the TH to have the sequence number (SNF) of the
+RECEIVE verb that is being acknowledged. A SLI_SEND or RUI_WRITE indicates
+a response if it has the response bit set in the RH in the verb control
+block. The bits to set are:
+<P>
+<PRE>   lua_rh.rri = 1 /* response */
+   lua_rh.ri =  0 /* positive response*/
+
+</PRE>Also, if you use an SLI application, the lua_message_type in the SLI_SEND
+command must be set to indicate a response (LUA_MESSAGE_TYPE_RSP). This is
+described in Chapter 4 of the “LUA Programmer's Reference.”
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: sp1 prodsna<BR>
+Keywords            : kb3rdparty kbprg snalua<BR>
+Version             : 2.0 2.1 2.11 2.11.sp1 3.0<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbtshoot<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

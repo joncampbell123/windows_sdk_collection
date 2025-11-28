@@ -1,0 +1,204 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Determine if Running In User Context of Local Admin Acct </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q118626">
+<META NAME="KBModify" CONTENT="1998/03/04">
+<META NAME="KBCreate" CONTENT="1994/07/25">
+<META NAME="Keywords" CONTENT="BseSecurity">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  To determine whether or not a thread is running in the user context of the local Administrator account, you need to examine the access token associated with that thread using the GetTokenInformation() API, since this access token represents the use...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAGU,QAUQ,QBE7,QBE6,QA39,QADK,QALW,QBWS,QAI5,QBVV,QAI4,QAGR,QBW7,QAAW V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Determine if Running In User Context of Local Admin Acct</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 4, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q118626</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P><PRE>    - Microsoft Windows NT versions 3.51, 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+To determine whether or not a thread is running in the user context of the
+local Administrator account, you need to examine the access token
+associated with that thread using the GetTokenInformation() API, since this
+access token represents the user under which the thread is running. By
+default the token associated with a thread is that of its containing
+process, but this user context will be superceded by any token attached
+directly to the thread. So to determine a thread’s user context, first
+attempt to obtain any token attached directly to the thread with
+OpenThreadToken(). If this fails, and GetLastError() reports
+ERROR_NO_TOKEN, then obtain the token of the thread’s containing process
+with OpenProcessToken().
+<P>
+The sample code below uses the APIs mentioned in the previous paragraph to
+test whether or not the current user is an administrator on the local
+machine.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample code</h3>
+ 
+<P>
+<PRE>   /* BOOL IsAdmin(void)
+
+      returns TRUE if user is an admin
+              FALSE if user is not an admin
+   */
+
+   BOOL IsAdmin(void)
+   {
+      HANDLE hAccessToken;
+      UCHAR InfoBuffer[1024];
+      PTOKEN_GROUPS ptgGroups = (PTOKEN_GROUPS)InfoBuffer;
+      DWORD dwInfoBufferSize;
+      PSID psidAdministrators;
+      SID_IDENTIFIER_AUTHORITY siaNtAuthority = SECURITY_NT_AUTHORITY;
+      UINT x;
+      BOOL bSuccess;
+
+      if(!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, TRUE,
+         &amp;hAccessToken )) {
+         if(GetLastError() != ERROR_NO_TOKEN)
+            return FALSE;
+         //
+         // retry against process token if no thread token exists
+         //
+         if(!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY,
+            &amp;hAccessToken))
+            return FALSE;
+      }
+
+      bSuccess = GetTokenInformation(hAccessToken,TokenGroups,InfoBuffer,
+         1024, &amp;dwInfoBufferSize);
+
+      CloseHandle(hAccessToken);
+
+      if(!bSuccess )
+         return FALSE;
+
+      if(!AllocateAndInitializeSid(&amp;siaNtAuthority, 2,
+         SECURITY_BUILTIN_DOMAIN_RID,
+         DOMAIN_ALIAS_RID_ADMINS,
+         0, 0, 0, 0, 0, 0,
+         &amp;psidAdministrators))
+         return FALSE;
+
+   // assume that we don't find the admin SID.
+      bSuccess = FALSE;
+
+      for(x=0;x&lt;ptgGroups-&gt;GroupCount;x++)
+      {
+         if( EqualSid(psidAdministrators, ptgGroups-&gt;Groups[x].Sid) )
+         {
+            bSuccess = TRUE;
+            break;
+         }
+
+      }
+      FreeSid(psidAdministrators);
+      return bSuccess;
+   }
+</PRE> 
+<PRE>Keywords          : BseSecurity
+Version           : 3.51 4.0
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 4, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,221 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Text Truncated When Using Dynaset and RFX_Text() </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q125727">
+<META NAME="KBModify" CONTENT="1997/09/18">
+<META NAME="KBCreate" CONTENT="1995/02/02">
+<META NAME="Keywords" CONTENT="MfcDatabase kbbuglist kbfixlist">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When editing a record with a text field, the text gets truncated to the length of the previous value. For example, if a text field has the value  ABC  and an application attempts to change the value to  TEST,  the result is  TES.   This occurs when...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAKD,QBL4,QAXB,QAUD,QATX,QAR4,QAMB,QBXS,QA4Q,QAY5,QAGI,QA7O,QA7N,QAC1,QDIX V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Text Truncated When Using Dynaset and RFX_Text()</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q125727</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+2.00
+WINDOWS NT
+kprg kbfixlist kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+<P><PRE>    - Microsoft Visual C++, 32-bit Edition, version 2.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When editing a record with a text field, the text gets truncated to the
+length of the previous value. For example, if a text field has the value
+"ABC" and an application attempts to change the value to "TEST," the result
+is "TES."
+<P>
+This occurs when opening a CRecordset with CRecordset::dynaset as the first
+argument of CRecordset::Open() and using RFX_Text() to map the field to a
+CRecordset member variable.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The CFieldExchange::Default() function, located in
+\MSVC20\MFC\SRC\DBRFX.CPP, contains the following code:
+<P>
+case BindFieldForUpdate:
+<PRE>   if (!m_prs-&gt;IsFieldFlagDirty(nField, m_nFieldType))
+   {
+     // If field is not dirty, set bound length to SQL_IGNORE
+     // for SQLSetPos updates
+     *plLength = SQL_IGNORE;
+   }
+   else if ((m_prs-&gt;m_nEditMode == CRecordset::addnew) &amp;&amp;
+           (!m_prs-&gt;IsFieldFlagNull(nField, m_nFieldType)))
+   {
+     // plLength always set to SQL_NULL_DATA in AddNew mode
+     *plLength = cbValue;
+   }
+   return;
+
+</PRE>The second If statement shouldn't check for only CRecordset::addnew
+because this also applies to updates.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To work around this problem, perform these steps:
+
+<OL><P><LI>In one of your header files, perhaps in your CRecordset's header file,
+   create the following function prototype:
+<P>
+<PRE>   void RFX_Text2(CFieldExchange* pFX, const char *szName,
+       CString&amp; value, int nMaxLength=255, int nColumnType=SQL_VARCHAR);
+
+</PRE><P><LI>In your CRecordset's .CPP file or elsewhere, add the RFX_Text2()
+   definition shown below:
+<P>
+   ****
+<PRE>   void RFX_Text2(CFieldExchange* pFX, const char *szName,
+                  CString&amp; value, int nMaxLength, int nColumnType)
+   {
+     ASSERT(AfxIsValidAddress(pFX, sizeof(CFieldExchange)));
+     ASSERT(AfxIsValidString(szName));
+     ASSERT(AfxIsValidAddress(&amp;value, sizeof(CString)));
+
+     if (pFX-&gt;m_nOperation==CFieldExchange::BindFieldForUpdate)
+     {
+       UINT nField;
+       if (!pFX-&gt;IsFieldType(&amp;nField))
+         return;
+
+    LONG* plLength = pFX-&gt;m_prs-&gt;GetFieldLength(pFX);
+
+    if (!pFX-&gt;m_prs-&gt;IsFieldFlagDirty(nField, pFX-&gt;m_nFieldType))
+    {
+      // If field is not dirty, set bound length to SQL_IGNORE
+      // for SQLSetPos updates
+      *plLength = SQL_IGNORE;
+    }
+    else if (!pFX-&gt;m_prs-&gt;IsFieldFlagNull(nField, pFX-&gt;m_nFieldType))
+    {
+      // plLength always set to SQL_NULL_DATA in AddNew mode
+      *plLength = value.GetLength();
+    }
+    return;
+     }
+
+     RFX_Text(pFX, szName,value, nMaxLength,nColumnType);
+   }
+
+   ****
+
+</PRE><P><LI>Modify the DoFieldExchange member function of your CRecordset class,
+   replacing calls to RFX_Text with calls to the RFX_Text2 function
+   described above.
+<P>
+</OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products
+listed at the beginning of this article. This bug was corrected in
+Visual C++ version 2.1.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.00 3.00<BR>
+KBCategory: kprg kbfixlist kbbuglist<BR>
+KBSubcategory: MfcDatabase<BR>
+Keywords          : MfcDatabase kbbuglist kbfixlist<BR>
+Technology        : kbMfc<BR>
+Version           : 2.00<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

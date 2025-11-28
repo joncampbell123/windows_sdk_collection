@@ -1,0 +1,384 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Web Browser Navigation Using a PIDL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q167834">
+<META NAME="KBModify" CONTENT="1998/01/19">
+<META NAME="KBCreate" CONTENT="1997/04/30">
+<META NAME="Keywords" CONTENT="kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; axsdk">
+<META NAME="Description" CONTENT="  This article illustrates programmatic navigation via a pointer to an item identifier list (PIDL) by providing an example of navigating to the Favorites Folder (CSIDL_FAVORITES).  MORE INFORMATION  The Web Browser object model implemented in Shdocvw...">
+<META NAME="Product" CONTENT="ActiveX SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ActiveX ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAVZ,QALW,QAI4,QAAP,QAB4,QBS0,QBJD,QBV9,QAH4,QAGI,QBRJ,QAY4,QAPN,QAH6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Web Browser Navigation Using a PIDL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 19, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q167834</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Internet Client SDK, versions 4.0, 4.01
+<LI>Microsoft Internet Explorer (Programming), version 4.0, 4.01
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article illustrates programmatic navigation via a pointer to an item
+identifier list (PIDL) by providing an example of navigating to the
+Favorites Folder (CSIDL_FAVORITES).
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The Web Browser object model implemented in Shdocvw.dll exposes two
+component classes that provide browsing services: WebBrowser and
+InternetExplorer. While the former represents the WebBrowser ActiveX
+Control, the latter represents the stand-alone browser.
+<P>
+In Internet Explorer (IE) 3.x, both classes implemented the IWebBrowser
+interface. Using the Navigate method of this interface, clients could
+easily navigate to a specified URL (for example, <B><A href="http://www.microsoft.com)">http://www.microsoft.com).</A></B>
+IE 4.0 extends these classes to implement the IWebBrowser2 interface, which
+introduces the Navigate2 method. Navigate2 provides the same capabilities
+as Navigate, but it also can be used to navigate to a folder by specifying
+a pointer to an item identifier list (PIDL). PIDLs were introduced with
+Windows 95 and provide a way to uniquely identify an item within the
+shell's namespace. PIDLs are also supported on NT 4.0. For more information
+on PIDLs and the shell namespace, see the reference to the Internet Client
+SDK below.
+<P>
+The following code demonstrates how to obtain a PIDL from the shell, how to
+create an instance of the browser and obtain the IWebBrowser2 interface,
+and how to call the Navigate2 method. Observe that the Web browser expects
+the first parameter in the call to Navigate2 to be a SAFEARRAY of bytes.
+The following code provides a generic routine, InitVARIANTFromPidl, that
+packs a PIDL into a VARIANT, which holds such an array.
+<P>
+Note that because it is not currently possible to represent a PIDL in
+Visual Basic it is not possible to call the Navigate2 method from a Visual
+Basic application:
+<P>
+<PRE>   #include &lt;windows.h&gt;
+   #define INITGUID
+   #include &lt;initguid.h&gt;
+   #include &lt;exdisp.h&gt;
+   #include &lt;shlguid.h&gt;
+   #include &lt;memory.h&gt;
+   #include &lt;shlobj.h&gt;
+
+   // macros for walking PIDLs
+   #define _ILSkip(pidl, cb)       ((LPITEMIDLIST)(((BYTE*)(pidl))+cb))
+   #define _ILNext(pidl)           _ILSkip(pidl, (pidl)-&gt;mkid.cb)
+
+   HRESULT FreeResources(LPVOID pData);
+   HRESULT TestPidl(LPITEMIDLIST pidl);
+   LPITEMIDLIST PidlFromVARIANT(VARIANT* pvarLoc);
+   LPSAFEARRAY MakeSafeArrayFromData(LPBYTE pData,DWORD cbData);
+   HRESULT InitVARIANTFromPidl(LPVARIANT pVar, LPITEMIDLIST pidl);
+   UINT ILGetSize(LPITEMIDLIST pidl);
+
+   void main()
+   {
+      HRESULT hr;
+      LPMALLOC pMalloc = NULL;
+      LPITEMIDLIST pidl, pidl2 = NULL;
+      IWebBrowser2* pWebBrowser = NULL;
+      VARIANT vPIDL = {0}, vDummy = {0};
+
+      if (FAILED(CoInitialize(NULL)))
+      {
+         return;
+      }
+
+      // Get the pidl for your favorite special folder,
+      // in this case literally, the Favorites folder
+      if (FAILED(hr = SHGetSpecialFolderLocation(NULL,
+             CSIDL_FAVORITES, &amp;pidl)))
+      {
+         goto Error;
+      }
+
+      // Pack the pidl into a VARIANT
+      if (FAILED(hr = InitVARIANTFromPidl(&amp;vPIDL, pidl)))
+      {
+         goto Error;
+      }
+
+      // Verify for testing purposes only that the pidl was packed
+      // properly. Don't clean up pidl2 because it's a copy of the
+      // pointer, not a clone of the id list itself
+      pidl2 = PidlFromVARIANT(&amp;vPIDL);
+      if (FAILED(hr = TestPidl(pidl2)))
+      {
+         OutputDebugString("PIDL test failed");
+         goto Error;
+      }
+
+      // Instantiate a browser
+      if (FAILED(hr = CoCreateInstance(CLSID_InternetExplorer,
+         NULL, CLSCTX_SERVER, IID_IWebBrowser2,
+                       (LPVOID*)&amp;pWebBrowser)))
+      {
+         goto Error;
+      }
+
+      // Show the browser, and navigate to the special location
+      // represented by the pidl
+      hr = pWebBrowser-&gt;put_Visible(VARIANT_TRUE);
+      hr = pWebBrowser-&gt;Navigate2(&amp;vPIDL, &amp;vDummy, &amp;vDummy,
+              &amp;vDummy, &amp;vDummy);
+
+   Error:
+      // Clean up
+      VariantClear(&amp;vPIDL);
+
+      if (pWebBrowser)
+      {
+         pWebBrowser-&gt;Release();
+      }
+
+      if (pidl)
+      {
+         FreeResources((LPVOID)pidl);
+      }
+
+      CoUninitialize();
+   }
+
+   // Exercise the PIDL by performing common operations upon it.
+   //
+   HRESULT TestPidl(LPITEMIDLIST pidl)
+   {
+      HRESULT hr;
+      LPSHELLFOLDER pshfDesktop = NULL, pshf = NULL;
+      DWORD uFlags = SHGDN_NORMAL;
+      STRRET strret;
+
+      if (!pidl)
+      {
+         return E_INVALIDARG;
+      }
+
+      hr = SHGetDesktopFolder(&amp;pshfDesktop);
+      if (!pshfDesktop)
+      {
+         return hr;
+      }
+
+      hr = pshfDesktop-&gt;BindToObject(pidl,
+                   NULL,
+                   IID_IShellFolder,
+                   (LPVOID*)&amp;pshf);
+      if (!pshf)
+      {
+         goto Error;
+      }
+
+      hr = pshfDesktop-&gt;GetDisplayNameOf(pidl, uFlags, &amp;strret);
+      if (STRRET_WSTR == strret.uType)
+      {
+         FreeResources((LPVOID)strret.pOleStr);
+      }
+
+      Error:
+      if (pshf) pshf-&gt;Release();
+      if (pshf) pshfDesktop-&gt;Release();
+      return hr;
+   }
+
+   // Use the shell's IMalloc implementation to free resources
+   HRESULT FreeResources(LPVOID pData)
+   {
+      HRESULT hr;
+      LPMALLOC pMalloc = NULL;
+
+      if (SUCCEEDED(hr = SHGetMalloc(&amp;pMalloc)))
+      {
+         pMalloc-&gt;Free((LPVOID)pData);
+         pMalloc-&gt;Release();
+      }
+
+      return hr;
+   }
+
+   // Given a VARIANT, pull out the PIDL using brute force
+   LPITEMIDLIST PidlFromVARIANT(LPVARIANT pvarLoc)
+   {
+      if (pvarLoc)
+      {
+         if (V_VT(pvarLoc) == (VT_ARRAY|VT_UI1))
+         {
+            LPITEMIDLIST pidl = (LPITEMIDLIST)pvarLoc-&gt;parray-&gt;pvData;
+            return pidl;
+         }
+      }
+      return NULL;
+   }
+
+   // Pack a PIDL into a VARIANT
+   HRESULT InitVARIANTFromPidl(LPVARIANT pvar, LPITEMIDLIST pidl)
+   {
+      if (!pidl || !pvar)
+      {
+         return E_POINTER;
+      }
+
+      // Get the size of the pidl and allocate a SAFEARRAY of
+      // equivalent size
+      UINT cb = ILGetSize(pidl);
+      LPSAFEARRAY psa = MakeSafeArrayFromData((LPBYTE)pidl, cb);
+      if (!psa)
+      {
+         VariantInit(pvar);
+         return E_OUTOFMEMORY;
+      }
+
+      V_VT(pvar) = VT_ARRAY|VT_UI1;
+      V_ARRAY(parray) = psa;
+      return NOERROR;
+   }
+
+   // Allocate a SAFEARRAY of cbData size and pack pData into it
+   LPSAFEARRAY MakeSafeArrayFromData(LPBYTE pData, DWORD cbData)
+   {
+      LPSAFEARRAY psa;
+
+      if (!pData || 0 == cbData)
+      {
+         return NULL;  // nothing to do
+      }
+
+      // create a one-dimensional safe array of BYTEs
+      psa = SafeArrayCreateVector(VT_UI1, 0, cbData);
+
+      if (psa)
+      {
+         // copy data into the area in safe array reserved for data
+         // Note we party directly on the pointer instead of using locking/
+         // unlocking functions.  Since we just created this and no one
+         // else could possibly know about it or be using it, this is okay.
+         memcpy(psa-&gt;pvData,pData,cbData);
+      }
+
+      return psa;
+   }
+
+   // Get the size of the PIDL by walking the item id list
+   UINT ILGetSize(LPITEMIDLIST pidl)
+   {
+      UINT cbTotal = 0;
+      if (pidl)
+      {
+         cbTotal += sizeof(pidl-&gt;mkid.cb);       // Null terminator
+         while (pidl-&gt;mkid.cb)
+         {
+            cbTotal += pidl-&gt;mkid.cb;
+            pidl = _ILNext(pidl);
+         }
+      }
+
+      return cbTotal;
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+Internet Client SDK Documentation: Application and Internet Services,
+Windows Shell API, Shell's Namespace.
+ 
+<PRE>Keywords          : kbcode
+Version           : 4.0
+Platform          : WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 19, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

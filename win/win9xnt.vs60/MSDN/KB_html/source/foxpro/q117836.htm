@@ -1,0 +1,237 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Add Fields to a Table Programmatically </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q117836">
+<META NAME="KBModify" CONTENT="1996/04/30">
+<META NAME="KBCreate" CONTENT="1994/07/11">
+<META NAME="Keywords" CONTENT="kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  This article describes how to add fields to a database through a program.  MORE INFORMATION     ****************************************************************    ** Program: ADDFIELD.PRG    ** Purpose: Add fields to a table    **    ** Parameters...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA7N,QA7O,QBXS,QAKC,QA28,QAY2,QATJ,QBC6,QAEF,QBWS,QBWA,QBVV,QA2Q,QAUD,QANE V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Add Fields to a Table Programmatically</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 30, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q117836</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft FoxPro for Macintosh, versions 2.5b, 2.5c
+<LI>Microsoft FoxPro for Windows, versions 2.5, 2.5a, 2.5b, 2.6
+<LI>Microsoft FoxPro for MS-DOS, versions 2.5, 2.5a, 2.5b, 2.6
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes how to add fields to a database through a program.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<PRE>   ****************************************************************
+   ** Program: ADDFIELD.PRG
+   ** Purpose: Add fields to a table
+   **
+   ** Parameters:
+   **  1) numfield = The number of fields to add to the table
+   **
+   ** NOTE: All new fields are of type character and width 25.
+   **
+   ** Example of Usage:
+   **   DO addfield WITH 1
+   ****************************************************************
+
+   PARAMETER numfield
+
+   * Verify that a valid parameter has been passed.
+   * Store 1 to the number of fields to add if the parameter
+   * is not numeric.
+   IF TYPE('numfield')&lt;&gt;'N'
+      numfield=1
+   ELSE
+      * End the program if number passed is not a positive whole number.
+      IF numfield &lt; 1 OR INT(numfield)&lt;&gt;numfield
+         WAIT WINDOW "Not a valid number of fields to add"
+         RETURN
+      ENDIF
+   ENDIF
+
+   * Environment settings
+   msafe=SET('SAFETY')
+   SET SAFETY OFF
+   mtalk=SET('TALK')
+   SET TALK OFF
+
+   * Prompt for a table to open if one is not open in the
+   * current work area.
+   IF !USED()
+      dbf_file = GETFILE('DBF', 'Select a Database')
+      IF EMPTY(dbf_file)
+         WAIT WINDOW "No table open in the current work area" NOWAIT
+         RETURN
+      ENDIF
+      USE (dbf_file)
+   ENDIF
+
+   * Create area containing structure of database and
+   * adjust length to add or remove fields.
+   dbf_alias=ALIAS()
+   =AFIELDS(mystruc)
+   newlen=FCOUNT()+numfield
+   DIMENSION mystruc(newlen,4)
+
+   * Add new field names, types, and widths to end of array.
+   IF newlen&gt;FCOUNT()
+      newname="NEWFIELD"
+      mcount=0
+      FOR x=numfield TO 1 STEP -1
+         DO WHILE ASCAN(mystruc,newname)&lt;&gt;0
+            mcount=mcount+1
+            newname="NEWFIELD"+ALLTRIM(STR(mcount))
+         ENDDO
+         mystruc(newlen-x+1,1)=newname
+         mystruc(newlen-x+1,2)="C"
+         mystruc(newlen-x+1,3)=25
+         mystruc(newlen-x+1,4)=0
+      ENDFOR
+   ENDIF
+
+   * Create array containing index tags and expressions.
+   SELECT (dbf_alias)
+   mcount=0
+   DO WHILE !EMPTY(TAG(mcount+1))
+      mcount=mcount+1
+      DIMENSION mindex(mcount,2)
+      mindex(mcount,1)=TAG(mcount)
+      mindex(mcount,2)=SYS(14,mcount)
+   ENDDO
+   morder=SET('ORDER')
+
+   * Create a cursor file from updated array and
+   * add data from table.
+   CREATE CURSOR temp FROM ARRAY mystruc
+   APPEND FROM (dbf_alias)
+
+   * Re-create database with new structure.
+   SELECT temp
+   COPY STRUCTURE EXTENDED TO temp2
+   SELECT (dbf_alias)
+   CREATE (DBF(dbf_alias)) FROM temp2
+
+   * Re-create indexes, if there were any.
+   IF TYPE('mindex')&lt;&gt;'U'
+      FOR mcount2=1 TO mcount
+         mexpr=mindex(mcount2,2)
+         mtag=mindex(mcount2,1)
+         INDEX ON &amp;mexpr TAG &amp;mtag
+      ENDFOR
+      SET ORDER TO &amp;morder
+   ENDIF
+
+   * Restore the data and browse.
+   APPEND FROM DBF('temp')
+   BROWSE
+
+   * Clean up.
+   CLOSE ALL
+   DELETE FILE temp2.dbf
+   SET SAFETY &amp;msafe
+   SET TALK &amp;mtalk
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: FoxMac FoxDos FoxWin 2.50 2.50a<BR>
+2.50b 2.50c<BR>
+2.60 table<BR>
+programmatically<BR>
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: FxprgBrowse<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 30, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

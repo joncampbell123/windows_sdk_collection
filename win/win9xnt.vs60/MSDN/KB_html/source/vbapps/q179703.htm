@@ -1,0 +1,719 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC97: How to Create Your Own Custom Security Reports </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q179703">
+<META NAME="KBModify" CONTENT="1998/02/02">
+<META NAME="KBCreate" CONTENT="1998/01/22">
+<META NAME="Keywords" CONTENT="PgmHowto">
+<META NAME="KBArea" CONTENT="Support; KB; vbapps">
+<META NAME="Description" CONTENT="  Advanced: Requires expert coding, interoperability, and multiuser skills.  The Database Documenter does not allow you to view a report on a per user basis or have a report that is grouped by users and groups display the permissions for the objects ...">
+<META NAME="Product" CONTENT="vbapps">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QABH,QABI,QABO,QBXS,QAY5,QAW6,QAB4,QBWG,QAGU,QAAP,QBVV,QAZV,QAGB,QAUJ P1 P2 P3 P4 P5 P6 T2 P7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC97: How to Create Your Own Custom Security Reports</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 2, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q179703</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access 97
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Advanced: Requires expert coding, interoperability, and multiuser skills.
+<P>
+The Database Documenter does not allow you to view a report on a per user
+basis or have a report that is grouped by users and groups display the
+permissions for the objects in your database. However, you can create your
+own custom reports that display security information. You can do this by
+using Data Access Objects (DAO) to read and store the permission
+information.
+<P>
+This article demonstrates how to store user permissions to objects through
+Visual Basic for Applications.
+<P>
+Microsoft provides programming examples for illustration only, without
+warranty either expressed or implied, including, but not limited to, the
+implied warranties of merchantability and/or fitness for a particular
+purpose. This article assumes that you are familiar with the programming
+language being demonstrated and the tools used to create and debug
+procedures. Microsoft support engineers can help explain the functionality
+of a particular procedure, but they will not modify these examples to
+provide added functionality or construct procedures to meet your specific
+needs. If you have limited programming experience, you may want to contact
+the Microsoft fee-based consulting line at (800) 936-5200. For more
+information about the support options available from Microsoft, please see
+the following page on the World Wide Web:
+<P>
+<PRE>   <B><A href="http://www.microsoft.com/support/supportnet/refguide/default.asp">http://www.microsoft.com/support/supportnet/refguide/default.asp</A></B>
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+To create your own custom security reports, you must first create the
+tables and then create the query that will be used as the record source for
+the report.
+<P>
+<P><h3>Creating the Tables</h3>
+ 
+<P>
+To create the tables, follow these steps:
+
+<OL><P><LI>Open the sample database Northwind.mdb.
+
+<P><LI>Create a module and type the following line in the Declarations
+   section if it is not already there:
+<P>
+<P><PRE>      Option Explicit
+</PRE>
+<P><LI>Type the following Functions:
+<P>
+<P><PRE>      Global Const SUCCESS_SUCCESS = 0
+      Const PermOpenRun = 1
+      Const PermReadDes = 2
+      Const PermReadData = 3
+      Const PermModDes = 4
+      Const PermAdmin = 5
+      Const PermModData = 6
+      Const PermDeleteData = 7
+      Const PermInsertData = 8
+</PRE><P>
+<P><PRE>      ' ****************************************
+      ' FUNCTION: UtilSecTbls()
+      '
+      ' Returns: True if the function completes successfully of false
+      ' if it does Not.
+      ' ****************************************
+      Function UtilSecTbls() As Boolean
+<PRE></PRE>         On Error GoTo Err_UtilSecTbls
+         Dim Mydb As Database, DBObjs As Recordset, StrUsrName As String
+         Dim strClass As String, GrpRs As Recordset, SecRs As Recordset
+         Dim UsrRecs As Recordset, lngAdmin, lngExecute, lngReadDef, _
+           lngWritedef, lngReadData, lngUpdateData, lngDeleteData, _
+           lngInsertData As Long
+
+         ' Try to create the tables; if no error, continue.
+         If CreateTbls() Then
+            ' Set the database object and open the recordsets.
+            Set Mydb = CurrentDb()
+            Set SecRs = Mydb.OpenRecordset("UTL_UsrPermTable")
+            Set UsrRecs = Mydb.OpenRecordset("UTL_UsrTable")
+            Set DBObjs = Mydb.OpenRecordset("UTL_DBobjstable")
+
+            lngAdmin = dbSecFullAccess
+            ' Loop through the tables of Users and groups.
+            Do While Not UsrRecs.EOF
+            DBObjs.MoveFirst
+            ' Store the group name or user name.
+            StrUsrName = UsrRecs!AccountId
+            ' Now loop through the table of objects so that you can get
+            ' the permissions to the objects for each user or group.
+            Do While Not DBObjs.EOF
+            ' Set variables initially to 9999 so you can use them only
+            ' when a user or group might have that permission.
+            lngExecute = 9999
+            lngReadDef = 9999
+            lngWritedef = 9999
+            lngReadData = 999
+            lngUpdateData = 9999
+            lngDeleteData = 9999
+            lngInsertData = 9999
+
+            ' Check to see what kind of an object you are using and set
+            ' the variables to the appropriate security setting.
+            Select Case DBObjs!DocType
+
+              Case "Forms", "Reports"
+                  If DBObjs!DocType = "Forms" Then
+                      strClass = "Forms"
+                  Else
+                      strClass = "Reports"
+                  End If
+                lngExecute = acSecFrmRptExecute
+                lngReadDef = acSecFrmRptReadDef
+                lngWritedef = acSecFrmRptWriteDef
+
+              Case "Tables", "Queries"
+                strClass = "Tables"
+                lngReadDef = dbSecReadDef
+                lngWritedef = dbSecWriteDef
+                lngReadData = dbSecRetrieveData
+                lngUpdateData = dbSecReplaceData
+                lngDeleteData = dbSecInsertData
+                lngInsertData = dbSecInsertData
+
+              Case "Modules"
+                strClass = "Modules"
+                lngReadDef = acSecModReadDef
+                lngWritedef = acSecModWriteDef
+
+              Case "Macros"
+                strClass = "Scripts"
+                lngReadDef = acSecMacReadDef
+                lngWritedef = acSecMacWriteDef
+                lngExecute = acSecMacExecute
+
+            End Select
+
+       ' If you need to check for Open-Run permissions for the object
+         If lngExecute &lt;&gt; 9999 Then
+       ' Call the GetPermissions function to check the permission.
+       ' If it returns true, then add a record in the Usr Permissions table
+         If (GetPermissions(UsrRecs!AccountId, strClass, DBObjs!Docname) _
+           And lngExecute) = lngExecute Then
+               SecRs.AddNew
+               SecRs!docId = DBObjs!docId
+               SecRs!AccountId = StrUsrName
+               SecRs!PermissionsId = PermOpenRun
+               SecRs.Update
+          End If
+        End If
+       ' Check to see if you have Read Design permissions.
+       If lngReadDef &lt;&gt; 9999 Then
+         If (GetPermissions(UsrRecs!AccountId, strClass, DBObjs!Docname) _
+           And dbSecFullAccess) = dbSecFullAccess Then
+              SecRs.AddNew
+              SecRs!docId = DBObjs!docId
+              SecRs!AccountId = StrUsrName
+              SecRs!PermissionsId = PermReadDes
+              SecRs.Update
+          End If
+        End If
+
+        ' Check to see if you have Administer permissions to the object.
+        If (GetPermissions(UsrRecs!AccountId, strClass, DBObjs!Docname) _
+            And dbSecFullAccess) = dbSecFullAccess Then
+               SecRs.AddNew
+               SecRs!docId = DBObjs!docId
+               SecRs!AccountId = StrUsrName
+               SecRs!PermissionsId = PermAdmin
+               SecRs.Update
+        End If
+
+        ' Check to see if you have Modify Design permissions.
+        If lngWritedef &lt;&gt; 9999 Then
+         If (GetPermissions(UsrRecs!AccountId, strClass, DBObjs!Docname) _
+              And lngWritedef) = lngWritedef Then
+                 SecRs.AddNew
+                 SecRs!docId = DBObjs!docId
+                 SecRs!AccountId = StrUsrName
+                 SecRs!PermissionsId = PermModDes
+                 SecRs.Update
+          End If
+       End If
+
+       ' Check to see if you have Read Data permissions.
+       If lngReadData &lt;&gt; 9999 Then
+         If (GetPermissions(UsrRecs!AccountId, strClass, DBObjs!Docname) _
+               And lngReadData) = lngReadData Then
+                  SecRs.AddNew
+                  SecRs!docId = DBObjs!docId
+                  SecRs!AccountId = StrUsrName
+                  SecRs!PermissionsId = PermReadData
+                  SecRs.Update
+         End If
+       End If
+
+       ' Check to see if you have insert permissions.
+       If lngInsertData &lt;&gt; 9999 Then
+         If (GetPermissions(UsrRecs!AccountId, strClass, DBObjs!Docname) _
+              And lngInsertData) = lngInsertData Then
+                 SecRs.AddNew
+                 SecRs!docId = DBObjs!docId
+                 SecRs!AccountId = StrUsrName
+                 SecRs!PermissionsId = PermInsertData
+                 SecRs.Update
+          End If
+       End If
+
+       ' Check to see if you have Update Data permissions.
+       If lngUpdateData &lt;&gt; 9999 Then
+         If (GetPermissions(UsrRecs!AccountId, strClass, DBObjs!Docname) _
+              And lngUpdateData) = lngUpdateData Then
+                 SecRs.AddNew
+                 SecRs!docId = DBObjs!docId
+                 SecRs!AccountId = StrUsrName
+                 SecRs!PermissionsId = PermModData
+                 SecRs.Update
+            End If
+          End If
+
+         ' Check to see if you have Delete Data permissions.
+         If lngDeleteData &lt;&gt; 9999 Then
+          If (GetPermissions(UsrRecs!AccountId, strClass, DBObjs!Docname) _
+              And lngDeleteData) = lngDeleteData Then
+                 SecRs.AddNew
+                 SecRs!docId = DBObjs!docId
+                 SecRs!AccountId = StrUsrName
+                 SecRs!PermissionsId = PermDeleteData
+                 SecRs.Update
+             End If
+           End If
+           DBObjs.MoveNext
+           Loop
+            UsrRecs.MoveNext
+           Loop
+           DBObjs.Close
+           UsrRecs.Close
+           SecRs.Close
+           Mydb.Close
+           UtilSecTbls = True
+         Else
+           MsgBox "Tables were not successfully created."
+           UtilSecTbls = False
+         End If
+
+      Bye_UtilSecTbls:
+         Exit Function
+
+      Err_UtilSecTbls:
+         ' If an error occurs, display the message and terminate the
+         ' .. function, returning the error number.
+         MsgBox Err &amp; " " &amp; Error$
+         UtilSecTbls = False
+         Resume Bye_UtilSecTbls
+
+      End Function
+
+      ' ****************************************
+      ' FUNCTION: CreateTbls()
+      '
+      ' Inputs:  UserGrpName - name of a user or group account
+      '          ObjClass    - name of an object container
+      '          ObjName     - name of an object document
+      '
+      ' Returns: True if the function completes successfully and false if
+      ' it does not. It will also display an error message if it does not
+      ' complete.
+      ' ****************************************
+
+      Function CreateTbls() As Boolean
+         On Error GoTo Err_Createtbls
+         Dim Secdb As Database, myWs As Workspace, grp As Group
+         Dim Usr As User, Lngdocid As Long
+         Dim SecTd As TableDef, secqd As QueryDef, mydoc As Document
+         Dim DocRs As Recordset, UsrRs As Recordset
+
+         ' Set the Workgroup and database objects.
+         Set myWs = DBEngine.Workspaces(0)
+         Set Secdb = CurrentDb
+
+         ' Check to see if the Table of users and groups exist. If it
+         ' does not exist create the table. If it does, delete the records
+         ' from the table.
+
+         If IsTableQuery("", "UTL_USRTable") Then
+            Secdb.Execute "Delete * from UTL_USRTable;"
+         Else
+            Secdb.Execute "CREATE TABLE UTL_USRTable (AccountID Text(20)
+         CONSTRAINT AccountIDPK PRIMARY KEY, Type TEXT(10));"
+         End If
+
+         Set UsrRs = Secdb.OpenRecordset("UTL_UsrTable")
+         myWs.Groups.Refresh
+         For Each grp In myWs.Groups
+            UsrRs.AddNew
+            UsrRs!AccountId = grp.Name
+            UsrRs!Type = "Group"
+            UsrRs.Update
+         Next grp
+         myWs.Users.Refresh
+
+         For Each Usr In myWs.Users
+            If Usr.Name &lt;&gt; "Creator" And Usr.Name &lt;&gt; "Engine" Then
+               UsrRs.AddNew
+               UsrRs!AccountId = Usr.Name
+               UsrRs!Type = "User"
+               UsrRs.Update
+            End If
+         Next Usr
+         UsrRs.Close
+
+         ' Check to see if the Table of Permissions exists.
+         ' If it does not exist create the table and fill in the records.
+         If Not IsTableQuery("", "UTL_PermTable") Then
+           Secdb.Execute "CREATE TABLE UTL_PermTable (PermissionsID Long _
+               CONSTRAINT PermIDPK PRIMARY KEY, PermissionsDesc TEXT(20));"
+           Secdb.Execute "Insert into UTL_PermTable _
+               (PermissionsID,PermissionsDesc) Values (1,'OpenRun')"
+           Secdb.Execute "Insert into UTL_PermTable _
+               (PermissionsID,PermissionsDesc) Values (2,'Read Design')"
+           Secdb.Execute "Insert into UTL_PermTable _
+               (PermissionsID,PermissionsDesc) Values (3,'Read Data')"
+           Secdb.Execute "Insert into UTL_PermTable _
+               (PermissionsID,PermissionsDesc) Values (4,'Modify Design')"
+           Secdb.Execute "Insert into UTL_PermTable _
+               (PermissionsID,PermissionsDesc) Values (5,'Admininster')"
+           Secdb.Execute "Insert into UTL_PermTable _
+               (PermissionsID,PermissionsDesc) Values (6,'Update Data')"
+           Secdb.Execute "Insert into UTL_PermTable _
+              (PermissionsID,PermissionsDesc) Values (7,'Delete Data')"
+           Secdb.Execute "Insert into UTL_PermTable _
+              (PermissionsID,PermissionsDesc) Values (8,'Insert Data')"
+         End If
+
+      ' Check to see if the Table of database objects exists.
+      ' If it does not exist, create the table. If it does, then delete the
+      ' records from the table.
+      If IsTableQuery("", "UTL_dbObjstable") Then
+        Secdb.Execute "Delete * from UTL_DbobjsTable;"
+      Else
+       Secdb.Execute "CREATE TABLE UTL_DbObjsTable (DocID Long CONSTRAINT _
+          DocIDPK PRIMARY KEY, Docname TEXT(64),docType Text(10));"
+      End If
+
+      ' Fill in the data for the table by going through the TableDefs,
+      ' QueryDefs, and documents collections.
+        Set DocRs = Secdb.OpenRecordset("UTL_DBobjstable")
+        Lngdocid = 1
+
+        For Each SecTd In Secdb.TableDefs
+
+       ' Filter out Temp objects and System objects and loop through the
+       ' TableDefs and QueryDefs collection.
+      If Left(SecTd.Name, 4) &lt;&gt; "Msys" And Left(SecTd.Name, 1) &lt;&gt; "~" Then
+          DocRs.AddNew
+          DocRs!docId = Lngdocid
+          DocRs!Docname = SecTd.Name
+          DocRs!DocType = "Tables"
+          DocRs.Update
+          Lngdocid = Lngdocid + 1
+      End If
+      Next SecTd
+      For Each secqd In Secdb.QueryDefs
+          If Left(secqd.Name, 1) &lt;&gt; "~" Then
+             DocRs.AddNew
+             DocRs!docId = Lngdocid
+             DocRs!Docname = secqd.Name
+             DocRs!DocType = "Queries"
+             DocRs.Update
+             Lngdocid = Lngdocid + 1
+          End If
+      Next secqd
+
+      ' Loop through the Forms Document Collection.
+      For Each mydoc In Secdb.Containers!Forms.Documents
+          DocRs.AddNew
+          DocRs!docId = Lngdocid
+          DocRs!Docname = mydoc.Name
+          DocRs!DocType = "Forms"
+          DocRs.Update
+          Lngdocid = Lngdocid + 1
+      Next mydoc
+
+      ' Loop through the Reports Document Collection.
+      For Each mydoc In Secdb.Containers!Reports.Documents
+         DocRs.AddNew
+         DocRs!docId = Lngdocid
+         DocRs!Docname = mydoc.Name
+         DocRs!DocType = "Reports"
+         DocRs.Update
+         Lngdocid = Lngdocid + 1
+      Next mydoc
+
+      ' Loop through the Macros Document Collection.
+      For Each mydoc In Secdb.Containers!Scripts.Documents
+         DocRs.AddNew
+         DocRs!docId = Lngdocid
+         DocRs!Docname = mydoc.Name
+         DocRs!DocType = "Macros"
+         DocRs.Update
+         Lngdocid = Lngdocid + 1
+      Next mydoc
+
+      ' Loop through the Modules Document Collection.
+      For Each mydoc In Secdb.Containers!Modules.Documents
+         DocRs.AddNew
+         DocRs!docId = Lngdocid
+         DocRs!Docname = mydoc.Name
+         DocRs!DocType = "Modules"
+         DocRs.Update
+         Lngdocid = Lngdocid + 1
+      Next mydoc
+      DocRs.Close
+
+      ' Check to see if the Table of users permissions exists. If it does
+      ' not exist, create the table. If it does, then delete the records
+      ' from the table.
+
+      If IsTableQuery("", "UTL_UsrPermtable") Then
+         Secdb.Execute "Delete * From UTL_UsrPermTable"
+      Else
+        Secdb.Execute "CREATE TABLE UTL_UsrPermTable (AccountID Text(20, _
+        docId Long,PermissionsId Long);"
+      End If
+
+      Secdb.Close
+      CreateTbls = True
+
+      Bye_CreateTbls:
+      Exit Function
+
+      Err_Createtbls:
+      ' If an error occurs, display the message and terminate the
+      ' .. function, returning the error number.
+      MsgBox Err &amp; " " &amp; Error$
+      CreateTbls = False
+      Resume Bye_CreateTbls
+      End Function
+
+      ' ****************************************
+      ' FUNCTION: GetPermissions()
+      '
+      ' Inputs:  UserGrpName - name of a user or group account
+      '          ObjClass    - name of an object container
+      '          ObjName     - name of an object document
+      '
+      ' Returns: Value of Permissions property or error number
+      '          that was generated.
+      ' ****************************************
+      Function GetPermissions&amp;(UserGrpName$, ObjClass$, ObjName$)
+
+      On Error GoTo Err_GetPermissions
+
+      ' Set DB to the current database, and set the DOC variable
+      ' .. to the object specified in the arguments.
+      Dim Db As Database, DOC As Document
+      Set Db = DBEngine.Workspaces(0).Databases(0)
+      Set DOC = Db.Containers(ObjClass).Documents(ObjName)
+
+      ' Set the UserName property of the document to the
+      ' .. user or group you want to obtain the permissions for.
+      DOC.UserName = UserGrpName
+
+      ' Get the permissions value.
+      GetPermissions = DOC.Permissions
+
+      Bye_GetPermissions:
+      Exit Function
+
+      Err_GetPermissions:
+      ' If an error occurs, display the message and terminate the
+      ' .. function, returning the error number.
+      MsgBox Err &amp; " " &amp; Error$
+      GetPermissions = Err
+      Resume Bye_GetPermissions
+      End Function
+
+      '********************************************************
+      ' FUNCTION: IsTableQuery()
+      '
+      ' PURPOSE: Determine if a table or query exists.
+      '
+      ' ARGUMENTS:
+      '   DbName: The name of the database. If the database name
+      '           is "" the current database is used.
+      '    TName: The name of a table or query.
+      '
+      ' RETURNS: True (it exists) or False (it does not exist).
+      '
+      '********************************************************
+      Function IsTableQuery(DbName As String, TName As String) As Integer
+      Dim Db As Database, Found As Integer, Test As String
+      Const NAME_NOT_IN_COLLECTION = 3265
+
+      ' Assume the table or query does not exist.
+      Found = False
+
+      ' Trap for any errors.
+      On Error Resume Next
+
+      ' If the database name is empty...
+          If Trim$(DbName) = "" Then
+             ' Set Db to the current Db.
+             Set Db = CurrentDb()
+         Else
+          ' Otherwise, set Db to the specified open database.
+            Set Db = DBEngine.Workspaces(0).OpenDatabase(DbName)
+
+           ' See if an error occurred.
+           If Err Then
+              MsgBox "Could not find database to open: " &amp; DbName
+              IsTableQuery = False
+              Exit Function
+           End If
+        End If
+
+      ' See if the name is in the Tables collection.
+      Test = Db.TableDefs(TName).Name
+         If Err &lt;&gt; NAME_NOT_IN_COLLECTION Then Found = True
+
+      ' Reset the error variable.
+         Err = 0
+
+      ' See if the name is in the Queries collection.
+      Test = Db.QueryDefs(TName$).Name
+        If Err &lt;&gt; NAME_NOT_IN_COLLECTION Then Found = True
+
+          Db.Close
+          IsTableQuery = Found
+
+      End Function
+
+</PRE><P><LI>To test these functions, type the following line in the Debug window,
+   and then press ENTER:
+<P>
+<P><PRE>      ? UtilSecTbls()
+</PRE><P>
+   Note that a TRUE is returned and that the following tables are created:
+<P>
+   UTL_DbObjsTable (This contains the objects of the database with a
+   primary key on a field called DodID, which is a Long Integer field,
+   DocName, which holds the table, query, form, report, macro or module
+   name, and DocType, which is used to identify it as a table, query, form,
+   report, macro or module)
+<P>
+   UTL_PermTable (This contains a table with all of the possible
+   permissions a user can have on an object with a field called
+   PermissionsID as the primary key, which is a Long Integer field and
+   PermissionsDesc, which is a text field and stores either OpenRun, Read
+   Data, Modify Data, and so on.)
+<P>
+   UTL_USRTable (This table contains all of the user and group accounts
+   for the Workgroup with a field called AccountId as the primary key,
+   which holds the user or group name and Type, which is set to User or
+   Group)
+<P>
+   UTL_UsrPermTable (This is a table used to link the other tables
+   together and contains all of the permissions for each user and group
+   to a specific object. This table contains AccountID, DocID, and
+   PermissionsID).
+
+<P><LI>Close the Debug window.
+<P>
+</OL><h3>Creating the Query That Joins the Tables</h3>
+ 
+<P>
+To create a new query that joins all of the tables, you should link the
+UTL_DbObjsTable to the UTL_UsrPermTable based on the DocId field, the
+UTL_USRTable to the UTL_UsrPermTable based on the AccountID field, and the
+UTL_PermTable to the UTL_UsrPermTable based on the PermissionsId field.
+<P>
+You can now design your reports to group by user name, group name, object
+type, permissions, and any combination of the above.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For more information about using DAO to create group and user accounts,
+about how to assign users to group accounts, and about how to assign or
+view permissions, please see the following articles in the Microsoft
+Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../access/q124240.htm">Q124240</A></B>
+   TITLE     : ACC2: Only Admins Group Members Can List Groups They
+               Belong To
+
+   ARTICLE-ID: <B><A href="../vbapps/q112063.htm">Q112063</A></B>
+   TITLE     : ACC: How to Add a User to a Group with CreateUser Method
+
+   ARTICLE-ID: <B><A href="../vbapps/q112106.htm">Q112106</A></B>
+   TITLE     : ACC: How to Use DAO to Assign or View Permissions
+
+</PRE></OL>For more information about how to use see if a table or query already
+exists, please see the following article in the Microsoft Knowledge
+Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../vbapps/q113549.htm">Q113549</A></B>
+   TITLE     : ACC: How to Determine If a Table or Query Exists
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 8.00 inf<BR>
+Keywords          : PgmHowto<BR>
+Component         : dao<BR>
+Version           : WINDOWS:97<BR>
+Platform          : WINDOWS<BR>
+Hardware          : x86<BR>
+Issue type        : kbhowto kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 2, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

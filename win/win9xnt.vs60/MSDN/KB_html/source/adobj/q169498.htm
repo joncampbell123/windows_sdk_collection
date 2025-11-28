@@ -1,0 +1,318 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: Extracting Error Information from ADO in VC++ with #import </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q169498">
+<META NAME="KBModify" CONTENT="1998/01/13">
+<META NAME="KBCreate" CONTENT="1997/06/03">
+<META NAME="Keywords" CONTENT="kbcode adoengdb adovc">
+<META NAME="KBArea" CONTENT="Support; KB; adobj">
+<META NAME="Description" CONTENT="  When ActiveX Data Objects (ADO) encounter an error, often the Errors Collection is filled with detail on the cause of the error. This article provides sample code for extracting the maximum possible information on any errors raised by ADO within Vi...">
+<META NAME="Product" CONTENT="adobj">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAB4,QAAP,QAPN,QAUD,QAKP,QAU5,QAW6,QAYY,QAH4,QBVV,QBG2,QA1O,QAI5,QABN,QBWB V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: Extracting Error Information from ADO in VC++ with #import</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 13, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q169498</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>ActiveX Data Objects (ADO)  included with:
+   - Microsoft Visual C++, 32-bit Editions, versions 4.2, 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When ActiveX Data Objects (ADO) encounter an error, often the Errors
+Collection is filled with detail on the cause of the error. This article
+provides sample code for extracting the maximum possible information on any
+errors raised by ADO within Visual C++ using #import as the mechanism to
+get at ADO.
+<P>
+If ADO itself encounters an error, it does not populate the errors
+collection, but instead you have to use the native error mechanism to get
+the information--in this case an exception raised with the _com_error
+class. If the provider or underlying components generate error, then these
+will be populated in the ADO Errors Collection.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Often the Errors Collection returns an HRESULT in either hexadecimal
+format, for example, 0x80004005, or as a long value, for example, -
+2147467259. These HRESULTS can be raised by underlying components such as
+OLE-DB or even OLE itself. When this is the case, it may be confusing since
+these codes are not documented in the ADO online documentation. However,
+frequently encountered HRESULTS can be found in the Knowledge Base article
+listed in the references section.
+<P>
+The documentation for the ADO Error object indicates that the Errors
+Collection is populated if any error occurs within ADO or its underlying
+provider. This is somewhat incorrect. Depending on the source of the error,
+or even bugs in the underyling provider to ADO (OLE-DB) or within ADO
+itself, the errors collection may not be populated. You need to track the
+HRESULT returned by many ADO methods, as well as if the _com_error
+exception has been raised by #import generated classes.
+<P>
+The Errors Collection is available only off the Connection object, so you
+need to initialize ADO off of a Connection object. Below is sample code
+that demonstrates how to open a connection and report any errors
+encountered, as well as handling Exceptions, and cracking the returned
+HRESULT:
+<P>
+<PRE>   // Obtain the error message for a given HRESULT
+   CString LogCrackHR( HRESULT hr )
+   {
+      LPVOID  lpMsgBuf;
+      CString strTmp;
+
+      ::FormatMessage( FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                       FORMAT_MESSAGE_FROM_SYSTEM,
+                       NULL,
+                       hr,
+                       MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                       (LPTSTR) &amp;lpMsgBuf,
+                       0,
+                       NULL );
+
+        // STR_TMP is defined within LOG.CPP to provide safe format string
+        // for both ANSI and UNICODE
+        strTmp.Format( STR_TMP, (char *) lpMsgBuf );
+
+
+      // Free the buffer.
+      ::LocalFree( lpMsgBuf );
+
+      return strTmp;
+   }
+
+   // Obtain information from the Errors Collection
+   HRESULT LogAdoErrorImport(_ConnectionPtr pConn)
+   {
+      ErrorsPtr   pErrors;
+      ErrorPtr    pError;
+      CString     strTmp;
+      HRESULT     hr = (HRESULT) 0L;
+      long        nCount;
+
+      // Don't have an un-handled exception in the handler that
+      // handles exceptions!
+      try
+      {
+         pErrors = pConn-&gt;GetErrors();
+
+         nCount = pErrors-&gt;GetCount();
+
+         for( long i = 0; (!FAILED(hr)) &amp;&amp; (i &lt; nCount); i++ )
+         {
+            TRACE( "\t Dumping ADO Error %d of %d", i+1, nCount );
+
+            hr = pErrors-&gt;get_Item((_variant_t)((long)i), &amp;pError );
+
+            _bstr_t bstrSource     ( pError-&gt;GetSource()      );
+            _bstr_t bstrDescription( pError-&gt;GetDescription() );
+            _bstr_t bstrHelpFile   ( pError-&gt;GetHelpFile()    );
+            _bstr_t bstrSQLState   ( pError-&gt;GetSQLState()    );
+
+            TRACE( "\t\t Number      = %ld", pError-&gt;GetNumber()       );
+            TRACE( "\t\t Source      = %s",  (LPCTSTR) bstrSource      );
+            TRACE( "\t\t Description = %s",  (LPCTSTR) bstrDescription );
+            TRACE( "\t\t HelpFile    = %s",  (LPCTSTR) bstrHelpFile    );
+            TRACE( "\t\t HelpContext = %ld", pError-&gt;GetHelpContext()  );
+            TRACE( "\t\t SQLState    = %s",  (LPCTSTR) bstrSQLState    );
+            TRACE( "\t\t HelpContext = %ld", pError-&gt;GetHelpContext()  );
+            TRACE( "\t\t NativeError = %ld", pError-&gt;GetNativeError()  );
+         }
+      }
+      catch( CException *e )
+      {
+         TRACE( "*** UNABLE TO LOG EXCEPTION ***" );
+         e-&gt;Delete();
+      }
+      catch(...)
+      {
+         TRACE( "*** UNABLE TO LOG EXCEPTION ***" );
+      }
+
+      pErrors-&gt;Release();
+      pError-&gt;Release();
+
+      return hr;
+   }
+
+
+   void CAdoDemoDlg::OnAdoTest()
+   {
+      HRESULT         hr = S_OK;
+      _ConnectionPtr  pConn;
+
+      hr = ::CoInitialize( NULL );
+
+      if( !FAILED( hr ) )
+         hr = pConn.CreateInstance( __uuidof( Connection ) );
+
+      // The exception handling below assumes a valid Connection object,
+      // so drop out if we couldn't create one for any reason.
+      if ( FAILED(hr) )
+         return;
+
+      try
+      {
+
+         // ... Your code goes here
+
+         pConn-&gt;Close();
+
+         // For any error condition, dump results to TRACE
+         // You may get a failure that does not raise an exception
+         // The ADO Errors collection will likely be empty, but
+         // check anyway
+         if( FAILED( hr ) )
+         {
+            TRACE( "*** HRESULT ***" );
+            TRACE( LogCrackHR( hr )  );
+
+            LogAdoErrorImport(_ConnectionPtr pConn)
+         }
+      }
+      catch( CException *e )
+      {
+         TRACE( "*** Unhandled MFC Exception ***" );
+         e-&gt;Delete();
+      }
+      catch( _com_error &amp;e )
+      {
+         // Crack _com_error
+         _bstr_t bstrSource(e.Source());
+         _bstr_t bstrDescription(e.Description());
+
+         TRACE( "Exception thrown for classes generated by #import" );
+         TRACE( "\tCode = %08lx\n",      e.Error());
+         TRACE( "\tCode meaning = %s\n", e.ErrorMessage());
+         TRACE( "\tSource = %s\n",       (LPCTSTR) bstrSource);
+         TRACE( "\tDescription = %s\n",  (LPCTSTR) bstrDescription);
+
+         // Errors Collection may not always be populated
+         if( FAILED( hr ) )
+         {
+            TRACE( "*** HRESULT ***" );
+            TRACE( LogCrackHR( hr )  );
+         }
+
+         // Crack Errors Collection
+         LogAdoErrorImport(pConn);
+      }
+      catch(...)
+      {
+         TRACE( "*** Unhandled Exception ***" );
+      }
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For additional information, please see the following articles in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../adobj/q168354.htm">Q168354</A></B>
+   TITLE     : INFO: Underlying OLE and OLEDB Provider Errors Exposed via
+               ADO
+
+   ARTICLE-ID: <B><A href="../visualc/q167802.htm">q167802</A></B>
+   TITLE     : SAMPLE: EXCEPTEX Traps MFC and Win32 Structured Exceptions
+</PRE> 
+<PRE>Keywords          : kbcode adoengdb adovc
+Platform          : WINDOWS
+Issue type        : kbinfo</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 13, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

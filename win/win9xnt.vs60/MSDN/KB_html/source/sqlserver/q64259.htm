@@ -1,0 +1,197 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Use of Clustered Index Improves Self-Join Performance </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q64259 ">
+<META NAME="KBModify" CONTENT="1997/04/25">
+<META NAME="KBCreate" CONTENT="1990/07/27">
+<META NAME="Keywords" CONTENT="kbusage SSrvServer SSrvTran_SQL">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  We have a table search_list that is created using the following command:     CREATE TABLE products..search_list    (keyword                char(10) NOT NULL,     catalog_number         char(7) NOT NULL)  Approximately 350,000 rows of data are downl...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QATJ,QA28,QAKC,QBC6,QAG8,QA26,QAEY,QABM,QAPN,QA9N,QA2Q,QAY4,QAHH,QAJQ,QAG2 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Use of Clustered Index Improves Self-Join Performance</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q64259 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+</PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+We have a table search_list that is created using the following
+command:
+<P>
+<PRE>   CREATE TABLE products..search_list
+   (keyword                char(10) NOT NULL,
+    catalog_number         char(7) NOT NULL)
+
+</PRE>Approximately 350,000 rows of data are downloaded into this table
+from an ASCII file using the SQL bulk copy utility. The following
+commands are then run to establish the file index:
+<P>
+<PRE>   CREATE INDEX search_index ON search_list(keyword)
+   UPDATE STATISTICS search_list
+
+</PRE>When we perform a text search, we want to find all catalog numbers
+that match every keyword provided for the search. An individual key
+search may produce up to 6000 matches.
+<P>
+Method 1, as follows, incorporates a self-join of the search_list
+table:
+<P>
+<PRE>   SELECT s1.catalog_number FROM
+           search_list s1, search_list s2, search_list s3
+   WHERE   s1.keyword LIKE 'ultra%' AND
+           s2.keyword LIKE 'film%' AND
+           s3.keyword LIKE 'color%' AND
+           s1.catalog_number = s2.catalog_number AND
+           s2.catalog_number = s3.catalog_number
+
+</PRE>Method 2, as follows, uses SELECT INTO to form several intermediate
+tables, and has proven to be the most time efficient method:
+<P>
+<PRE>   SELECT catalog_number INTO S1 WHERE keyword LIKE 'ultra%'
+   SELECT catalog_number INTO S2 WHERE keyword LIKE 'color%'
+   SELECT catalog_number INTO S3 WHERE keyword LIKE 'film%'
+
+   SELECT S1.catalog_number FROM S1, S2, S3
+   WHERE  S1.catalog_number = S2.catalog_number AND
+          S2.catalog_number = S3.catalog_number
+
+   DROP TABLE S1
+   DROP TABLE S2
+   DROP TABLE S3
+
+</PRE>When performing a single key search, the difference between the two
+methods is minimal. However, as the number of keys grows, or the
+number of matches per key increases, Method 2 is increasingly more
+efficient than Method 1.
+<P>
+Is there something in our system or data configuration that could
+cause the self-join approach to degrade?
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+To improve the performance of the self-join, drop the search_index
+index and re-create it as a clustered index as follows:
+<P>
+<PRE>   CREATE CLUSTERED INDEX search_index ON search_list(keyword)
+   UPDATE STATISTICS search_list
+
+</PRE>SQL Server will then use the index as opposed to a table scan when
+optimizing the Method 1 query. Please note that there may be only
+one clustered index per table. The clustered index ensures that the
+data is stored in the order of the specified keys (in this case,
+keyword order). For queries on larger tables, the optimizer will
+use a clustered index where applicable to reduce the number of rows
+that need to be searched. While this can markedly improve your
+query performance, there is an associated overhead involved when
+new data is inserted into or deleted from the table because the
+data must be stored in sorted order. Therefore, a clustered index
+is most useful for relatively static tables.
+<P>
+If SET SHOWPLAN ON is activated prior to execution, some of the
+internal steps taken by the Server in processing a query can be
+viewed. In this case, it showed that the index was not being used
+before it was changed to a clustered index.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:<BR>
+Keywords            : kbusage SSrvServer SSrvTran_SQL<BR>
+Version             : 4.2<BR>
+Platform            : OS/2<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

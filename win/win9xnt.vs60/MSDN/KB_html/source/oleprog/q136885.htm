@@ -1,0 +1,237 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: OLE Threads Must Dispatch Messages </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q136885">
+<META NAME="KBModify" CONTENT="1997/10/20">
+<META NAME="KBCreate" CONTENT="1995/09/19">
+<META NAME="Keywords" CONTENT="LeTwoArc kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  STA (Single Threaded Apartment) threads that do not dispatch messages can cause message broadcasters to hang. STA server threads that do not dispatch messages are not able to receive calls from clients. STA client threads that do not dispatch messa...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEV,QAYC,QAUQ,QA9Q,QAGI,QBVV,QDL9,QBWO,QBWN,QAUD,QBSO,QBWP,QAPF,QBWQ,QAI4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: OLE Threads Must Dispatch Messages</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 20, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q136885</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE libraries included with:
+   - Microsoft Windows NT, versions 3.51, 4.0
+   - Microsoft Windows 95, with Distributed COM
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+STA (Single Threaded Apartment) threads that do not dispatch messages can
+cause message broadcasters to hang. STA server threads that do not dispatch
+messages are not able to receive calls from clients. STA client threads
+that do not dispatch messages are not able to receive notifications from
+servers. Any STA thread that does not dispatch messages will leak small
+amounts of memory.
+<P>
+This article only applies to threads that are single-threaded apartment-
+model. Threads in the MTA (Multi-Threading Apartment) using the free-
+threading model introduced in Windows NT version 4.0 and Distributed COM
+for Windows 95 are not required to dispatch messages. For additional
+information on free threading, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../oleprog/q150777.htm">Q150777</A></B>
+   TITLE     : Descriptions and Workings of OLE Threading Models
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+In Windows NT 3.51 and Windows 95, OLE creates a hidden, top-level window
+in each STA thread. (An STA thread is a thread that has called
+Co/OleInitialize.) If someone broadcasts a message (like WM_DDE_INITIATE)
+to all windows, the SendMessage hangs until all top-level windows have
+received the message. To prevent the broadcaster from hanging, OLE requires
+each STA thread to dispatch messages.
+<P>
+32-bit OLE calls between processes are made using RPC. In Apartment model
+threading and in single threading, OLE synchronizes the received RPC call
+with the recipient thread by posting the thread a window message.
+Consequently a server OLE thread doesn't receive calls from clients if it
+doesn't dispatch messages. Similarly a client OLE thread doesn't receive
+notifications from servers if it doesn't dispatch messages.
+<P>
+For example, the following thread blocks can encounter the problems
+discussed earlier:
+<P>
+<PRE>   OleInitialize(NULL);
+   CoCreateInstance(CLSID_Hello, NULL, CLSCTX_SERVER,
+                        IID_IUnknown, (void **)&amp;punk);
+   punk-&gt;QueryInterface(IID_IHello,  (void **)&amp;phello);
+   WaitForSingleObject(hSomeObjectThatTakesALongTime);
+   phello-&gt;put_Visible(TRUE);
+   phello-&gt;SayHello();
+   OleUninitialize();
+
+</PRE>You can fix this code by replacing WaitForSingleObject with a message loop
+function as in this example:
+<P>
+<PRE>   BOOL WaitWithMessageLoop(HANDLE hEvent)
+   {
+       DWORD dwRet;
+       MSG msg;
+
+       while(1)
+       {
+       dwRet = MsgWaitForMultipleObjects( 1,    // One event to wait for
+               &amp;hEvent,        // The array of events
+               FALSE,          // Wait for 1 event
+               INFINITE,       // Timeout value
+               QS_ALLINPUT);   // Any message wakes up
+       if(dwRet == WAIT_OBJECT_0)
+       {
+          // The event was signaled, return
+         return TRUE;
+       } else if(dwRet == WAIT_OBJECT_0 + 1)
+       {
+          // There is a window message available. Dispatch it.
+          while(PeekMessage(&amp;msg,NULL,NULL,NULL,PM_REMOVE))
+       {
+                  TranslateMessage(&amp;msg);
+          DispatchMessage(&amp;msg);
+       }
+       } else
+       {
+          // Something else happened. Return.
+          return FALSE;
+       }
+       }
+   }
+
+</PRE>Any STA thread that does not block but makes OLE calls, needs to dispatch
+messages as follows.
+<P>
+<PRE>    MSG msg;
+   CoInitialize(); // or OleInitialize()
+    // force msg-q to be created just in case, NOP otherwise
+    PeekMessage(&amp;msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
+    // msg to myself to do work
+    PostThreadMessage(GetCurrentThreadId(), WM_USER+1, 0, 0);
+
+    // msg-pump
+    while (GetMessage(&amp;msg, NULL, 0, 0))
+          {
+          // this was my message -- time to do my work
+          if (msg.hwnd == NULL &amp;&amp; msg.message == WM_USER+1)
+              {
+              // do my work here, CCI, work, work, release, etc
+              //  if this thread is doing long process, you need to break
+     that into smaller chunks,
+              //   and post another user message to process further, that
+     way you don't block the
+              //   messages which need to be processed.
+
+              // when done,
+              PostQuitMessage(0);
+              }
+          else
+              {
+              TranslateMessage(&amp;msg);
+              DispatchMessage(&amp;msg);
+              }
+          }
+      CoUninitialize();
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Windows 95 threading GetMessage<BR>
+Keywords          : LeTwoArc kbcode<BR>
+Version           : WINNT:4.0,3.51;<BR>
+Platform          : NT Win95 WINDOWS<BR>
+Issue type        : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 20, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

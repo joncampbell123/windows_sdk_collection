@@ -1,0 +1,216 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Determining User Segments from Segmap Values </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q101241">
+<META NAME="KBModify" CONTENT="1997/04/28">
+<META NAME="KBCreate" CONTENT="1993/07/08">
+<META NAME="Keywords" CONTENT="kbprg SSrvAdmin SSrvWinNT">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article describes a stored procedure which can be used to determine which user segments map to a Microsoft SQL Server device based on the values from the master.dbo.sysusages segmap column.  MORE INFORMATION  One difficulty in administering da...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QAZV,QAKD,QAPF,QAGU,QA2Q,QALD,QAB7,QAKC,QAY2,QAUD,QAG2,QBWS,QACI,QA9N V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Determining User Segments from Segmap Values</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 28, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q101241</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+  - Microsoft SQL Server version 4.2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes a stored procedure which can be used to
+determine which user segments map to a Microsoft SQL Server device based
+on the values from the master.dbo.sysusages segmap column.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+One difficulty in administering databases in which user segments have
+been defined is determining which segments map to each database
+device.
+<P>
+Each user segment in a database is assigned a segment number unique in
+that database, this number is recorded in the dbo.syssegments table in
+each database. The master.dbo.sysusages table indicates how each
+database maps to its devices. The segmap column in the sysusages table
+holds the information about which segments map onto each device.
+<P>
+The stored procedure has been kept simple so that users can run it
+even in new systems to which they have not yet migrated user
+databases. The syntax is:
+<P>
+<PRE>   execute sp_segmap &lt;segmap value&gt;
+
+</PRE>sp_segmap returns a column segment_num which contains segment numbers
+which will match the column segment in the table dbo.syssegments in
+the user database.
+<P>
+<P><h3>Example</h3>
+ 
+<P>
+For an example of sp_segmap's use, assume that a database has one line
+in sysusages which has a segmap value of 7.
+<P>
+<PRE>   execute sp_segmap 7
+
+</PRE>returns segment_num values of 0, 1, and 2. Looking in the syssegments
+table for that database will show that segments 0, 1, and 2 are the
+system, default, and logsegment segments.
+<P>
+Type the following into a file segmap.sql:
+<P>
+use master
+go
+if exists (select * from sysobjects
+<PRE>                where name = 'sp_segmap')
+  drop procedure sp_segmap
+</PRE>go
+<P>
+create procedure sp_segmap
+@segmap int
+as
+<P>
+create table #seg
+<PRE>      (segment_num int NULL)
+
+</PRE>declare @segnum int
+declare @pattern int
+select @segnum = 0
+select @pattern = 1
+<P>
+if @segmap = 0
+<PRE>/* no segments mapped */
+</PRE>begin
+<PRE>  insert #seg values(NULL)
+  select * from #seg
+  order by segment_num
+  return
+</PRE>end
+<P>
+while (@segnum &lt; 30)
+begin
+<PRE>  if (@segmap &amp; @pattern) != 0
+    insert #seg values(@segnum)
+  select @pattern = @pattern * 2
+  select @segnum = @segnum + 1
+</PRE>end
+<P>
+<PRE>/* Test final bit in @pattern */
+</PRE>if (@segmap &amp; @pattern) != 0
+<PRE>  insert #seg values(@segnum)
+
+/* Test if segment 31 bit on */
+</PRE>if @segmap &lt;= -1
+<PRE>  insert #seg values(31)
+
+</PRE>select * from #seg
+order by segment_num
+go
+<P>
+grant execute on sp_segmap to public
+go
+<P>
+Run segmap.sql in isql as the sa user:
+<P>
+isql /Usa /P&lt;password&gt; /S&lt;server&gt; /e /isegmap.sql /osegmap.sql
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: segments Transact_SQL Windows NT<BR>
+Keywords            : kbprg SSrvAdmin SSrvWinNT<BR>
+Version             : 4.2 | 4.2<BR>
+Platform            : OS/2 WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 28, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

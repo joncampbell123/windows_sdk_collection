@@ -1,0 +1,247 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How To Specify Variable Block Size for Tape Backup Functions </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q161338">
+<META NAME="KBModify" CONTENT="1996/12/23">
+<META NAME="KBCreate" CONTENT="1996/12/20">
+<META NAME="Keywords" CONTENT="kbprg kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  In Windows NT, tape backup API's can be configured to manipulate tapes that use either fixed block size or variable block size.  The default mode for tape backup functions is for fixed block size. In this configuration, the size of all data buffers...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAHC,QAYL,QAA8,QAY5,QAUD,QAM1,QBFN,QBBI,QAB4,QAAP,QBV8,QAB9,QBXS,QAR4,QAHE V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How To Specify Variable Block Size for Tape Backup Functions</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 23, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q161338</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) for Windows NT,
+   versions 3.50, 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In Windows NT, tape backup API's can be configured to manipulate tapes that
+use either fixed block size or variable block size.
+<P>
+The default mode for tape backup functions is for fixed block size. In this
+configuration, the size of all data buffers used for reading and writing
+must be a multiple of the block size. To determine the fixed block size,
+the GetTapeParameters function must be used. Specifying the
+GET_TAPE_MEDIA_INFORMATION operation will yield a TAPE_GET_MEDIA_PARAMETERS
+structure. The BlockSize member of this structure reports the block size of
+the tape. The size of buffers used in read and write operations must be a
+multiple of the block size. This mode allows multiple blocks to be
+transferred in a single operation.
+<P>
+If, however, variable block size is desired, then more steps are involved
+to successfully manipulate a tape. First, the drive must be interrogated to
+determine if it is capable of supporting variable block size. Second, the
+block size must be set for variable size. This article discusses the
+details of these operations.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To determine if a tape drive can support variable block size, the
+GetTapeParameters function must be called. Specifying the
+GET_TAPE_DRIVE_INFORMATION operation will yield a TAPE_GET_DRIVE_PARAMETERS
+structure. The dwFeaturesLow member of this structure is a flag that will
+have the TAPE_DRIVE_VARIABLE_BLOCK bit set if the drive can support
+variable block size. The following sample code shows how to use the
+function:
+<P>
+<PRE>   BOOL DriveSupportsVariableBlockSize()
+   {
+       TAPE_GET_DRIVE_PARAMETERS DriveParms;
+       DWORD dwBufferSize;
+       DWORD dwErrorCode;
+
+       dwBufferSize = sizeof(DriveParms);
+
+       dwErrorCode = GetTapeParameters( ghTape,
+                                        GET_TAPE_DRIVE_INFORMATION,
+                                        &amp;dwBufferSize,
+                                        &amp;DriveParms );
+       if (dwErrorCode != NO_ERROR) {
+           // An error occurred calling the function.
+           // The error should be handled by some error handling function.
+           return FALSE;
+       }
+
+       if (DriveParms.dwFeaturesLow &amp; TAPE_DRIVE_VARIABLE_BLOCK)
+           return TRUE;
+       else
+           return FALSE;
+   }
+
+</PRE>If the drive reports that it is not capable of supporting variable block
+size, then variable block size cannot be used. Tapes that use variable
+block size will not be usable with the tape drive.
+<P>
+If, on the other hand, the tape drive indicates that it is capable of
+supporting variable block size, then the next step is to set the tape media
+parameters to variable block size. The SetTapeParameters function must be
+called specifying the SET_TAPE_MEDIA_INFORMATION operation. The function
+requires the use of a TAPE_SET_MEDIA_PARAMETERS structure. The BlockSize
+member of the structure must be set to the desired block size. A block size
+of 0 indicates variable block size. Any other value sets the media
+parameters to fixed block size. The following sample code demonstrates how
+to use the function:
+<P>
+<PRE>   BOOL SetTapeBlockSize(DWORD dwNewBlockSize)
+   {
+       TAPE_SET_MEDIA_PARAMETERS MediaParms;
+       DWORD dwErrorCode;
+
+       MediaParms.BlockSize = dwNewBlockSize;
+
+       dwErrorCode = SetTapeParameters( ghTape,
+                                        SET_TAPE_MEDIA_INFORMATION,
+                                        &amp;MediaParms );
+       if (dwErrorCode != NO_ERROR) {
+           // An error occurred calling the function.
+           // The error should be handled by some error handling function.
+           return FALSE;
+       }
+
+       return TRUE;
+   }
+
+</PRE>When writing to a tape using variable block size, each write operation
+creates a new data block on the tape. The size of the block is the size of
+the write operation. There is an exception to this when a single write may
+create more than one block. For additional information on this exception,
+please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q152518.htm">Q152518</A></B>
+   TITLE     : PRB: Tape Variable Blocksize Limited to 64K Bytes
+
+</PRE>Reading a tape containing variable sized blocks can be accomplished even
+without knowing what size the blocks are. If a buffer is large enough to
+read the data in a block, then the data will be read without any errors. If
+the buffer is larger than a block, then only data in a single block will be
+read and the tape will be advanced to the next block. The size of the block
+is returned by the read operation in the &amp;dwBytesRead parameter.
+<P>
+If, on the other hand, a data buffer is too small to contain all of the
+data in a block, then a couple of things occur. First, the data buffer will
+contain data from the tape, but the read operation will fail and
+GetLastError will return ERROR_MORE_DATA. This error value indicates that
+there is more data in the block to be read. Second, the tape is advanced to
+the next block. To re-read the previous block, the tape must be
+repositioned to the desired block and a larger buffer must be specified. It
+is best to specify as large a buffer as possible so that this does not
+occur.
+<P>
+If a tape has fixed size blocks, but the tape media parameters are set to
+variable block size, then no assumptions are made regarding the size of the
+blocks on the tape. Each read operation behaves as described above. The
+size of the blocks on the tape are treated as variable, but happen to be
+the same size.
+<P>
+If a tape has variable size blocks, but the tape media parameters are set
+to fixed block size, then the size of all blocks on the tape are expected
+to be the same fixed size. Reading a block of a tape in this situation will
+fail and GetLastError will return ERROR_INVALID_BLOCK_LENGTH. The only
+exception to this is if the block size in the media parameters is the same
+as the size of the variable block and the size of the read buffer happens
+to be a multiple of the size of the variable block.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbhowto<BR>
+KBSubcategory: BseTape<BR>
+Additional reference words: 3.50 3.51 4.00 kbdss
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 23, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

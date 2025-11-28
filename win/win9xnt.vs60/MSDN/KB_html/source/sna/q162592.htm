@@ -1,0 +1,218 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>SLI Libraries Set Wrong RU Size After Unbind(Hold) </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q162592">
+<META NAME="KBModify" CONTENT="1997/04/17">
+<META NAME="KBCreate" CONTENT="1997/01/24">
+<META NAME="Keywords" CONTENT="kbbug2.11 kbbug2.11.sp1 kbfix2.11.sp2 kbnetwork snalua kbbuglist">
+<META NAME="KBArea" CONTENT="Support; KB; sna">
+<META NAME="Description" CONTENT="  Some 32-bit SLI applications may fail when you try to transfer large amounts of data. Investigation shows that the SNA RUI layer is returning an error code of DATA_TRUNCATED when performing a RUI_READ of more than 256 bytes.  CAUSE =====  There is ...">
+<META NAME="Product" CONTENT="SNA Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QALG,QDO3,QBHQ,QAKP,QAR4,QAAP,QALQ,QAXC,QAAD,QAYY,QBJQ,QDN1,QDJ3,QDIZ,QBXS V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>SLI Libraries Set Wrong RU Size After Unbind(Hold)</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q162592</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SNA Server, versions 2.11 and 2.11 SP1
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Some 32-bit SLI applications may fail when you try to transfer large
+amounts of data. Investigation shows that the SNA RUI layer is returning an
+error code of DATA_TRUNCATED when performing a RUI_READ of more than 256
+bytes.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+There is a problem the SLI library such that it is not picking up the RU
+size correctly on successive BINDs.  When the SLI library receives a BIND,
+followed by UNBIND(HOLD) and then a new BIND, the SLI library posts an
+RUI_READ of 256 bytes, even though 3840 byte RUs were negotiated in the
+final BIND.
+<P>
+So, when an RU arrives on the session which is larger than 256 bytes, the
+SLI_RECEIVE posted only receives 256 bytes and gets a DATA_TRUCATED error
+from the underlying RUI libraries and the SLI application only gets the
+first 256 bytes of the host application message.
+<P>
+Following is an illustration of the  data flow involved:
+<P>
+<PRE>SNA Server              Host
+----------              ----
+
+   &lt;------------------- BIND ("NMP" session manager),
+                        SLU receive size = "85"(256)
+
+</PRE>BIND +RSP ---------------------------&gt;
+<PRE>      &lt;logon&gt;
+
+</PRE>&lt;---------------------- UNBIND(Hold)
+<P>
+UNBIND +RSP ----------------------&gt;
+<P>
+<PRE>   &lt;------------------- BIND (Host SLI application),
+                        SLU receive size = "F8" (3840)
+
+</PRE>BIND +RSP --------------------------&gt;
+<P>
+<PRE>   &lt;RUI_READ only reads 256 bytes &gt;
+
+</PRE><h2>RESOLUTION</h2>
+ 
+<P>
+Apply the update to SNA Server 2.11 Service Pack 1 and SNA Server 3.0 that
+corrects this problem. The updated module is Winsli32.dll.
+<P>
+VTAM programmers will be able to work around this problem by configuring
+their session manager (NMP) to send a BIND to SNA Server that specifies a
+PLU send size of "F8" (this is set in Byte 11 of the BIND message).
+<P>
+NOTE: This is NOT the BTU size, but MAXDATA if configured in the LU
+definition or RUSIZE if configured in the MODETAB for the LU-LU session (or
+the NMP host session manager application).
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in SNA Server version 2.11
+Service Pack 1.
+A supported fix is now available, but has not been fully regression-tested
+and should be applied only to systems experiencing this specific problem.
+Unless you are severely impacted by this specific problem, Microsoft
+recommends that you wait for the next Service Pack that contains this fix.
+Contact Microsoft Technical Support for more information.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following is an LUA API trace of a large RUI_READ demonstrating the
+failure.
+<P>
+<PRE> SLI    ---------------------------------------------- 11:28:10.32
+ SLI    SLI_RECEIVE request
+ SLI    ---- Verb Parameter Block at address 0080FD68 ----
+
+</PRE>Data omitted for brevity.
+In the VCB an lua_max_length of 4K assigned.
+NOTE: VCB structure is packed.
+<P>
+<PRE> SLI
+ SLI    ---------------------------------------------- 11:28:10.61
+ SLI    SLI_RECEIVE response
+ SLI    IN_PROGRESS - OK
+ SLI    ---- Verb Parameter Block at address 0080FD68 ----
+
+</PRE>Data omitted for brevity.
+<P>
+SLI
+<PRE> RUI    ---------------------------------------------- 11:28:12.73
+ RUI    RUI_READ response
+ RUI    UNSUCCESSFUL - DATA_TRUNCATED
+
+</PRE>Data omitted for brevity.
+In the VCB the lua_max_length(offset 35(2 byte field)) and
+lua_data_length(offset 37(2 byte field)) fields have a value of 256 bytes.
+<P>
+<PRE> RUI
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: prodsna<BR>
+Keywords            : kbbug2.11 kbbug2.11.sp1 kbfix2.11.sp2 kbnetwork snalua kbbuglist<BR>
+Version             : 2.11<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

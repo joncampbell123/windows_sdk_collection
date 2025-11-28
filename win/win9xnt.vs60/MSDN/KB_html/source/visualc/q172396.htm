@@ -1,0 +1,259 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Access Violation When Accessing STL Object in DLL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q172396">
+<META NAME="KBModify" CONTENT="1997/08/18">
+<META NAME="KBCreate" CONTENT="1997/08/05">
+<META NAME="Keywords" CONTENT="CRTIss STLIss">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When accessing an STL object created in one DLL or EXE through a pointer or reference in a different DLL or EXE, you may experience an access violation or other serious program errors including the appearance of data corruption or data loss.  CAUSE...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA4Q,QAPN,QATX,QBE7,QBE6,QAY2,QA3P,QBW7,QAI5,QA1S,QAUD,QAJ1,QDNN,QA6A,QAW6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Access Violation When Accessing STL Object in DLL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q172396</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual C++, 32-bit Editions, version 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When accessing an STL object created in one DLL or EXE through a pointer or
+reference in a different DLL or EXE, you may experience an access violation
+or other serious program errors including the appearance of data corruption
+or data loss.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+Most classes in the Standard C++ Libraries use static data members directly
+or indirectly. Since these classes are generated through template
+instantiation, each executable image (usually with DLL or EXE file name
+extensions) will contain its own copy of the static data member for a given
+class. When a method of the class that requires the static data member is
+executed, it uses the static data member in the executable image in which
+the method code resides. Since the static data members in the executable
+images are not in sync, this action could result in an access violation or
+data may appear to be lost or corrupted.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+
+<OL><P><LI>Export accessor methods from the executable image that created the STL
+   object. These methods wrap the required functionality of the STL object.
+   In this way, the STL object will only be directly accessed inside a
+   single executable image. For example, suppose MyProgram.EXE needs to get
+   the next element in deque&lt;MyClass&gt; that resides in MyLibrary.DLL.
+   MyLibrary.DLL could export an accessor method, MyClass* DequeNextItem
+   (/*...*/). Then MyProgram.EXE could execute this method to get the next
+   item in the deque. See the code sample below for a more complete
+   example.
+
+<P><LI>Export the template class instantiation from one executable image and
+   import it into the other executable images. For example, if
+   MyLibrary.DLL passes a pointer to vector&lt;MyClass&gt; back to a function in
+   MyProgram.EXE, then export the classes MyClass and vector&lt;MyClass&gt; from
+   MyLibrary.DLL. Then import these classes into MyProgram.EXE. By doing
+   this, you will have one copy of the static class members residing in
+   MyLibrary.DLL. For more information about exporting and importing STL
+   classes, please see the following article in the Microsoft Knowledge
+   Base:
+<P>
+<P><PRE>      ARTICLE-ID: <B><A href="../visualc/q168958.htm">Q168958</A></B>
+<PRE></PRE>      TITLE     : HOWTO: Exporting STL Components Inside &amp; Outside of a
+                  Class
+
+</PRE></OL><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+<P>
+<PRE>   //---------------------------------------------------------
+   // AVEXE.CPP
+   // Compile options needed: /GX
+   #pragma warning (disable : 4786)
+   #include &lt;map&gt;
+   #include &lt;string&gt;
+   #include &lt;stdio.h&gt;
+
+   __declspec(dllimport)
+   std::map&lt;int,std::string&gt;* GiveMeAMap(int n);
+
+   __declspec(dllimport)
+   void ShowMeTheMap(std::map&lt;int,std::string&gt; *amap);
+
+   __declspec(dllexport)
+   const char* MapItemX (std::map&lt;int,std::string&gt; *m, int x);
+
+   int main () {
+
+      // Create the map in the DLL
+      int x = 6;
+      std::map&lt;int,std::string&gt; *p = GiveMeAMap(x);
+
+      // Display the contents of the map from the DLL
+      printf("Showing contents from the DLL\n");
+      ShowMeTheMap(p);
+
+      // Display the contents of the map from the EXE
+      // using the accessor function from the DLL so we
+      // aren't directly accessing the map
+      printf("Showing contents from the EXE using accessor\n");
+      int i = x;
+      while (i--) {
+         printf("%d = %s\n",i,MapItemX(p,i));
+      }
+
+      // Access Violation when accessing the map that
+      // was created in the DLL from the EXE
+      printf("Showing contents from the EXE directly\n");
+      while (x--) {
+         printf("%d = %s\n",x,(*p)[x].c_str());
+      }
+
+      return 0;
+   }
+
+   //---------------------------------------------------------
+   // AVDLL.CPP
+   // Compile options needed /GX
+   #pragma warning (disable : 4786)
+   #include &lt;map&gt;
+   #include &lt;string&gt;
+   #include &lt;stdlib.h&gt;
+
+   // Create the map here in the DLL
+   __declspec(dllexport)
+   std::map&lt;int,std::string&gt;* GiveMeAMap(int n) {
+      std::map&lt;int,std::string&gt; *m = new std::map&lt;int,std::string&gt;;
+      while(n--) {
+         char b[33];
+         itoa(n,b,2);
+         (*m)[n] = std::string(b);
+      }
+      return m;
+   }
+
+   // We can access the map without error from the executable
+   // image where the map was created
+   __declspec(dllexport)
+   void ShowMeTheMap(std::map&lt;int,std::string&gt; *p) {
+      int x = p-&gt;size();
+      while (x--) {
+         printf("%d = %s\n",x,(*p)[x].c_str());
+      }
+   }
+
+   // An accessor method to return the associated C string
+   // for key x
+   __declspec(dllexport)
+   const char* MapItemX (std::map&lt;int,std::string&gt; *m, int x) {
+      return (*m)[x].c_str();
+   }
+</PRE> 
+<PRE>Keywords          : CRTIss STLIss
+Version           : WINDOWS NT:5.0
+Platform          : NT WINDOWS
+Issue type        : kbprb</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

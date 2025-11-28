@@ -1,0 +1,277 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Programmatically Change Network Password Under Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q177200">
+<META NAME="KBModify" CONTENT="1997/12/01">
+<META NAME="KBCreate" CONTENT="1997/11/21">
+<META NAME="Keywords" CONTENT="BseMisc NtwkADSI NtwkLmapi NtwkMisc">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  If you want to design your application to implement its own routine to change domain passwords on Windows 95, you have several methods available to you, each one of which has limitations on functionality, portability, or security. This article desc...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAWK,QDL9,QBWO,QBWN,QBWQ,QAVZ,QBWP,QDIT,QAGI,QAI4,QBWB,QAGQ,QDNF,QAAD,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Programmatically Change Network Password Under Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 1, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q177200</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+If you want to design your application to implement its own routine to
+change domain passwords on Windows 95, you have several methods available
+to you, each one of which has limitations on functionality, portability, or
+security. This article describes two of these methods in detail.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Method 1</h3>
+ 
+<P>
+Dynamically load the 32-bit API PwdChangePassword() from Mpr.dll and it
+will successfully change passwords. However, it will display a non-
+customizable dialog box to prompt the user for password information. If you
+want your application to have its own interface for changing passwords, you
+cannot use this API.
+<P>
+NOTE: PwdChangePassword() is the only interface that will change the
+Windows password as well as your network password.
+<P>
+The following sample code demonstrates how to use PwdChangePassword.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   ////////////////////////////////////
+   #include &lt;windows.h&gt;
+   #include &lt;stdio.h&gt;
+   #include "pwdspi.h"// Found in July 96 DDK otherwise define as follows
+
+   #ifndef PS_SYNCMASTERPWD //if pwdspi.h is not present
+   #define PS_SYNCMASTERPWD         0x03
+   #define PS_SYNCMASTERPWD_OFF     0x00
+   #define PS_SYNCMASTERPWD_ON      0x01
+
+   // Function definition of PwdChangePassword and helper struct for
+   // Windows 95. Helper structure (also found in pwdspi.h)
+   typedef struct _CHANGEPWDINFO{
+      LPTSTR lpUsername;
+      LPTSTR lpPassword;
+      DWORD cbPassword;
+   } CHANGEPWDINFO, FAR *LPCHANGEPWDINFO;
+   #endif
+
+   // Function definitions:
+   typedef DWORD
+    (APIENTRY *LPPwdChangePassword)(LPCTSTR,HWND,DWORD,LPCHANGEPWDINFO);
+   typedef DWORD (APIENTRY *LPPwdSetPasswordStatus)(LPCSTR,DWORD,DWORD);
+
+   // Function to display error messages upon API failure
+   void DisplayError(char *pszAPI);
+
+   void main()
+   {
+   CHANGEPWDINFO   s = {NULL,NULL,0}; // initialize struct to empty.
+   LPPwdChangePassword sPwdChangePassword;
+   LPPwdSetPasswordStatus sPwdSetPasswordStatus;
+   DWORD   res = 0;
+   DWORD   cbUserName = 250;
+   HINSTANCE   lib = LoadLibrary("MPR.DLL");
+
+   if (lib == NULL)
+        DisplayError("LoadLibrary");
+
+   // To synchronize network provider password with windows password we
+   // need to call PwdSetPasswordStatus. By synchronizing the network
+   // provider password we avoid having to change each password separately.
+   // Network providers listed in registry at:
+   // HKLM/System\CurrentControlSet\Control\PwdProvider
+
+   // Get address of PwdGetPasswordStatus
+   sPwdSetPasswordStatus =
+      (LPPwdSetPasswordStatus) GetProcAddress(lib,"PwdSetPasswordStatusA");
+   if (sPwdSetPasswordStatus == NULL)
+      DisplayError("GetProcAddress");
+
+   res = sPwdSetPasswordStatus("MSNP32", // name of password provider
+                               PS_SYNCMASTERPWD,
+                               PS_SYNCMASTERPWD_ON
+                               );
+   if (res != WN_SUCCESS)
+        DisplayError("PwdSetPasswordStatus");
+
+   // Must get PwdChangePasswordA because in Windows 95 we are using the
+   // ascii version of the exported function
+   sPwdChangePassword =
+      (LPPwdChangePassword) GetProcAddress(lib,"PwdChangePasswordA");
+
+   // Call sPwdChangePassword specifying NULL as network provider.
+   // This causes windows (non-network) password to be changed and hence
+   // all synchronized passwords.
+   res = sPwdChangePassword(    NULL, // Network provider
+                                GetDesktopWindow(), //Window to own dialog
+                                0,  // No special flag
+                                &amp;s  // Address of CHANGEPWDINFO structure
+                                );
+   if (res != WN_SUCCESS)
+        DisplayError("PwdChangePassword");
+
+   FreeLibrary(lib);
+   printf("Password = %s\n",s.lpPassword);
+
+   return;
+   }
+
+   void DisplayError(char *pszAPI)
+   {
+   LPVOID lpvMessageBuffer;
+
+   FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM,
+                 NULL, GetLastError(),
+                 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                 (LPTSTR)&amp;lpvMessageBuffer, 0, NULL);
+
+   //... now display this string
+   printf("ERROR: API        = %s.\n", pszAPI);
+   printf("       error code = %d.\n", GetLastError());
+   printf("       message    = %s.\n", (char *)lpvMessageBuffer);
+
+   // Free the buffer allocated by the system
+   LocalFree(lpvMessageBuffer);
+   ExitProcess(GetLastError());
+   }
+
+</PRE><h3>Method 2</h3>
+ 
+<P>
+A relatively easy way to change passwords under Windows 95 is to have a
+server process running on a Windows NT server that creates a named pipe to
+which the Windows 95 client can connect. The Windows NT Server calls the
+ImpersonateNamedPipeClient() API and get the Windows 95 user's domain name
+and user name as described in the following knowledge base article:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q155698.htm">Q155698</A></B>
+   TITLE     : HOWTO: Look Up Current User Name and Domain Name
+
+</PRE>The Windows 95 Client then sends the password information to the Windows NT
+process which can then call the NetUserChangePassword() API. The
+restrictions to this design are that you need a process running on a
+Windows NT Server, and that sending the password information over a network
+poses a security risk. To increase the level of security, you can encrypt
+the password before sending it over the network. For more information on
+encryption see the Crypto API documentation in the Win32 SDK. Furthermore,
+this method changes the network password only, not the Windows Logon
+Password. You can only change the Windows Logon Password by implementing
+Option 1 above. This means that the Windows Password and the Network
+passwords are not be synchronized. As a result, the user has to enter both
+passwords when logging onto Windows 95.
+<P>
+NOTE: You should not use the 16-bit Lan Manager API
+NetUserChangePassword(). This API changes the password to all uppercase
+characters and then sends the username and password combination across the
+network in non-encrypted clear text form. This is not only a security risk,
+it may also invalidate the original password by modifying changing it to an
+all uppercase version that may no longer be valid if the server applies
+password filtering.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: windows password PwdChangePassword domain<BR>
+Keywords          : BseMisc NtwkADSI NtwkLmapi NtwkMisc<BR>
+Platform          : Win95 winnt<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 1, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

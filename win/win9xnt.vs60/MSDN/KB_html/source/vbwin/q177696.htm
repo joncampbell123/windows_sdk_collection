@@ -1,0 +1,406 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Use Named Pipes in a Visual Basic 32-bit Program </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q177696">
+<META NAME="KBModify" CONTENT="1997/12/05">
+<META NAME="KBCreate" CONTENT="1997/12/04">
+<META NAME="Keywords" CONTENT="VB4WIN vb5all vb5howto">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  Visual Basic can create applications which communicate to other processes via Named Pipes on Windows NT or Windows 95. The Named Pipe must be created on Windows NT; however, you can read from and write to that pipe from either Win NT or Win 95.  Th...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAUJ,QBS0,QBWP,QARL,QAY5,QDL9,QBWO,QBWN,QAIF,QAH4,QBV8,QBWQ,QAI4,QAB9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Use Named Pipes in a Visual Basic 32-bit Program</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 5, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q177696</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual Basic Professional and Enterprise Editions for
+   Windows, versions 4.0, 5.0
+<LI>Microsoft Windows NT versions 3.50, 3.51, 4.0
+<LI>Microsoft Windows 95
+<LI>Microsoft Win32 Application Programming Interface (API)
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Visual Basic can create applications which communicate to other processes
+via Named Pipes on Windows NT or Windows 95. The Named Pipe must be created
+on Windows NT; however, you can read from and write to that pipe from
+either Win NT or Win 95.
+<P>
+This article demonstrates Client/Server communication using a Named Pipe in
+Visual Basic.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+In this article, the process creating the NamedPipe is called the server,
+and the process connecting to the named pipe is called the client.
+<P>
+There are six steps to creating a named pipe server:
+
+<OL><P><LI>Create a security token for the pipe to allow access to it (to make
+   a Named Pipe available to any process by creating a security token with
+   a Discretionary Access Control List (DACL) that has zero entries in it).
+
+<P><LI>Create the Named Pipe.
+
+<P><LI>Call ConnectNamedPipe to block until a client connects.
+
+<P><LI>Call ReadFile and/or WriteFile to communicate over the pipe.
+
+<P><LI>Call DisconnectNamedPipe when the process is finished using the pipe.
+
+<P><LI>Either CloseHandle on the named pipe, or go back to step 4.
+<P>
+</OL>There are three steps to use a Named Pipe from the Named Pipe client:
+
+<OL><P><LI>Call CreateFile to get a handle to the Named Pipe.
+
+<P><LI>Call ReadFile and/or WriteFile to communicate over the pipe.
+
+<P><LI>Call CloseHandle on the filehandle created in CreateFile.
+<P>
+</OL>Alternatively, you could call CallNamedPipe, which performs a one-time
+transaction over the pipe. CallNamedPipe opens the pipe, writes to it,
+reads from it, then closes the pipe. This is what the client below does.
+<P>
+The following sample demonstrates how to create a Named Pipe Server and
+Client. It implements only the most rudimentary functions necessary to do
+so, with a minimal amount of error checking. A fully-functional program
+should check the return values of the API's that are called, rather than
+assuming they were successful.
+<P>
+<P><h3>Named Pipe Server</h3>
+ 
+
+<OL><P><LI>Create a new project. Form1 is created by default.
+
+<P><LI>Add the following code to the form:
+<P>
+   Option Explicit
+   Private Const szPipeName = "\\.\pipe\bigtest"
+   Private Const BUFFSIZE = 20000
+   Private BigBuffer(BUFFSIZE) As Byte, pSD As Long
+   Private sa As SECURITY_ATTRIBUTES
+   Private hPipe As Long
+<P>
+<PRE>   Private Sub Form_Click()
+      Dim i As Long, dwOpenMode As Long, dwPipeMode As Long
+      Dim res As Long, nCount As Long, cbnCount As Long
+      For i = 0 To BUFFSIZE - 1       'Fill an array of numbers
+         BigBuffer(i) = i Mod 256
+      Next i
+
+      'Create the NULL security token for the pipe
+      pSD = GlobalAlloc(GPTR, SECURITY_DESCRIPTOR_MIN_LENGTH)
+      res = InitializeSecurityDescriptor(pSD, SECURITY_DESCRIPTOR_REVISION)
+      res = SetSecurityDescriptorDacl(pSD, -1, 0, 0)
+      sa.nLength = LenB(sa)
+      sa.lpSecurityDescriptor = pSD
+      sa.bInheritHandle = True
+
+      'Create the Named Pipe
+      dwOpenMode = PIPE_ACCESS_DUPLEX Or FILE_FLAG_WRITE_THROUGH
+      dwPipeMode = PIPE_WAIT Or PIPE_TYPE_MESSAGE Or PIPE_READMODE_MESSAGE
+      hPipe = CreateNamedPipe(szPipeName, dwOpenMode, dwPipeMode, _
+                              10, 10000, 2000, 10000, sa)
+
+      Do  'Wait for a connection, block until a client connects
+         res = ConnectNamedPipe(hPipe, ByVal 0)
+
+         'Read/Write data over the pipe
+         cbnCount = 4
+
+         res = ReadFile(hPipe, nCount, LenB(nCount), cbnCount, ByVal 0)
+
+         If nCount &lt;&gt; 0 Then
+
+            If nCount &gt; BUFFSIZE Then 'Client requested nCount bytes
+               nCount = BUFFSIZE      'but only send up to 20000 bytes
+            End If
+            'Write the number of bytes requested
+            res = WriteFile(hPipe, BigBuffer(0), nCount, cbnCount, ByVal 0)
+            'Make sure the write is finished
+            res = FlushFileBuffers(hPipe)
+         End If
+
+         'Disconnect the NamedPipe
+         res = DisconnectNamedPipe(hPipe)
+      Loop Until nCount = 0
+
+      'Close the pipe handle
+      CloseHandle hPipe
+      GlobalFree (pSD)
+      End
+   End Sub
+
+</PRE><P><LI>Create a new module and add the following declarations:
+<P>
+   Option Explicit
+<P>
+   Public Const FILE_ATTRIBUTE_NORMAL = &amp;H80
+   Public Const FILE_FLAG_NO_BUFFERING = &amp;H20000000
+   Public Const FILE_FLAG_WRITE_THROUGH = &amp;H80000000
+<P>
+   Public Const PIPE_ACCESS_DUPLEX = &amp;H3
+   Public Const PIPE_READMODE_MESSAGE = &amp;H2
+   Public Const PIPE_TYPE_MESSAGE = &amp;H4
+   Public Const PIPE_WAIT = &amp;H0
+<P>
+   Public Const INVALID_HANDLE_VALUE = -1
+<P>
+   Public Const SECURITY_DESCRIPTOR_MIN_LENGTH = (20)
+   Public Const SECURITY_DESCRIPTOR_REVISION = (1)
+<P>
+   Type SECURITY_ATTRIBUTES
+<PRE>           nLength As Long
+           lpSecurityDescriptor As Long
+           bInheritHandle As Long
+   End Type
+
+   Public Const GMEM_FIXED = &amp;H0
+   Public Const GMEM_ZEROINIT = &amp;H40
+   Public Const GPTR = (GMEM_FIXED Or GMEM_ZEROINIT)
+
+   Declare Function GlobalAlloc Lib "kernel32" ( _
+      ByVal wFlags As Long, ByVal dwBytes As Long) As Long
+   Declare Function GlobalFree Lib "kernel32" (ByVal hMem As Long) As Long
+   Declare Function CreateNamedPipe Lib "kernel32" Alias _
+      "CreateNamedPipeA" ( _
+      ByVal lpName As String, _
+      ByVal dwOpenMode As Long, _
+      ByVal dwPipeMode As Long, _
+      ByVal nMaxInstances As Long, _
+      ByVal nOutBufferSize As Long, _
+      ByVal nInBufferSize As Long, _
+      ByVal nDefaultTimeOut As Long, _
+      lpSecurityAttributes As Any) As Long
+
+   Declare Function InitializeSecurityDescriptor Lib "advapi32.dll" ( _
+      ByVal pSecurityDescriptor As Long, _
+      ByVal dwRevision As Long) As Long
+
+   Declare Function SetSecurityDescriptorDacl Lib "advapi32.dll" ( _
+      ByVal pSecurityDescriptor As Long, _
+      ByVal bDaclPresent As Long, _
+      ByVal pDacl As Long, _
+      ByVal bDaclDefaulted As Long) As Long
+
+   Declare Function ConnectNamedPipe Lib "kernel32" ( _
+      ByVal hNamedPipe As Long, _
+      lpOverlapped As Any) As Long
+
+   Declare Function DisconnectNamedPipe Lib "kernel32" ( _
+      ByVal hNamedPipe As Long) As Long
+
+   Declare Function WriteFile Lib "kernel32" ( _
+      ByVal hFile As Long, _
+      lpBuffer As Any, _
+      ByVal nNumberOfBytesToWrite As Long, _
+      lpNumberOfBytesWritten As Long, _
+      lpOverlapped As Any) As Long
+
+   Declare Function ReadFile Lib "kernel32" ( _
+      ByVal hFile As Long, _
+      lpBuffer As Any, _
+      ByVal nNumberOfBytesToRead As Long, _
+      lpNumberOfBytesRead As Long, _
+      lpOverlapped As Any) As Long
+
+   Declare Function FlushFileBuffers Lib "kernel32" ( _
+      ByVal hFile As Long) As Long
+
+   Declare Function CloseHandle Lib "kernel32" ( _
+      ByVal hObject As Long) As Long
+</PRE></OL>4. Save the form.
+<P>
+<P><h3>Named Pipe Client</h3>
+ 
+
+<OL><P><LI>Create a new project. Form1 is created by default.
+
+<P><LI>Add the following controls to the form:
+<P>
+<PRE>   Type             Name               Caption/Default Value
+   ----             ----               ---------------------
+   TextBox          cbBytes            500
+   CommandButton    cmdCallNamedPipe   Call Named Pipe
+   TextBox          txtReceive
+
+</PRE><P><LI>Add the following code to the form:
+<P>
+   Option Explicit
+   Private Const szPipeName = "\\.\pipe\bigtest", BUFFSIZE = 20000
+<PRE>   Private Declare Function CallNamedPipe Lib "kernel32" Alias _
+      "CallNamedPipeA" ( _
+      ByVal lpNamedPipeName As String, _
+      lpInBuffer As Any, _
+      ByVal nInBufferSize As Long, _
+      lpOutBuffer As Any, _
+      ByVal nOutBufferSize As Long, _
+      lpBytesRead As Long, _
+      ByVal nTimeOut As Long) As Long
+
+   Private Sub cmdCallNamedPipe_Click()
+      Dim res As Long, myStr As String, i As Long, cbRead As Long
+      Dim numBytes As Long, bArray() As Byte, temp As String
+
+      numBytes = cbBytes.Text
+      If cbBytes.Text &lt; 0 Then
+         MsgBox "Value must be at least 0.", vbOKOnly
+         Exit Sub
+      End If
+      If numBytes &gt; BUFFSIZE Then
+         numBytes = BUFFSIZE
+      End If
+      ReDim bArray(numBytes)  'Build the return buffer
+
+      'Call CallNamedPipe to do the transaction all at once
+      res = CallNamedPipe(szPipeName, numBytes, LenB(numBytes), _
+         bArray(0), numBytes, _
+         cbRead, 30000) 'Wait up to 30 seconds for a response
+
+      If res &gt; 0 Then
+         temp = Format(bArray(0), " 000")
+         For i = 1 To cbRead - 1
+            If (i Mod 16) = 0 Then temp = temp &amp; vbCrLf
+            temp = temp &amp; " " &amp; Format(bArray(i), "000")
+         Next i
+         txtReceive.Text = temp
+      Else
+         MsgBox "Error number " &amp; Err.LastDllError &amp; _
+                " attempting to call CallNamedPipe.", vbOKOnly
+      End If
+   End Sub
+
+</PRE><P><LI>Note that if the server is running on a machine other than where the
+   client is, you need to change the '.' in the variable szPipeName to the
+   name of the server machine.
+
+<P><LI>Save the form.
+<P>
+</OL>To test the code above, first start the server and click anywhere on the
+form. The server application is now blocking and will appear to have hung,
+but it is actually waiting for the client to connect. Then start the client
+application and click the "Call Named Pipe." The client should send the
+value 500 to the server, which will respond with 500 bytes of data. You can
+set the value in the cbBytes text box from 0 to 20000 bytes. To stop the
+server, simply send 0 (Zero) from the client. The client might receive
+error 233 (ERROR_PIPE_NOT_CONNECTED), but this is normal.
+<P>
+Another improvement to the sample might include the use of IO Completion
+Ports and/or Non-Blocking Reads and Writes using Overlapped IO. You can
+find more information on these subjects in the Microsoft Platform SDK.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+There are several InterProcess Communication (IPC) Methods available in
+Windows NT and Windows 95 which allows one-way or two-way transfer of data
+between multiple processes. For a complete list of IPC Methods available on
+each platform see article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q95900.htm">Q95900</A></B>
+   TITLE     : Interprocess Communication on Windows NT, Windows 95,
+               &amp; Win32s
+</PRE></OL> 
+<PRE>Keywords          : VB4WIN vb5all vb5howto
+Version           : WINDOWS:4.0,5.0,95; WINNT:3.50,3.51,4.0
+Platform          : WINDOWS winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 5, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

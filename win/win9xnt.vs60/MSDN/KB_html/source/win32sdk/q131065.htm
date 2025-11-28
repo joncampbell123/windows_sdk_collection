@@ -1,0 +1,337 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Obtain a Handle to Any Process with SeDebugPrivilege </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q131065">
+<META NAME="KBModify" CONTENT="1995/09/25">
+<META NAME="KBCreate" CONTENT="1995/06/02">
+<META NAME="Keywords" CONTENT="kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  In Windows NT, you can retrieve a handle to any process in the system by enabling the SeDebugPrivilege in the calling process. The calling process can then call the OpenProcess() Win32 API to obtain a handle with PROCESS_ALL_ACCESS.  MORE INFORMATI...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QBWG,QAOZ,QBXS,QAGI,QAI4,QAH6,QAH4,QALW,QAH7,QAD7,QAGU,QA4P,QABA,QABO V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Obtain a Handle to Any Process with SeDebugPrivilege</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 25, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q131065</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.1, 3.5, and 3.51
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In Windows NT, you can retrieve a handle to any process in the system by
+enabling the SeDebugPrivilege in the calling process. The calling process
+can then call the OpenProcess() Win32 API to obtain a handle with
+PROCESS_ALL_ACCESS.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+This functionality is provided for system-level debugging purposes. For
+debugging non-system processes, it is not necessary to grant or enable this
+privilege.
+<P>
+This privilege allows the caller all access to the process, including the
+ability to call TerminateProcess(), CreateRemoteThread(),
+and other potentially dangerous Win32 APIs on the target process.
+<P>
+Take great care when granting SeDebugPrivilege to users or groups.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following source code illustrates how to obtain SeDebugPrivilege
+in order to get a handle to a process with PROCESS_ALL_ACCESS. The
+sample code then calls TerminateProcess on the resultant process
+handle.
+<P>
+<PRE>/*++
+
+</PRE>The SeDebugPrivilege allows you to open any process for debugging purposes.
+After enabling the privilege, you can open a target process by using
+OpenProcess() with PROCESS_ALL_ACCESS.
+<P>
+By default, this privilege is granted only to SYSTEM and the local
+Administrators group.
+<P>
+User Manager | Policies | User Rights | Show Advanced User Rights | Debug
+Programs can be used to grant or revoke this privilege to arbitrary users
+or groups.
+<P>
+WARNING: This privilege allows all access to a process. A malevolent user
+could open a system process, create a remote thread in the system process,
+and execute code in the system security context. Great care must be used
+when giving out this privilege
+<P>
+--*/
+<P>
+<PRE>#define RTN_OK 0
+#define RTN_USAGE 1
+#define RTN_ERROR 13
+
+#include &lt;windows.h&gt;
+#include &lt;stdio.h&gt;
+
+</PRE>BOOL SetPrivilege(
+<PRE>    HANDLE hToken,          // token handle
+    LPCTSTR Privilege,      // Privilege to enable/disable
+    BOOL bEnablePrivilege   // TRUE to enable.  FALSE to disable
+    );
+
+void DisplayError(LPTSTR szAPI);
+
+int main(int argc, char *argv[])
+</PRE>{
+<PRE>    HANDLE hProcess;
+    HANDLE hToken;
+    int dwRetVal=RTN_OK; // assume success from main()
+
+    // show correct usage for kill
+    if (argc != 2)
+    {
+        fprintf(stderr,"Usage: %s [ProcessId]\n", argv[0]);
+        return RTN_USAGE;
+    }
+
+    if(!OpenProcessToken(
+            GetCurrentProcess(),
+            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+            &amp;hToken
+            )) return RTN_ERROR;
+
+    // enable SeDebugPrivilege
+    if(!SetPrivilege(hToken, SE_DEBUG_NAME, TRUE))
+    {
+        DisplayError("SetPrivilege");
+
+        // close token handle
+        CloseHandle(hToken);
+
+        // indicate failure
+        return RTN_ERROR;
+    }
+
+   // open the process
+    if((hProcess = OpenProcess(
+            PROCESS_ALL_ACCESS,
+            FALSE,
+            atoi(argv[1]) // PID from commandline
+            )) == NULL)
+    {
+        DisplayError("OpenProcess");
+        return RTN_ERROR;
+    }
+
+    // disable SeDebugPrivilege
+    SetPrivilege(hToken, SE_DEBUG_NAME, FALSE);
+
+    if(!TerminateProcess(hProcess, 0xffffffff))
+    {
+        DisplayError("TerminateProcess");
+        dwRetVal=RTN_ERROR;
+    }
+
+    // close handles
+    CloseHandle(hToken);
+    CloseHandle(hProcess);
+
+    return dwRetVal;
+</PRE>}
+<P>
+BOOL SetPrivilege(
+<PRE>    HANDLE hToken,          // token handle
+    LPCTSTR Privilege,      // Privilege to enable/disable
+    BOOL bEnablePrivilege   // TRUE to enable.  FALSE to disable
+    )
+</PRE>{
+<PRE>    TOKEN_PRIVILEGES tp;
+    LUID luid;
+    TOKEN_PRIVILEGES tpPrevious;
+    DWORD cbPrevious=sizeof(TOKEN_PRIVILEGES);
+
+    if(!LookupPrivilegeValue( NULL, Privilege, &amp;luid )) return FALSE;
+
+    //
+    // first pass.  get current privilege setting
+    //
+    tp.PrivilegeCount           = 1;
+    tp.Privileges[0].Luid       = luid;
+    tp.Privileges[0].Attributes = 0;
+
+    AdjustTokenPrivileges(
+            hToken,
+            FALSE,
+            &amp;tp,
+            sizeof(TOKEN_PRIVILEGES),
+            &amp;tpPrevious,
+            &amp;cbPrevious
+            );
+
+    if (GetLastError() != ERROR_SUCCESS) return FALSE;
+
+    //
+    // second pass.  set privilege based on previous setting
+    //
+    tpPrevious.PrivilegeCount       = 1;
+    tpPrevious.Privileges[0].Luid   = luid;
+
+    if(bEnablePrivilege) {
+        tpPrevious.Privileges[0].Attributes |= (SE_PRIVILEGE_ENABLED);
+    }
+    else {
+        tpPrevious.Privileges[0].Attributes ^= (SE_PRIVILEGE_ENABLED &amp;
+            tpPrevious.Privileges[0].Attributes);
+    }
+
+    AdjustTokenPrivileges(
+            hToken,
+            FALSE,
+            &amp;tpPrevious,
+            cbPrevious,
+            NULL,
+            NULL
+            );
+
+    if (GetLastError() != ERROR_SUCCESS) return FALSE;
+
+    return TRUE;
+</PRE>}
+<P>
+<PRE>void DisplayError(
+    LPTSTR szAPI    // pointer to failed API name
+    )
+</PRE>{
+<PRE>    LPTSTR MessageBuffer;
+    DWORD dwBufferLength;
+
+    fprintf(stderr,"%s() error!\n", szAPI);
+
+    if(dwBufferLength=FormatMessage(
+                FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                FORMAT_MESSAGE_FROM_SYSTEM,
+                NULL,
+                GetLastError(),
+                GetSystemDefaultLangID(),
+                (LPTSTR) &amp;MessageBuffer,
+                0,
+                NULL
+                ))
+    {
+        DWORD dwBytesWritten;
+
+        //
+        // Output message string on stderr
+        //
+        WriteFile(
+                GetStdHandle(STD_ERROR_HANDLE),
+                MessageBuffer,
+                dwBufferLength,
+                &amp;dwBytesWritten,
+                NULL
+                );
+
+        //
+        // free the buffer allocated by the system
+        //
+        LocalFree(MessageBuffer);
+    }
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 3.50 3.51 OpenProcess TerminateProcess<BR>
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: BseSecurity BseMisc CodeSam<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 25, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

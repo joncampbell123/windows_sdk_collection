@@ -1,0 +1,222 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Binder95 Does Not Show an MFC DocObject Server Icon </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q160909">
+<META NAME="KBModify" CONTENT="1998/02/17">
+<META NAME="KBCreate" CONTENT="1996/12/12">
+<META NAME="Keywords" CONTENT="ActiveX MfcOLE">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Starting with Visual C++ 4.2, MFC provides support for creating Document Object (DocObject) Servers. The Binder application that comes with Microsoft Office '95 is a DocObject container. When you insert a DocObject server created by Visual C++ into...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QBVV,QAVX,QAVW,QDKX,QA7G,QAJH,QBVP,QBFY,QA56,QA55,QAW6,QAUJ,QATO,QAGI V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Binder95 Does Not Show an MFC DocObject Server Icon</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 17, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q160909</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual C++, 32-bit Edition, versions 4.2, 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Starting with Visual C++ 4.2, MFC provides support for creating
+Document Object (DocObject) Servers. The Binder application that comes
+with Microsoft Office '95 is a DocObject container. When you insert a
+DocObject server created by Visual C++ into the Binder, the defined icon
+for the document may not show up as expected.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The Binder application that comes with Microsoft Office '95 searches the
+registry for the CLSID of the DocObject server looking for the
+DefaultExtension key. It expects a certain format for this key to
+successfully display the correct icon. The MFC
+COleTemplateServer::UpdateRegistry() function does not register the
+information in this format.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+The resolution involves changing the DefaultExtension key to the format
+that Binder expects after UpdateRegistry() is called. The sample code below
+demonstrates how this can be done. The code that accomplishes this is
+copied almost verbatim from the source code of
+COleTemplateServer::UpdateRegistry().
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following shows the difference between the DefaultExtension keys of an
+Office '95 application and an AppWizard generated application:
+<P>
+<PRE>   Excel Worksheet:
+      DefaultExtension = .xls, Excel Workbook (*.xls)
+
+   AppWizard app named 'Test' with .tst extension:
+      DefaultExtension = Test, Test Files (*.tst)
+
+</PRE>If you change the DefaultExtension key of the AppWizard app to read:
+<P>
+<PRE>   DefaultExtension = .tst, Test Files (*.tst)
+
+</PRE>the Binder will then display the icon defined for the document object.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed: None
+*/
+
+/* The following code can be added to the InitInstance of the CWinApp
+   derived class right after the call to UpdateRegistry()
+*/
+
+   // change the DefaultExtension to work with Binder95.
+   // Get registration info from document template string.
+   CString strServerName;
+   CString strLocalServerName;
+   CString strLocalShortName;
+   CString strLocalFilterName;
+   CString strLocalFilterExt;
+
+   if (!pDocTemplate-&gt;GetDocString(strServerName,
+      CDocTemplate::regFileTypeId) || strServerName.IsEmpty())
+      {
+         TRACE0("Error: not enough information in DocTemplate to register"
+                " OLE server.\n");
+      }
+   if (!pDocTemplate-&gt;GetDocString(strLocalServerName,
+      CDocTemplate::regFileTypeName))
+      strLocalServerName = strServerName;     // use non-localized name
+
+   if (!pDocTemplate-&gt;GetDocString(strLocalShortName,
+      CDocTemplate::fileNewName))
+      strLocalShortName = strLocalServerName; // use long name
+
+   pDocTemplate-&gt;GetDocString(strLocalFilterName,
+      CDocTemplate::filterName);
+   pDocTemplate-&gt;GetDocString(strLocalFilterExt, CDocTemplate::filterExt);
+
+   ASSERT(strServerName.Find(' ') == -1);  // no spaces allowed
+
+   // place entries in system registry
+   LPCTSTR Arr[2];
+   CString strDefExt("CLSID\\%1\\DefaultExtension");
+   CString strEntry = strDefExt + (TCHAR)NULL + strLocalFilterExt + ","
+      + strLocalFilterName;
+   Arr[0] = strEntry;
+   Arr[1] = NULL;
+   if (!AfxOleRegisterServerClass(m_server.GetClassID(), strServerName,
+      strLocalShortName, strLocalServerName, OAT_DOC_OBJECT_SERVER,
+      NULL, Arr))
+   {
+      // not fatal (don't fail, just warn)
+      AfxMessageBox(AFX_IDP_FAILED_TO_AUTO_REGISTER);
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: DocObject ActiveX<BR>
+Keywords          : ActiveX MfcOLE<BR>
+Technology        : kbole kbMfc<BR>
+Version           : WINNET:4.2,5.0<BR>
+Platform          : NT WINDOWS<BR>
+Issue type        : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 17, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

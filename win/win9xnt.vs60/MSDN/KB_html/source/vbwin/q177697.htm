@@ -1,0 +1,268 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: List Local Network Connections with WNetEnumResources </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q177697">
+<META NAME="KBModify" CONTENT="1997/12/05">
+<META NAME="KBCreate" CONTENT="1997/12/04">
+<META NAME="Keywords" CONTENT="VB4WIN vb5all vb5howto">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  WNetOpenEnum and WNetEnumResources can be used to list the local drives, printer ports that have been redirected, and any UNC connections on a machine running Windows NT or Windows 95.  The code below demonstrates how to do this from Visual Basic b...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAY5,QBS0,QAH4,QDL9,QBWO,QBWN,QA0K,QBV8,QATX,QAI5,QAB9,QACJ,QAK7,QBWP,QBWQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: List Local Network Connections with WNetEnumResources</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 5, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q177697</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual Basic Professional and Enterprise Editions for
+   Windows, versions 4.0, 5.0
+<LI>Microsoft Windows NT versions 3.51, 4.0
+<LI>Microsoft Windows 95
+<LI>Microsoft Win32 Software Development Kit (SDK)
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+WNetOpenEnum and WNetEnumResources can be used to list the local drives,
+printer ports that have been redirected, and any UNC connections on a
+machine running Windows NT or Windows 95.
+<P>
+The code below demonstrates how to do this from Visual Basic by first
+calling WNetOpenEnum with the dwType parameter set to RESOURCETYPE_ANY. A
+valid handle returned via the last parameter is passed to
+WNetEnumResources. This function fills a temporary buffer with an array of
+NETRESOURCE structures, which includes information about the local network
+connections.
+<P>
+Note that this functionality will not list the resources that are
+redirected on a remote machine. No such functionality exists in either
+operating system.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The sample includes one form and one module. Follow the steps below to
+create it.
+
+<OL><P><LI>Create a new project and add the following code to the form:
+<P>
+   Option Explicit
+<P>
+   Private Const GMEM_FIXED = &amp;H0
+   Private Const GMEM_ZEROINIT = &amp;H40
+   Private Const GPTR = (GMEM_FIXED Or GMEM_ZEROINIT)
+<P>
+<PRE>   Private Declare Function GlobalAlloc Lib "KERNEL32" ( _
+      ByVal wFlags As Long, ByVal dwBytes As Long) As Long
+   Private Declare Function GlobalFree Lib "KERNEL32" ( _
+      ByVal hMem As Long) As Long
+
+   Private Declare Sub CopyMemory Lib "KERNEL32" Alias "RtlMoveMemory" ( _
+      hpvDest As Any, hpvSource As Any, ByVal cbCopy As Long)
+
+   Private Declare Function CopyPointer2String Lib "KERNEL32" _
+      Alias "lstrcpyA" ( _
+      ByVal NewString As String, ByVal OldString As Long) As Long
+
+   Private Sub Form_click()
+      Dim hEnum As Long, lpBuff As Long, nr As NETRESOURCE
+      Dim cbBuff As Long, cCount As Long
+      Dim p As Long, res As Long, i As Long
+
+      'Setup the NETRESOURCE input structure
+      nr.dwUsage = RESOURCEUSAGE_CONTAINER
+      nr.lpRemoteName = 0
+      cbBuff = 1000
+      cCount = &amp;HFFFFFFFF
+
+      'Open a Net enumeration operation handle: hEnum
+      res = WNetOpenEnum(RESOURCE_CONNECTED, RESOURCETYPE_ANY, _
+                         0, nr, hEnum)
+      If res = 0 Then
+         'Create a buffer large enough for the results.
+         '1000 bytes should be sufficient
+         lpBuff = GlobalAlloc(GPTR, cbBuff)
+         'Call the enumeration function
+         res = WNetEnumResource(hEnum, cCount, lpBuff, cbBuff)
+         If res = 0 Then
+            p = lpBuff
+            Cls
+            'WNetEnumResource fills the buffer with an array of NETRESOURCE
+            'structures. Walk through the list and print each local and
+            'remote name
+            For i = 1 To cCount
+               CopyMemory nr, ByVal p, LenB(nr)
+               p = p + LenB(nr)
+               Print PointerToString(nr.lpLocalName), _
+                     PointerToString(nr.lpRemoteName)
+            Next i
+         Else
+            MsgBox "Error: " &amp; Err.LastDllError, vbOKOnly, _
+                   "WNetEnumResources"
+         End If
+         If lpBuff &lt;&gt; 0 Then GlobalFree (lpBuff)
+         WNetCloseEnum (hEnum) 'Close the enumeration
+      Else
+         MsgBox "Error: " &amp; Err.LastDllError, vbOKOnly, "WNetOpenEnum"
+      End If
+   End Sub
+
+   Private Function PointerToString(p As Long) As String
+      'The values returned in the NETRESOURCE structures are pointers to
+      'ANSI strings so they need to be converted to Visual Basic Strings
+      Dim s As String
+      s = String(255, Chr$(0))
+      CopyPointer2String s, p
+      PointerToString = Left(s, InStr(s, Chr$(0)) - 1)
+   End Function
+
+</PRE><P><LI>Add a new module to the project and add the following code:
+<P>
+   Option Explicit
+<P>
+   Public Type NETRESOURCE
+<PRE>           dwScope As Long
+           dwType As Long
+           dwDisplayType As Long
+           dwUsage As Long
+           lpLocalName As Long
+           lpRemoteName As Long
+           lpComment As Long
+           lpProvider As Long
+   End Type
+
+   Public Declare Function WNetOpenEnum Lib "mpr.dll" Alias _
+       "WNetOpenEnumA" ( _
+       ByVal dwScope As Long, _
+       ByVal dwType As Long, _
+       ByVal dwUsage As Long, _
+       lpNetResource As Any, _
+       lphEnum As Long) As Long
+
+   Public Declare Function WNetEnumResource Lib "mpr.dll" Alias _
+       "WNetEnumResourceA" ( _
+       ByVal hEnum As Long, _
+       lpcCount As Long, _
+       ByVal lpBuffer As Long, _
+       lpBufferSize As Long) As Long
+
+   Public Declare Function WNetCloseEnum Lib "mpr.dll" ( _
+       ByVal hEnum As Long) As Long
+
+   ' RESOURCE ENUMERATION
+   Public Const RESOURCE_CONNECTED = &amp;H1
+   Public Const RESOURCE_GLOBALNET = &amp;H2
+   Public Const RESOURCE_REMEMBERED = &amp;H3
+
+   Public Const RESOURCETYPE_ANY = &amp;H0
+   Public Const RESOURCETYPE_DISK = &amp;H1
+   Public Const RESOURCETYPE_PRINT = &amp;H2
+   Public Const RESOURCETYPE_UNKNOWN = &amp;HFFFF
+
+   Public Const RESOURCEUSAGE_CONNECTABLE = &amp;H1
+   Public Const RESOURCEUSAGE_CONTAINER = &amp;H2
+   Public Const RESOURCEUSAGE_RESERVED = &amp;H80000000
+
+</PRE><P><LI>Execute the program. When you click on the form, a list of all the local
+   network connections should be displayed, along with the shares they are
+   connected to.
+</OL> 
+<PRE>Keywords          : VB4WIN vb5all vb5howto
+Version           : WINDOWS:4.0,5.0,95; WINNT:3.51,4.0
+Platform          : WINDOWS winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 5, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

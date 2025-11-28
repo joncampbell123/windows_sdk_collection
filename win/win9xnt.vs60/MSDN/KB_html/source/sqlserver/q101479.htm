@@ -1,0 +1,213 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Recovering from Full Transaction Log in User Database </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q101479">
+<META NAME="KBModify" CONTENT="1997/04/03">
+<META NAME="KBCreate" CONTENT="1993/07/14">
+<META NAME="Keywords" CONTENT="kbother SsrvAdmin">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  With SQL Server versions earlier than 4.2aK7, database recovery at SQL Server startup requires that a CHECKPOINT record be written to each database. Should the transaction log of a user database become so full that a checkpoint record cannot be wri...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAZV,QAS1,QABM,QDMH,QAGU,QALQ,QAUJ,QAB9,QBXS,QA5V,QAXB,QAI5,QALW,QBV8,QBCF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Recovering from Full Transaction Log in User Database</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 3, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q101479</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+With SQL Server versions earlier than 4.2aK7, database recovery at SQL
+Server startup requires that a CHECKPOINT record be written to each
+database. Should the transaction log of a user database become so full
+that a checkpoint record cannot be written the database owning the
+full transaction log will be marked suspect by the recovery process.
+This document describes the procedure to recover a database which has
+been marked as suspect due to this problem.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following documented procedure should ONLY be used for dumping the
+log of a full USER database. Do NOT use it for any other reason!
+Remember, if the log fills up at runtime, you can issue a DUMP TRAN
+WITH NO_LOG without going through any of the following procedure. This
+procedure cannot be used to recover a master database.
+<P>
+The correct procedure for dumping the log in a full USER database is:
+<P>
+<PRE>   Start SQL Server as usual. The database that has the full transaction
+   log will be marked suspect by recovery. Make a note of the user
+   defined options that were set for this database as they will have to
+   be reset when this procedure has been completed. These options can be
+   examined by issuing the SP_HELPDB stored procedure and specifying the
+   desired database as the first parameter.
+
+</PRE>After the current database options have been noted, execute the
+following sequence of SQL commands:
+<P>
+&gt; /* allow updates to system tables */
+&gt; sp_configure  'allow', 1
+&gt; go
+&gt;
+&gt; /* causes sp_configure to take effect */
+&gt; reconfigure with override
+&gt; go
+&gt;
+&gt; begin tran
+&gt; go
+&gt;
+&gt; /* status 4112 = 0x1010=&gt;(single user | no checkpoint on recovery) */
+&gt; update master..sysdatabases
+<PRE>&gt;     set status = 4112 where name = "&lt;database name&gt;"
+</PRE>&gt; go
+<P>
+Check that the above command affected only one row. If not, issue a
+ROLLBACK and start over. If so, execute the following commands:
+<P>
+&gt; commit tran
+&gt; go
+&gt; shutdown
+&gt; go
+<P>
+restart SQL Server
+<P>
+&gt; dump tran &lt;database name&gt; with no_log
+&gt; go
+<P>
+At this point you will get error 924: "db X is already open and can
+only have one user at a time...." Ignore this message, the dump has
+taken place.
+<P>
+&gt; sp_dboption &lt;database name&gt;, 'no chkpt', false
+&gt; go
+&gt; sp_dboption &lt;database name&gt;, 'single', false
+&gt; go
+<P>
+Reset any options that might have been on in the database like 'select
+into' before the status field was set to 4112.
+<P>
+&gt; use &lt;database name&gt;
+&gt; go
+&gt; checkpoint
+&gt; go
+&gt; sp_configure 'allow', 0
+&gt; go
+&gt; reconfigure with override
+&gt; go
+<P>
+The database should now be fully usable and the log truncated. It is
+STRONGLY advised at this point to perform a full database backup as
+the transaction log has just been truncated, thus preventing future
+transaction log dumps from being applied until the database is dumped.
+<P>
+Note again that the above method is ONLY for the situation where the
+database has been marked "suspect" by recovery because the transaction
+log is full. This will be accompanied by SQL Server message 1105. If
+the database has been marked "suspect" for any other reason, it may be
+indicative of a serious problem. Contact your primary support provider
+or drop and recreate the database and restore data from backups.
+<P>
+NOTE: This document applies only to 4.2aK6 and earlier. Servers at
+K7 or greater will not mark the database as suspect.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 4.20 Transact-SQL 3414<BR>
+Keywords            : kbother SsrvAdmin<BR>
+Version             : 4.20<BR>
+Platform            : OS/2<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 3, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

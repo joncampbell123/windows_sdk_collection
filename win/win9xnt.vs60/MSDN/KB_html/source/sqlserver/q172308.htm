@@ -1,0 +1,217 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Manipulate DBCS Data in a Text Field </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q172308">
+<META NAME="KBModify" CONTENT="1997/08/29">
+<META NAME="KBCreate" CONTENT="1997/08/01">
+<META NAME="Keywords" CONTENT="SSrvGen kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article describes how to correctly manipulate double-byte character set (DBCS) data in text fields.  MORE INFORMATION  UPDATETEXT and WRITETEXT are powerful tools that allow users to modify existing text data through a text pointer. While usin...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QATX,QAWP,QAMB,QA2Q,QAG2,QALG,QBWS,QABM,QA75,QAY2,QAS1,QAIJ,QACI,QDNQ,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Manipulate DBCS Data in a Text Field</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 29, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q172308</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes how to correctly manipulate double-byte character
+set (DBCS) data in text fields.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+UPDATETEXT and WRITETEXT are powerful tools that allow users to modify
+existing text data through a text pointer. While using a text pointer, it
+is very common for users to accidentally split a double-byte character in
+half. This may result in "data corruption" from user's perspective. The
+following scripts demonstrate this common problem.
+<P>
+<PRE>   USE pubs
+   GO
+
+   SET NOCOUNT ON
+
+   DROP TABLE textTable
+   GO
+
+   CREATE TABLE textTable
+   (
+      id SMALLINT
+         IDENTITY(1,1)
+         PRIMARY KEY CLUSTERED,
+      hexValues VARBINARY(20) NOT NULL,
+      textField TEXT NOT NULL
+   )
+   GO
+
+   DECLARE @hexValues VARBINARY(20)
+   SELECT @hexValues = 0xa540a541a542
+   INSERT textTable VALUES
+      (@hexValues,
+         CONVERT (VARCHAR(20), @hexValues))
+   INSERT textTable VALUES
+      (@hexValues,
+         CONVERT (VARCHAR(20), @hexValues))
+   GO
+
+   SELECT * FROM textTable
+
+   DECLARE @hexValues VARBINARY(20)
+   SELECT @hexValues = 0xa543
+   DECLARE @string VARCHAR(20)
+   SELECT @string = CONVERT(VARCHAR(20), @hexValues)
+
+   DECLARE @textPointer VARBINARY(16)
+   SELECT @textPointer = TEXTPTR(textField)
+      FROM textTable WHERE id = 2
+   UPDATETEXT textTable.textField @textPointer 1 2 @string
+
+   UPDATE textTable
+      SET hexValues =
+         CONVERT (VARBINARY(20), CONVERT(VARCHAR(20), textField))
+      WHERE id = 2
+
+</PRE>As the execution result indicates, the text data becomes invalid because a
+double-byte character has been split. It is important for users to check
+whether the target offset from the start of the existing text is a lead
+byte or not, so that incorrect results can be avoided. The following
+sample scripts demonstrate checking the target offset of a text field in a
+SQL Server that was installed with code page 950. Please note the lead
+byte ranges may vary in the other DBCS code pages. For more information
+about lead byte ranges in different code pages, please see "Developing
+International Software for Windows 95 and Windows NT" (ISBN 1-55615-840-8).
+<P>
+<PRE>   CREATE PROCEDURE IsThisLeadByteInCP950
+      @string VARCHAR(255), @offset SMALLINT
+   /* @string: is the target string that will be checked */
+   /* @offset: is the 1-based starting position,         */
+   /*          specified as the number of bytes (from    */
+   /*          the start of the existing text value) to  */
+   /*          skip.                                     */
+   AS
+      SELECT @string = RIGHT(REVERSE(@string), @offset)
+      DECLARE @i SMALLINT
+      SELECT @i = ASCII(@string)
+      IF @i &gt;= 129 and @i &lt;= 254
+      /* lead byte range: 0x81 to 0xFE */
+         RETURN 1
+      ELSE
+         RETURN 0
+   GO
+
+   DECLARE @hexValues VARBINARY(20)
+   SELECT @hexValues = 0xa540a541a542
+   DECLARE @string VARCHAR(20)
+   SELECT @string = CONVERT(VARCHAR(20), @hexValues)
+   DECLARE @i SMALLINT
+   EXEC @i = IsThisLeadByteInCP950 @string, 1
+   IF (@i = 1)
+      PRINT "It is a lead byte in code page 950, command aborted."
+   ELSE
+      PRINT "It is not a lead byte in code page 950, command continue..."
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: JIS Wansung Johab Hangul KB BIG-5 932 936 949 950<BR>
+traditional Chinese Japanese Korean codepage cp<BR>
+Keywords          : SSrvGen kbusage<BR>
+Version           : WINDOWS:6.5<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 29, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

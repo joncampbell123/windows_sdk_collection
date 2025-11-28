@@ -1,0 +1,210 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Enable Connection Pooling in an ODBC Application </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q164221">
+<META NAME="KBModify" CONTENT="1997/07/21">
+<META NAME="KBCreate" CONTENT="1997/02/26">
+<META NAME="Keywords" CONTENT="kbprg SSrvProg kbother">
+<META NAME="KBArea" CONTENT="Support; KB; odbc">
+<META NAME="Description" CONTENT="  This article describes how to enable connection pooling in an ODBC application.  MORE INFORMATION  Microsoft ODBC version 3.0 introduced the concept of connection pooling. Connection pooling enables an ODBC application to reuse an existing connecti...">
+<META NAME="Product" CONTENT="ODBC">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAI5,QBG2,QA9E,QAJH,QAAP,QAB4,QAKD,QAGI,QA8O,QAU3,QAMR,QAHH,QAI4,QAFH V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Enable Connection Pooling in an ODBC Application</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 21, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q164221</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Open Database Connectivity, version 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes how to enable connection pooling in an ODBC
+application.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Microsoft ODBC version 3.0 introduced the concept of connection pooling.
+Connection pooling enables an ODBC application to reuse an existing
+connection from a pool, so the ODBC application does not have to
+go through the complete connection process for any subsequent connection.
+<P>
+When an ODBC application disconnects a connection, the connection is saved
+into a pool instead of actually disconnected. How long this connection
+remains in the pool depends on the CPTimeout property of the ODBC driver.
+When the timeout expires, the connection will be closed and removed from
+the pool. The ODBC application can use SQLConfigDriver to change the value
+of CPTimeout, and this value applies to all the ODBC applications that are
+using the specified ODBC driver. The default value for the CPTimeout is 60
+seconds.
+<P>
+Connection pooling is very useful when an ODBC application like Microsoft
+Internet Information Server (for example) connects and disconnects
+frequently. Microsoft Internet Information server (IIS) version 3.0 with
+Active Server Pages (ASP) takes advantage of connection pooling. You can
+enable connection pooling for IIS users by changing the value of
+StartConnectionPool to 1. The StartConnectionPool is located under
+HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\W3SVC\ASP\Parameters.
+<P>
+An ODBC application can use SQLSetEnvAttr to enable connection pooling. The
+following is an example of how to enable connection pooling in an ODBC
+application:
+<P>
+<PRE>   #include &lt;windows.h&gt;
+   #include &lt;stdio.h&gt;
+   #include &lt;sql.h&gt;
+   #include &lt;sqlext.h&gt;
+
+   void main()
+   {
+   SQLHENV   henv;
+   SQLHDBC   hdbc;
+   int       i=0;
+
+   if (!SQL_SUCCEEDED(SQLSetEnvAttr(
+      NULL,  // make process level cursor pooling
+      SQL_ATTR_CONNECTION_POOLING,
+      (SQLPOINTER)SQL_CP_ONE_PER_DRIVER,
+      SQL_IS_INTEGER)))
+   printf("SQLSetEnvAttr/SQL_ATTR_CONNECTION_POOLING error\n");
+
+   if (!SQL_SUCCEEDED(SQLAllocHandle(SQL_HANDLE_ENV, NULL, &amp;henv)))
+      printf("SQLAllocHandle error\n");
+
+   // set the ODBC behavior version.
+   if (!SQL_SUCCEEDED(SQLSetEnvAttr(henv, SQL_ATTR_ODBC_VERSION,
+   (SQLPOINTER) SQL_OV_ODBC2, SQL_IS_INTEGER)))
+      printf("SQLSetEnvAttr/SQL_ATTR_ODBC_VERSION error\n");
+
+   //set the matching condition for using an existing connection in the
+   pool
+   if (!SQL_SUCCEEDED(SQLSetEnvAttr(henv, SQL_ATTR_CP_MATCH,
+   (SQLPOINTER) SQL_CP_RELAXED_MATCH, SQL_IS_INTEGER)))
+   printf("SQLSetEnvAttr/SQL_ATTR_CP_MATCH error\n");
+
+</PRE>while (i &lt; 10) {
+<PRE>   if (!SQL_SUCCEEDED(SQLAllocHandle(SQL_HANDLE_DBC,
+      henv, &amp;hdbc)))
+      printf("SQLAllocHandle error\n");
+      if (!SQL_SUCCEEDED(SQLConnect(hdbc,
+   (unsigned char*)"testing\0", SQL_NTS,
+      (unsigned char*)"sa\0", SQL_NTS,
+   (unsigned char*)"\0", SQL_NTS)))
+      printf("SQLConnect error\n");
+   else
+      printf("Connect successfully %d times\n", i);
+   //the first time, the application calls SQLDisconenct, it will return
+                 //the connection to the //pool
+   SQLDisconnect(hdbc);
+
+   if (!SQL_SUCCEEDED(SQLFreeHandle(SQL_HANDLE_DBC, hdbc)))
+      printf("SQLFreeHandle error\n");
+   i++;
+   }
+   SQLFreeHandle(SQL_HANDLE_ENV, henv);
+   }
+
+</PRE>When the ODBC application calls SQLDisconnect the first time, the
+connection is saved to the pool. Any subsequent SQLConnect/SQLDisconnect
+that matches the required condition will reuse the first connection.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: viper asp<BR>
+Keywords            : kbprg SSrvProg kbother<BR>
+Version             : 3.0<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 21, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

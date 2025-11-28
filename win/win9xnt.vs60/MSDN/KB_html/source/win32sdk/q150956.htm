@@ -1,0 +1,295 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: Redirection Issues on Windows 95 MS-DOS Applications </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q150956">
+<META NAME="KBModify" CONTENT="1997/04/10">
+<META NAME="KBCreate" CONTENT="1996/05/13">
+<META NAME="Keywords" CONTENT="BseCon kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Due to implementation differences on the Microsoft Windows 95 and Microsoft Windows NT platforms, you need to follow special steps to allow the same code to redirect the output of MS-DOS applications and batch (.BAT) files on both platforms.  MORE ...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABB,QABA,QAJH,QAI4,QAM5,QDL9,QBWO,QBWN,QAH4,QA5A,QBHU,QBHT,QBFN,QAJQ,QBWQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: Redirection Issues on Windows 95 MS-DOS Applications</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q150956</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Due to implementation differences on the Microsoft Windows 95 and Microsoft
+Windows NT platforms, you need to follow special steps to allow the same
+code to redirect the output of MS-DOS applications and batch (.BAT) files
+on both platforms.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When you redirect the output of an MS-DOS application or a batch file to a
+Win32 GUI or Console application, the intuitive method is to launch the
+MS-DOS process as a DETACHED_PROCESS with a redirected standard output
+handle to an anonymous pipe. The parent then uses the read end of the pipe
+to read the redirected output of the MS-DOS process.
+<P>
+This design works as expected on Windows NT. For an example of this design,
+please refer to the INHERIT sample that ships with the Microsoft Win32
+Software Developer Kit (SDK) under the Q&amp;A directory. On Windows 95,
+however, this design causes the parent process to hang because the
+redirection pipe does not close when a redirected MS-DOS application or
+batch file exits.
+<P>
+A simple solution is to launch a hidden Win32 console application as an
+interface between the parent Win32 application and the MS-DOS child. The
+Win32 application spawns a "hidden" console application that inherits
+standard handles that have been redirected to an anonymous pipe. The hidden
+console application then spawns the MS-DOS application, causing the MS-DOS
+application to inherit the hidden console. This behavior results in the
+MS-DOS application indirectly inheriting the redirected standard handles of
+the Win32 application.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The code below outlines a technique that works correctly on both Windows NT
+and Windows 95. To explain how the pipes work, two pipes are created, one
+for standard output and one for standard input. For the standard output
+pipe, the write end is given to the child process for its standard output
+and standard error handles. For the standard input handle, the read end is
+given to the child process for its standard input handle.
+<P>
+<PRE>/*-----------------------Win32 application code----------------------------
+
+</PRE>This code redirects standard handles of the Win32 application and then
+spawns a console application (CONSPAWN.EXE.) with a hidden window. CONSPAWN
+inherits the redirected standard handles and spawns the application passed
+to it on its Command line (DOSAPP.EXE.) When DOSAPP.EXE writes to its
+STDOUT or STDERR handles, the output is redirected to the pipe created in
+this Win32 application.
+-------------------------------------------------------------------------*/
+<P>
+<PRE>      SECURITY_ATTRIBUTES sa          = {0};
+      STARTUPINFO         si          = {0};
+      PROCESS_INFORMATION pi          = {0};
+      HANDLE              hPipeOutputRead  = NULL;
+      HANDLE              hPipeOutputWrite = NULL;
+      HANDLE              hPipeInputRead   = NULL;
+      HANDLE              hPipeInputWrite  = NULL;
+      BOOL                bTest = 0;
+      DWORD               dwNumberOfBytesRead = 0;
+      CHAR                szMsg[100];
+      CHAR                szBuffer[256];
+
+      sa.nLength = sizeof(sa);
+      sa.bInheritHandle = TRUE;
+      sa.lpSecurityDescriptor = NULL;
+
+
+      // Create pipe for standard output redirection.
+      CreatePipe(&amp;hPipeOutputRead,  // read handle
+              &amp;hPipeOutputWrite, // write handle
+              &amp;sa,      // security attributes
+              0      // number of bytes reserved for pipe - 0 default
+              );
+
+      // Create pipe for standard input redirection.
+      CreatePipe(&amp;hPipeInputRead,  // read handle
+              &amp;hPipeInputWrite, // write handle
+              &amp;sa,      // security attributes
+              0      // number of bytes reserved for pipe - 0 default
+              );
+
+      // Make child process use hPipeOutputWrite as standard out,
+      // and make sure it does not show on screen.
+      si.cb = sizeof(si);
+      si.dwFlags     = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+      si.wShowWindow = SW_HIDE;
+      si.hStdInput   = hPipeInputRead;
+      si.hStdOutput  = hPipeOutputWrite;
+      si.hStdError   = hPipeOutputWrite;
+
+      CreateProcess (
+            NULL, "CONSPAWN.EXE DOSAPP.EXE",
+            NULL, NULL,
+            TRUE, 0,
+            NULL, NULL,
+            &amp;si, &amp;pi);
+
+      // Now that handles have been inherited, close it to be safe.
+      // You don't want to read or write to them accidentally.
+      CloseHandle(hPipeOutputWrite);
+      CloseHandle(hPipeInputRead);
+
+      // Now test to capture DOS application output by reading
+      // hPipeOutputRead.  Could also write to DOS application
+      // standard input by writing to hPipeInputWrite.
+
+      while(TRUE)
+      {
+         bTest=ReadFile(
+            hPipeOutputRead,      // handle of the read end of our pipe
+            &amp;szBuffer,            // address of buffer that receives data
+            256,                  // number of bytes to read
+            &amp;dwNumberOfBytesRead, // address of number of bytes read
+            NULL                  // non-overlapped.
+            );
+
+        if (!bTest){
+            wsprintf(szMsg, "Error #%d reading pipe.",GetLastError());
+            MessageBox(NULL, szMsg, "Test", MB_OK);
+            break;
+        }
+
+        // do something with data.
+        szBuffer[dwNumberOfBytesRead] = 0;  // null terminate
+        MessageBox(NULL, szBuffer, "Test", MB_OK);
+      }
+
+      // Wait for CONSPAWN to finish.
+      WaitForSingleObject (pi.hProcess, INFINITE);
+
+      // Close all remaining handles
+      CloseHandle (pi.hProcess);
+      CloseHandle (hPipeOutputRead);
+      CloseHandle (hPipeInputWrite);
+
+/*----------Console application (CONSPAWN.EXE) code-----------------------
+
+</PRE>This program (CONSPAWN) is launched with a hidden console that inherits the
+redirected standard handles of the Win32 application. The application that
+CONSPAWN launches in the same hidden console inherits the same redirected
+standard handles. This behavior redirects the standard handles of the
+MS-DOS application to be launched to the pipe created in the parent Win32
+application.
+-------------------------------------------------------------------------*/
+<P>
+<PRE>    #include &lt;windows.h&gt;
+    #include &lt;stdio.h&gt;
+
+    void main (int argc, char *argv[])
+    {
+        BOOL                bRet = FALSE;
+        STARTUPINFO         si   = {0};
+        PROCESS_INFORMATION pi   = {0};
+
+        // Make child process use this app's standard files.
+        si.cb = sizeof(si);
+        si.dwFlags    = STARTF_USESTDHANDLES;
+        si.hStdInput  = GetStdHandle (STD_INPUT_HANDLE);
+        si.hStdOutput = GetStdHandle (STD_OUTPUT_HANDLE);
+        si.hStdError  = GetStdHandle (STD_ERROR_HANDLE);
+
+        bRet = CreateProcess (NULL, argv[1],
+                         NULL, NULL,
+                         TRUE, 0,
+                         NULL, NULL,
+                         &amp;si, &amp;pi
+                         );
+        if (bRet)
+        {
+            WaitForSingleObject (pi.hProcess, INFINITE);
+            CloseHandle (pi.hProcess);
+            CloseHandle (pi.hThread);
+        }
+    }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 95 win95 winnt inherit std redirect<BR>
+Keywords            : BseCon kbprg<BR>
+Platform            : Win95<BR>
+Issue type          : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

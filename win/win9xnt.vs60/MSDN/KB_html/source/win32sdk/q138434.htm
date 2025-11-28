@@ -1,0 +1,268 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How Win32-Based Applications Read CD-ROM Sectors in Windows NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q138434">
+<META NAME="KBModify" CONTENT="1995/10/20">
+<META NAME="KBCreate" CONTENT="1995/10/19">
+<META NAME="Keywords" CONTENT="kbprg kbmm kbhowto kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Some Win32-based applications, such as multimedia applications and games, need to read sectors directly from compact discs in order to implement custom access and read caching that will optimize access for specific purposes. This article provides i...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBXM,QBWP,QAY2,QBFN,QDLP,QAC9,QAK2,QAJH,QAI4,QAH4,QDL9,QBWQ,QBWO,QBWN,QAIJ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How Win32-Based Applications Read CD-ROM Sectors in Windows NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 20, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q138434</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface included with:
+   Microsoft Windows NT versions 3.50 and 3.51
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Some Win32-based applications, such as multimedia applications and games,
+need to read sectors directly from compact discs in order to implement
+custom access and read caching that will optimize access for specific
+purposes. This article provides information and example code that
+demonstrates how Win32-based applications can read sectors from compact
+discs in cooked mode in Windows NT.
+<P>
+Windows 95 does not support this method for reading sectors from compact
+discs. For more information about how to read sectors from compact discs in
+Windows 95, please see the following article in the Microsoft Knowledge
+Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q137813.htm">Q137813</A></B>
+   TITLE     : How Win32 Applications Can Read CD-ROM Sectors in Windows 95
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+The Windows NT CD-ROM File System (CDFS) currently supports compact discs
+formatted with either the ISO 9660 or High Sierra file systems. CDFS does
+not support other file systems, so Win32-based applications cannot read
+sectors from discs formatted with file systems other than ISO 9660 or High
+Sierra.
+<P>
+<P><h3>Steps to Read Sectors from Compact Discs</h3>
+ 
+<P>
+Win32-based applications can read sectors in cooked mode from compact disks
+in the same way they read sectors from floppy and hard disks. Because the
+reads are in cooked mode, no error correcting codes are included in the
+sector data that the application reads. Follow these three basic steps:
+
+<OL><P><LI>Use CreateFile to open a CD-ROM drive with the syntax \\.\X: where X is
+   the letter of the CD-ROM drive.
+
+<P><LI>Use ReadFile or ReadFileEx to read sectors.
+
+<P><LI>Use CloseHandle to close the CD-ROM drive.
+<P>
+</OL>As with floppy and hard disks, all sector reads must start on sector
+boundaries on the compact disc and must be an integral number of sectors
+long. Furthermore, the buffers used for the reads must be aligned on
+addresses that fall on sector boundaries. For example, because a sector on
+a compact disc is normally 2048 bytes, the buffer that receives the sector
+data must be a multiple of 2048 and must start on an address that is a
+multiple of 2048. An easy way to guarantee the that the buffer will start
+on a multiple of 2048 is to allocate it with VirtualAlloc. Finally,
+although sectors on compact discs are normally 2048 bytes, you should use
+the DeviceIoControl IOCTL_CDROM_GET_DRIVE_GEOMETRY command to return the
+sector size to avoid hard-coded limits.
+<P>
+<P><h3>Issuing DeviceIoControl IOCTL Commmands to CD-ROM Drives</h3>
+ 
+<P>
+Whenf reading sectors from compact discs, applications usually need to use
+a few support functions that provide capabilities such as determining the
+characteristics of the media and locking the media in the drive so that it
+can't be removed accidentally. These functions are provided by
+DeviceIoControl IOCTL commands.
+<P>
+To issue IOCTL commands to CD-ROM drives, Win32-based applications must use
+the IOCTL compact disc commands defined in Ntddcdrm.h instead of the IOCTL
+disk commands defined in Winioctl.h. The IOCTL disk commands will fail if
+issued for compact discs. Documentation for the IOCTL compact disc commands
+is located in the Windows NT DDK. The Ntddcdrm.h header file is located in
+the Windows NT DDK in the \Ddk\Src\Storage\Inc directory.
+<P>
+<P><h3>Example Code that Reads Sectors from a Compact Disc</h3>
+ 
+<P>
+The following code demonstrates how to read sectors from a compact disc
+from a Win32-based application running on Windows NT.
+<P>
+<PRE>#include &lt;windows.h&gt;
+#include &lt;winioctl.h&gt;  // From the Win32 SDK \Mstools\Include
+#include "ntddcdrm.h"  // From the Windows NT DDK \Ddk\Src\Storage\Inc
+
+/*
+   This code reads sectors 16 and 17 from a compact disc and writes
+   the contents to a disk file named Sector.dat
+*/
+
+</PRE></OL>{
+<PRE>   HANDLE  hCD, hFile;
+   DWORD   dwNotUsed;
+
+   //  Disk file that will hold the CD-ROM sector data.
+   hFile = CreateFile ("sector.dat",
+                       GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL, NULL);
+
+   // For the purposes of this sample, drive F: is the CD-ROM
+   // drive.
+   hCD = CreateFile ("\\\\.\\F:", GENERIC_READ,
+                     FILE_SHARE_READ|FILE_SHARE_WRITE,
+                     NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+                     NULL);
+
+   // If the CD-ROM drive was successfully opened, read sectors 16
+   // and 17 from it and write their contents out to a disk file.
+   if (hCD != INVALID_HANDLE_VALUE)
+   {
+      DISK_GEOMETRY         dgCDROM;
+      PREVENT_MEDIA_REMOVAL pmrLockCDROM;
+
+      // Lock the compact disc in the CD-ROM drive to prevent accidental
+      // removal while reading from it.
+      pmrLockCDROM.PreventMediaRemoval = TRUE;
+      DeviceIoControl (hCD, IOCTL_CDROM_MEDIA_REMOVAL,
+                       &amp;pmrLockCDROM, sizeof(pmrLockCDROM), NULL,
+                       0, &amp;dwNotUsed, NULL);
+
+      // Get sector size of compact disc
+      if (DeviceIoControl (hCD, IOCTL_CDROM_GET_DRIVE_GEOMETRY,
+                           NULL, 0, &amp;dgCDROM, sizeof(dgCDROM),
+                           &amp;dwNotUsed, NULL))
+      {
+         LPBYTE lpSector;
+         DWORD  dwSize = 2 * dgCDROM.BytesPerSector;  // 2 sectors
+
+         // Allocate buffer to hold sectors from compact disc. Note that
+         // the buffer will be allocated on a sector boundary because the
+         // allocation granularity is larger than the size of a sector on a
+         // compact disk.
+         lpSector = VirtualAlloc (NULL, dwSize,
+                                  MEM_COMMIT|MEM_RESERVE,
+                                  PAGE_READWRITE);
+
+         // Move to 16th sector for something interesting to read.
+         SetFilePointer (hCD, dgCDROM.BytesPerSector * 16,
+                         NULL, FILE_BEGIN);
+
+         // Read sectors from the compact disc and write them to a file.
+         if (ReadFile (hCD, lpSector, dwSize, &amp;dwNotUsed, NULL))
+            WriteFile (hFile, lpSector, dwSize, &amp;dwNotUsed, NULL);
+
+         VirtualFree (lpSector, 0, MEM_RELEASE);
+      }
+
+      // Unlock the disc in the CD-ROM drive.
+      pmrLockCDROM.PreventMediaRemoval = FALSE;
+      DeviceIoControl (hCD, IOCTL_CDROM_MEDIA_REMOVAL,
+                       &amp;pmrLockCDROM, sizeof(pmrLockCDROM), NULL,
+                       0, &amp;dwNotUsed, NULL);
+
+      CloseHandle (hCD);
+      CloseHandle (hFile);
+   }
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.5 3.51 sector cdrom cd-rom<BR>
+KBCategory: kbprg kbmm kbhowto kbcode<BR>
+KBSubcategory: MMCDROM<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 20, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

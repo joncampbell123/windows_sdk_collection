@@ -1,0 +1,373 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Port a 16-bit DLL to a Win32 DLL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q125688">
+<META NAME="KBModify" CONTENT="1996/12/16">
+<META NAME="KBCreate" CONTENT="1995/02/01">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  There are several significant differences between Win16 DLLs and Win32 DLLs. These differences require more than just a simple recompilation to turn your Win16 DLL into a Win32 DLL. In this article we will show you how to port your Win16 DLL to a W...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAY5,QAH4,QDNN,QAUQ,QBV8,QAUD,QAHE,QAB9,QAIF,QBVV,QA3P,QA3A,QAYY,QBHQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Port a 16-bit DLL to a Win32 DLL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 16, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q125688</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.51 and 4.00
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+There are several significant differences between Win16 DLLs and Win32
+DLLs. These differences require more than just a simple recompilation to
+turn your Win16 DLL into a Win32 DLL. In this article we will show you how
+to port your Win16 DLL to a Win32 DLL.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The first major difference is that the Win32 DLL entry point is called with
+every process attach and detach. Secondly, you must account for the fact
+that processes can be multithreaded and as such your DLL entry point will
+be called with thread attach and detach messages. You need to ensure that
+your DLL is "thread-safe" by using multithreaded libraries and mutual
+exclusion for functions in your DLL that would otherwise cause data
+corruption when preempted and reentered. This requires that you use Win32
+synchronization methods to guard critical resources. Finally, each Win32
+process gets its own copy of the Win32 DLL's data.
+<P>
+<P><h3>Step One for Porting Your DLL</h3>
+ 
+<P>
+The first step in porting a DLL from 16-bit Windows to 32-bit Windows is
+moving code from your LibMain (or LibEntry) and _WEP (or WEP) to the new
+DLL initialization function. The new DLL initialization function is called
+DllMain. You might code your DllMain like this:
+<P>
+BOOL WINAPI DllMain (HANDLE hModule, DWORD fdwReason, LPVOID lpReserved)
+{
+<PRE>   switch (fdwReason)
+   {
+      case DLL_PROCESS_ATTACH:
+         /* Code from LibMain inserted here.  Return TRUE to keep the
+            DLL loaded or return FALSE to fail loading the DLL.
+
+            You may have to modify the code in your original LibMain to
+            account for the fact that it may be called more than once.
+            You will get one DLL_PROCESS_ATTACH for each process that
+            loads the DLL. This is different from LibMain which gets
+            called only once when the DLL is loaded. The only time this
+            is critical is when you are using shared data sections.
+            If you are using shared data sections for statically
+            allocated data, you will need to be careful to initialize it
+            only once. Check your code carefully.
+
+            Certain one-time initializations may now need to be done for
+            each process that attaches. You may also not need code from
+            your original LibMain because the operating system may now
+            be doing it for you.
+         */
+         break;
+
+      case DLL_THREAD_ATTACH:
+         /* Called each time a thread is created in a process that has
+            already loaded (attached to) this DLL. Does not get called
+            for each thread that exists in the process before it loaded
+            the DLL.
+
+            Do thread-specific initialization here.
+         */
+         break;
+
+      case DLL_THREAD_DETACH:
+         /* Same as above, but called when a thread in the process
+            exits.
+
+            Do thread-specific cleanup here.
+         */
+         break;
+
+      case DLL_PROCESS_DETACH:
+         /* Code from _WEP inserted here.  This code may (like the
+            LibMain) not be necessary.  Check to make certain that the
+            operating system is not doing it for you.
+         */
+         break;
+   }
+
+   /* The return value is only used for DLL_PROCESS_ATTACH; all other
+      conditions are ignored.  */
+   return TRUE;   // successful DLL_PROCESS_ATTACH
+}
+
+</PRE><h3>DllMain Called with Flags</h3>
+ 
+<P>
+There are several conditions where DllMain is called with the
+DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH, DLL_THREAD_ATTACH, or
+DLL_THREAD_DETACH flags.
+<P>
+The DLL_PROCESS_ATTACH flag is sent when a DLL is loaded into the address
+space of a process. This occurs in both situations where the DLL is loaded
+with LoadLibrary, or implicitly during application load. When the DLL is
+implicitly loaded, DllMain is executed with DLL_PROCESS_ATTACH before the
+processes enter WinMain. When the DLL is explicitly loaded, DllMain is
+executed with DLL_PROCESS_ATTACH before LoadLibrary returns.
+<P>
+The DLL_PROCESS_DETACH flag is sent when a process cleanly unloads the DLL
+from its address space. This occurs during a call to FreeLibrary, or if the
+DLL is implicitly loaded, a clean process exit. When a DLL is detaching
+from a process, the individual threads of the process do not call the
+DLL_THREAD_DETACH flag.
+<P>
+The DLL_THREAD_ATTACH flag is sent when a new thread is being created in a
+process already attached to the DLL. Threads in existence before the
+process attached to a DLL will not send the DLL_THREAD_ATTACH flag. The
+first thread to attach to the DLL does not send the DLL_THREAD_ATTACH flag;
+it sends the DLL_PROCESS_ATTACH flag instead.
+<P>
+The DLL_THREAD_DETACH flag is sent when a thread is exiting cleanly. There
+is a situation when DllMain may be called when the thread did not first
+send the DLL_THREAD_ATTACH flag. This can happen if there are other threads
+still running and the original thread exits cleanly. The thread originally
+called DllMain with the DLL_PROCESS_ATTACH flag and later calls DllMain
+with the DLL_THREAD_DETACH flag. You may also have DllMain being called
+with DLL_THREAD_DETACH if a thread exits but was running in the process
+before the call to LoadLibrary.
+<P>
+<P><h3>Situations Where DllMain is Not Called or Is Bypassed</h3>
+ 
+<P>
+DllMain may not be called at all in dire situations where a thread or
+process was killed by a call to TerminateThread or TerminateProcess. These
+functions bypass calling DllMain. They are recommended only as a last
+resort. Data owned by the thread or process is at risk of loss because the
+process or thread could not shut itself down properly.
+<P>
+DllMain may be bypassed intentionally by a process if it calls
+DisableThreadLibraryCalls. This function (available with Windows 95 and
+Windows NT versions 3.5 and later) disables all DLL_THREAD_ATTACH and
+DLL_THREAD_DETACH notifications for a DLL. This enables a process to reduce
+its code size and working set. For more information on this function, see
+the SDK documentation on DisableThreadLibraryCalls.
+<P>
+<P><h3>Step Two for Porting Your DLL</h3>
+ 
+<P>
+The second step of porting your DLL involves changing functions that were
+declared with __export and included in the module definition (.DEF) file
+EXPORTS section. The proper export declaration for the Microsoft Visual C++
+32-bit compiler and linker is __declspec(dllexport). This declaration
+should be used when prototyping and declaring functions. You do not have to
+explicitly declare an exported function in the DEF file for the proper LIB
+and EXP files to be created; __declspec(dllexport) will do this for you.
+Here's an example of an exported function:
+<P>
+<PRE>// prototype in DLL is necessary
+</PRE>__declspec(dllexport) DWORD WINAPI DLLFunc1(LPSTR);
+<P>
+<PRE>// function
+</PRE>__declspec(dllexport) DWORD WINAPI DLLFunc1(LPSTR lpszIn)
+{
+<PRE>   DWORD dwRes;
+
+   /* DLL function logic */
+
+   return dwRes;
+</PRE>}
+<P>
+To include the function in an application, prototype the above function in
+the application with the __declspec(dllimport) modifier.
+__declspec(dllimport) is not necessary, but does improve the speed of your
+code that implements the function call. Here's an example:
+<P>
+<PRE>   __declspec(dllimport) DWORD WINAPI DLLFunc1(LPSTR);
+
+</PRE>Then, link the DLL's import library (.LIB) file with the application
+makefile or project.
+<P>
+Some sections of your DEF file will be ignored by the 32-bit linker because
+of architectural differences between Win16 and Win32. You may still use the
+EXPORTS section of your DEF if you wish to include ordinals for exported
+functions, or to rename exported functions. See your linker documentation
+for more information about what is acceptable in a DEF file for a Win32
+DLL. Users of other 32-bit compilers and linkers will have to refer to
+their documentation for more information on exporting functions.
+<P>
+Applications that link to your DLL may be multithreaded. This possibility
+means that you should always build your Win32 DLL as multithreaded to
+support preemption and reentrancy. If you use runtime library functions in
+your DLL, they may be preempted and reentered. That would cause problems
+for a normal runtime library. If you use C runtime or some other runtime
+library, you should use a multithreaded version of the runtime library.
+Microsoft Visual C++ users should link with the /MT option and include
+LIBCMT.LIB. This will include the multithreaded C runtime library.
+Optionally, you can select the Multithreaded Run-time Library option in the
+project settings in the Visual Workbench. If you are using another runtime
+library and cannot get a multithreaded version of the library, you must
+protect calls to the library from reentrancy using a mutex or critical
+section synchronization object. Information later in this article discusses
+this issue.
+<P>
+<P><h3>Other Design Issues You Should Consider</h3>
+ 
+<P>
+One of the most significant changes to DLLs in 32-bit Windows operating
+systems is that each process executes in its own private address space.
+This means that a DLL cannot directly share dynamically-allocated memory
+between processes. Addresses are 32-bit offsets in a process's address
+space. Passing them between processes is possible, but won't work as in
+Win16 because each process has its own address space. In another process,
+this pointer may address unknown data, or invalid memory space.
+<P>
+"DS != SS" issues common to 16-bit DLLs no longer apply. A Win32 process
+executes in its own private address space and there is no segmentation of
+this address space. In a Win32 DLL, all functions are called using the
+calling thread's stack and all pointers are 32-bit linear addresses. In a
+Win32 process or DLL, a FAR pointer is the same as a near pointer. In other
+words, a pointer is just a pointer.
+<P>
+If you must share data, you can specify certain global variables to be
+shared among processes by using a shared data section in the DLL. For more
+information on shared data sections, please search the Microsoft Knowledge
+Base using the following words:
+<P>
+<PRE>   #pragma data_seg
+
+</PRE>or:
+<P>
+<PRE>   sections share dll
+
+</PRE>You can also use a file-mapping object to share memory by sharing the
+system page file. This will allow two different processes to share dynamic
+memory. For more information on file mapping objects, please search the
+Microsoft Knowledge Base using these words:
+<P>
+<PRE>   shared memory
+
+</PRE>Another significant change in the behavior of Win32 DLLs from Win16 DLLs is
+the inclusion of synchronization. The Win32 API provides synchronization
+objects that allow the programmer to implement correct synchronization. You
+should be aware that your 32-bit DLL may be preempted and called again from
+a different thread in the process. For example, if a thread executing a DLL
+function accesses global data and is preempted and another function
+modifies the same data, the original thread will resume but will be using
+modified data. You'll need to use synchronization objects to resolve this
+situation.
+<P>
+Your Win32 DLL may also be preempted by a thread in a different process.
+This situation becomes important if the functions use shared data sections
+or file mappings. You will need to examine the functions in a DLL to
+determine if this will cause problems. If so, you will have to control
+access to data or sections of code that are sensitive to this problem.
+Mutexes and critical sections are well suited for DLL synchronization. For
+more information on synchronization, please search the Microsoft Knowledge
+Base using these words:
+<P>
+<PRE>   synchronization objects
+
+</PRE>For additional information, please search the Microsoft Knowledge Base
+using these words:
+<P>
+<PRE>   Win32 DLL
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg<BR>
+KBSubcategory: BseDll<BR>
+Additional reference words: 3.51 4.00 LibEntry LibMain Port WEP _WEP Win32<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 16, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

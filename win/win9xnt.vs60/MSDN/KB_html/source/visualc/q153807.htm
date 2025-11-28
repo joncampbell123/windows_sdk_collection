@@ -1,0 +1,216 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: GetRowsEx Re-fetches Last Read Record in Subsequent Calls </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q153807">
+<META NAME="KBModify" CONTENT="1997/08/07">
+<META NAME="KBCreate" CONTENT="1996/07/18">
+<META NAME="Keywords" CONTENT="dbDao kbprb kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The DAO SDK defines a function called GetRowsEx() that is a method of the DAO recordset object. Unlike the GetRows() method, the GetRowsEx() method does not advance to the next unread record after calling it. Instead, it begins fetching with the la...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA5V,QAGI,QAML,QAIF,QDMH,QAPN,QAH4,QBWP,QBFY,QAZB,QAY5,QAUD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: GetRowsEx Re-fetches Last Read Record in Subsequent Calls</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 7, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q153807</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+4.00 4.10 4.20
+WINDOWS NT
+kbprg kbprb
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The DAO SDK included with:
+<P>
+<P><PRE>    - Visual C++, versions 4.0, 4.1, 4.2
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The DAO SDK defines a function called GetRowsEx() that is a method of the
+DAO recordset object. Unlike the GetRows() method, the GetRowsEx() method
+does not advance to the next unread record after calling it. Instead, it
+begins fetching with the last record fetched or the current record. For
+example, if you have 10 records in a resultset and you are fetching 5 of
+them at a time using GetRowsEx(), you will see that record #5 gets fetched
+twice, once for each GetRowsEx() call. Records 1 through 5 will be fetched
+in the first call to GetRowsEx() and records 5 through 10 will be fetched
+in the second call to GetRowsEx().
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Call MoveNext() for the recordset before executing the next call to
+GetRowsEx(). The MoveNext() call will make the next unread record the
+current record.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Problem</h3>
+ 
+<P>
+Modify the DoGetRowsEx() function in GETRDLG.CPP contained in the GETROWS
+DAO SDK sample. Change the code to the following:
+<P>
+<PRE>   // Perform C++ GetRowsEx against the Employee table
+   void CGetRowsDlg::DoGetRowsEx()
+   {
+       LPEMP           pEmpRows = new EMP[MAX_EMP_REC];
+       CListBox        *pListBox =
+                        (CListBox *)GetDlgItem(IDD_GETROWSLISTEX);
+       CString         strLBRow;
+       TCHAR           szId[16];
+       LONG            lNumRecords;
+       LONG            lCount;
+       TCHAR           pBuf[MAX_EMP_REC * 15];
+
+       //Perform GetRows on Employee table
+       //This GetRows uses a specific C++ structure
+       while (!m_cEmpRecordSet.GetEOF())
+       {
+       try
+           {
+           lNumRecords = m_cEmpRecordSet.GetRowsEx(pEmpRows, sizeof(EMP),
+                 &amp;Bindings[0], sizeof(Bindings) / sizeof(DAORSETBINDING),
+                           pBuf, sizeof(pBuf),
+                           2); // fetch 2 records at a time
+           }
+       catch (CdbException e)
+           {
+        //Differentiate between GetRowsEx Errors and other CdbExceptions
+        // see defines in DAOGETRW.H
+           if( e.m_hr == E_ROWTOOSHORT ||
+               e.m_hr == E_BADBINDINFO ||
+               e.m_hr == E_COLUMNUNAVAILABLE )
+               {
+               AfxMessageBox(_T("Error in GetRowsEx call."));
+               }
+           else
+               {
+               AfxMessageBox(_T("General CdbException"));
+               }
+           delete [] pEmpRows;
+           return;
+           }
+
+       //Step through the returned rows
+       for (lCount = 0; lCount &lt; lNumRecords; lCount++)
+           {
+           strLBRow.Empty();
+           wsprintf(szId, _T("%d,  "), pEmpRows[lCount].lEmpId);
+           strLBRow += szId;
+           strLBRow += pEmpRows[lCount].strLastName;
+           strLBRow += _T(", ");
+           strLBRow += (LPCTSTR) pEmpRows[lCount].strFirstName;
+           pListBox-&gt;AddString(strLBRow);
+           }
+       }
+       delete [] pEmpRows;
+   }
+
+</PRE>To fix the code above, add a MoveNext at the end of the 'while' loop.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00 4.10 4.20<BR>
+KBCategory: kbprg kbprb<BR>
+KBSubcategory: dbDao<BR>
+Keywords          : dbDao kbprb kbprg<BR>
+Version           : 4.00 4.10 4.20<BR>
+Platform          : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 7, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

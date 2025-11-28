@@ -1,0 +1,364 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC: How to Get Form's Right and Down Measurements (95/97) </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q143162">
+<META NAME="KBModify" CONTENT="1997/11/12">
+<META NAME="KBCreate" CONTENT="1996/11/20">
+<META NAME="Keywords" CONTENT="kbusage FmsProp">
+<META NAME="KBArea" CONTENT="Support; KB; vbapps">
+<META NAME="Description" CONTENT="  Advanced: Requires expert coding, interoperability, and multiuser skills.  This article describes how to create and use a Visual Basic for Applications Sub procedure called GetFormDimensions to obtain a form window's right and down measurements for...">
+<META NAME="Product" CONTENT="vbapps">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA1S,QDN9,QANF,QAPN,QACI,QAUD,QAI2,QAFF,QAE8,QACJ,QBS0,QA01,QAY5,QAH4,QAB9 P1 P2 P3 P4 P5 P6 T2 P7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC: How to Get Form's Right and Down Measurements (95/97)</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 12, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q143162</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access 7.0, 97
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Advanced: Requires expert coding, interoperability, and multiuser skills.
+<P>
+This article describes how to create and use a Visual Basic for
+Applications Sub procedure called GetFormDimensions to obtain a form
+window's right and down measurements for use in the MoveSize macro action.
+This article also demonstrates how to position a form immediately below or
+to the right of a second form.
+<P>
+This article assumes that you are familiar with Visual Basic for
+Applications and with creating Microsoft Access applications using the
+programming tools provided with Microsoft Access. For more information
+about Visual Basic for Applications, please refer to your version of the
+"Building Applications with Microsoft Access" manual.
+<P>
+NOTE: This article explains a technique demonstrated in the sample
+files, FrmSampl.exe (for Microsoft Access for Windows 95 version 7.0)
+and FrmSmp97.exe (for Microsoft Access 97). For information about how
+to obtain these sample files, please see the following articles in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../access/q150895.htm">Q150895</A></B>
+   TITLE     : ACC95: Microsoft Access Sample Forms Available on MSL
+
+   ARTICLE-ID: <B><A href="../access/q175066.htm">Q175066</A></B>
+   TITLE     : ACC97: Microsoft Access 97 Sample Forms Available on MSL
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+In Microsoft Access you can use the WindowWidth and WindowHeight form
+properties to determine the current width and height of the window a form
+is contained in. However, there are no properties to determine the
+window's right and down measurements (these measurements are commonly
+used in the MoveSize macro action to position a form window).
+<P>
+The right and down measurements, along with the width and height, are
+useful if you want to position a form side-by-side with another form.
+The following examples demonstrate how to create and use the
+GetFormDimensions Sub procedure to obtain these measurements and use them
+to position a form to the right of, and then below, another form using the
+MoveSize macro action.
+<P>
+<P><h3>How to Create the Sub Procedure</h3>
+ 
+
+<OL><P><LI>Open the sample database Northwind.mdb.
+
+<P><LI>Create a new module and enter the following lines in the module's
+   Declarations section:
+<P>
+<P><PRE>      Option Explicit
+</PRE><P>
+<P><PRE>      Type RECT_Type
+<PRE></PRE>          left As Long
+          top As Long
+          right As Long
+          bottom As Long
+      End Type
+
+      Declare Function apiGetWindowRect Lib "user32" Alias _
+      "GetWindowRect" (ByVal hWnd As Long, lpRect As RECT_Type) As Long
+      Declare Function apiGetDC Lib "user32" Alias "GetDC" _
+      (ByVal hWnd As Long) As Long
+      Declare Function apiReleaseDC Lib "user32" Alias "ReleaseDC" (ByVal _
+      hWnd As Long, ByVal hDC As Long) As Long
+      Declare Function apiGetDeviceCaps Lib "gdi32" Alias "GetDeviceCaps" _
+      (ByVal hDC As Long, ByVal nIndex As Long) As Long
+      Declare Function apiGetActiveWindow Lib "user32" Alias _
+      "GetActiveWindow" () As Long
+      Declare Function apiGetParent Lib "user32" Alias "GetParent" (ByVal _
+      hWnd As Long) As Long
+      Declare Function apiGetClassName Lib "user32" Alias "GetClassNameA" _
+      (ByVal hWnd As Long, ByVal lpClassName As String, ByVal _
+      nMaxCount As Long) As Long
+
+      Global Const TWIPSPERINCH = 1440
+
+</PRE><P><LI>Create the following procedures in the module:
+<P>
+<PRE>      Sub GetFormDimensions(F As Form, FLeft As Long, FTop As Long, _
+         FWidth As Long, FHeight As Long)
+      '*************************************************************
+      ' PURPOSE: Returns the left, top, width, and height
+      '          measurements of a form window in tdwips.
+      ' ARGUMENTS:
+      '    F: The form object whose measurements are to be determined.
+      '    FLeft, FTop, FWidth, FHeight: Measurement variables
+      '    that will return the dimensions of form F "by reference."
+      ' NOTE: The FWidth and FHeight values will be equivalent to
+      '    those provided by the form WindowWidth and WindowHeight
+      '    properties.
+      '*************************************************************
+         Dim FormRect As RECT_Type
+         Dim MDIClient As RECT_Type
+         Dim MDIClientLeft As Long
+         Dim MDIClientTop  As Long
+
+         ' Get the screen coordinates and window size of the form.
+         ' The screen coordinates are returned in pixels measured
+         ' from the upper-left corner of the screen.
+         apiGetWindowRect F.hWnd, FormRect
+         FLeft = FormRect.left
+         FTop = FormRect.top
+         FWidth = FormRect.right - FormRect.left
+         FHeight = FormRect.bottom - FormRect.top
+
+         ' Convert the measurements from pixels to twips.
+         ConvertPIXELSToTWIPS FLeft, FTop
+         ConvertPIXELSToTWIPS FWidth, FHeight
+
+         ' If the form is not a pop-up form, adjust the screen
+         ' coordinates to measure from the top of the Microsoft
+         ' Access MDIClient window. Position 0,0 for a pop-up form
+         ' is the upper-left corner of the screen, whereas position
+         ' 0,0 for a normal window is the upper-left corner of the
+         ' Microsoft Access client window below the menu bar.
+         If GetWindowClass(F.hWnd) &lt;&gt; "OFormPopup" Then
+            ' Get the screen coordinates and window size of the
+            ' MDIClient window.
+            apiGetWindowRect apiGetParent(F.hWnd), MDIClient
+            MDIClientLeft = MDIClient.left
+            MDIClientTop = MDIClient.top
+            ConvertPIXELSToTWIPS MDIClientLeft, MDIClientTop
+
+            ' Adjust the form dimensions from the MDIClient
+            ' measurements.
+            FLeft = FLeft - MDIClientLeft
+            FTop = FTop - MDIClientTop
+         End If
+      End Sub
+
+      Sub ConvertPIXELSToTWIPS(X As Long, Y As Long)
+      '*************************************************************
+      ' PURPOSE: Converts the two pixel measurements passed as
+      '          arguments to twips.
+      ' ARGUMENTS:
+      '    X, Y: Measurement variables in pixels. These will be
+      '          converted to twips and returned through the same
+      '          variables "by reference."
+      '*************************************************************
+         Dim hDC As Long, hWnd As Long, RetVal As Long
+         Dim XPIXELSPERINCH, YPIXELSPERINCH
+         Const LOGPIXELSX = 88
+         Const LOGPIXELSY = 90
+
+         ' Retrieve the current number of pixels per inch, which is
+         ' resolution-dependent.
+         hDC = apiGetDC(0)
+         XPIXELSPERINCH = apiGetDeviceCaps(hDC, LOGPIXELSX)
+         YPIXELSPERINCH = apiGetDeviceCaps(hDC, LOGPIXELSY)
+         RetVal = apiReleaseDC(0, hDC)
+
+         ' Compute and return the measurements in twips.
+         X = (X / XPIXELSPERINCH) * TWIPSPERINCH
+         Y = (Y / YPIXELSPERINCH) * TWIPSPERINCH
+      End Sub
+
+      Function GetWindowClass(hWnd As Long) As String
+      '*************************************************************
+      ' PURPOSE: Retrieve the class of the passed window handle.
+      ' ARGUMENTS:
+      '    hWnd: The window handle whose class is to be retrieved.
+      ' RETURN:
+      '    The window class name.
+      '*************************************************************
+         Dim Buff As String
+         Dim BuffSize As Integer
+         Buff = String$(255, " ")
+         BuffSize = apiGetClassName(hWnd, Buff, 255)
+         GetWindowClass = left$(Buff, BuffSize)
+      End Function
+
+</PRE></OL><h3>How to Use the GetFormDimensions Sub Procedure</h3>
+ 
+
+<OL><P><LI>Open the sample database Northwind.mdb.
+
+<P><LI>Add the following Sub procedure to the module that you created in step 2
+   above:
+<P>
+<PRE>      Sub MoveEmployeesAround ()
+         Dim frmCust As Form
+         Dim frmEmp As Form
+         Dim frmCustLeft As Long
+         Dim frmCustTop As Long
+         Dim frmCustWidth As Long
+         Dim frmCustHeight  As Long
+         Dim frmEmpLeft As Long
+         Dim frmEmpTop As Long
+         Dim frmEmpWidth As Long
+         Dim frmEmpHeight  As Long
+
+         Set frmCust = Forms!Customers
+         Set frmEmp = Forms!Employees
+
+         GetFormDimensions frmCust, frmCustLeft, frmCustTop, _
+            frmCustWidth, frmCustHeight
+         GetFormDimensions frmEmp, frmEmpLeft, frmEmpTop, _
+            frmEmpWidth, frmEmpHeight
+
+         frmEmp.SetFocus
+
+         MsgBox "Move Employees to the right of Customers!"
+         DoCmd.MoveSize frmCustLeft + frmCustWidth, frmCustTop
+
+         MsgBox "Move Employees below Customers!"
+         DoCmd.MoveSize frmCustLeft, frmCustTop + frmCustHeight
+      End Sub
+
+</PRE><P><LI>Open the Customers and Employees forms in Form view.
+
+<P><LI>Open the Debug window by pressing CTRL+G. Type the following line, and
+   then press ENTER:
+<P>
+<P><PRE>      MoveEmployeesAround
+</PRE>
+<P><LI>In the message box that appears, click OK. The Employees form will be
+   positioned immediately to the right of the Customers form, and then
+   another message box will appear.
+
+<P><LI>In the second message box, click OK. The Employees form will be
+   positioned immediately below the Customers form.
+<P>
+</OL>NOTE: Depending on the position and size of the Customers form, the
+Employees form may be positioned so that you cannot see it.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For more information about how to get form window's right and down
+measurements in Microsoft Access 2.0, please see the following
+article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../access/q121100.htm">Q121100</A></B>
+   TITLE     : ACC2: How to Get Form's Right and Down Measurements
+
+</PRE></OL>For more information about the MoveSize macro action, search the Help
+Index for "MoveSize," or ask the Microsoft Access 97 Office Assistant.
+<P>
+For more information about the WindowHeight and WindowWidth properties,
+search the Help Index for "WindowHeight" or "WindowWidth," or ask the
+Microsoft Access 97 Office Assistant.
+ 
+<PRE>Keywords          : kbusage FmsProp
+Version           : 7.0 97
+Platform          : WINDOWS
+Hardware          : x86
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 12, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

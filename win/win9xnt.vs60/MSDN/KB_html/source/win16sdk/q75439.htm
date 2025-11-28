@@ -1,0 +1,237 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Tips for Writing DBCS-Compatible Applications </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q75439 ">
+<META NAME="KBModify" CONTENT="1998/01/15">
+<META NAME="KBCreate" CONTENT="1991/08/20">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="  String operations in systems that use a double-byte character set (DBCS) are slightly different from a single-byte character system. This article provides guidelines to reduce the work necessary to port an application written for a single-byte syst...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QALG,QAH4,QATX,QA75,QAY5,QAWP,QDL9,QBWO,QBWN,QBKH,QBVV,QBE7,QBE6,QAY2,QALQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Tips for Writing DBCS-Compatible Applications</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 15, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q75439 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+3.00 3.10
+WINDOWS
+kbprg
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   versions 3.1 and 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+String operations in systems that use a double-byte character set
+(DBCS) are slightly different from a single-byte character system.
+This article provides guidelines to reduce the work necessary to port
+an application written for a single-byte system to a DBCS system.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+In a double-byte character set, some characters require two bytes,
+while some require only one byte. The language driver can distinguish
+between these two types of characters by designating some characters
+as "lead bytes." A lead byte will be followed by another byte (a "tail
+byte") to create a double-byte character (DBC). The set of lead bytes
+is different for each language. Lead bytes are always guaranteed to be
+extended characters; no 7-bit ASCII characters can be lead bytes. The
+tail byte may be any byte except a NULL byte. The end of a string is
+always defined as the first NULL byte in the string. Lead bytes are
+legal tail bytes; the only way to tell if a byte is acting as a lead
+byte is from the context.
+<P>
+The Windows Software Development Kit (SDK) version 3.0 includes two
+functions for moving through strings that may contain DBCs: AnsiNext()
+and AnsiPrev(). The AnsiPrev() function is a time expensive call
+because it must run through the string from the beginning to determine
+where the previous character begins. It is best to search for
+characters from the beginning rather than the end of a string.
+<P>
+The Windows SDK version 3.1 includes the IsDBCSLeadByte() function,
+which returns TRUE if and only if the byte CAN BE a lead byte. Because
+this function takes a char parameter, it cannot report if the byte IS
+a lead byte (to do so would require context).
+<P>
+To make non-DBCS code run as quickly as possible, a source file may
+use "#ifdef DBCS" around code that is only for DBCS, and compile two
+versions of the object (OBJ) file. For example:
+<P>
+#ifdef DBCS
+<PRE>  for (pszTemp = szString; *pszTemp; pszTemp = AnsiNext(pszTemp))
+</PRE>#else
+<PRE>  for (pszTemp = szString; *pszTemp; ++pszTemp)
+</PRE>#endif
+<PRE>   ...
+
+</PRE>To make the code easier to read, an application could define macros
+for the AnsiNext() and AnsiPrev() functions if DBCS is not defined:
+<P>
+#ifndef DBCS
+<PRE>#define AnsiNext(x) ((x)+1)
+#define AnsiPrev(y, x) ((x)-1)
+
+</PRE>#ifdef WIN31
+<PRE>#define IsDBCSLeadByte(x) (FALSE)
+</PRE>#endif
+<P>
+#endif
+<P>
+With these definitions in place, all of the code can be written for
+DBCS. Note that the AnsiNext() function will not go past the end of a
+string and the AnsiPrev() function will not go past the beginning of a
+string, while the macros will. In addition, because the "y" parameter
+in the AnsiPrev() macro is ignored, some code will give different
+results when compiled with and without DBCS defined. The following
+code is an example of this phenomenon:
+<P>
+<PRE>   pszEnd = AnsiPrev(++pszStart, pszEnd);
+
+</PRE>The following code demonstrates how to find the offset of the filename
+in a full path name:
+<P>
+LPSTR GetFilePtr(LPSTR lpszFullPath)
+{
+<PRE>    LPSTR lpszFileName;
+
+    for (lpszFileName = lpszFullPath; *lpszFullPath;
+               lpszFullPath = AnsiNext(lpszFullPath))
+        if (*lpszFullPath == ':' || *lpszFullPath == '\\')
+            lpszFileName = lpszFullPath + 1;
+
+    return lpszFileName;
+</PRE>}
+<P>
+Note that ':' and '\\' are guaranteed not to be lead bytes. The search
+started from the beginning of the string rather than the end to avoid
+using the AnsiPrev() function.
+<P>
+The following code demonstrates a string copy into a limited size
+buffer. Note that it ensures that the string does not end with a lead
+byte.
+<P>
+<PRE>int StrCpyN(LPSTR lpszDst, LPSTR lpszSrc, unsigned int wLen)
+</PRE>{
+<PRE>    LPSTR lpEnd;
+    char cTemp;
+
+    // account for the terminating NULL
+    --wLen;
+
+    for (lpEnd = lpszSrc; *lpEnd &amp;&amp; (lpEnd - lpszSrc) &lt; wLen;
+               lpEnd = AnsiNext(lpEnd))
+        ;  // scan to the end of string, or wLen bytes
+
+    // The following can happen only if lpszSrc[wLen-1] is a lead
+    // byte, in which case do not include the previous DBC in the copy.
+    if (lpEnd - lpszSrc &gt; wLen)
+        lpEnd -= 2;
+
+    // Terminate the source string and call lstrcpy.
+    cTemp = *lpEnd;
+    *lpEnd = '\0';
+    lstrcpy(lpszDst, lpszSrc);
+    *lpEnd = cTemp;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.10<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: UsrLoc KBIntlDev<BR>
+Keywords          : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 15, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,244 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Spell Checking on Memo Field Causes Error </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q163798">
+<META NAME="KBModify" CONTENT="1997/04/25">
+<META NAME="KBCreate" CONTENT="1997/02/18">
+<META NAME="Keywords" CONTENT="buglist3.00 buglist3.00b buglist5.00 FxtoolGeneral vfoxwin vfpbug5.0a kbbuglist">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  Invoking the Spell Checker on a Memo field in a multi-user situation will cause the following warning:      Memo field could not be locked for Spell Checker   This warning occurs if the record is currently locked by another user.  CAUSE =====  The ...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAXM,QA5V,QAGU,QBWS,QA7O,QA7N,QAPN,QAGB,QABO,QBDM,QAB4,QDKR,QBF0,QA2Q,QA9N V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Spell Checking on Memo Field Causes Error</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q163798</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual FoxPro for Macintosh, version 3.0b
+<LI>Microsoft Visual FoxPro for Windows, versions 3.0, 3.0b, 5.0, 5.0a
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Invoking the Spell Checker on a Memo field in a multi-user situation will
+cause the following warning:
+<P>
+<PRE>   "Memo field could not be locked for Spell Checker"
+
+</PRE>This warning occurs if the record is currently locked by another user.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The Spell Checker is ignoring the Optimistic Record Locking scheme of the
+Form.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Place the following code in the DoubleClick Method of Edit Region:
+<P>
+<PRE>      &amp;&amp; Copy current record to a separate file to avoid locking problem
+      COPY NEXT 1 TO spellchk.dbf
+      USE spellchk IN 0
+      SELECT spellchk
+
+      &amp;&amp; The following line may be added if the user wants changes
+      &amp;&amp; made to the buffered data appearing in Spell Checker. The reason
+      &amp;&amp; for this is the COPY TO command is reading directly from dbf file
+      &amp;&amp; on disk rather than the buffered data appearing in Edit region.
+
+      REPLACE spellchk.notes WITH THIS.VALUE
+
+      &amp;&amp; Run SpellChecker on the temporary table
+      MODIFY MEMO notes NOWAIT
+
+      DO (_SPELLCHK)
+      CLOSE MEMO notes
+
+      &amp;&amp; Update Edit Region and original table with any changes made
+      &amp;&amp; by user/SpellChecker
+      THIS.VALUE=spellchk.NOTES
+      USE  &amp;&amp; Close the temporary table
+      SELECT employee
+
+      THIS.REFRESH() &amp;&amp; Update the Edit Region
+
+      &amp;&amp; Erase the temporary files created
+      ERASE spellchk.dbf
+      ERASE spellchk.fpt
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the Microsoft products
+listed at the beginning of this article. We are researching this problem
+and will post new information here in the Microsoft Knowledge Base as it
+becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+
+<OL><P><LI>Issue the following commands in the command window:
+<P>
+<P><PRE>      OPEN DATABASE HOME()+"SAMPLES\DATA\TestData.DBC" SHARED
+      USE employee SHARED
+</PRE>
+<P><LI>Create a new form.
+
+<P><LI>Right-click the form and select "Data Environment" from the
+   shortcut menu.
+
+<P><LI>Add the TESTDATA!Employee table to the Data Environment (DE) of the
+   form.
+
+<P><LI>Right-click the Employee table and select Properties from the
+   shortcut menu.
+
+<P><LI>Set the Exclusive property of the Cursor to False (should be Default).
+
+<P><LI>Drag the Notes Field from the Cursor in the DE onto the Form to create
+   an edit region for the field.
+
+<P><LI>Go to the Properties window.
+
+<P><LI>Set the BufferMode property of the form to 2-Optimistic.
+
+<P><LI>Set the DataSession property of the form to 2-Private DataSession.
+
+<P><LI>Add the following code to the DoubleClick Method of the Edit Region:
+<P>
+<P><PRE>      MODIFY MEMO notes NOWAIT
+      * Opens a text editing window that displays the memo field
+      * assuming the memo field is called "notes".
+      * The "nowait" clause allows execution to continue
+      DO (_SPELLCHK)
+      * The _spellchk system variable references the spell checker that
+      * will be executed by FoxPro.
+      CLOSE MEMO NOTES
+      * This closes the text editing window after the user exits the
+      * spell checker
+</PRE>
+<P><LI>In the Command Window issue the following:
+<P>
+<P><PRE>      SELECT employee
+      ? RLOCK() &amp;&amp; Locks the Record
+</PRE>
+<P><LI>Save and run the Form.
+
+<P><LI>Double-click the Edit Region to invoke the Spell Checker.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+For more information about spell checking in FoxPro, please see the
+following articles in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../foxpro/q117212.htm">Q117212</A></B>
+   TITLE     : How to Use the FoxPro Spelling Checker (SPELLCHK.APP)
+
+   ARTICLE-ID: <B><A href="../foxpro/q136641.htm">Q136641</A></B>
+   TITLE     : PRB: Spell Checking Edit Box Contents Does Not Work
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 3.00 3.00b 5.00<BR>
+Keywords            : buglist3.00 buglist3.00b buglist5.00 FxtoolGeneral vfoxwin vfpbug5.0a kbbuglist<BR>
+Version             : 3.0b | 3.0 3.0b 5.0 5.0a<BR>
+Platform            : MACINTOSH WINDOWS<BR>
+Issue type          : kbbug<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

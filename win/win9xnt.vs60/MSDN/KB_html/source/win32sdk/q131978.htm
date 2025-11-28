@@ -1,0 +1,259 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Receive/Send Multicasts in Windows NT &amp; Win95 Using WinSock </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q131978">
+<META NAME="KBModify" CONTENT="1996/03/15">
+<META NAME="KBCreate" CONTENT="1995/06/26">
+<META NAME="Keywords" CONTENT="kbnetwork kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article describes how a host can become a member of a multicast group and receive and send multicast packets with Windows NT using the Windows Sockets (WinSock) interface.  This functionality is also available with Windows 95.  MORE INFORMATIO...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWD,QAH6,QBBS,QABO,QBWP,QAC2,QADX,QAJQ,QAR5,QAGI,QANY,QDN1,QDL9,QBWO,QBWN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Receive/Send Multicasts in Windows NT &amp; Win95 Using WinSock</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 15, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q131978</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK), versions 3.5, and 3.51
+<LI>Microsoft Windows version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes how a host can become a member of a multicast group
+and receive and send multicast packets with Windows NT using the Windows
+Sockets (WinSock) interface.
+<P>
+This functionality is also available with Windows 95.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sending IP Multicast Datagrams</h3>
+ 
+<P>
+IP multicasting is currently supported only on AF_INET sockets of type
+SOCK_DGRAM.
+<P>
+To send a multicast datagram, specify an IP multicast address with a range
+of 224.0.0.0 to 239.255.255.255 as the destination address in a sendto()
+call.
+<P>
+By default, IP multicast datagrams are sent with a time-to-live (TTL) of 1,
+which prevents them from being forwarded beyond a single subnetwork. The
+following code demonstrates how to change this functionality:
+<P>
+<PRE>  int ttl = 7 ; // Arbitrary TTL value.
+  setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, (char *)&amp;ttl, sizeof(ttl))
+
+</PRE>Multicast datagrams with a TTL of 0 are not transmitted on any subnetwork.
+Multicast datagrams with a TTL of greater than one may be delivered to more
+than one subnetwork if there are one or more multicast routers attached to
+the first-hop subnetwork.
+<P>
+A multicast router does not forward multicast datagrams with destination
+addresses between 224.0.0.0 and 224.0.0.255, inclusive, regardless of their
+TTLs. This particular range of addresses is reserved for the use of routing
+protocols and other low-level topology discovery or maintenance protocols,
+such as gateway discovery and group membership reporting.
+<P>
+Each multicast transmission is sent from a single network interface, even
+if the host has more than one multicast-capable interface. A socket option
+is available to override the default for subsequent transmissions from a
+given socket. For example
+<P>
+<PRE>  unsigned long addr = inet_addr("157.57.8.1");
+  setsockopt(sock, IPPROTO_IP, IP_MULTICAST_IF,
+            (char *)&amp;addr, sizeof(addr))
+
+</PRE>where "addr" is the local IP address of the desired outgoing interface.
+An address of INADDR_ANY may be used to revert to the default interface.
+Note that this address might be different from the one the socket is bound
+to.
+<P>
+If a multicast datagram is sent to a group to which the sending host itself
+belongs (on the outgoing interface), by default, a copy of the datagram is
+looped back by the IP layer for local delivery. Under some versions of
+UNIX, there is an option available to disable this behavior
+(IP_MULTICAST_LOOP). This option is not supported in Windows NT. If you try
+to disable this behavior, the call fails with the error WSAENOPROTOOPT (Bad
+protocol option).
+<P>
+A multicast datagram sent with an initial TTL greater than 1 may be
+delivered to the sending host on a different interface from that on which
+it was sent, if the host belongs to the destination group on that other
+interface. The loopback control option has no effect on such delivery.
+<P>
+<P><h3>Receiving IP Multicast Datagrams</h3>
+ 
+<P>
+Before a host can receive IP multicast datagrams, it must become a member
+of one or more IP multicast groups. A process can ask the host to join
+a multicast group by using the following socket option
+<P>
+<PRE>   struct ip_mreq mreq;
+
+</PRE>where "mreq" is the following structure:
+<P>
+<PRE>   struct ip_mreq {
+       struct in_addr imr_multiaddr;   /* multicast group to join */
+       struct in_addr imr_interface;   /* interface to join on    */
+   }
+
+</PRE>For example:
+<P>
+<PRE>        #define RECV_IP_ADDR   "225.6.7.8"  // arbitrary multicast address
+
+        mreq.imr_multiaddr.s_addr = inet_addr(RECV_IP_ADDR);
+        mreq.imr_interface.s_addr = INADDR_ANY;
+        err = setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+                        (char*)&amp;mreq, sizeof(mreq))
+
+</PRE>Note that it is necessary to bind to an address before calling the
+setsockopt() function.
+<P>
+Every membership is associated with a single interface, and it is possible
+to join the same group on more than one interface. The address of
+"imr_interface" should be INADDR_ANY to choose the default multicast
+interface, or one of the host's local addresses to choose a particular
+(multicast-capable) interface.
+<P>
+The maximum number of memberships is limited only by memory and what the
+network card supports.
+<P>
+The following code sample can be used to drop a membership
+<P>
+<PRE>   struct ip_mreq mreq;
+   setsockopt(sock, IPPROTO_IP, IP_DROP_MEMBERSHIP,
+             (char*)&amp;mreq,sizeof(mreq))
+
+</PRE>where "mreq" contains the same values as used to add the membership. The
+memberships associated with a socket are also dropped when the socket is
+closed or the process holding the socket is killed. However, more than
+one socket may claim a membership in a particular group, and the host
+remains a member of that group until the last claim is dropped.
+<P>
+The memberships associated with a socket do not necessarily determine which
+datagrams are received by that socket. Incoming multicast packets are
+accepted by the kernel IP layer if any socket has claimed a membership in
+the destination group of the datagram; however, delivery of a multicast
+datagram to a particular socket is based on the destination port (or
+protocol type, for raw sockets), just as with unicast datagrams. To receive
+multicast datagrams sent to a particular port, it is necessary to bind to
+that local port, leaving the local address unspecified (that is,
+INADDR_ANY).
+<P>
+More than one process may bind to the same SOCK_DGRAM UDP port if the
+bind() call is preceded by the following code:
+<P>
+<PRE>   int one = 1;
+   setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&amp;one, sizeof(one))
+
+</PRE>In this case, every incoming multicast or broadcast UDP datagram destined
+for the shared port is delivered to all sockets bound to the port.
+<P>
+The definitions required for the new, multicast-related socket options are
+located in the WINSOCK.H file. All IP addresses are passed in network
+byte-order.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+The file DOC\MISC\MULTICAST.TXT is included with the Win32 SDK.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.50 4.00<BR>
+KBCategory: kbnetwork kbcode<BR>
+KBSubcategory: NtwkWinsock<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 15, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

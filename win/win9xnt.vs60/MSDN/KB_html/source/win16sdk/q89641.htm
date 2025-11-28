@@ -1,0 +1,227 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Complex Clipping Region Might Cause UAE/GP Fault </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q89641 ">
+<META NAME="KBModify" CONTENT="1995/02/21">
+<META NAME="KBCreate" CONTENT="1992/09/28">
+<META NAME="Keywords" CONTENT="kbprg kbbuglist">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="  Drawing lines to a memory DC containing a complex clipping region causes an unrecoverable application error (UAE) or general protection (GP) fault.  CAUSE =====  Under certain rare conditions, drawing a single line to a DC containing a complex clip...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBKN,QABO,QAO4,QAK6,QABK,QBXT,QA5V,QAMV,QAIB,QAGI,QABE,QDL9,QBWO,QBWN,QAK4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Complex Clipping Region Might Cause UAE/GP Fault</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 21, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q89641 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   versions 3.0 and 3.1
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Drawing lines to a memory DC containing a complex clipping region causes an
+unrecoverable application error (UAE) or general protection (GP) fault.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+Under certain rare conditions, drawing a single line to a DC containing a
+complex clipping region will cause a UAE under Windows 3.0 and a GP fault
+under Windows 3.1.
+<P>
+The conditions for this UAE/GP fault to occur are as follows:
+
+<UL><LI>The clipping region for the DC must be a complex region. For example,
+   the clipping region must contain multiple rectangles. [The
+   ExcludeClipRect() and IntersectClipRect() functions will also tell you
+   whether the region is complex.]
+
+<LI>The clipping region must have its top physical coordinate at the Y
+   origin. For example, if you are using a memory bitmap in the MM_TEXT
+   mapping mode, the clipping region might have an upper-left corner of
+   (0,0).
+
+<LI>The line being drawn must be a "Y-major" line, meaning that the line
+   extends in the Y-direction farther than it does in the X- direction.
+
+<LI>The line must start above the top edge of the region (negative Y space)
+   and end 1 pixel from the upper-right corner of the clipping region.
+<P>
+</UL>For the UAE/GP fault to occur, all the above conditions must be met.
+<P>
+For example, when the following GDI calls are performed on a memory
+bitmap, a UAE/GP fault will occur in the VGA display driver:
+<P>
+<PRE>   IntersectClipRect(hDC, 0, 0, 20, 20); // Top is at Y=0
+   ExcludeClipRect(hDC, 5, 5, 15, 30);   // Makes region complex
+   MoveTo(hDC, 15,-10);            // This line is Y-major
+   LineTo(hDC, 19, 0);             // Hits upper-right of region
+
+</PRE>The UAE/GP fault occurs at the display driver level because GDI is sending
+an incorrect parameter to the display driver's Output() function. The
+clipping rectangle sent to this function contains a -1 for one of the
+points, and negative values for clipping rectangles are not valid. A few
+display drivers, for example the XGA driver, perform parameter checking on
+this clipping rectangle and will not fail. Others, like the V7VGA, VGA, and
+8514/a display drivers do not perform validation on this call and will
+produce a UAE/GP fault.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Because this problem occurs only when the Y origin of your hDC is at the
+physical (screen coordinate) Y origin, it is unlikely that this problem
+will occur while you are drawing to a standard screen DC. For this UAE/GP
+fault to occur on a screen DC, the top of your client area would have to be
+at the screen Y origin, which is normally not the case.
+<P>
+On the other hand, memory bitmaps are implemented so that the physical Y
+origin is at the top of the bitmap, and the UAE/GP fault is much more
+likely to occur when drawing to a memory bitmap. If your application uses
+complex clipping regions on a memory DC, do the following to work around
+this problem:
+
+<OL><P><LI>Assuming you're working in the MM_TEXT mapping mode, set your Viewport
+   origin to (0,-1) by calling SetViewportOrg(hMemDC, 0,- 1). This will
+   cause your logical origin (0,0) to be moved one pixel down in the DC.
+
+<P><LI>Make sure that your logical clipping rectangle does not extend above the
+   logical Y=0 origin. In other words, the top Y coordinate of your
+   clipping rectangle cannot be less than 0 (or less than 1).
+<P>
+</OL>To ensure that the second condition is met, you must verify that all calls
+to IntersectClipRect() and ExcludeClipRect() (which both take logical
+coordinates) do not cause a logical clipping region that extends above the
+Y origin to be created.
+<P>
+Note that there is a distinction between logical and physical clipping
+regions; the above workaround works only with a logical clipping region. If
+you create a region and then select it into your DC as a clipping region,
+the coordinates for this region are device coordinates rather than logical
+coordinates. In this case, you need to manually offset of the top of the
+region by 1.
+<P>
+Some of the functions that create physical regions are CreateRectRgn(),
+CreateEllipticRgn(), and OffsetRgn(). The functions GetClipBox() and
+GetRgnBox() can be used to determine the upper physical-coordinate extent
+of the regions.
+<P>
+If your application uses only the functions IntersectClipRect() and
+ExcludeClipRect(), your clipping regions will be in logical units.
+<P>
+Another workaround is to either not use complex clipping regions in your
+memory bitmaps or manually verify that no lines will be drawn above the top
+of your Y origin.
+<P>
+NOTE: This UAE/GP fault might be generated for more than just
+MoveTo()/LineTo() calls--it can occur for any GDI call that generates
+lines, including rectangle, polygon, polypolygon, arc, and vector font
+output.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in Windows versions 3.0, 3.0a,
+and 3.1. However, because the conditions for this error to occur are very
+specific, most Windows applications will never encounter this problem. We
+are researching this problem and will post new information here in the
+Microsoft Knowledge Base as it becomes available.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.00a 3.10 OS_POLYLINE buglist3.00<BR>
+buglist3.00a buglist3.10<BR>
+KBCategory: kbprg kbbuglist<BR>
+KBSubcategory: GdiDc<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 21, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

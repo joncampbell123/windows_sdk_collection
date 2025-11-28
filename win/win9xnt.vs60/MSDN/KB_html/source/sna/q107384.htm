@@ -1,0 +1,224 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>RUI Interface Enhancement to Avoid Duplicate Signon Screens </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q107384">
+<META NAME="KBModify" CONTENT="1997/04/17">
+<META NAME="KBCreate" CONTENT="1995/11/29">
+<META NAME="Keywords" CONTENT="kbbug2.11 kbnetwork kbprg ntnetserv">
+<META NAME="KBArea" CONTENT="Support; KB; sna">
+<META NAME="Description" CONTENT="  If an SLI_OPEN follows immediately after an SLI_CLOSE statement the SSCP Welcome message screen may appear twice under some certain timing conditions.  An SNA Server 2.11 update is available which closes a timing window where this can occur. For ad...">
+<META NAME="Product" CONTENT="SNA Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAXB,QAI5,QAIF,QAC1,QBD2,QAH6,QAJZ,QBWP,QAKD,QAH7,QAD7,QDN1,QAF4,QAA8,QAA5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>RUI Interface Enhancement to Avoid Duplicate Signon Screens</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q107384</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SNA Server for Windows NT, version 2.11
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+If an SLI_OPEN follows immediately after an SLI_CLOSE statement the SSCP
+Welcome message screen may appear twice under some certain timing
+conditions.
+<P>
+An SNA Server 2.11 update is available which closes a timing window where
+this can occur. For additional information, please see the following
+article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sna/q137482.htm">Q137482</A></B>
+   Title     : LUA Program Receives Host Sign-On Screen Twice and then
+               Hangs
+
+</PRE>However, with this update applied, this problem can still occur under
+certain timing conditions described in this article.
+<P>
+<P><h3>An Additional Update Is Available</h3>
+ 
+<P>
+Another update to SNA Server 2.11 now supports the ability to put a small
+configurable delay between the SLI_CLOSE completion and issuing the new
+SLI_OPEN statement. Microsoft has updated the following file to include
+this feature:
+<P>
+<PRE>   &lt;snaroot&gt;\system\WINRUI32.DLL
+
+</PRE>This update is for Win32 clients only and is implemented in the WIN32 RUI
+Interface and exported as a new registry value.
+<P>
+<P><h3>Implementing the Update</h3>
+ 
+<P>
+To set this delay you have to obtain the update and add the new registry
+value INITDELAY under the HKEY_LOCAL_MACHINE subtree under the following
+subkey:
+<P>
+<PRE>   SYSTEM\CurrentControlSet\Services\SnaBase\Parameters\Client
+
+</PRE>Use the following information when adding the new value:
+<P>
+<PRE>   Value Name: INITDELAY
+   Data Type:  REG_DWORD
+   Data:       0-10 (decimal)
+
+   Default:    0 seconds
+
+</PRE>This variable sets an optional delay in seconds in processing RUI_INIT
+requests. If you do not specify an entry for data, there is no delay. If
+you configure a value greater than 10, then a value of 10 is used.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When an LUA session is closed and immediately reopened, the SNA Server
+may resend the host SSCP welcome message twice to the LUA application.
+The following diagram explains what is happening:
+<P>
+<PRE>Message flow as the node sees it.       Message flow as the host sees it.
+    Host                Node                Host             Node
+    ====                ====                ====             ====
+
+      NOTIFY unavailable                      NOTIFY unavailable
+        (SLU disabled)                         (SLU disabled)
+     &lt;--------------------                   &lt;----------------
+
+          NOTIFY +rsp                           NOTIFY +rsp
+     --------------------&gt;                   -----------------&gt;
+
+        NOTIFY available                        logon banner
+     &lt;--------------------                   -----------------&gt;
+
+        logon banner                           NOTIFY available
+                                                (SLU enabled)
+     --------------------&gt;                   &lt;-----------------
+
+        NOTIFY +rsp                             NOTIFY +rsp
+     --------------------&gt;                   -----------------&gt;
+
+        logon banner                            logon banner
+     --------------------&gt;                   -----------------&gt;
+
+</PRE>When the host receives the first NOTIFY it sends a logon screen. At the
+same time, the node is sending the second NOTIFY. In this case by the time
+that the logon screen reaches the node, the node has passed on the second
+NOTIFY to the link service. In that situation the node is not able to
+determine whether the logon screen was sent due to the first NOTIFY, or the
+second NOTIFY, and so it passes it up to the application. Shortly
+thereafter, the second logon screen arrives, and the node also passes that
+up to the application.
+<P>
+This is because the underlying SSCP-LU session on which the NOTIFYs and the
+logon screens flow is not brought down when the SLI session is brought down
+and a new SLI session is started. Therefore, the node cannot tell that a
+particular message on the SSCP-LU session is associated with the SLI
+session which has been terminated.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This feature is included in the latest U.S. Service Pack for SNA Server for
+Windows NT, version 2.11. For information on obtaining the Service Pack,
+query on the following word in the Microsoft Knowledge Base (without the
+spaces):
+<P>
+<PRE>   S E R V P A C K
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: prodsna SLI<BR>
+Keywords            : kbbug2.11 kbnetwork kbprg ntnetserv<BR>
+Version             : 2.11<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

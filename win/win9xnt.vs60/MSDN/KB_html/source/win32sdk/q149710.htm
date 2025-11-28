@@ -1,0 +1,203 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Why Thunking to 16-bit MAPI Will Fail Under Win32s </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q149710">
+<META NAME="KBModify" CONTENT="1996/04/11">
+<META NAME="KBCreate" CONTENT="1996/04/10">
+<META NAME="Keywords" CONTENT="kbprg kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article discusses the details on why a Win32s client (a 32-bit thunk DLL) cannot thunk to the 16-bit MAPI DLL. It also suggests several workarounds for this situation.   The MAPI interface is not supported under any version of Win32s. In addit...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAC2,QAGI,QAL7,QAR5,QAH4,QARL,QAB5,QBW4,QBWD,QAIF,QAY5,QDNN,QAUD,QAH6,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Why Thunking to 16-bit MAPI Will Fail Under Win32s</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 11, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q149710</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32s version 1.30, 1.30c
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article discusses the details on why a Win32s client (a 32-bit thunk
+DLL) cannot thunk to the 16-bit MAPI DLL. It also suggests several
+workarounds for this situation.
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The MAPI interface is not supported under any version of Win32s. In
+addition, a Win32s client (a 32-bit application or a DLL) cannot directly
+thunk down to 16-bit MAPI APIs in Windows 3.x. There are several
+resolutions for this scenario.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+When the 16-bit MAPI DLL allocates a buffer on behalf of a call from the 32-
+bit thunk DLL, your 16-bit code will have to call
+UTSelectorOffsetToLinear() on the returned 16:16 address. The result is a
+flat 32-bit address that can then be passed back to the 32-bit DLL. But
+when the 32-bit code is ready to call the 16-bit MAPIFreeBuffer() function
+by way of the thunk, the flat 32-bit address needs to be converted back to
+the original 16:16 address that the 16-bit code can use. The normal
+solution is that the 16-bit code would call UTLinearToSelectorOffset() on
+the 32-bit address passed from the 32-bit client before making a call to
+MAPIFreeBuffer().
+<P>
+But the problem is that in the following nested function call where x is a
+segmented (16:16) address, Win32s does not guarantee to return the original
+value of x (16:16 address) back. Hence, when MAPIFreeBuffer is called with
+this bogus 16:16 address, it fails.
+<P>
+<PRE>   UTLinearToSelectorOffset( UTSelectorOffsetToLinear(x) )
+
+</PRE>Note that this address translation problem described here is not specific
+to the MAPI allocation and de-allocation routines. It applies to all 16-bit
+MAPI functions that use 16:16 segmented addresses.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Here are three approaches you can use to resolve this situation:
+
+<UL><LI>Correct the address translation problem that is inherent to Win32s. For
+   each 16-bit MAPI function that would use or return a 16:16 segmented
+   address and that needs to be converted to a 32-bit address to be passed
+   on to the 32-bit side, you need to maintain a global lookup table or
+   array on the 16-bit side that associates the new 32-bit address with the
+   corresponding 16:16 address. When the 32-bit code calls into 16-bit code
+   passing a valid 32-bit address, instead of calling
+   UTLinearToSelectorOffset() on this 32-bit address, you will have to
+   fetch the corresponding 16:16 address from the lookup table. This 16:16
+   address can be used with all the MAPI functions on the 16-bit side.
+
+<LI>Write a separate 16-bit client (a 16-bit DLL) that would implement the
+   MAPI functionality by linking to the 16-bit MAPI DLL. The Win32s client
+   (a 32-bit DLL) would then thunk to the 16-bit client DLL that makes the
+   MAPI calls. The address translation problem does not exist in this
+   scenario because all MAPI functionality is implemented and executed on
+   the 16-bit side by the 16-bit client DLL linking to the 16-bit MAPI DLL.
+
+<LI>Write a separate 16-bit client (a 16-bit application) that implements
+   the MAPI functionality by linking to the 16-bit MAPI DLL. Then the
+   Win32s client (either a 32-bit application or DLL) can communicate with
+   this 16-bit client by way of the documented IPC (interprocess
+   communication) methods that are available to Win32s. For more
+   information on IPC mechanisms under Win32s, please see the following
+   article in the Microsoft Knowledge Base:
+<P>
+   ARTICLE-ID: <B><A href="../win32sdk/q95900.htm">Q95900</A></B>
+<PRE>   TITLE     : Interprocess Communication on Windows NT,
+               Windows 95, &amp; Win32s
+
+</PRE></UL>Note that Visual Foxpro version 3.0b includes a DLL called Foxmapi.fll that
+implements the second workaround, allowing 32-bit Visual Foxpro
+applications to communicate with 16-bit MAPI functions under Win32s.
+<P>
+These three approaches are only suggestions; Microsoft cannot provide
+support if you decide to implement them in your Win32s-based application.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.30 1.30c kbinf ipc mapi thunk win16 win32<BR>
+KBCategory: kbprg kbprb<BR>
+KBSubcategory: w32s
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 11, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

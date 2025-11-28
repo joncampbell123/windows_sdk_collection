@@ -1,0 +1,259 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Implementing Print Margins in a Windows MFC Application </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q105444">
+<META NAME="KBModify" CONTENT="1997/07/18">
+<META NAME="KBCreate" CONTENT="1993/10/20">
+<META NAME="Keywords" CONTENT="kb16bitonly MfcPrinting kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  To implement accurate print margins, applications should use the GETPHYSPAGESIZE and GETPRINTINGOFFSET printer escapes, as well as CDC::GetDeviceCaps() with LOGPIXELSX/LOGPIXELSY, HORZRES/VERTRES, and/or HORZSIZE/VERTSIZE.  MORE INFORMATION  For a ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAOX,QAB5,QARJ,QAH4,QAF8,QANO,QAKD,QBVH,QBE7,QBE6,QBWA,QDL9,QBWQ,QBWO,QBWN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Implementing Print Margins in a Windows MFC Application</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q105444</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50
+WINDOWS
+kbprg
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+To implement accurate print margins, applications should use the
+GETPHYSPAGESIZE and GETPRINTINGOFFSET printer escapes, as well as
+CDC::GetDeviceCaps() with LOGPIXELSX/LOGPIXELSY, HORZRES/VERTRES,
+and/or HORZSIZE/VERTSIZE.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+For a detailed description of the above functions, see the Microsoft
+Knowledge Base article <B><A href="../win16sdk/q11863.htm">Q11863</A></B> "Printer Page Area in Windows."
+<P>
+The following example demonstrates one method to implement print
+margins in the SuperPad Microsoft Foundation Class (MFC) Libraries
+sample. Because SuperPad already uses the m_rectDraw member of
+CPrintInfo, the method demonstrated here modifies this rectangle
+during OnPrint(). Note that modifying m_rectDraw during
+OnBeginPrinting() or OnPrepareDC() has no effect because
+CView::OnFilePrint() initializes m_rectDraw immediately after calling
+OnPrepareDC().
+
+<OL><P><LI>Use App Studio and ClassWizard to add controls and corresponding
+   variables for the margin settings to the Page Setup dialog box in
+   SuperPad (CPageSetupDlg). CPageSetupDlg is not related to the
+   common dialog CPrintDialog, but is a CDialog used by SuperPad to
+   set the header and footer strings that SuperPad adds to each page
+   when it prints, and is an intuitive place to add controls for
+   setting margins. The units used for input should be
+   device-independent units, such as inches or centimeters.
+<P>
+   The code below assumes that CPageSetupDlg has a CRect member named
+   m_rMargin that contains the current margin values in MM_HIMETRIC
+   units. To use this code, add m_rMargin to CPageSetupDlg and modify
+   CPageSetupDlg::DoDataExchange to convert new margin values to
+   MM_HIMETRIC units; save them in m_rMargin.
+
+<P><LI>Add a CRect member named m_rectMargins to the CPadView class and
+   add the following function to CPadView. This function converts the
+   device-independent margins in CPageSetupDlg::m_rMargin into
+   device-dependent values for the current printer. The printing
+   rectangle (CPrintInfo::m_rectDraw) representing the printable area
+   of the page is then reduced by these amounts in OnPrint().
+<P>
+   Sample Code
+   -----------
+<P>
+<PRE>   void CPadView::CalculateMargins(CDC* pDC)
+   {
+   POINT pt;
+
+   // Start by getting the dimensions of the unprintable part of the
+   // page (in device units). GETPRINTINGOFFSET will tell us the left
+   // and upper unprintable area.
+
+   pDC-&gt;Escape(GETPRINTINGOFFSET, 0, NULL, &amp;pt);
+   m_rectMargins.left = pt.x;
+   m_rectMargins.top  = pt.y;
+
+   // To get the right and lower unprintable area, we need to take
+   // the entire width and height of the paper (GETPHYSPAGESIZE) and
+   // subtract everything else.
+
+   pDC-&gt;Escape(GETPHYSPAGESIZE, 0, NULL, &amp;pt);
+
+   m_rectMargins.right  = pt.x                     // total paper width
+                          - pDC-&gt;GetDeviceCaps(HORZRES) // printable width
+                          - m_rectMargins.left;   // left unprtable margin
+
+   m_rectMargins.bottom = pt.y                     // total paper height
+                          - pDC-&gt;GetDeviceCaps(VERTRES) // printable ht
+                          - m_rectMargins.top;    // rt unprtable margin
+
+   // At this point, m_rectMargins contains the widths of the
+   // unprintable regions on all four sides of the page in device units.
+
+   // Convert the Hi-Metric margin values from the Page Setup dialog
+   // to device units and subtract the unprintable part we just
+   // calculated. Save the results back in m_rectMargins.
+   // (2540 == # of Hi-Metric units in an inch)
+
+   pt.x = pDC-&gt;GetDeviceCaps(LOGPIXELSX);    // dpi in X direction
+   pt.y = pDC-&gt;GetDeviceCaps(LOGPIXELSY);    // dpi in Y direction
+
+   m_rectMargins.left   = MulDiv(dlgPageSetup.m_rMargin.left, pt.x, 2540)
+                         - m_rectMargins.left;
+   m_rectMargins.top    = MulDiv(dlgPageSetup.m_rMargin.top, pt.y, 2540)
+                         - m_rectMargins.top;
+   m_rectMargins.right  = MulDiv(dlgPageSetup.m_rMargin.right, pt.x, 2540)
+                         - m_rectMargins.right;
+   m_rectMargins.bottom = MulDiv(dlgPageSetup.m_rMargin.bottom, pt.y,2540)
+                         - m_rectMargins.bottom;
+
+   // m_rectMargins now contains the values used to shrink the printable
+   // area of the page. Could check m_rectMargins here for negative values
+   // to prevent setting margins outside the printable area of the page.
+
+   // Convert to logical units and we're done!
+   pDC-&gt;DPtoLP(m_rectMargins);
+   }
+
+</PRE><P><LI>Call CalculateMargins() in CPadView::OnBeginPrinting() or another
+   appropriate place. If a mapping mode other than MM_TEXT were used,
+   it would be necessary to call CalculateMargins() after the mapping
+   mode is set (normally in OnPrepareDC).
+<P>
+<PRE>   void CPadView::OnBeginPrinting(CDC* pDC, CPrintInfo* pInfo)
+   {
+       CEditView::OnBeginPrinting(pDC, pInfo);
+
+       CalculateMargins(pDC);  // add this line
+
+       // etc.
+   }
+
+</PRE><P><LI>Finally, in CPadView::OnPrint(), add the following four lines to
+   shrink the printing rectangle according to the values calculated
+   previously. m_rectDraw is initialized to the entire printable area
+   (in logical units) for every page.
+<P>
+   ...
+<PRE>   CRect rectPage = pInfo-&gt;m_rectDraw;     // existing code in OnPrint
+
+   rectPage.left   += m_rectMargins.left;  // add these four lines
+   rectPage.top    += m_rectMargins.top;
+   rectPage.right  -= m_rectMargins.right;
+   rectPage.bottom -= m_rectMargins.bottom;
+
+   if (!strHeader.IsEmpty())               // existing code
+   ...
+
+</PRE></OL>SuperPad automatically adjusts its printed output to be contained in
+the rectPage rectangle.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.00 1.50 2.00 2.50 no32bit noupdate<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: MfcPrinting<BR>
+Keywords            : kb16bitonly MfcPrinting kbprg<BR>
+Technology          : kbMfc<BR>
+Version             : 1.00 1.50<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,536 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Access the Performance Registry Under Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q174631">
+<META NAME="KBModify" CONTENT="1997/10/03">
+<META NAME="KBCreate" CONTENT="1997/10/02">
+<META NAME="Keywords" CONTENT="BsePerfmon BseRegistry">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Windows 95 comes with an application called System Monitor (Sysmon.exe) that provides users with a method to monitor system resources or performance data. Note that Sysmon.exe is not installed by default under Windows 95, but users can install it v...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAMR,QAU3,QAY5,QAPN,QAM9,QALX,QAW6,QAYY,QDL9,QBWO,QBWN,QAHH,QAUJ,QAGI,QAIJ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Access the Performance Registry Under Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 3, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q174631</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Windows 95 comes with an application called System Monitor (Sysmon.exe)
+that provides users with a method to monitor system resources or
+performance data. Note that Sysmon.exe is not installed by default under
+Windows 95, but users can install it via the Control Panel applet named
+Add/Remove Programs, clicking the Windows Setup tab, and then selecting the
+System Monitor check box. System resources exist as a collection of objects
+where an object is a grouping of resources. Each resource within an object
+can be monitored and is known as a counter. Each object and counter form a
+unique pair from which performance data is collected. All the information
+required to perform System Monitor functionality is located in the Windows
+95 registry.
+<P>
+The process for writing a Performance Monitor involves the following steps:
+
+<OL><P><LI>Determine which performance objects are currently active in the system.
+
+<P><LI>Determine the characteristics of each performance object.
+
+<P><LI>Determine which performance counters are currently active for each
+   performance object.
+
+<P><LI>Determine the characteristics of each performance counter.
+
+<P><LI>Enable the collection of performance data.
+
+<P><LI>Retrieve performance data for an object\counter pair.
+
+<P><LI>Disable the collection of performance data.
+<P>
+</OL>In addition to monitoring a local Windows 95 machine, the above procedure
+of querying the registry to obtain system-monitoring data, can also be
+performed on a remote machine running Windows 95.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Step 1: Determine What Performance
+<P><h3>Objects Are Currently Active in the System</h3>
+ 
+<P>
+To determine which objects are active in the system, start by enumerating
+the following registry key:
+<P>
+<PRE>   HKEY_LOCAL_MACHINE\System\CurrentControlSet\control\PerfStats\Enum
+
+</PRE></OL>Each registry key that is listed under this location is called an Object
+(for example, VFAT, KERNEL, etc.). The availability of objects is dynamic.
+Therefore, this location must be checked first before proceeding to collect
+performance data. The following sample code illustrates this concept:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   #include &lt;windows.h&gt;
+   #include &lt;stdio.h&gt;
+
+   #define DIFFFLAGLEN 6
+   #define PERFENUMKEY
+              "System\\CurrentControlSet\\Control\\PerfStats\\Enum"
+
+   char szCounter[MAX_PATH];
+   char szObject[MAX_PATH];
+   char szName[MAX_PATH];
+   LPSTR lpszDescBuff = NULL;
+   char szDiffFlag[DIFFFLAGLEN]; // can contain either "TRUE" or "FALSE"
+
+   void main(void)
+   {
+    DWORD rc;
+    DWORD dwIndex1, dwIndex2;
+    DWORD dwType;
+    DWORD dwBufSize;
+    HKEY hKey;
+    HKEY hObject;
+    HKEY hCounter;
+
+    rc = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+      PERFENUMKEY, 0, KEY_READ, &amp;hKey);
+    if (rc == ERROR_SUCCESS)
+    {
+      dwBufSize = MAX_PATH;
+      dwIndex1 = 0;
+
+      // enumerate objects
+      while ( RegEnumKeyEx(hKey, dwIndex1++, szObject,
+              &amp;dwBufSize, NULL, NULL, NULL, NULL) == ERROR_SUCCESS )
+      {
+         if ( (rc=RegOpenKeyEx(hKey, szObject, 0, KEY_READ, &amp;hObject))
+                           == ERROR_SUCCESS)
+         {
+            // process information on the open key using hObject
+         }
+         RegCloseKey(hObject);
+         dwBufSize = MAX_PATH;
+      }
+      RegCloseKey(hKey);
+    }
+    else
+      printf("Error %d opening %s\n", rc, PERFENUMKEY);
+   } // end main
+
+
+</PRE><h3>Step 2: Determine the Characteristics of Each Performance Object</h3>
+ 
+<P>
+Each performance object key is characterized by one registry value. This
+registry value is of type REG_SZ and is called "Name." The "Name" registry
+key identifies the commonly used name of the object (for example, VFAT is
+know as "File System"). It is this "Name" that would be shown to an end
+user that is using the system monitor application. Use RegQueryValueEx() to
+obtain this registry value as shown in the following sample code:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   if ((rc=RegQueryValueEx(hObject, "Name", NULL, &amp;dwType,
+                           szObject, &amp;dwBufSize)) == ERROR_SUCCESS)
+   {
+   }
+
+</PRE><h3>Step 3: Determine what Performance Counters Are Active for Each perf Object</h3>
+ 
+<P>
+Associated with each performance object key identified above with hObject,
+there is one or more performance counters. Each performance counter exists
+as a subkey of a performance object key. The following sample code
+enumerates all these performance counters for a given performance object
+(hObject):
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   // enumerate counters
+   dwIndex2 = 0;
+   dwBufSize = MAX_PATH;
+   while(RegEnumKeyEx(hObject, dwIndex2++, szCounter, &amp;dwBufSize,
+             NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
+   {
+      if ( (rc=RegOpenKeyEx(hObject, szCounter, 0, KEY_READ, &amp;hCounter))
+             == ERROR_SUCCESS)
+      {
+         // do processing on open counter key using hCounter
+      }
+      else
+         printf("Error %d opening counter %s\n", rc, szCounter);
+
+      RegCloseKey(hCounter);
+      dwBufSize = MAX_PATH;
+   }
+
+
+</PRE><h3>Step 4: Determine the Characteristics of Each Performance Counter</h3>
+ 
+<P>
+Similar to a performance object, each performance counter is characterized
+by three registry values. Each of these registry values is identified by
+"Name" and is of type REG_SZ. This "Name" value identifies the commonly
+used name of the counter (for example, CPUUsage is know as "Processor Usage
+(%)") and would be displayed to a user. A second REG_SZ value called
+"Description" describes the counter in more detail. You can use this
+description to provide more detail to the user. And finally, there is a
+third REG_SZ value called "Differentiate" that is either "TRUE" or "FALSE."
+If "Differentiate" is set to "FALSE" then the data retrieved is used in its
+raw form. If "Differentiate" is "TRUE" the data retrieved for this counter
+must be differentiated over time as follows:
+<P>
+<PRE>               Counter_Value2 - Counter_Value1
+           -----------------------------------------
+                 Time_Taken2 - Time_Taken1
+
+</PRE>The following code illustrates this procedure:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   // First, get the Name of the performance counter
+   dwBufSize = MAX_PATH;
+   rc = RegQueryValueEx(hObject, "Name", NULL, &amp;dwType, szName,
+                           &amp;dwBufSize);
+
+   // Second, get the Description
+   dwBufSize = 0;
+   RegQueryValueEx(hCounter, "Description", NULL, &amp;dwType, NULL,
+                   &amp;dwBufSize);
+   lpszDescBuff = LocalAlloc(LPTR, dwBufSize + 1);
+   rc = RegQueryValueEx(hCounter, "Description", NULL, &amp;dwType,
+                           lpszDescBuff, &amp;dwBufSize);
+
+   if (ERROR_SUCCESS == rc)
+   {
+      printf("%s: %s\n", szCounter, lpszDescBuff);
+      LocalFree(lpszDescBuff);
+   }
+
+   // get the Differentiate value
+   dwBufSize = DIFFFLAGLEN;
+   rc = RegQueryValueEx(hCounter, "Differentiate", NULL, &amp;dwType,
+                           szDiffFlag, &amp;dwBufSize);
+   if (ERROR_SUCCESS == rc)
+   {
+      printf("Differentiating Counter: %s\n\n", szDiffFlag);
+   }
+
+
+</PRE><h3>Step 5: Enable the Collection of Performance Data</h3>
+ 
+<P>
+Together, the performance object key name and counter subkey name pair is
+used to initialize performance data collection. To request the beginning of
+a performance data collection for any performance object\counter pair, use
+the object\counter pair to query the registry value located at
+HKEY_DYN_DATA\PerfStats\StartStat using RegQueryValueEx. For example, to
+start performance data collection on KERNEL\CPUUsage, a registry query on
+KERNEL\CPUUsage at location HKEY_DYN_DATA\PerfStats\StartStat is performed.
+If no requests to start data collection are issued, the performance data
+retrieved for KERNEL\CPUUsage is always 100%. Once a request to start
+performance data collection is issued, the data retrieved reflects the
+actual CPU utilization.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   BOOL EnableDataCollection(char *szObjName, char *szCounterName)
+   {
+    HKEY hOpen;
+    DWORD cbData;
+    DWORD dwType;
+    LPBYTE pByte;
+    DWORD rc;
+    char *szCounterData;
+    BOOL bSuccess = TRUE;
+
+    if ( (rc = RegOpenKeyEx(HKEY_DYN_DATA,"PerfStats\\StartStat", 0,
+                           KEY_READ, &amp;hOpen)) == ERROR_SUCCESS)
+    {
+      // concatenate the object and couter key names
+      szCounterData = LocalAlloc(LPTR,
+             lstrlen(szObjName) + lstrlen(szCounterName) + 2);
+      wsprintf(szCounterData, "%s\\%s", szObjName, szCounterName);
+
+      // query to get data size
+      if ( (rc = RegQueryValueEx(hOpen,szCounterData,NULL,&amp;dwType,
+             NULL, &amp;cbData )) == ERROR_SUCCESS )
+      {
+         pByte = LocalAlloc(LPTR, cbData);
+
+         // query the performance start key to initialize performance data
+         // query the start key to initialize performance data
+         rc = RegQueryValueEx(hOpen,szCounterData,NULL,&amp;dwType, pByte,
+                              &amp;cbData );
+         // at this point we don't do anything with the data
+         //  free up resources
+         LocalFree(pByte);
+      }
+      else
+         bSuccess = FALSE;
+
+      CloseHandle(hOpen);
+      LocalFree(szCounterData);
+    }
+    else
+      bSuccess = FALSE;
+
+    return bSuccess;
+   }
+
+</PRE><h3>Step 6: Retrieve Performance Data for an object\counter Pair</h3>
+ 
+<P>
+Once performance data collection is initialized, each performance object
+key and counter subkey pair is again used to retrieve performance data from
+the registry key HKEY_DYN_DATA\PerfStats\StartData using RegQueryValueEx
+(for example, KERNEL\CPUUsage, KERNEL\Threads, etc.). The performance data
+retrieved using RegQueryValueEx is always of type DWORD (for example, 4
+bytes).
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   BOOL CollectPerfData(char *szObjName, char *szCounterName,
+                        DWORD *pdwData)
+   {
+    HKEY hOpen;
+    DWORD dwType;
+    DWORD cbData;
+    char *szCounterData;
+    DWORD rc;
+    BOOL bSuccess = TRUE;
+
+    // concatenate the object and counter keys
+    szCounterData = LocalAlloc(LPTR,
+           lstrlen(szObjName) + lstrlen(szCounterName) + 2);
+    wsprintf(szCounterData, "%s\\%s", szObjName, szCounterName);
+
+    // open performance data key
+    if ( (rc = RegOpenKeyEx(HKEY_DYN_DATA,"PerfStats\\StatData", 0,
+         KEY_READ, &amp;hOpen)) == ERROR_SUCCESS)
+    {
+      cbData = sizeof(DWORD);
+      // retrieve performance data which is of size of DWORD
+      rc=RegQueryValueEx(hOpen,szCounterData,0,&amp;dwType,
+            (LPBYTE)pdwData,&amp;cbData );
+
+      // let the caller know if it worked or not
+      bSuccess = rc == ERROR_SUCCESS;
+      RegCloseKey(hOpen);
+    }
+    else
+      bSuccess = FALSE;
+
+    // free the resources
+    LocalFree(szCounterData);
+    return bSuccess;
+   }
+
+
+</PRE><h3>Step 7: Disable the Collection of Performance Data</h3>
+ 
+<P>
+After performance data retrieval is completed, performance data collection
+must be de-initialized or turned off to allow system resources to be
+released. To request the end of performance data collection for any
+object\counter pair, the object\counter pair is used to query the registry
+value located at HKEY_DYN_DATA\PerfStats\StopStat using RegQueryValueEx().
+For example, to request performance data collection end for
+KERNEL\CPUUsage, RegQueryValueEx() is used to query the registry value
+KERNEL\CPUUsage at location HKEY_DYN_DATA\PerfStats\StopStat.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   BOOL DisableDataCollection(char *szObjName, char *szCounterName)
+   {
+    HKEY hOpen;
+    LPBYTE pByte;
+    DWORD cbData;
+    DWORD dwType;
+    DWORD rc;
+    char *szCounterData;
+    BOOL bSuccess = TRUE;
+
+    if ( (rc = RegOpenKeyEx(HKEY_DYN_DATA,"PerfStats\\StopStat", 0,
+                           KEY_READ, &amp;hOpen)) == ERROR_SUCCESS)
+    {
+      // concatenate the object and couter key names
+      szCounterData = LocalAlloc(LPTR,
+            lstrlen(szObjName) + lstrlen(szCounterName) + 2);
+      wsprintf(szCounterData, "%s\\%s", szObjName, szCounterName);
+
+      // query to get data size
+      if ( (rc = RegQueryValueEx(hOpen,szCounterData,NULL,&amp;dwType,
+            NULL, &amp;cbData )) == ERROR_SUCCESS )
+      {
+         pByte = LocalAlloc(LPTR, cbData);
+
+         // query the performance start key to initialize performance data
+         // query the start key to initialize performance data
+         rc = RegQueryValueEx(hOpen,szCounterData,NULL,&amp;dwType, pByte,
+                              &amp;cbData );
+         // at this point we don't do anything with the data
+         // free up resources
+         LocalFree(pByte);
+
+      }
+      else
+         bSuccess = FALSE;
+
+      CloseHandle(hOpen);
+      LocalFree(szCounterData);
+    }
+    else
+      bSuccess = FALSE;
+
+    return bSuccess;
+   }
+
+
+</PRE><h3>Step 8: Remote System Monitoring</h3>
+ 
+<P>
+Since performance data is part of the registry and since
+RegConnectRegistry() enables one Windows 95 machine to read and write to a
+remote registry, system monitoring can be performed on a remote Windows 95
+machine. Follow these steps to enable this functionality:
+
+<OL><P><LI>Install the "Remote Registry Service" on all Windows 95 machines.
+
+<P><LI>Use RegConnectRegistry to retrieve handles to HKEY_LOCAL_MACHINE and
+   HKEY_DYN_DATA from the remote Windows 95 target, as shown below:
+<P>
+<PRE>    RegConnectRegistry(szComputerName,     // name of remote computer
+                   HKEY_LOCAL_MACHINE, // predefined registry handle
+                   &amp;hkRemoteMachine);  // buffer for remote registry handle
+
+
+</PRE><P><LI>Use the handle returned by RegConnectRegistry as replacements for
+   HKEY_LOCAL_MACHINE and HKEY_DYN_DATA, as shown below:
+<P>
+<P><PRE>    RegConnectRegistry(szComputerName, // name of remote computer
+<PRE></PRE>                   HKEY_DYN_DATA,  // predefined registry handle
+                   &amp;hkDynaData);   // buffer for remote registry handle
+
+</PRE><P><LI>Perform the steps as described above.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+Since performance monitoring is such a valuable tool, Windows 95 has
+provided a method by which additional performance objects can be added to
+the registry. In Windows 95, performance data is provided by a collection
+of VxDs. It is the job of these VxDs to provide the performance data upon
+request as the registry is queried. To get more information on how to
+providing performance objects, consult the Device Driver Kit (DDK)
+documentation.
+ 
+<PRE>Keywords          : BsePerfmon BseRegistry
+Version           : WINNT:
+Platform          : winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 3, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

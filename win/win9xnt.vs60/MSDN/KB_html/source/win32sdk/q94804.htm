@@ -1,0 +1,212 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Thread Local Storage Overview </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q94804 ">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1993/01/18">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Thread local storage (TLS) is a method by which each thread in a given process is given a location(s) in which to store thread-specific data.  Four functions exist for TLS: TlsAlloc(), TlsGetValue(), TlsSetValue(), and TlsFree(). These functions ma...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QATJ,QA28,QAUQ,QBW5,QAGI,QAYL,QAAW,QA7H,QANG,QAKD,QAUD,QAJQ,QAIF,QACJ,QBUT V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Thread Local Storage Overview</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q94804 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.1, 3.5, and 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Thread local storage (TLS) is a method by which each thread in a given
+process is given a location(s) in which to store thread-specific data.
+<P>
+Four functions exist for TLS: TlsAlloc(), TlsGetValue(), TlsSetValue(), and
+TlsFree(). These functions manipulate TLS indexes, which refer to storage
+areas for each thread in a process. A given index is valid only within the
+process that allocated it.
+<P>
+Note that the Visual C++ compiler supports an alternate syntax:
+<P>
+<PRE>   _declspec( thread )
+
+</PRE>which can be used in place of directly calling these APIs. Please see the
+description of _declspec in the VC++ "Language and Run-time Help" helpfile
+for more information.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+A call to TlsAlloc() returns a global TLS index. This one TLS index is
+valid for every thread within the process that allocated it, and should
+therefore be saved in a global or static variable.
+<P>
+Thread local storage works as follows: when TlsAlloc() is called, every
+thread within the process has its own private DWORD-sized space reserved
+for it (in its stack space, but this is implementation-specific). However,
+only one TLS index is returned. This single TLS index may be used by each
+and every thread in the process to refer to the unique space that
+TlsAlloc() reserved for it.
+<P>
+For this reason, TlsAlloc() is often called only once. This is convenient
+for DLLs, which can distinguish between DLL_PROCESS_ATTACH (where the first
+process's thread is connecting to the DLL) and DLL_THREAD_ATTACH
+(subsequent threads of that process are attaching). For example, the first
+thread calls TlsAlloc() and stores the TLS index in a global or static
+variable, and every other thread that attaches to the DLL refers to the
+global variable to access their local storage space.
+<P>
+Although one TLS index is usually sufficient, a process may have up to
+TLS_MINIMUM_AVAILABLE indexes (guaranteed to be greater than or equal
+to 64).
+<P>
+Once a TLS index has been allocated (and stored), the threads within the
+process may use it to set and retrieve values in their storage spaces. A
+thread may store any DWORD-sized value in its local storage (for example, a
+DWORD value, a pointer to some dynamically allocated memory, and so forth).
+The TlsSetValue() and TlsGetValue() APIs are used for this purpose.
+<P>
+A process should free TLS indexes with TlsFree() when it has finished using
+them. However, if any threads in the process have stored a pointer to
+dynamically allocated memory within their local storage spaces, it is
+important to free the memory or retrieve the pointer to it before freeing
+the TLS index, or it will be lost.
+<P>
+For more information, please see "Using Thread Local Storage" in the
+"Processes and Threads" overview in the "Win32 Programmer's Reference".
+<P>
+<P><h3>Example</h3>
+ 
+<P>
+Thread A within a process calls TlsAlloc(), and stores the index returned
+in the global variable TlsIndex:
+<P>
+<PRE>   TlsIndex = TlsAlloc();
+
+</PRE>Thread A then allocates 100 bytes of dynamic memory, and stores it in its
+local storage:
+<P>
+<PRE>   TlsSetValue( TlsIndex, malloc(100) );
+
+</PRE>Thread A creates thread B, which stores a handle to a window in its local
+storage space referred to by TlsIndex.
+<P>
+<PRE>   TlsSetValue( TlsIndex, (LPVOID)hSomeWindow );
+
+</PRE>Note that TlsIndex refers to a different location when thread B uses it,
+than when thread A uses it. Each thread has its own location referred to by
+the same value in TlsIndex.
+<P>
+Thread B may terminate safely because it does not need to specifically free
+the value in its local storage.
+<P>
+Before thread A terminates, however, it must first free the dynamically
+allocated memory in its local storage
+<P>
+<PRE>   free( TlsGetValue( TlsIndex ) );
+
+</PRE>and then free the TLS index:
+<P>
+<PRE>   if ( !TlsFree( TlsIndex ) )
+      // TlsFree() failed.  Handle error.
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 3.50 4.00 95<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: BseProcThrd<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

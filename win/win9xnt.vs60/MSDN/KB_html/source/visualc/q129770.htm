@@ -1,0 +1,229 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: CString::TrimLeft Fails in a UNICODE Application </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q129770">
+<META NAME="KBModify" CONTENT="1997/09/18">
+<META NAME="KBCreate" CONTENT="1995/05/03">
+<META NAME="Keywords" CONTENT="MfcMisc kbbuglist kbcode kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  In a UNICODE application, CString::TrimLeft creates a string that is the same length as the original with the first half of the trimmed string replacing the first few characters of the original string.  The following are examples that show the resu...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAWP,QAH4,QA9N,QATX,QBXT,QA5V,QAY5,QAR4,QAIB,QBV8,QACI,QAWN,QAKE,QAKP,QBW5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: CString::TrimLeft Fails in a UNICODE Application</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q129770</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+2.10
+WINDOWS NT
+kbprg kbfixlist kbcode kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++, 32-bit Edition, version 2.1
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+In a UNICODE application, CString::TrimLeft creates a string that is the
+same length as the original with the first half of the trimmed string
+replacing the first few characters of the original string.
+<P>
+The following are examples that show the result of using TrimLeft in a
+UNICODE application. The dash (-) character represents white space.
+<P>
+CString::TrimLeft()
+<P>
+<PRE>Before      After
+</PRE> 
+<PRE>--A         A-A
+--AB        ABAB
+--ABC       ABABC
+--ABCD      ABCBCD
+--ABCDE     ABCBCDE
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+The CString::TrimLeft function trims all leading white space characters
+from a string when using ASCII, which is a single-byte character set.
+However, when using UNICODE, which is a double-byte character set, the
+CString::TrimLeft function copies only half of the non-white space
+characters over the white spaces. In addition, because the null character
+is not in the first half of the non-white space characters, you end up with
+a new string that is a combination of the copied characters and the
+original string. This is due to the following line of code in STREX.CPP,
+which you'll find in MSVC20\MFC\SRC:
+<P>
+<PRE>   memmove(m_pchData, lpsz, nDataLength+1);
+
+</PRE>This line of code moves (nDataLength+1) bytes instead of characters.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+The easiest solution is to create a global TrimLeft function to, in this
+case, take a CString as a parameter. An implementation for this global
+function is listed in the "Sample Code to Workaround Problem" section
+below.
+<P>
+While it is possible to override the CString class and modify the
+functionality of TrimLeft so that characters are moved instead of bytes,
+Microsoft doesn't recommend it because you would also need to override the
+constructors, assignment operators, and destructors for your CString
+derived class. To override CString::TrimLeft, copy the functionality from
+CString::TrimLeft in STREX.CPP line 390 to your function, and then change
+the problem line of code to this:
+<P>
+<PRE>   memmove(m_pchData, lpsz, (nDataLength+1)*sizeof(TCHAR));
+
+</PRE>Both solutions will work with both single-byte and double-byte character
+sets.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This problem was corrected in Visual C++
+version 2.2.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code to Workaround Problem</h3>
+ 
+<P>
+<PRE>/* Compile options needed:
+</PRE>This change does not require special options.
+<PRE>*/
+
+void TrimLeft(CString&amp; str){
+
+   // Get the cstring length and buffer pointer:
+
+      int    str_length = str.GetLength();
+      LPTSTR pstr_Data =  str.GetBuffer(str_length);
+
+  // Find the first non white-space character:
+
+     LPCTSTR pstr_non_space = pstr_Data;
+     while (_istspace(*pstr_non_space))
+             pstr_non_space = _tcsinc(pstr_non_space);
+
+  // Find the new length in characters:
+
+     int nDataLength = str_length - (pstr_non_space - pstr_Data);
+
+  // Replace this line:
+
+     // memmove(m_pchData, lpsz, nDataLength + 1);
+     // WITH THE FOLLOWING TO MOVE CHARACTERS INSTEAD OF BYTES:
+
+  memmove(pstr_Data,pstr_non_space, (nDataLength+1)*sizeof(TCHAR));
+
+  // Release the buffer pointer, and adjust the cstring length:
+
+     str.ReleaseBuffer(nDataLength);
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.10 3.10 3.1<BR>
+KBCategory: kbprg kbfixlist kbcode kbbuglist<BR>
+KBSubcategory: MfcMisc<BR>
+Keywords          : MfcMisc kbbuglist kbcode kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 2.10<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

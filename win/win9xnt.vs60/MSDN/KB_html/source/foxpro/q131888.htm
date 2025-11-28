@@ -1,0 +1,262 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Transaction Affects When Rules or Triggers Fire </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q131888">
+<META NAME="KBModify" CONTENT="1995/07/28">
+<META NAME="KBCreate" CONTENT="1995/06/22">
+<META NAME="Keywords" CONTENT="kbprg kbnetwork kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  Rules and triggers defined for a table may not fire at the expected time if a combination of buffering and transaction processing is used.  CAUSE =====  This is by design. Rules and triggers fire when an attempt is made to write the data in the buf...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPF,QAH4,QA5V,QAIB,QBV8,QAB9,QAKR,QBXJ,QATP,QBWS,QAEF,QAVI,QDLB,QA5E,QAL3 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Transaction Affects When Rules or Triggers Fire</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 28, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q131888</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual FoxPro for Windows, version 3.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Rules and triggers defined for a table may not fire at the expected time if
+a combination of buffering and transaction processing is used.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This is by design. Rules and triggers fire when an attempt is made to write
+the data in the buffer to the disk file.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Please see the sample code listed in this article.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Before running the following samples, open the Tastrade database located in
+the \Vfp\samples\mainsamp\data directory, and set the default to this
+directory.
+<P>
+All of the samples use the Customer table from Tastrade, which has a
+validation rule on the cust_id field. If preferred, you can use the Orders
+table instead; it has a record validation rule.
+<P>
+Before running any sample, issue a SET MULTILOCKS ON command in the Command
+window. Each sample begins with a TABLEREVERT() command to eliminate any
+records left in the data buffer from previous examples. This may cause an
+error if buffering was not in effect before running the example.
+<P>
+The error displayed when a field fails a validation rule is 1582.
+<P>
+<P><h3>Code Sample One</h3>
+ 
+<P>
+The validation rule on cust_id never fires when you run this code:
+<P>
+<PRE>   =TABLEREVERT()
+   USE customer
+   =CURSORSETPROP("Buffering",3)
+   APPEND BLANK
+   BEGIN TRANSACTION
+   ROLLBACK
+   =TABLEREVERT()
+
+</PRE>The rule never fires because the ROLLBACK and TABLEREVERT commands clear
+the buffer. Because the blank record is never written to the disk file, the
+validation rule on cust_id never fires.
+<P>
+<P><h3>Code Sample Two</h3>
+ 
+<P>
+The validation rule fires on the second APPEND BLANK command when you run
+this code:
+<P>
+<PRE>   =TABLEREVERT()
+   USE customer
+   =CURSORSETPROP("Buffering",3)
+   APPEND BLANK
+   BEGIN TRANSACTION
+   ROLLBACK
+   APPEND BLANK
+
+</PRE>This behavior occurs because, even though the ROLLBACK command discarded
+the current transaction in progress, the record still existed in the
+buffer. Optimistic row buffering is enabled, and Visual FoxPro
+automatically attempts to write the first appended record to the table when
+the record pointer is moved by the second APPEND BLANK command. To prevent
+this behavior, a TABLEREVERT() should be issued immediately before or after
+a ROLLBACK command.
+<P>
+<P><h3>Code Sample Three</h3>
+ 
+<P>
+The validation rule fires once, when the END TRANSACTION command is issued,
+when you run this code:
+<P>
+<PRE>   =TABLEREVERT()
+   USE customer
+   =CURSORSETPROP("Buffering",3)
+   APPEND BLANK
+   BEGIN TRANSACTION
+   END TRANSACTION
+
+</PRE>The transaction doesn't commit to the table, and the record still exists in
+the buffer. To prevent this behavior, test for successful execution of a
+TABLEUPDATE command prior to issuing the END TRANSACTION command.
+<P>
+<P><h3>Code Sample Four</h3>
+ 
+<P>
+The validation rule fires twice when you run this code:
+<P>
+<PRE>   =TABLEREVERT()
+   USE customer
+   =CURSORSETPROP("Buffering",3)
+   APPEND BLANK
+   BEGIN TRANSACTION
+   =TABLEUPDATE()
+   END TRANSACTION
+
+</PRE>An error is received only after the END TRANSACTION command is issued. The
+validation rule fires once for the TABLEUPDATE command. The TABLEUPDATE
+command fails, but there is no visible indication that the field failed the
+validation rule. The return value from the TABLEUPDATE command was not
+trapped, and the END TRANSACTION command attempts to write invalid data to
+the table.
+<P>
+The END TRANSACTION command fires the validation rule a second time, which
+results in the error 1582.
+<P>
+<P><h3>Code Sample Five</h3>
+ 
+<P>
+The field validation rule causes the TABLEUPDATE command to fail when you
+run this code:
+<P>
+<PRE>   =TABLEREVERT()
+   USE customer
+   =CURSORSETPROP("Buffering",3)
+   APPEND BLANK
+   BEGIN TRANSACTION
+   llDidUpdate = TABLEUPDATE()
+   IF llDidUpdate
+      END TRANSACTION
+   ELSE
+      lnRecordsDiscarded=TABLEREVERT()
+      WAIT WINDOW STR(lnRecordsDiscarded) + " Records Discarded"
+      ROLLBACK
+   ENDIF
+
+</PRE>The memory variable (llDidUpdate) contains false (.F.), which indicates
+that the TABLEUPDATE command failed. The validation error never appears on
+the screen, and a message indicating that one record was discarded appears.
+<P>
+This approach demonstrates the recommended approach to combining buffering
+and transaction processing. The return value from the TABLEUPDATE command
+should be tested, and the END TRANSACTION command issued only if the
+TABLEUPDATE command was successful.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 VFoxWin<BR>
+KBCategory: kbprg kbnetwork kbprb<BR>
+KBSubcategory: FxprgMultiuser<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 28, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

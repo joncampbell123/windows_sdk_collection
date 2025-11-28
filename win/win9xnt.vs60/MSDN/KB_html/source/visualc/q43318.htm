@@ -1,0 +1,253 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Spawned Program Accessing Parent's Functions </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q43318 ">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1989/04/12">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  A program spawned with the P_WAIT modeflag can successfully call functions within its parent. The functions must be set up in such a way, however, that CPU registers are preserved and the data segment register is loaded as necessary. It is also ver...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBFY,QAY5,QAGI,QAH4,QA4Q,QAB9,QBV8,QAMA,QAUD,QAC2,QAIF,QBW7,QBVV,QAYZ,QAO3 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Spawned Program Accessing Parent's Functions</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q43318 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+5.10 6.00 6.00a 6.00ax 7.00 | 5.10 6.00 6.00a | 1.00 1.50
+<PRE>MS-DOS                      | OS/2            | WINDOWS
+</PRE>kbprg
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The C Run-time (CRT) included with:
+<P>
+<P><PRE>    - Microsoft C for MS-DOS, versions 5.1, 6.0, 6.0a, and 6.0ax
+    - Microsoft C for OS/2, versions 5.1, 6.0, and 6.0a
+    - Microsoft C/C++ for MS-DOS, version 7.0
+    - Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+A program spawned with the P_WAIT modeflag can successfully call functions
+within its parent. The functions must be set up in such a way, however,
+that CPU registers are preserved and the data segment register is loaded as
+necessary. It is also very important that all necessary startup code and C
+run time library routines are present whenever the parent functions are
+called.
+<P>
+Warning: This procedure is neither recommended nor supported. This
+article is for informational purposes only.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The programs below, PARENT.C and CHILD.C, demonstrate this technique.
+This method of sharing functions may be useful as a primitive form of
+overlaying when there is a need for a common set of functions to be
+accessed by a sequence of spawned child processes. The method of
+communication from the parent to the child is through command-line
+arguments. In the parent, a far pointer to the function that will be
+called is converted to a string and passed as a parameter through a
+spawn. In the child, it is then converted back into a far pointer.
+<P>
+There are several considerations to be made when writing code of this
+nature:
+
+<UL><LI>For any variables in the parent to be accessed, the routines to be
+   called must use the _loadds keyword. Not loading DS for the called
+   function results in the child's DS being used rather than the DS
+   associated with the function in the parent.
+
+<LI>Even if _loadds is used, however, DS will not be equal to SS,
+   because the child's stack is the one that is used and there is no
+   mechanism in C for changing stacks. It is necessary to ensure that
+   the functions called by the child do not blow out the child's
+   stack.
+
+<LI>Many of the run-time library routines rely on SS equaling DS;
+   therefore, one must avoid those routines.
+
+<LI>Preservation of the child's state can be accomplished by using the
+   _saveregs keyword. This is not necessary when calling C from C;
+   however, it may be vital if C is being called from MASM.
+
+<LI>All calls must be far because the parent and child are loaded
+   separately. Different memory models may be used for parent and
+   child.
+
+<LI>This process obviously produces a general-protection fault (GP
+   fault) in OS/2. Use dynamic-link libraries to duplicate this
+   functionality with greater ease, portability, and safety.
+<P>
+</UL><h3>Sample Code:</h3>
+ 
+<P>
+The following is the parent program:
+<P>
+<PRE>/*
+ * PARENT.C
+ */
+
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;process.h&gt;
+
+int far _saveregs _loadds myfunc(void);
+void                      main(void);
+
+int   k = 0, l = 0;   /* Globals to be accessed inside myfunc */
+
+
+int far _saveregs _loadds myfunc(void)
+</PRE>{
+<PRE>   int   i,           /* Return value */
+         j;           /* Indexing     */
+
+   for (j = 1; j &lt; 10; j++) {
+      k = k + j;
+      l = k * j;
+   }
+   i = k + l;
+   return (i);
+</PRE>}
+<P>
+<PRE>void main()
+</PRE>{
+<PRE>   int    (far _saveregs _loadds * myfuncaddr) (void);  /* myfunc()
+pointer   */
+   char   address[16];                               /* address to
+</PRE>pass */
+<P>
+<PRE>   printf("Now inside parent main().\n");
+   myfuncaddr = (int (far _saveregs _loadds *) (void)) myfunc;
+   ultoa((unsigned long) myfuncaddr, address, 10);
+   printf("Address of myfunc(): %s\n", address);
+
+   spawnlp(P_WAIT, "child.exe", "child.exe", address, NULL);
+   printf("Back inside parent main().\n");
+</PRE>}
+<P>
+<P>
+The following is the child program:
+<P>
+<PRE>/*
+ * CHILD.C
+ */
+
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+
+
+void main(int argc, char **argv)
+</PRE>{
+<PRE>   int (far _loadds _saveregs * myfuncaddr)(void);
+                            /* Pointer to parent's function */
+   int i;                   /* Function return value        */
+
+   printf("    Now in child.\n");
+   myfuncaddr = (int (far _loadds _saveregs *)(void))atol(argv[1]);
+   printf("    Received: %ld\n", myfuncaddr);
+   printf("    Calling myfunc().\n");
+   i = myfuncaddr();
+   printf("        Result of myfunc(): %d\n", i);
+   printf("    Leaving child.\n");
+}
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 6.00 6.00a 6.00ax 7.00 1.00 1.50<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: CRTIss<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

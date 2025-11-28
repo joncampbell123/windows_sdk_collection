@@ -1,0 +1,231 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Rotating a Bitmap by 90 Degrees </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q77127 ">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1991/10/08">
+<META NAME="Keywords" CONTENT="kbgraphic">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  There are no Windows functions that directly rotate bitmaps. All techniques for rotating bitmaps in Windows involve copying the rows from a source bitmap into the columns of a destination bitmap. The following contains code for rotating a bitmap us...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAK6,QDL9,QBWO,QBWN,QASR,QAB5,QAB2,QAUD,QAH4,QALM,QA9N,QAY4,QAU4,QASB,QAD7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Rotating a Bitmap by 90 Degrees</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q77127 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   versions 3.1 and 3.0
+
+<LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+There are no Windows functions that directly rotate bitmaps. All techniques
+for rotating bitmaps in Windows involve copying the rows from a source
+bitmap into the columns of a destination bitmap. The following contains
+code for rotating a bitmap using GetPixel() and SetPixel(), and contains an
+outline of code for rotating device independent bitmaps (DIB).
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+A device dependent bitmap (DDB) can be rotated using the GetPixel() and
+SetPixel() functions. To rotate the bitmap, use the following code:
+<P>
+HBITMAP Rotate90(HDC hDC, HBITMAP hSourceBitmap)
+{
+<PRE>  HBITMAP hOldSourceBitmap, hOldDestBitmap, hDestBitmap;
+  HDC hMemSrc, hMemDest;
+  int height, width;
+  int i, j;
+  BITMAP iSrcBitmap;
+
+  // Step 1: Create a memory DC for the source and destination bitmaps
+  //         compatible with the device used.
+
+  hMemsrc = createcompatibledc(hdc);
+  hMemDest= CreateCompatibleDC(hDC);
+
+
+  // Step 2: Get the height and width of the source bitmap.
+
+  GetObject(hSourceBitmap, sizeof(BITMAP), (LPSTR)&amp;SrcBitmap);
+  width = SrcBitmap.bmWidth;
+  height = SrcBitmap.bmHeight;
+
+
+  // Step 3: Select the source bitmap into the source DC. Create a
+  //         destination bitmap, and select it into the destination DC.
+
+  hOldSourceBitmap = SelectObject(hMemSrc, hSourceBitmap);
+  hDestBitmap = CreateBitmap(height, width, SrcBitmap.bmPlanes,
+                    SrcBitmap.bmBitsPixel, NULL);
+
+  if (!hDestBitmap)
+    return(hDestBitmap);
+
+  hOldDestBitmap = SelectObject(hMemDest, hDestBitmap);
+
+
+  // Step 4: Copy the pixels from the source to the destination.
+
+  for (i = 0; i &lt; width; ++i)
+      for (j = 0; j &lt; height; ++j)
+          SetPixel(hMemDest, j, width - 1 - i,
+                                            GetPixel(hMemSrc, i, j));
+
+
+  // Step 5: Destroy the DCs.
+
+  SelectObject(hMemSrc, hOldSourceBitmap);
+  SelectObject(hMemDest, hOldDestBitmap);
+  DeleteDC(hMemDest);
+  DeleteDC(hMemSrc);
+
+
+  // Step 6: Return the rotated bitmap.
+
+  return(hDestBitmap);
+</PRE>}
+<P>
+If the bitmap is larger, using GetPixel() and SetPixel() may be too slow.
+If this is the case, there are two options:
+
+<OL><P><LI>If the contents of the bitmap do not change, create two versions of
+   the bitmap, the normal version and one that is rotated by 90
+   degrees. Load the appropriate bitmap as required.
+<P>
+</OL>-or-
+
+<OL><P><LI>Find some way to manipulate the bits of the bitmap that is faster
+   than using SetPixel() and GetPixel(). The best way to do this is to
+   convert the bitmap to a device independent bitmap. The following
+   four steps detail how to create the DIB and to perform the
+   rotation:
+<P>
+   a. Use GetDIBits() to convert the bitmap to a device independent
+<P><PRE>      format. It is necessary to create a BITMAPINFO structure
+      appropriate for the bitmap. This will write the bitmap as a
+      series of scanlines. Each scanline is padded so that it is DWORD
+      aligned.
+</PRE><P>
+   b. Allocate memory for the destination bitmap. This bitmap requires
+<P><PRE>      as many scanlines as the width of the source bitmap. Each
+      scanline is as many pixels wide as the height of the source
+      bitmap. Also, the scanlines must be DWORD aligned.
+</PRE><P>
+   c. For each scanline in the source bitmap, copy the pixels to the
+<P><PRE>      appropriate column in the destination bitmap. NOTE: The format
+      for each scanline depends upon the number of bits per pixel. See
+      the BITMAPINFO documentation for a description of the possible
+      formats.
+</PRE><P>
+   d. Use SetDIBits() to copy the device independent bits into a
+<P><PRE>      device dependent bitmap. Another BITMAPINFO structure,
+      appropriate for the destination device is required for this
+      step.
+</PRE><P>
+</OL>The four steps of this method require much more work than is required
+if GetPixel() and SetPixel() are used; however, this method may be
+faster because it directly manipulates the bits in the bitmap.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.10 4.00 95<BR>
+KBCategory: kbgraphic<BR>
+KBSubcategory: GdiBmp<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

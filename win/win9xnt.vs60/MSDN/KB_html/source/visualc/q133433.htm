@@ -1,0 +1,294 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: CArchive May Corrupt Memory or Write Incorrect Data </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q133433">
+<META NAME="KBModify" CONTENT="1997/09/18">
+<META NAME="KBCreate" CONTENT="1995/07/31">
+<META NAME="Keywords" CONTENT="MfcMisc kbbuglist kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The CArchive insertion operator (CArchive::operator                 circumstances, write incorrect data to its associated CFile or may overwrite other application memory. Likewise, the CArchive extraction operator (CArchive::operator&gt;&gt;) may incorre...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QANY,QAKM,QACJ,QBFD,QAR4,QAPN,QAAP,QABI,QABH,QAY2,QAYY,QAO3,QAO2,QAUD,QAKP V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: CArchive May Corrupt Memory or Write Incorrect Data</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q133433</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50 1.51 1.52
+WINDOWS
+kbprg kbbuglist kbfixlist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++ for Windows, versions 1.0, 1.5, 1.51, 1.52
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The CArchive insertion operator (CArchive::operator&lt;&lt;) may, in rare
+circumstances, write incorrect data to its associated CFile or may
+overwrite other application memory. Likewise, the CArchive extraction
+operator (CArchive::operator&gt;&gt;) may incorrectly read data from its CFile
+object.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The CArchive class uses buffering for all of its operations. When
+extracting data from the archive, it maintains a pointer to the current
+location in the buffer. When the pointer goes past the end of the currently
+retrieved buffer, it retrieves another block of data from the associated
+CFile object. The extraction operators for CArchive do not properly check
+for the condition where the buffer pointer reaches the end of the block. In
+some cases, the pointer wraps to the beginning of its segment. Later calls
+to extract data from the CArchive retrieve the data from the wrong memory
+address.
+<P>
+The CArchive class uses a similar procedure when data is inserted into the
+CArchive. The "More Information" section of this article gives more
+details.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Below are three approaches to resolving this problem:
+
+<UL><LI>If you construct your own CArchive objects, you can allocate the buffer
+   yourself and ensure that the error condition is never met. This can be
+   accomplished by allocating a buffer eight bytes larger than actually
+   needed as in this example:
+<P>
+<P><PRE>      char *pBuf = new char[520];
+      CArchive *pArcLoad = new CArchive(&amp;file,CArchive::load,512,pBuf);
+      // Use the archive in here
+      delete pArcLoad;
+      delete pBuf;
+</PRE><P>
+   NOTE: This code allocates a block of 520 bytes but only uses 512 of them
+   in the CArchive. The reason for leaving a gap of eight bytes is because
+   the default CArchive insertion or extraction operators take operands
+   with a maximum size of eight bytes (double). By allocating a buffer
+   eight bytes greater than necessary, you prevent m_lpBufCur from ever
+   getting within eight bytes of 0xFFFF so it is never wrapped back to 0 on
+   the addition check in the 'if' statement.
+<P>
+   -or-
+
+<LI>The first technique could be used with GlobalAlloc. Because the offset
+   of a pointer returned from GlobalAlloc is always zero, the boundary
+   error won't occur unless you allocate a buffer of nearly 0xFFFF in size.
+   Here's an example using GlobalAlloc:
+<P>
+<P><PRE>      HGLOBAL hGlob = ::GlobalAlloc(GMEM_FIXED,512);
+      LPVOID pBuf = ::GlobalLock(hGlob);
+      CArchive *pArcLoad = new CArchive(&amp;file,CArchive::load,512,pBuf);
+      // Use the archive in here
+      delete pArcLoad;
+      ::GlobalUnlock(hGlob);
+      ::GlobalFree(hGlob);
+</PRE><P>
+   NOTE: This piece of code and the previous one destroy the CArchive
+   object before the memory buffer. If the buffer is destroyed before the
+   CArchive object, earlier versions of Visual C++ may cause an assertion
+   failure (which can be safely ignored). For more information about this
+   problem, please see the following article in the Microsoft Knowledge
+   Base:
+<P>
+<P><PRE>      ARTICLE-ID: <B><A href="../visualc/q128113.htm">Q128113</A></B>
+<PRE></PRE>      TITLE     : FIX: Assertion Failed Line 178 or Line 527 in ARCCORE.CPP
+
+   -or-
+
+</PRE><LI>CDocument, COleDocument, and CRecordset all use CArchive. You could
+   create a CArchive-derived class to work around the problem, but you need
+   to change all references to it in these classes to references to the
+   fixed CArchive-derived class. If you do not want to do this, the
+   simplest approach may be to re-build the MFC libraries with a fix to the
+   CArchive class. The changes to the CArchive class would be in the 'if'
+   statements for all of the CArchive::operator&lt;&lt; and CArchive::operator&gt;&gt;
+   functions. These functions can all be found in AFX.INL (located in the
+   directory &lt;msvc&gt;\MFC\INCLUDE). The "More Information" section of this
+   article gives more detail as to why these specific changes would be
+   needed. Following is an example of the change that would be necessary:
+<P>
+   Change this:
+<P>
+<P><PRE>      _AFX_INLINE CArchive&amp; CArchive::operator&lt;&lt;(WORD w)
+      { if (m_lpBufCur + sizeof(WORD) &gt; m_lpBufMax) Flush();
+<PRE></PRE>          *(WORD FAR*)m_lpBufCur = w; m_lpBufCur += sizeof(WORD);
+          return *this; }
+
+   To this:
+
+      _AFX_INLINE CArchive&amp; CArchive::operator&lt;&lt;(WORD w)
+        { if (m_lpBufCur &gt; m_lpBufMax - sizeof(WORD)) Flush();
+            *(WORD FAR*)m_lpBufCur = w; m_lpBufCur += sizeof(WORD);
+            return *this; }
+
+   The only change is in the 'if' statement.
+
+   For details on re-building the MFC libraries, please see Chapter 15 of
+   the Class Library User's Guide and the README.TXT file located in the
+   &lt;msvc&gt;\MFC\SRC directory.
+
+   NOTE: If you rebuild the DLL version of the library (MFC250(D).DLL), you
+   should also rename the DLL and the library to prevent conflicts with
+   other versions.
+
+</PRE></UL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This problem has been corrected in the 16-
+bit component that comes with Visual C++ version 2.2.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The problem with the CArchive insertion and extraction operators is in the
+way they check the pointer to the current location in the buffer
+(m_lpBufCur). For example, CArchive::operator&lt;&lt;(WORD w) is defined as:
+<P>
+<PRE>   _AFX_INLINE CArchive&amp; CArchive::operator&lt;&lt;(WORD w)
+     { if (m_lpBufCur + sizeof(WORD) &gt; m_lpBufMax) Flush();
+         *(WORD FAR*)m_lpBufCur = w; m_lpBufCur += sizeof(WORD);
+         return *this; }
+
+</PRE>It is possible that an allocated buffer could end up with a memory block
+ending address close to &lt;s&gt;:0xFFFF. As call insert data into your buffer
+consecutively, m_lpBufCur approaches the end of the address block that
+might be somewhere near &lt;s&gt;:0xFFFF.
+<P>
+For example, consider this scenario:
+<P>
+<PRE>   m_lpBufCur==&lt;s&gt;:0xFFFE
+
+</PRE>In this scenario, the 'if' statement would evaluate as:
+<P>
+<PRE>   if (&lt;s&gt;:0xFFFE + 2 &gt; &lt;s&gt;:0xFFFE) Flush();
+
+</PRE>Because both pointers are far pointers this is equivalent to:
+<P>
+<PRE>   if ( &lt;s&gt;:0x0000 &gt; &lt;s&gt;:0xFFFE ) Flush();
+
+</PRE>This evaluation is not desirable. It appears that there is enough room left
+in the buffer to put the WORD into it and then m_lpBufCur is set to
+&lt;s&gt;:0x0000. Because the beginning of the buffer may not have been at the
+beginning of the segment, subsequent operations will begin to write at
+whatever data happens to be located at &lt;s&gt;:0x0000 on up to the beginning of
+the buffer.
+<P>
+The same boundary checks exist for the extraction operators. When
+m_lpBufCur is set back to 0x0000, all further extraction operators get data
+from the wrong location.
+<P>
+IMPORTANT NOTE: Because the problem occurs only when a particular memory
+block is allocated at a very specific address, the odds of encountering
+this problem are very low. There are cases where the layout of your
+application's heap and the thread of execution of the code causes this to
+occur every time you run your application, but if you are experiencing
+memory corruption, it is unlikely that this is the cause, so you shouldn't
+necessarily expect these workarounds to take care of the problem.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00 1.50 1.51 1.52 2.00 2.50 2.51 2.52<BR>
+StoreFields LoadFields SaveToStorage LoadFromStorage<BR>
+KBCategory: kbprg kbbuglist kbfixlist<BR>
+KBSubcategory: MfcMisc<BR>
+Keywords          : MfcMisc kbbuglist kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.00 1.50 1.51 1.52<BR>
+Platform          : WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

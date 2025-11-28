@@ -1,0 +1,300 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Dynasets w/ CLongBinary Fields Throws Incorrect Exception </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q141303">
+<META NAME="KBModify" CONTENT="1997/09/19">
+<META NAME="KBCreate" CONTENT="1995/12/14">
+<META NAME="Keywords" CONTENT="MfcDatabase vcbuglist400 vcfixlist410 kbprg kbbuglist kbfile kbfixlist">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  An MFC ODBC application that uses dynaset recordsets with CLongBinary bound fields worked in Visual C++ 2.x, but it throws an exception in Visual C++ 4.0 when the recordset is opened.  The CDBException indicates:  Data truncated.  Additionally, the...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEF,QAY2,QAH4,QACI,QA9N,QAAP,QAY5,QAGI,QA1S,QBV8,QAR4,QANJ,QABO,QBFY,QA7O V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Dynasets w/ CLongBinary Fields Throws Incorrect Exception</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 19, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q141303</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++, 32-bit Edition, version 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+An MFC ODBC application that uses dynaset recordsets with CLongBinary
+bound fields worked in Visual C++ 2.x, but it throws an exception in
+Visual C++ 4.0 when the recordset is opened.
+<P>
+The CDBException indicates:  Data truncated.
+<P>
+Additionally, the following trace messages are output (Microsoft Access
+driver output is shown):
+<P>
+<PRE>   Error in row
+   State:01S01,Native:89,Origin:[Microsoft][ODBC Microsoft Access 7.0
+   Driver]
+
+   Data truncated
+   State:01004,Native:2,Origin:[Microsoft][ODBC Microsoft Access 7.0
+   Driver]
+
+   Error: field data truncated during Open or Requery.
+   Data truncated.
+
+</PRE>The exception is thrown from CRecordset::InitRecord(). Also, in release
+builds, the same exception is also thrown by CRecordset::Move().
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The exception is thrown incorrectly. The problem is a bug in the MFC code.
+Both CRecordset::InitRecord() (responsible for initializing the recordset
+with the first record of the result set) and CRecordset::Move() perform a
+check following the fetch. If the fetch returns SQL_SUCCESS_WITH_INFO and
+the subsequent call to SQLError indicates that data was truncated, an
+exception should only be thrown if snapshots are being used. If the
+recordset is a dynaset, then data truncation is expected because of the
+way in which the MFC classes handle binding in dynasets, so it should be
+ignored.
+<P>
+The MFC code performs an incorrect comparison to determine if dynasets are
+being used resulting in the exact opposite of the desired effect --
+exceptions are only thrown if dynasets are being used with CLongBinary
+fields. The incorrect code is shown below (from CRecordset::InitRecord()):
+<P>
+<PRE>   if (!((m_pDatabase-&gt;m_dwUpdateOptions &amp; AFX_SQL_POSITIONEDSQL) &amp;&amp;
+            m_bLongBinaryColumns))
+     {
+        //throw the exception
+     }
+
+</PRE>AFX_SQL_POSITIONEDSQL corresponds to the update option for a snapshot, not
+a dynaset.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Unfortunately, CRecordset::InitRecord() is not a virtual function.
+Consequently, the two virtual functions that call InitRecord() must be
+overridden to allow a corrected version of InitRecord() to be called.
+Note that after you apply the following workaround, the trace messages
+will still be output but can be safely ignored.
+<P>
+NOTE: To assist you in implementing a workaround for this problem, obtain
+NOTRUNC.EXE:
+<P>
+The following file is available for download from the Microsoft Software
+Library:
+<P>
+<PRE> ~ <A href="http://support.microsoft.com/download/support/mslfiles/notrunc.exe">Notrunc.exe</A> <I>(size: 27189 bytes)</I> 
+
+</PRE>For more information about downloading files from the Microsoft Software
+Library, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../zmiscellaneous/q119591.htm">Q119591</A></B>
+   TITLE     : How to Obtain Microsoft Support Files from Online Services
+
+</PRE>After running the Notrunc.exe, you will have a custom component file
+(Notrunc.ogx), .cpp file, .h file, and a Readme.txt file. You can import
+the .ogx file into the component gallery, and then reuse it as needed. For
+more information on importing components, see Importing Components in the
+Visual C++ User's Guide.
+<P>
+<P><h3>Workaround Example</h3>
+ 
+<P>
+If you downloaded Notrunc.exe, go to step 8. If you want to implement
+the modifications yourself, proceed with step 1:
+
+<OL><P><LI>Using ClassWizard, add a new class derived from CRecordset to your
+   project (referred to as CNewRecordset hereafter) and specify the
+   file name as Notrunc.cpp and Notrunc.h.
+<P>
+   a. Clear the Bind All Columns database option.
+<P>
+   b. Select a datasource and table at random.
+
+<P><LI>Using ClassWizard, override the virtual functions Move() and Requery()
+   for CNewRecordset:
+<P>
+   a. Remove the code provided by ClassWizard so that the bodies of
+<P><PRE>      the functions are empty.
+</PRE><P>
+   b. Copy the bodies of MFC's implementations of these functions into
+<P><PRE>      your overrides verbatim. These implementations can be found in
+      Mfc\Src\Dbcore.cpp.
+</PRE>
+<P><LI>Add a function to CNewRecordset that will be your own implementation of
+   InitRecord() (referred to as NewInitRecord() hereafter). Copy the MFC
+   implementation of InitRecord() into your NewInitRecord() function -
+   also from Dbcore.cpp.
+
+<P><LI>Copy the declarations of both szRowFetch and szDataTruncated from
+   Dbcore.cpp to Notrunc.cpp. Be sure to place the declarations above both
+   the Move() override and your NewInitRecord() function.
+
+<P><LI>Remove the four lines from Notrunc.cpp that contain the macro
+   NO_CPP_EXCEPTION. This macro is only used when rebuilding the MFC
+   libraries; it is unnecessary in this case.
+
+<P><LI>Create an empty derivation from CDatabase by placing the following text
+   at the top of Notrunc.h. (This class will be referred to as
+   CnewDatabase hereafter.)
+<P>
+<P><PRE>      class CNewDatabase : public CDatabase
+      {
+<PRE></PRE>         friend class CNewRecordset;
+      };
+
+</PRE><P><LI>In Notrunc.cpp, perform the following text replacements:
+<P>
+   Replace 2 occurrences of:
+<P>
+<P><PRE>      m_pDatabase-&gt;m_dwUpdateOptions
+</PRE><P>
+   With:
+<P>
+<P><PRE>      ((CNewDatabase *)m_pDatabase)-&gt;m_dwUpdateOptions
+</PRE><P>
+   Replace 2 occurrences of:
+<P>
+<P><PRE>      AFX_SQL_POSITIONEDSQL
+</PRE><P>
+   With:
+<P>
+<P><PRE>      AFX_SQL_SETPOSUPDATES
+</PRE><P>
+   Replace 2 occurrences of:
+<P>
+<P><PRE>      InitRecord
+</PRE><P>
+   With:
+<P>
+<P><PRE>      NewInitRecord
+</PRE>
+<P><LI>Change the .h and .cpp files of your existing recordsets so that they
+   derive from CNewRecordset.
+<P>
+   a. In the header files, change the class declarations:
+<P>
+<P><PRE>      class CMySet : public CNewRecordset
+</PRE><P>
+   b. In the implementation files, change the constructor to call the
+<P><PRE>      CNewRecordset constructor:
+</PRE><P>
+<P><PRE>      CMySet::CMySet(CDatabase* pdb) : CNewRecordset(pdb)
+</PRE>
+<P><LI>Include the Notrunc.h file in each recordset .h file that uses the new
+   CNewRecordset class or add the Notrunc.h to the bottom of Stdafx.h.
+
+<P><LI>Rebuild your project. Your application should no longer throw the
+   undesired exception. Note that the trace messages will still be
+   output, but these can be safely ignored.
+<P>
+</OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This bug was corrected in Visual C++ 4.1.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: truncation long binary column
+<P>
+
+Keywords          : MfcDatabase vcbuglist400 vcfixlist410 kbprg kbbuglist kbfile kbfixlist<BR>
+Technology        : kbMfc<BR>
+Version           : 4.0<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix kbcode<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 19, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

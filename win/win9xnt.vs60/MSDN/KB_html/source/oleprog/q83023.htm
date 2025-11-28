@@ -1,0 +1,236 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Creating Metafiles to Use with OLE Applications </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q83023 ">
+<META NAME="KBModify" CONTENT="1995/02/17">
+<META NAME="KBCreate" CONTENT="1992/04/02">
+<META NAME="Keywords" CONTENT="kbole kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  A metafile is one of the presentation formats that can be used by an OLE server application. A server application must prepare data in the presentation format under two circumstances:   - When the user copies an object to the clipboard, using the C...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH2,QAPN,QAW6,QA9Q,QADF,QAGI,QAJH,QAIW,QBHQ,QAIC,QBCF,QBXS,QBBI,QA5W,QAY5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Creating Metafiles to Use with OLE Applications</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 17, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q83023 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+A metafile is one of the presentation formats that can be used by an
+OLE server application. A server application must prepare data in the
+presentation format under two circumstances:
+
+<UL><LI>When the user copies an object to the clipboard, using the Copy
+   command from the Edit menu
+
+<LI>When the OLE libraries call the GetData method
+<P>
+</UL>If the server creates a metafile as the presentation format, it must
+follow the restrictions regarding mapping mode and object size set by
+the OLE libraries. Then the server creates a METAFILEPICT structure
+containing the data. This article describes the steps required for
+this task.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>METAFILEPICT Structure</h3>
+ 
+<P>
+When an application creates a metafile to use with the OLE libraries
+or with the clipboard, all interactions occur through the METAFILEPICT
+data structure, which is defined as follows:
+<P>
+typedef struct tagMETAFILEPICT
+{
+<PRE>  int mm;         // Mapping mode
+  int xExt, yExt; // Horizontal and vertical size
+  HANDLE hMF;     // Handle to the metafile
+</PRE>} METAFILEPICT;
+<P>
+The mapping mode for the metafile must be MM_ANISOTROPIC, which
+ensures that the object will scale properly when the client
+application displays it. However, the OLE libraries store a size for
+the object that is specified in MM_HIMETRIC units [0.01 millimeter
+(mm)]. The maximum size of an object is 327.67 mm by 327.67 mm.
+<P>
+The application obtains the handle to the metafile by calling the
+CreateMetaFile function with NULL as the lpFilename parameter. Doing
+so creates a memory-based metafile.
+<P>
+<P><h3>Fonts</h3>
+ 
+<P>
+A server application should use a TrueType font whenever possible in a
+metafile. This is important because the user can scale the object to
+many different sizes in the client application and TrueType fonts
+scale well under a variety of conditions. To specify a TrueType font,
+set bit 2 (04h) of the lfPitchAndFamily member in the LOGFONT data
+structure.
+<P>
+<P><h3>Creating the Metafile</h3>
+ 
+<P>
+The following eleven steps present the procedure to create a metafile
+compatible with the OLE libraries:
+
+<OL><P><LI>Retrieve a metafile device context (DC).
+<P>
+       hMetaDC = CreateMetaFile(NULL);
+
+<P><LI>Call the SetWindowOrg function to set the origin to (0, 0).
+<P>
+       SetWindowOrg(hMetaDC, 0, 0);
+
+<P><LI>Call the SetWindowExt function specifying the width and the height
+    of the object.
+<P>
+       SetWindowExt(hMetaDC, ObjWidth, ObjHeight);
+
+<P><LI>Draw the object in the metafile DC.
+<P>
+       DrawObject(hMetaDC, lpObject); // Application-specific function
+<PRE>                                      // that draws the object into an
+                                      // arbitrary DC.
+
+</PRE><P><LI>Close the metafile.
+<P>
+       hMF = CloseMetaFile(hMetaDC);
+
+<P><LI>Allocate a METAFILEPICT structure from global memory. Because this
+    memory will be shared between applications, the memory must
+    allocated with the GMEM_SHARE flag.
+<P>
+       hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_SHARE,
+<PRE>                          sizeof(METAFILEPICT));
+
+</PRE><P><LI>Lock the memory block to retrieve a pointer to the METAFILEPICT
+    structure (lpMFP).
+<P>
+       lpMFP = (LPMETAFILEPICT)GlobalLock(hMem);
+
+<P><LI>Set the mapping mode to MM_ANISOTROPIC.
+<P>
+       lpMFP-&gt;mm = MM_ANISOTROPIC;
+
+<P><LI>Convert the object width and height into MM_HIMETRIC units. Fill
+    in the METAFILEPICT data structure with the information.
+<P>
+       pt.x = ObjWidth;
+       pt.y = ObjHeight;
+       hDC = GetDC(hWnd); // Borrow a DC from the main window.
+       oldMapMode = SetMapMode(hDC, MM_HIMETRIC);
+       DPtoLP(hDC, &amp;pt, 1);
+       SetMapMode(hDC, oldMapMode);
+       ReleaseDC(hWnd, hDC);
+<P>
+       lpMFP.xExt = pt.x;
+       lpMFP.yExt = pt.y;
+
+<P><LI>Put the metafile handle into the METAFILEPICT data structure.
+<P>
+       lpMFP-&gt;hMF = hMF;
+
+<P><LI>Unlock the memory block and use the handle appropriately.
+<P>
+    GlobalUnlock(hMem);
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00<BR>
+KBCategory: kbole kbprg<BR>
+KBSubcategory: LeoneCliMeta<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 17, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

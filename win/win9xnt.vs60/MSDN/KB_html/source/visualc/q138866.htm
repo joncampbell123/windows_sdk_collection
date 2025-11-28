@@ -1,0 +1,227 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Set Default Values for Stock Properties in OLE Controls </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q138866">
+<META NAME="KBModify" CONTENT="1997/07/10">
+<META NAME="KBCreate" CONTENT="1995/10/30">
+<META NAME="Keywords" CONTENT="MfcOLE kbcode kbhowto kbole kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When developing an OLE Control, you may decide that some of the properties should be serialized. This can be accomplished in the DoPropExchange() method of your COleControl-derived class by using the PX_ functions. The PX_ functions also allow you ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA37,QAPN,QABA,QAH4,QBE7,QBE6,QA7O,QAOE,QAMN,QAB5,QAMB,QAGI,QAY5,QAI4,QA9Q V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Set Default Values for Stock Properties in OLE Controls</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q138866</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+2.00 2.10 2.20 4.00 4.10
+WINDOWS NT
+kbprg kbole kbhowto kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual C++, 32-bit Edition, versions 2.0, 2.1, 2.2,
+   4.0, and 4.1
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When developing an OLE Control, you may decide that some of the properties
+should be serialized. This can be accomplished in the DoPropExchange()
+method of your COleControl-derived class by using the PX_ functions. The
+PX_ functions also allow you to specify a default value for the property,
+which is good programming practice. You may also want to give default
+values to any stock properties that are used by your control. The
+serialization and initialization of stock properties is handled by MFC in
+COleControl::DoPropExchange(pPX). To set a default value for a stock
+property, you need to work around some of MFC's functionality. This article
+explains how to do it.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When you use the Microsoft Control Developer's Kit (CDK) to create the MFC
+framework for an OLE Control, it creates a COleControl-derived class with
+an overridden DoPropExchange() member function. By default, the overridden
+DoPropExchange() calls COleControl::DoPropExchange(). This in turn calls
+COleControl::ExchangeStockProps(), which contains the MFC code for
+serializing stock properties.
+<P>
+Within this function, MFC uses the COleControl m_dwStockPropMask protected
+member variable to determine which stock properties you have added with
+Class Wizard. This mask can be modified in your DoPropExchange() to force
+MFC to ignore existing stock properties and therefore allow you to add your
+own code. Ideally you should copy the relevant code already present in
+COleControl::ExchangeStockProps(), and then modify it as necessary.
+<P>
+The following sample code shows how to accomplish this for the Caption
+stock property by modifying step three of the Circ OLE Control tutorial.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>// MANUAL CONTROL OF MAKING Caption PERSISTANT.
+// To test the initialization of the caption stock property
+// replace the circle3 samples DoPropExchange function with the
+// following version.
+
+// These #defines can be found in the ..\Msvc20\Cdk32\Src\Ctlprop.cpp
+// file and are given here to remove the need to continually track them
+// down. In the code, only STOCKPROP_CAPTION is used.
+#define STOCKPROP_BACKCOLOR     0x00000001
+#define STOCKPROP_CAPTION       0x00000002
+#define STOCKPROP_FONT          0x00000004
+#define STOCKPROP_FORECOLOR     0x00000008
+#define STOCKPROP_TEXT          0x00000010
+#define STOCKPROP_BORDERSTYLE   0x00000020
+#define STOCKPROP_ENABLED       0x00000040
+
+void CCirc3Ctrl::DoPropExchange(CPropExchange* pPX)
+</PRE>{
+<PRE>   ExchangeVersion(pPX, MAKELONG(_wVerMinor, _wVerMajor));
+   BOOL bLoading = pPX-&gt;IsLoading();
+
+   CString strText;
+   if (!bLoading)
+      strText = InternalGetText();
+
+   PX_String(pPX,_T("Caption"),strText,_T("Caption"));
+   if (bLoading) {
+      TRY
+         SetText(strText);
+      END_TRY
+   }
+
+   // Mask out the Caption stock property before
+   // calling the base class functionality.
+   m_dwStockPropMask &amp;= ~STOCKPROP_CAPTION;
+
+   // Call the base class.
+   COleControl::DoPropExchange(pPX);
+
+   // Mask the Caption property bit back in to minimize
+   // possible side effects.
+   m_dwStockPropMask |= STOCKPROP_CAPTION;
+
+   if (pPX-&gt;GetVersion() == (DWORD)MAKELONG(_wVerMinor, _wVerMajor))
+   {
+      PX_Bool(pPX, _T("CircleShape"), m_circleShape, TRUE);
+      PX_Short(pPX, _T("CircleOffset"), m_circleOffset, 0);
+      PX_Long(pPX, _T("FlashColor"), (long &amp;)m_flashColor,
+                      RGB(0xFF, 0x00, 0x00));
+      PX_String(pPX, _T("Note"), m_note, _T("Note"));
+   }else if (pPX-&gt;IsLoading()) {
+      m_circleShape = TRUE;
+      m_circleOffset = 0;
+      m_flashColor = RGB(0xFF, 0x00, 0x00);
+      m_note = _T("");
+   }
+</PRE>}
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+The functions discussed in this article can be found using the Find in
+Files feature of Visual C++; in version 2.x within the Cdk32\Src directory
+and in version 4.x within the mfc\src subdirectory.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.00 2.10 2.20 3.0 3.1 3.2 3.00 3.10 3.20<BR>
+4.00 4.10 cdk ocx initialize<BR>
+KBCategory: kbprg kbole kbhowto kbcode<BR>
+KBSubcategory: MfcOLE<BR>
+Keywords            : MfcOLE kbcode kbhowto kbole kbprg<BR>
+Technology          : kbMfc<BR>
+Version             : 2.00 2.10 2.20 4.00 4.10<BR>
+Platform            : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

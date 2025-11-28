@@ -1,0 +1,201 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Passing File Handles from TSR to Windows-Based App </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q75257 ">
+<META NAME="KBModify" CONTENT="1997/07/23">
+<META NAME="KBCreate" CONTENT="1991/08/15">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="  MS-DOS file handles are associated with a PSP (program segment prefix). For an MS-DOS terminate-and-stay-resident program (TSR) to open and operate on files on behalf of a Windows-based application, or to share file handles between MS-DOS TSRs and ...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAJH,QDL9,QBWO,QBWN,QAY5,QBWQ,QAIF,QALQ,QADK,QBV8,QAUD,QABA,QAB9,QBXS V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Passing File Handles from TSR to Windows-Based App</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 23, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q75257 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+3.00 3.10
+WINDOWS
+kbprg
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   versions 3.1 and 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+MS-DOS file handles are associated with a PSP (program segment prefix).
+For an MS-DOS terminate-and-stay-resident program (TSR) to open and
+operate on files on behalf of a Windows-based application, or to share file
+handles between MS-DOS TSRs and Windows-based applications, the TSR and
+application must be operating with the same PSP. This is possible
+because every Windows-based application has an MS-DOS PSP. Therefore, it is
+simply a matter of ensuring that the Windows-based application's PSP is the
+current PSP when the MS-DOS TSR opens or operates on a file. This
+article discusses some of the details involved with this process.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The Windows Kernel creates a unique MS-DOS PSP for every Windows-based
+application that is started. The only time that the application's PSP
+must be selected as the current PSP is when the application calls
+MS-DOS. Therefore, an application cannot assume that its PSP is the
+current PSP. Listed below are two ways to have the PSP set so that a
+TSR can open or operate on a file on the application's behalf:
+
+<OL><P><LI>The Windows-based application performs an MS-DOS call just prior to
+   calling the TSR. This MS-DOS call must involve the file system; just
+   retrieving the time of day is not enough. One good choice might be
+   Get File Attributes (INT 21h, function 43h). Another possibility is
+   to open a file. As long as the application does not yield [by
+   calling the GetMessage, SendMessage, PeekMessage, and so
+   forth functions], the Kernel will set the PSP for the MS-DOS call
+   and will not change it. At this point, the application can call the
+   TSR secure in the knowledge that the PSP is set correctly.
+
+<P><LI>The TSR can set the current PSP using INT 21h, function 50h (the BX
+   register is the segment of the new PSP). To do this, it is
+   necessary that either the Windows-based application or the TSR determine
+   the PSP for the application.
+<P>
+   The TSR can determine the correct PSP by following these three
+   steps:
+<P>
+   a. Have the application perform an MS-DOS call just prior to the first
+<P><PRE>      call to the TSR.
+</PRE><P>
+   b. Determine the identity of the PSP by calling INT 21h, function
+<P><PRE>      51h (the segment of the current PSP is returned in the BX
+      register).
+</PRE><P>
+   c. Save this information or return it to the application that will
+<P><PRE>      use the PSP as a parameter in subsequent calls to the TSR.
+</PRE><P>
+   The application can determine the PSP segment by following these
+   three steps:
+<P>
+   a. Call the GetCurrentPDB function to determine its Program Data
+<P><PRE>      Base (PDB). The PDB is the Windows equivalent of the PSP.
+</PRE><P>
+   b. In protected mode, the value returned is a selector. The
+<P><PRE>      application must determine the segment address to which the
+      selector maps by using the GetSelectorBase function.
+</PRE><P>
+<P><PRE>      Note that the GetSelectorBase function is not documented in the
+      Windows Software Development Kit (SDK); however, the function is
+      documented in the Windows Device Development Kit (DDK). The
+      function returns a LONG which is the linear address of the base.
+      Dividing this value by 16 yields a segment value. Because PDBs
+      are allocated using the GlobalDOSAlloc function, the linear
+      address is always below 1 megabyte.
+</PRE><P>
+   c. Once the Windows-based application has determined its PSP, specify
+<P><PRE>      the PSP as a parameter when calling the TSR.
+</PRE><P>
+</OL>In Windows version 3.1, an installable driver mechanism has been
+added that allows for essentially a Windows TSR. An installable driver
+can be loaded at boot time or on demand by an application. It receives
+notifications in real and standard mode when the user switches away from
+or back to Windows to allow the driver to perform clean-up and/or
+re-initialization operations as necessary. In all other respects, it is
+a standard DLL.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.l0<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: KrIsrTsr<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 23, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

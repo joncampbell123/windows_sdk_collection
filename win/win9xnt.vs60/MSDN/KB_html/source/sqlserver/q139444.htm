@@ -1,0 +1,250 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Remove Duplicate Rows From a Table </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q139444">
+<META NAME="KBModify" CONTENT="1997/05/02">
+<META NAME="KBCreate" CONTENT="1995/11/09">
+<META NAME="Keywords" CONTENT="kbusage SSrvProg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  Microsoft SQL Server tables should never contain duplicate rows, nor non-unique primary keys. For brevity, we will sometimes refer to primary keys as  key  or  PK  in this article, but this will always denote  primary key.   Duplicate PKs are a vio...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAFO,QA5V,QAKD,QAEF,QAKH,QABM,QAKC,QAY2,QA9N,QAPF,QAMA,QAG8,QACI,QBXS,QAGB V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Remove Duplicate Rows From a Table</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 2, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q139444</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Microsoft SQL Server tables should never contain duplicate rows, nor
+non-unique primary keys. For brevity, we will sometimes refer to primary
+keys as "key" or "PK" in this article, but this will always denote "primary
+key."  Duplicate PKs are a violation of entity integrity, and should be
+disallowed in a relational system. SQL Server has various mechanisms for
+enforcing entity integrity, including indexes, UNIQUE constraints,
+PRIMARY KEY constraints, and triggers.
+<P>
+Despite this, under unusual circumstances duplicate primary keys may occur,
+and if so they must be eliminated. One way they can occur is if duplicate
+PKs exist in non-relational data outside SQL Server, and the data is
+imported while PK uniqueness is not being enforced. Another way they can
+occur is through a database design error, such as not enforcing entity
+integrity on each table.
+<P>
+Often duplicate PKs are noticed when you attempt to create a unique index,
+which will abort if duplicate keys are found. This message is:
+<P>
+<PRE>   Msg 1505, Level 16, State 1
+   Create unique index aborted on duplicate key.
+
+</PRE>This article discusses how to locate and remove duplicate primary keys from
+a table. However you should closely examine the process which allowed the
+duplicates to happen in order to preven a recurrence.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+For this example, we will use the following table with duplicate PK values.
+In this table the primary key is the two columns (col1, col2). We cannot
+create a unique index or PRIMARY KEY constraint since two rows have
+duplicate PKs. This procedure illustrates how to identify and remove the
+duplicates.
+<P>
+<PRE>   create table t1(col1 int, col2 int, col3 char(50))
+   insert into t1 values (1, 1, "data value one")
+   insert into t1 values (1, 1, "data value one")
+   insert into t1 values (1, 2, "data value two")
+
+</PRE>The first step is to identify which rows have duplicate primary key values:
+<P>
+<PRE>   SELECT col1, col2, count(*)
+   FROM t1
+   GROUP BY col1, col2
+   HAVING count(*)&gt;1
+
+</PRE>This will return one row for each set of duplicate PK values in the table.
+The last column in this result is the number of duplicates for the
+particular PK value.
+<P>
+<PRE>col1        col2
+</PRE>----------- ----------- -----------
+<PRE>1           1           2
+
+</PRE>If there are only a few sets of duplicate PK values, the best procedure is
+to delete these manually on an individual basis.  For example:
+<P>
+<PRE>   set rowcount 1
+   delete from t1
+   where col1=1 and col2=1
+
+</PRE>The rowcount value should be n-1 the number of duplicates
+for a given key value. In this example, there are 2 duplicates so rowcount
+is set to 1. The col1/col2 values are taken from the above GROUP BY query
+result. If the GROUP BY query returns multiple rows, the "set rowcount"
+query will have to be run once for each of these rows. Each time it is run,
+set rowcount to n-1 the number of duplicates of the particular PK value.
+<P>
+Before deleting the rows, you should verify that the entire row is
+duplicate. While unlikely, it is possible that the PK values are duplicate,
+yet the row as a whole is not. An example of this would be a table with
+Social Security Number as the primary key, and having two different people
+(or rows) with the same number, each having unique attributes. In such
+a case whatever malfunction caused the duplicate key may have also caused
+valid unique data to be placed in the row. This data should copied out and
+preserved for study and possible reconciliation prior to deleting the data.
+<P>
+If there are many distinct sets of duplicate PK values in the table, it may
+be too time-consuming to remove them individually. In this case the
+following procedure can be used:
+
+<OL><P><LI>First, run the above GROUP BY query to determine how many sets of
+   duplicate PK values exist, and the count of duplicates for each set.
+
+<P><LI>Select the duplicate key values into a holding table. For example:
+<P>
+<P><PRE>      SELECT col1, col2, count(*)
+      INTO holdkey
+      FROM t1
+      GROUP BY col1, col2
+      HAVING count(*) &gt; 1
+</PRE>
+<P><LI>Select the duplicate rows into a holding table, eliminating duplicates
+   in the process. For example:
+<P>
+<P><PRE>      SELECT DISTINCT t1.*
+      INTO holddups
+      FROM t1, holdkey
+      WHERE t1.col1 = holdkey.col1
+      AND t1.col2 = holdkey.col2
+</PRE>
+<P><LI>At this point, the holddups table should have unique PKs, however, this
+   will not be the case if t1 had duplicate PKs, yet unique rows (as in the
+   SSN example above). Verify that each key in holddups is unique, and that
+   you do not have duplicate keys, yet unique rows. If so, you must stop
+   here and reconcile which of the rows you wish to keep for a given
+   duplicate key value. For example, the query:
+<P>
+<P><PRE>      SELECT col1, col2, count(*)
+      FROM holddups
+      GROUP BY col1, col2
+</PRE><P>
+   should return a count of 1 for each row. If yes, proceed to step 5
+   below. If no, you have duplicate keys, yet unique rows, and need to
+   decide which rows to save. This will usually entail either discarding a
+   row, or creating a new unique key value for this row. Take one of these
+   two steps for each such duplicate PK in the holddups table.
+
+<P><LI>Delete the duplicate rows from the original table.  For example:
+<P>
+<P><PRE>      DELETE t1
+      FROM t1, holdkey
+      WHERE t1.col1 = holdkey.col1
+      AND t1.col2 = holdkey.col2
+</PRE>
+<P><LI>Put the unique rows back in the original table.  For example:
+<P>
+<P><PRE>      INSERT t1 SELECT * FROM holddups
+<P></BLOCKQUOTE>
+</OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: sql6  dedupe entity intg<BR>
+Keywords            : kbusage SSrvProg<BR>
+Version             : 4.2 6.0<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 2, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

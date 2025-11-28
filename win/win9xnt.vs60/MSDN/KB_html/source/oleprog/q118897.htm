@@ -1,0 +1,267 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>DOCERR: F1 Help for Menu Items in an OLE 2.0 Container </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q118897">
+<META NAME="KBModify" CONTENT="1995/05/17">
+<META NAME="KBCreate" CONTENT="1994/08/01">
+<META NAME="Keywords" CONTENT="kbole kbdocerr">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  The  OLE 2.0 Programmer's Reference,  volume 1, describes on pages 727 through 731 how an application that you would like to be a container for inplace edited objects can support F1 Help for menu items. This information is also contained in the OLE...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEV,QAW6,QAVI,QAPN,QAYC,QAH6,QAGI,QAUD,QAF0,QA9Q,QA5W,QBVV,QALZ,QAIB,QAIA V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>DOCERR: F1 Help for Menu Items in an OLE 2.0 Container</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 17, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q118897</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE Libraries for Windows and Win32s, version 2.01
+<LI>Microsoft OLE Libraries, included with:
+<P><PRE>    - Microsoft Windows NT, versions 3.5 and 3.51
+    - Microsoft Windows 95
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The "OLE 2.0 Programmer's Reference," volume 1, describes on pages 727
+through 731 how an application that you would like to be a container for
+inplace edited objects can support F1 Help for menu items. This information
+is also contained in the OLE Technical Note CSHELP.DOC.
+<P>
+The application may have its own keyboard message filter added so that it
+can intercept the F1 key, or it may ask the OLE default object handler to
+add a message filter. A sample keyboard message filter is provided for
+applications that you would like to implement their own message filters.
+However, the sample message filter does not handle the case properly when
+an object is inplace activated.
+<P>
+This article contains a sample message filter that properly handles the
+inplace activated case.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+If the sample message filter is used, when an object is inplace activated
+and the application attempts to provide F1 Help for one of the server's
+menu items, the server processes the menu command instead of providing
+Help. F1 Help works properly for menu items handled by the container.
+<P>
+In the sample filter, if an object is inplace activated and the F1 key is
+pressed, the message filter sends the registered message OM_POST_WM_COMMAND
+to the frame window. The frame window handles OM_POST_WM_COMMAND by posting
+a WM_COMMAND message to the container or the server as appropriate. After
+the OM_POST_WM_COMMAND message is sent (and thus after the WM_COMMAND
+message is posted), the filter calls IOleWindow::ContextSensitiveHelp(TRUE)
+for both the frame window and the inplace activated object, to enter
+context-sensitive Help mode. OLE's LRPC call to ContextSensitiveHelp() for
+the inplace activated object gives the server application the opportunity
+to check its message queue, and the WM_COMMAND message gets processed
+before the ContextSensitiveHelp() method is executed in the server. Because
+the inplace activated object does not know that it should be in context-
+sensitive Help mode, it processes the WM_COMMAND message as normal.
+<P>
+To correctly provide F1 Help for all menu items, the container may use the
+standard OLE 2.0 implementation of F1 menu processing. To use the standard
+OLE 2.0 implementation of F1 menu processing, pass non-NULL pointers to the
+"lpFrame" and "lpActiveObj" parameters of OleSetMenuDescriptor().
+<P>
+Alternatively, the container may use the revised filter (listed below). In
+the revised filter, the calls to IOleWindow::ContextSensitiveHelp() are
+made before OM_POST_WM_COMMAND is sent to the frame window. This ensures
+that the server enters context-sensitive Help mode before the WM_COMMAND
+message is posted. One side effect is that if the F1 key is pressed while
+the current selection is a popup menu, the message filter will need to exit
+context-sensitive Help mode by calling
+IOleWindow::ContextSensitiveHelp(FALSE) for both the frame window and the
+inplace activated object.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed:    (or  ; Assemble options needed:  )
+*/
+
+</PRE>MessageFilterProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+<PRE>   LPMSG lpMsg = (LPMSG) lParam;
+
+   // If it is not the F1 key then let the message
+   // (without modification) go to the next proc
+   // in the message filter chain.
+   if (lpMsg  &amp;&amp;  lpMsg-&gt;message == WM_KEYDOWN  &amp;&amp;
+       lpMsg-&gt;wParam == VK_F1) {
+      HMENU   hmenuPopUp;
+
+      // Container app can not know what the current menu
+      // selection is if an object is getting inplace
+      // edited in it, because the menu bar is shared and
+      // the menu messages are  intercepted and dispatched
+      // to the appropriate process by OLE's frame
+      // window sub-classing (see Box 3). So, when the
+      // container sends the OM_POST_WM_COMMAND,
+      //
+      //    if (an object is getting inplace edited)
+      //       it will go to Box 3, and OLE posts WM_COMMAND
+      //          to the right process.
+      //    else
+      //       it will go to Box 4, which is app's own
+      //          frame wnd proc, and its OM_POST_WM_COMMAND
+      //          code can post the WM_COMMAND for the
+      //          current selection (that the app maintains).
+      //
+      // With this scheme the same message filter proc can
+      // be used whether the object is getting inplace
+      // edited or not.
+      // NOTE 1: If the current selection is a popup menu,
+      // then WM_COMMAND can not be generated, so the code
+      // for OM_POST_WM_COMMAND returns handle of the popup
+      // menu, otherwise it returns NULL
+      // NOTE 2: Do uOmPostWmCommand =
+      //           RegisterWindowMessage("OM_POST_WM_COMMND")
+      // at startup.
+
+      // call the frame and active inplace object's
+      // ContextSensitiveHelp() methods.
+      lpFrame-&gt;ContextSensitiveHelp(TRUE);
+      lpInPlaceActiveObj-&gt;ContextSensitiveHelp(TRUE);
+
+      // when either of these 2 objects receive the WM_COMMAND
+      // they will call the other one's ContextSensitiveHelp()
+      // method. Note that the tree walk will not happen if the
+      // CSH mode has been entered because of  F1 on selected menu.
+
+      if (hmenuPopup = (HMENU)SendMessage(hwndFrame,
+                                          uOmPostWmCommand,
+                                          0, 0L)) {
+         // Now the apps have 4 options:
+         // 1. Give Help for the popup menu and cancel the
+         //    menu mode as well as the CSH mode (WORD does
+         //    this).
+         // 2. Change the cursor to question mark cursor
+         //    (== SHIFT+F1), and do not disturb the menu
+         //    state, and enter the CSH mode. (EXCEL does
+         //    this)
+         // 3. Remove the CSH mode and cancel the menu mode.
+         // 4. Leave the menu state as it is and ignore the
+         //    F1 key (ie. don't pass the F1 key down the
+         //    msg filter chain).
+         //
+         // We (OLE) recommend option 4, and if the container
+         // app wants us to install the message filter, then
+         // this is what we will do. In this sample code also
+         // we are going for option 4.
+
+         lpFrame-&gt;ContextSensitiveHelp(FALSE);
+         lpInPlaceActiveObj-&gt;ContextSensitiveHelp(FALSE);
+         return TRUE; // let the system know that we have
+                      // handled the message
+      }
+
+      // Change message value to be WM_CANCELMODE and then call
+      // the next proc in the message filter chain. When windows
+      // USER's menu processing code sees this message it will
+      // bring down menu state and come out of its menu processing
+      // loop.
+
+      lpMsg-&gt;message = WM_CANCELMODE;
+      lpMsg-&gt;wParam  = NULL;
+      lpMsg-&gt;lParam  = NULL;
+   }
+   return CallNextHookEx (hMsgHook, nCode, wParam, lParam);
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.01 3.50 4.00 Containers docerr<BR>
+KBCategory: kbole kbdocerr<BR>
+KBSubCategory: LeTwoCli<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 17, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

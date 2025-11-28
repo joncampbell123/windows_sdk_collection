@@ -1,0 +1,274 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>XADM: Orphaned Objects and Exchange Server Directory </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q179573">
+<META NAME="KBModify" CONTENT="1998/01/20">
+<META NAME="KBCreate" CONTENT="1998/01/19">
+<META NAME="Keywords" CONTENT="XADM kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; exchange">
+<META NAME="Description" CONTENT="  An object persists in the directory of a remote site even though the object has been deleted from its original site.  CAUSE =====  Typically, the site that still contains the object failed to receive a replica of that object prior to the object's t...">
+<META NAME="Product" CONTENT="Exchange">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAW6,QBXB,QAEF,QATJ,QAJP,QAFI,QAFO,QAKD,QABA,QAYH,QAY2,QADK,QBVX,QDKD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>XADM: Orphaned Objects and Exchange Server Directory</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 20, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q179573</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Exchange Server versions 4.0, 5.0, and 5.5
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+An object persists in the directory of a remote site even though the
+object has been deleted from its original site.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+Typically, the site that still contains the object failed to receive a
+replica of that object prior to the object's tombstone expiring. Once an
+object's tombstone expires, it is no longer considered an "object", and is
+not replicated. See MORE INFORMATION, below.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+There are two approaches to resolution: re-creating the orphaned object in
+its "original context" or re-orienting replication bridgehead servers. Both
+should result in the cleanup of the orphaned object. Depending on the
+situation, one approach may be less involved or less impacting than the
+other.
+<P>
+<P><h3>Method 1. Re-create the Orphaned Object in Its "Original Context"</h3>
+ 
+
+<OL><P><LI>Create the object so that it has its original distinguished name (DN);
+   for instance, an orphaned mailbox should be re-created in the original
+   site and so on, such that its "Obj-Dist-Name" attribute matches that of
+   the orphaned object as viewed in Raw Properties in the Administrator
+   program.
+
+<P><LI>Modify some attribute of this re-created object until the "Object
+   Version" attribute value exceeds the "Object Version" value on the
+   orphaned object as viewed in in Raw Properties in the Administrator
+   program.
+
+<P><LI>Allow the re-created object to replicate to the site(s) maintaining an
+   orphaned replica.
+
+<P><LI>Verify that the new replica has replicated to the orphan's site by
+   viewing the orphan's "Object Version" attribute; it should increase to
+   the value incremented in step 2 above.
+
+<P><LI>Delete the re-created object in its origin site. This deletion should
+   now replicate to all sites.
+<P>
+  Or...
+<P>
+</OL><h3>Method 2. Re-orient Replication Bridgehead Servers</h3>
+ 
+<P>
+This method involves re-orienting replication bridgehead servers between
+the site maintaining the orphan and the site that "feeds" that context to
+the orphan site. This assumes that at least two servers in each site exist,
+and that the servers that are not currently replication BHs can assume this
+role, at least temporarily. This will likely result in a full refresh of
+all objects from all contexts previously provided by the "feeder" site;thus
+including the refresh of the orphan object context.
+<P>
+NOTE: A third option would be to break the replication connector between
+the orphan site and its "feeder" site. This should only be a last resort,
+because it has a much higher impact on other servers in the site and any
+downstream sites, and certainly should avoided in larger organizations when
+the orphan site is also a "feeder" site to additional downstream sites.
+<P>
+MORE INFORMATION
+ 
+<P>
+Object Deletion, Tombstone Lifetime, Tombstone Expiry, and Garbage
+Collection Interval
+<P>
+When a directory object (also known as a specific Naming Context or NC) is
+deleted (be it a mailbox, Customer Recipient (CR), Distribution List,
+Connector, and so on, hidden or not), a tombstone property (date and
+timestamp that the delete of the object was performed) is added to the
+object’s properties, an "IsDeleted" attribute is added and set to TRUE, and
+the object is "hidden" from view.
+<P>
+These attribute changes should result in the replication of this "new"
+version of the object to ALL other directories. Within each directory, a
+garbage collection thread routinely executes (based on value specified for
+&lt;site&gt;\Configuration\DS Site Configuration\Garbage Collection Interval) and
+removes objects whose "IsDeleted" attribute is TRUE, and whose tombstone
+property is older than:
+<P>
+<PRE>   the current date\time minus the value specified for
+   &lt;site&gt;\Configuration\DS Site Configuration\Tombstone Lifetime
+
+</PRE></OL>The defaults for Tombstone Lifetime and Garbage Collection Interval are 30
+days and 12 hours, respectively. So, by default, any object whose tombstone
+(date the object was deleted in the Administrator program) is older than 30
+days (from "now") will be garbage collected (which actually means having
+most properties stripped off, leaving only a small stub in the directory).
+<P>
+Orphaned Objects
+<P>
+If conditions (configuration, hardware or network problems, and so on)
+prevent one or more other sites (or local site directories) from receiving
+an update of a naming context (NC) during the tombstone period, these other
+sites (and servers) never find out that the objects have been flagged for
+deletion. Once the tombstone expires in the originating site, the object is
+removed from that site's directory, and there is no longer an object to
+replicate. Since the tombstone never replicated to some other servers, and
+since the only writable copy of the object has now been deleted, these
+objects are orphaned in site(s) that never received a replica of the object
+with the "IsDeleted" flag and tombstone "timestamp".
+<P>
+WARNING: Tombstone lifetime and Garbage Collection Interval are site-wide
+attributes. Reducing the Tombstone lifetime within a site to a value of
+only a few days can increase the possible occurrence of orphaned objects -
+particularly in large organizations, where it can be more difficult to
+assess the state of replication organization wide. There is little to gain
+from reducing this value, and it is not recommended. The minimum value is
+two days.
+<P>
+WARNING: Use of "MTACHECK /RD" to remove directory replication messages
+from a backlogged MTA queue may contribute to orphaned objects. This
+procedure should NOT be used as a routine method of reducing MTA backlogs.
+The real solution is to find the cause of the backlog, and resolve that
+problem. If it is determined that directory replication scheduling has been
+set to "ALWAYS", and that this has resulted in MTA queue backlogs, then
+"MTACHECK /RD" might be appropriate AFTER scheduling has been correctly
+set.
+<P>
+Determining the Original Context of Orphaned Objects
+<P>
+View the objects raw properties. The following attributes can be revealing:
+<P>
+<PRE>   Obj-Dist-Name: This is the full DN of the object, and specifies the
+   precise location (origin context) of the object in the directory
+   information tree (DIT). This should be all that's needed to identify an
+   orphaned object's origin.
+
+   DSA-Signature: This corresponds to a particular directory's Invocation-
+   ID, and identifies the directory responsible for having this copy of the
+   object written to the current directory. Note that the server
+   originating the orphan may no longer exist in the organization.
+
+   Hide from AB: This can be tricky, because hidden objects will not be
+   viewable by default. This can exacerbate "mysteriously recurring address
+   book views". A Microsoft Knowledge Base article should be available on
+   this topic soon.
+
+   Object-Version: This is an object-specific, monotonically increasing
+   value for an object - organization wide. If an object has fully
+   replicated throughout the organization, all directories will have the
+   same value in this attribute. If an object is orphaned in numerous
+   places, then determine which of orphans maintains the "highest" Object-
+   Version value. If re- creating the original object (option #1 above)
+   modify the re-created object until its Object-Version exceeds the
+   highest value found among the orphans. This will ensure that the orphan
+   will later be successfully deleted throughout the organization.
+
+   When-Created - date\timestamp the object was created.
+
+   When-Changed - date\timestamp of the most recent replica update.
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:<BR>
+Keywords          : XADM kbusage<BR>
+Version           : WinNT:4.0,5.0,5.5<BR>
+Platform          : winnt<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 20, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

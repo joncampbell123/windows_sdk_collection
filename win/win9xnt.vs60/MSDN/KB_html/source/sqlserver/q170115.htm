@@ -1,0 +1,245 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Troubleshoot Long Recovery on Databases </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q170115">
+<META NAME="KBModify" CONTENT="1997/09/26">
+<META NAME="KBCreate" CONTENT="1997/06/13">
+<META NAME="Keywords" CONTENT="SSrvAdmin SSrvGen kbtshoot kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  Database recovery during SQL Server startup or loading transaction logs may take a long period of time, during which the state of recovery is not easy to determine. This article describes steps to troubleshoot this scenario.  MORE INFORMATION  When...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAZV,QABM,QDKA,QAFQ,QBVV,QBXJ,QAU3,QAMR,QAGB,QDMW,QBWP,QAY2,QABH,QAFH,QBB0 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Troubleshoot Long Recovery on Databases</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q170115</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Database recovery during SQL Server startup or loading transaction logs may
+take a long period of time, during which the state of recovery is not easy
+to determine. This article describes steps to troubleshoot this scenario.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When SQL Server recovers a database, transactions may roll forward or back.
+You can reduce the amount of time required to roll forward transactions by
+performing a normal shutdown. However, you cannot control the amount of
+time required to roll back transactions. So, if a long running query is
+aborted by shutting down SQL Server, the rollback of the transaction may
+cause the recovery of the database to exceed the recovery interval setting
+time.
+<P>
+During a normal shutdown, SQL Server checkpoints all databases where the
+recovery interval is exceeded. SQL Server is normally shut down by the
+following means:
+
+<UL><LI>Stopping the service with SQL Service Manager, SQL Enterprise Manager,
+   or Control Panel Services.
+
+<LI>Shutting down Windows NT.
+
+<LI>Running the NET STOP MSSQLSERVER command.
+
+<LI>Running the SHUTDOWN query.
+<P>
+</UL>SQL Server is shut down without checkpointing databases by the following
+means:
+
+<UL><LI>Restarting the computer.
+
+<LI>Quitting SQL Server with CTRL+C when it was started from the command
+   line.
+
+<LI>Killing the SQL Server process by using a KILL command or the Task
+   Manager.
+
+<LI>Attaching to SQL Server with a debugger and closing the debugger.
+
+<LI>SQL Server encountering an exception that it does not handle (normally
+   Dr. Watson would report this situation).
+
+<LI>Running the SHUTDOWN WITH NOWAIT query .
+<P>
+</UL>Additionally, loading transaction logs after loading a database dump may
+also cause long recovery.
+<P>
+In a long recovery situation, there are three possibilities of transactions
+that need to roll forward or back:
+
+<UL><LI>Many small transactions
+
+<LI>One large transaction
+
+<LI>A combination of either of the above
+<P>
+</UL>In these cases, it is difficult to determine the amount of time that
+recovery will take on a database. However, if you perform the following
+steps, you can see that SQL Server is progressing in the database recovery:
+
+<OL><P><LI>Determine the spid that is running recovery for the database by
+   examining the errorlog for a message such as the following (note that in
+   the example below, the spid is 10):
+<P>
+<PRE>      spid10   Recovering database 'pubs'
+
+</PRE><P><LI>From this point, there are three simple ways to check that database
+   recovery is still occurring:
+<P>
+<P><PRE>    - Look for the recovery spid number from step one in the sysprocesses
+      table or sp_who output. If the spid is not in the output, the
+      database recovery has not completed.
+</PRE><P>
+<P><PRE>    - Look at the status column of the sysdatabases system table to see if
+      the "Database not recovered yet" status bit (64) is still enabled and
+      that the "Database is suspect" status bit (256) is disabled. If so,
+      the database recovery has not completed.
+</PRE><P>
+<P><PRE>    - Examine the errorlog for a transaction summary from the recovery
+      spid. If it is not there, the database recovery has not completed.
+      The following is an example of the transaction summary:
+</PRE><P>
+<PRE>         spid10   1 transactions rolled forward in dbid 4.
+
+</PRE><P><LI>If database recovery has not completed yet, examine the errorlog for the
+   checkpoint message from the recovery spid. This message means that the
+   database has entered the active part of recovery, where transactions are
+   rolled forward and back. The following is an example:
+<P>
+<PRE>      spid10   Recovery dbid 4 ckpt (1128,31) oldest tran=(1128,0)
+
+</PRE><P><LI>Normally, during the active part of recovery, the hard disk drive that
+   contains the database's transaction log will see heavy activity. You can
+   see this activity by either looking at the drive activity light on the
+   computer or by using Windows NT Performance Monitor and looking at the
+   "LogicalDisk: % Disk Time" counter, if the disk counters were already
+   enabled with the DISKPERF -Y command.
+
+<P><LI>Enable the trace flags 3412, which reports when each transaction is
+   rolled forward or back, and examine the errorlog for progress. However,
+   you will not see any progress if SQL Server is rolling a large
+   transaction forward or back. Additionally, this trace flag duplicates
+   the sp_configure setting Recovery flags. The following is an example of
+   the output:
+<P>
+<PRE>      spid10   Roll forward transaction 'user_transaction' in dbid 4.
+
+</PRE></OL>If recovery still seems to be progressing, or if it cannot be determined,
+you have the following three options:
+
+<UL><LI>Allow recovery to continue until it eventually completes.
+
+<LI>Stop recovery and load the database from a backup.
+
+<LI>Stop recovery and truncate the transaction log. For additional
+   information, please see the following article in the Microsoft Knowledge
+   Base:
+<P>
+<P><PRE>      ARTICLE-ID: <B><A href="../sqlserver/q165918.htm">Q165918</A></B>
+<PRE></PRE>      TITLE     : INF: Bypass (Emergency) Mode and DUMP TRANSACTION WITH
+                  NO_LOG
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: delay extended very period<BR>
+Keywords          : SSrvAdmin SSrvGen kbtshoot kbusage<BR>
+Version           : 6.0 6.5<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto kbtshoot<BR>
+Solution Type     : Info_Provided<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,268 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Use WinSock to Enumerate Addresses </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q129315">
+<META NAME="KBModify" CONTENT="1995/09/29">
+<META NAME="KBCreate" CONTENT="1995/04/24">
+<META NAME="Keywords" CONTENT="kbnetwork kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The gethostbyname() and gethostname() WinSock database APIs can be used to list IP addresses for a multihomed host. However, these functions work only for IP addresses. This article shows by example how to give addresses for other address families....">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWD,QAC2,QBWP,QAG8,QAKC,QAR5,QAH6,QAH4,QDKF,QBC6,QABI,QAI4,QBW4,QBBI,QAZM V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Use WinSock to Enumerate Addresses</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 29, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q129315</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) for Windows NT
+   versions 3.5 and 3.51
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The gethostbyname() and gethostname() WinSock database APIs can be used to
+list IP addresses for a multihomed host. However, these functions work only
+for IP addresses. This article shows by example how to give addresses for
+other address families. Two different methods are given.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Method One Code Sample</h3>
+ 
+<P>
+AF_IPX:
+<P>
+This function can be used to give an IPX address:
+<P>
+<PRE>   #include &lt;winsock.h&gt;
+   #include &lt;wsipx.h&gt;
+   #include &lt;wsnwlink.h&gt;
+
+   #include &lt;stdlib.h&gt;
+
+   // Note:  In the interest of clarity, the following code does not check
+   //        return values or handle error conditions.
+
+   void IPXEnum()
+   {
+      int            cAdapters,
+                     cbOpt  = sizeof( cAdapters ),
+                     cbAddr = sizeof( SOCKADDR_IPX );
+
+      SOCKET         s;
+      SOCKADDR_IPX   Addr;
+
+      // Create IPX socket.
+      s = socket( AF_IPX, SOCK_DGRAM, NSPROTO_IPX );
+
+      // Socket must be bound prior to calling IPX_MAX_ADAPTER_NUM
+      memset( &amp;Addr, 0, sizeof( Addr ));
+      Addr.sa_family = AF_IPX;
+      bind( s, (SOCKADDR*) &amp;Addr, cbAddr);
+
+      // Get the number of adapters =&gt; cAdapters.
+      getsockopt( (SOCKET) s, NSPROTO_IPX, IPX_MAX_ADAPTER_NUM,
+                  (char *) &amp;cAdapters, &amp;cbOpt );
+      // At this point cAdapters is the number of installed adapters.
+      while ( cAdapters &gt; 0 )
+      {
+         IPX_ADDRESS_DATA  IpxData;
+
+         memset( &amp;IpxData, 0, sizeof(IpxData));
+
+         // Specify which adapter to check.
+         IpxData.adapternum = cAdapters - 1;
+         cbOpt = sizeof( IpxData );
+
+         // Get information for the current adapter.
+         getsockopt( s, NSPROTO_IPX, IPX_ADDRESS,
+                     (char*) &amp;IpxData, &amp;cbOpt );
+
+         // IpxData contains the address for the current adapter.
+         cAdapters--;
+      }
+   }
+
+</PRE>AF_NETBIOS:
+<P>
+This function uses the EnumProtocols() function to give lana numbers
+for the available NetBIOS transports. NOTE: This doesn't work under Windows
+NT 3.5 because of a bug in EnumProtocols(), but it does work under Windows
+NT 3.51.
+<P>
+<PRE>   void NBEnum()
+   {
+      DWORD          cb = 0;
+      PROTOCOL_INFO *pPI;
+      BOOL           pfLanas[100];
+
+      int            iRes,
+                     nLanas = sizeof(pfLanas) / sizeof(BOOL);
+
+      // Specify NULL for lpiProtocols to enumerate all protocols.
+
+      // First, determine the output buffer size.
+      iRes = EnumProtocols( NULL, NULL, &amp;cb );
+
+      // Verify the expected error was received.
+      assert( iRes == -1 &amp;&amp; GetLastError() == ERROR_INSUFFICIENT_BUFFER );
+      if (!cb)
+      {
+         fprintf( stderr, "No available NetBIOS transports.\n");
+         break;
+      }
+
+      // Allocate a buffer of the specified size.
+      pPI = (PROTOCOL_INFO*) malloc( cb );
+
+      // Enumerate all protocols.
+      iRes = EnumProtocols( NULL, pPI, &amp;cb );
+
+      // EnumProtocols() lists each lana number twice, once for
+      // SOCK_DGRAM and once for SOCK_SEQPACKET. Set a flag in pfLanas
+      // so unique lanas can be identified.
+
+      memset( pfLanas, 0, sizeof( pfLanas ));
+
+      while (iRes &gt; 0)
+         // Scan protocols looking for AF_NETBIOS.
+         if ( pPI[--iRes].iAddressFamily == AF_NETBIOS )
+            // found one
+            pfLanas[ pPI[iRes].iProtocol ] = TRUE;
+
+      fprintf( stderr, "Available NetBIOS lana numbers: " );
+      while( nLanas-- )
+         if ( pfLanas[nLanas] )
+            fprintf( stderr, "%d ", nLanas );
+
+      free( pPI );
+   }
+
+</PRE>AF_APPLETALK:
+<P>
+Address enumeration is not meaningful for AF_APPLETALK. On a multihomed
+host with routing disabled, only the default adapter is used. If routing is
+enabled, a single AppleTalk address is used for all installed network
+adapters.
+<P>
+<P><h3>Method Two: Code Sample</h3>
+ 
+<P>
+Listed below is an example of how to use the WinSock database APIs to
+give IP addresses:
+<P>
+<PRE>   void EnumIP()
+   {
+      char     szHostname[100];
+      HOSTENT *pHostEnt;
+      int      nAdapter = 0;
+
+      gethostname( szHostname, sizeof( szHostname ));
+      pHostEnt = gethostbyname( szHostname );
+
+      while ( pHostEnt-&gt;h_addr_list[nAdapter] )
+      {
+         // pHostEnt-&gt;h_addr_list[nAdapter] is the current address in host
+         //  order.
+
+         nAdapter++;
+      }
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.50<BR>
+KBCategory: kbnetwork kbcode<BR>
+KBSubcategory: NtwkWinsock<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 29, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

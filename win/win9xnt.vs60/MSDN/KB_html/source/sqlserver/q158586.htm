@@ -1,0 +1,202 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: 'Temp_db' Device Causes Problems Starting SQL Server </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q158586">
+<META NAME="KBModify" CONTENT="1997/12/02">
+<META NAME="KBCreate" CONTENT="1996/10/31">
+<META NAME="Keywords" CONTENT="SSrvAdmin SSrvISQL kbenv kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="-   If SQL Server is started so that tempdb is placed in RAM (either by explicitly setting the 'tempdb in RAM' option or by starting in a minimal configuration mode using the -f parameter at the command line), SQL Server fails to start properly if a ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QAIJ,QAB5,QDIV,QACI,QA5E,QAZV,QAB4,QAUJ,QA9N,QAI5,QBWS,QABY,QBW6,QBV8 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: 'Temp_db' Device Causes Problems Starting SQL Server</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 2, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q158586</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+ 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+If SQL Server is started so that tempdb is placed in RAM (either by
+explicitly setting the 'tempdb in RAM' option or by starting in a minimal
+configuration mode using the -f parameter at the command line), SQL Server
+fails to start properly if a device with a device name of 'temp_db'
+already exists.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+When tempdb is placed in RAM, SQL Server first attempts to create a RAM
+device with a logical name of 'temp_db,' and then to create the tempdb
+database on this device. If a device already exists with the name
+<PRE>'temp_db,' the attempt to insert an entry into the sysdevices table will
+</PRE>fail; thus tempdb cannot be created.
+<P>
+The SQL Server errorlog will contain the following sequence of error
+messages:
+<P>
+<PRE>   Attempt to insert duplicate key row in object 'sysdevices' with unique
+   index 'sysdevices' (Msg 2601)
+
+   crdb_tempdb: Unable to move tempdb into RAM; RAM device doesn't exist,
+   cannot be created, or doesn't have enough space for tempdb.
+
+</PRE>The server will continue through the startup process, and will likely
+report other error messages as well.
+<P>
+If you attempt to use tempdb during startup (for example, in a startup
+stored procedure), the following error messages may be reported and the
+server will fail to start:
+<P>
+<PRE>   Msg 906: Could not locate row in sysobjects for system catalog
+   'sysobjects' in database 'tempdb'....
+
+   Msg 615: Unable to find database table id = 2, name = 'tempdb'....
+
+</PRE>If you attempt to access tempdb after the server is started, the above
+messages will be logged, but the server will not stop.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+In order to start the server, go to a command prompt and navigate to the
+BINN directory where SQL Server was installed (for example, SQL60\BINN for
+SQL Server 6.0, or MSSQL\BINN for SQL Server 6.5). Then use the following
+command line, which is case sensitive, to start SQL Server:
+<P>
+<PRE>   sqlservr -c -m -T3609 -T4022
+
+</PRE>Please note that the use of -m starts SQL Server in single user mode.
+After the first successful login, any subsequent requests will get a
+"Login failed" message until the first connection has logged out.  Make
+sure that you stop any automated processes that may be trying to log in to
+SQL Server (e.g., SQL Executive, Performance Monitor, etc.).
+<P>
+Once SQL Server is started, use ISQL/w to connect to SQL Server. Note that
+you will not be able to use the SQL Enterprise Manager; it is not
+available with these startup parameters (because it uses tempdb).  Once
+connected, use the following command to drop the existing device named
+<PRE>'temp_db' so that SQL Server can create that device upon startup.
+
+   sp_dropdevice 'temp_db'
+
+</PRE>If any other databases besides tempdb have been expanded onto the device,
+the command will report the names of these databases. These databases will
+need to be dropped, using the DROP DATABASE command, so that the temp_db
+device can be deleted.
+<P>
+If SQL Server still fails to successfully start after following the above
+steps, and tempdb had been explicitly placed in RAM, use the following
+command to try to place tempdb back on disk.
+<P>
+<PRE>   sp_configure 'tempdb in RAM', 0
+   reconfigure with override
+
+</PRE>This should place tempdb back on the default device with the default
+database size (typically 2 MB on master).  Stop and restart SQL Server.
+At this point, you will want to drop the device with the name temp_db and
+create a device with a different name and then expand tempdb onto this new
+device.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 6.00 6.50 sql60 sql65 minimal configuration<BR>
+Keywords          : SSrvAdmin SSrvISQL kbenv kbprb<BR>
+Version           : 6.0 6.5<BR>
+Platform          : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 2, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

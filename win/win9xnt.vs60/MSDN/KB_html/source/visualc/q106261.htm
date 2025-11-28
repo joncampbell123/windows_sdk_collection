@@ -1,0 +1,271 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Trap Floating-Point Exceptions Using C++ </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q106261">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1993/11/04">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  In C++, exceptions are normally handled by try catch blocks. However, Microsoft C++ versions 7.0 and 8.0 do not support the handling of floating-point exceptions. Also, because the longjmp() and setjmp() functions are not part of the C++ language, ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBFY,QANE,QA4Q,QBVV,QAGI,QAY5,QBV8,QAB9,QAH4,QACJ,QDL9,QBWQ,QBWO,QBWN,QBAD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Trap Floating-Point Exceptions Using C++</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q106261</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+7.00   | 1.00 1.50
+MS-DOS | WINDOWS
+WINDOWS
+kbprg kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft C/C++ for MS-DOS, version 7.0
+<LI>Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In C++, exceptions are normally handled by try catch blocks. However,
+Microsoft C++ versions 7.0 and 8.0 do not support the handling of
+floating-point exceptions. Also, because the longjmp() and setjmp()
+functions are not part of the C++ language, the header files included
+with the Microsoft C++ compiler do not allow the use of the longjmp()
+and signal() functions in a C++ program. These functions are needed to
+trap floating-point exceptions. This article explains why these
+functions are not defined, and how you can trap floating-point
+exceptions in C++.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Using longjmp() in C is potentially dangerous because if you
+dynamically allocate memory, then do a longjmp() before freeing the
+memory, that memory may end up never being freed.
+<P>
+The longjmp() and setjmp() functions are not part of the C++ language
+because in C++, longjmp() is potentially more dangerous. There is
+significantly more implicit dynamic memory allocation taking place in
+C++, with many new and delete operations occurring as objects are
+constructed and deleted. For this reason, longjmp() and setjmp() are
+not defined when compiling C++ programs. Both longjmp() and setjmp()
+are within a "#ifndef __cplusplus" section in SETJMP.H.
+<P>
+In C++, exceptions are normally handled by try catch blocks. You can
+use TRY and CATCH to catch some exceptions predefined in the Microsoft
+Foundation Classes (MFC), such as CFileException and CMemoryException;
+however, there are no exception classes for floating-point errors.
+<P>
+There is a technique similar to that used by the Microsoft Foundation
+Classes that you can use to trap floating-point exceptions using C++;
+that is, prototype longjmp() and setjmp() yourself. Also, to allow
+signal() to be called with either a handler that takes two parameters
+(_SIG_FPE) or just one parameter (all other signal values), signal()
+must be prototyped differently to accept a handler with a
+variable-length function list. The new prototype could be:
+<P>
+<PRE>   void (__cdecl * __cdecl signal(int, void (__cdecl *)(int, ...)))(int);
+
+</PRE>In this case, whenever you call signal(), you must cast its second
+parameter with the following cast:
+<P>
+<PRE>   (void (__cdecl *)(int, ...))
+
+</PRE>Appended below is SIGCPP.H, a header file that consists of the
+modified and combined header files SIGNAL.H and SETJMP.H. To use it,
+<PRE>#include &lt;sigcpp.h&gt;, and make sure that SIGNAL.H and SETJMP.H are not
+</PRE>included--and remember to use the above cast in signal() calls.
+<P>
+NOTE: This solution is not guaranteed to work in every case. If used
+with care, this solution will probably work; however, Microsoft does
+not recommend the use of longjmp() with C++. Using longjmp() with C++
+may result in objects not being properly destroyed. If the objects
+that aren't destroyed allocate resources such as memory or file
+handles, these resources will not be deallocated.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/***
+</PRE>* SIGCPP.H - Header file that allows the use of signal() for the
+* handling of floating point and other exceptions in both C and C++.
+* However, it is recommended that longjmp() not be used in C++ programs.
+*  - Do not #include &lt;signal.h&gt; or &lt;setjmp.h&gt;.
+*  - Whenever you call signal(), you need to put the following cast on
+*    its second parameter, your handler:
+<PRE>*       (void (__cdecl *)(int, ...))
+</PRE>*  - Be very careful to avoid memory leakage with longjmp()'s in C++,
+*    which will occur if destructors and other deletes are jumped.
+****/
+<P>
+#ifndef _INC_SIGCPP
+<P>
+#ifdef __cplusplus
+extern "C" {
+#endif
+<P>
+#if (_MSC_VER &lt;= 600)
+<PRE>#define __cdecl     _cdecl
+#define __far       _far
+</PRE>#endif
+<P>
+<PRE>////// Modified SIGNAL.H definitions:
+
+</PRE>#ifndef _SIG_ATOMIC_T_DEFINED
+typedef int sig_atomic_t;
+<PRE>#define _SIG_ATOMIC_T_DEFINED
+</PRE>#endif
+<P>
+<PRE>#define NSIG 23     /* Maximum signal number + 1 */
+
+/* signal types */
+
+</PRE>#ifndef _WINDOWS
+<PRE>#define SIGINT  2  /* CTRL+C sequence */
+#define SIGILL  4  /* Illegal instruction - invalid function image */
+</PRE>#endif
+<PRE>#define SIGFPE  8  /* Floating-point exception */
+</PRE>#ifndef _WINDOWS
+<PRE>#define SIGSEGV 11 /* Segment violation */
+#define SIGTERM 15 /* Software termination signal from kill */
+#define SIGABRT 22 /* Abnormal termination triggered by abort call */
+</PRE>#endif
+<P>
+<PRE>/* SIGNAL ACTION CODES */
+
+/* Default signal action */
+#define SIG_DFL (void (__cdecl *)(int))0
+
+/* Ignore */
+#define SIG_IGN (void (__cdecl *)(int))1
+
+/* Signal error value (returned by signal call on error) */
+#define SIG_ERR (void (__cdecl *)(int))-1
+
+/* FUNCTION PROTOTYPES */
+
+void (__cdecl * __cdecl signal(int,
+     void (__cdecl *)(int, ...)))(int);
+int __cdecl raise(int);
+
+////// Modified SETJMP.H definitions:
+
+/* Define the buffer type for holding the state information */
+
+#define _JBLEN  9  /* bp, di, si, sp, ret addr, ds */
+
+</PRE>#ifndef _JMP_BUF_DEFINED
+typedef  int  jmp_buf[_JBLEN];
+<PRE>#define _JMP_BUF_DEFINED
+</PRE>#endif
+<P>
+<PRE>/* Function prototypes */
+
+int  __cdecl setjmp(jmp_buf);
+void __cdecl longjmp(jmp_buf, int);
+
+</PRE>#ifdef __cplusplus
+}
+#endif  /* __cplusplus */
+<P>
+<PRE>#define _INC_SIGCPP
+</PRE>#endif  /* _INC_SIGCPP */
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.00 1.50 7.00 8.00 8.00c<BR>
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: CPPLngIss<BR>
+Keywords            : kb16bitonly<BR>
+Technology          : kbMfc<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

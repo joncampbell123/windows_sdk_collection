@@ -1,0 +1,214 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Registry Access from Multiple Threads Might Fail </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q176906">
+<META NAME="KBModify" CONTENT="1997/11/26">
+<META NAME="KBCreate" CONTENT="1997/11/18">
+<META NAME="Keywords" CONTENT="BseRegistry kberrmsg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  If you simultaneously access the same registry key from multiple threads in a single process, an error might occur. For example, if several threads in a carefully designed multi-threaded Win32 application try to open the same registry key using Reg...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAJQ,QBW7,QAI5,QAH4,QBWG,QAKP,QAAP,QAB4,QA1S,QBVV,QAY2,QDIX,QA4Q,QAY5,QAX0 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Registry Access from Multiple Threads Might Fail</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q176906</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+If you simultaneously access the same registry key from multiple threads in
+a single process, an error might occur. For example, if several threads in
+a carefully designed multi-threaded Win32 application try to open the same
+registry key using RegOpenKeyEx()in a loop, the function could fail with
+the following error code of 6:
+<P>
+<PRE>   ERROR_INVALID_HANDLE
+
+</PRE>This error does not occur across process boundaries. Thus, two single-
+threaded processes that are competing for the same registry key will not be
+affected by this bug.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This behavior is intermittent and is the result of a race condition between
+the threads simultaneously accessing the same registry key.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+There are several possible workarounds for this situation:
+
+<OL><P><LI>Do not access the same registry location from multiple threads in a
+   single process.
+
+<P><LI>Synchronize access to the registry location. You can do this by
+   serializing access to the code that accesses the registry with a
+   critical section or other Win32 synchronization mechanisms.
+
+<P><LI>When this error occurs, Sleep() a short time and try to access the
+   registry key again. It is a race condition that causes this problem, so
+   this workaround is not guaranteed to work. It is possible that the
+   registry key is indeed invalid. However, this is the easiest solution to
+   work into an existing application.
+<P>
+</OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following sample code illustrates the problem with the RegOpenKeyEx()
+function. Note that the error only happens intermittently with the
+following code.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<PRE>   #include &lt;windows.h&gt;
+   #include &lt;winbase.h&gt;
+   #include &lt;stdio.h&gt;
+
+   #define ITERATIONS 1000
+   VOID ThreadFunc(LPVOID);
+
+   void main(void)
+   {
+    int numThreads=100;
+    DWORD threadID;
+    int i;
+
+     for (i=0; i&lt;numThreads; i++)
+     {
+       CreateThread(0, 0,(LPTHREAD_START_ROUTINE) ThreadFunc,
+                    0, 0, &amp;threadID);
+     }
+     return;
+   }
+
+   VOID ThreadFunc(LPVOID)
+   {
+     LONG rc;
+     HKEY hKey;
+
+     for(int i=0; i &lt; ITERATIONS; i++)
+     {
+       rc = RegOpenKeyEx( HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft",
+                          0, KEY_ALL_ACCESS, &amp;hKey);
+
+       if (rc != ERROR_SUCCESS)
+         printf("Iteration(%d): Thread Id: %d, Error=%d\r\n", i,
+                                   GetCurrentThreadId(), rc);
+       else
+          rc = RegCloseKey(hKey);
+     }
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: regedit problem known occasionally concurrently<BR>
+RegOpenKey RegCloseKey<BR>
+Keywords          : BseRegistry kberrmsg<BR>
+Version           : WINNT:4.0<BR>
+Platform          : winnt<BR>
+Issue type        : kbbug<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

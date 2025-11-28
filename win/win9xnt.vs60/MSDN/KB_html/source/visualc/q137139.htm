@@ -1,0 +1,199 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Optimize the Reactivation of In-Place Active Servers </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q137139">
+<META NAME="KBModify" CONTENT="1998/02/17">
+<META NAME="KBCreate" CONTENT="1995/09/20">
+<META NAME="Keywords" CONTENT="MfcOLE">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When an OLE container embeds an in-place active capable server, the deactivation/reactivation process may be considered too long. One way to optimize the process is to hide the server rather than deactivate it. Simply hiding the server will enable ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAW6,QAPN,QA26,QAGB,QBXS,QBVP,QBFY,QA9Q,QA62,QA56,QA55,QALQ,QAAW,QAOE,QAHP V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Optimize the Reactivation of In-Place Active Servers</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 17, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q137139</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.5, 1.51, 1.52, 1.52b
+    - Microsoft Visual C++, 32-bit Edition, versions 2.0, 2.1, 2.2, 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When an OLE container embeds an in-place active capable server, the
+deactivation/reactivation process may be considered too long. One way to
+optimize the process is to hide the server rather than deactivate it.
+Simply hiding the server will enable a faster reactivation should the
+embedded object be reactivated.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Optimizing the deactivation/reactivation process for an object embedded in
+an MFC container application involves overriding the virtual
+COleClientItem::OnDeactivateUI and COleClientItem::OnActivate methods.
+<P>
+By default, MFC OLE container applications created with versions of
+AppWizard prior to version 4.0 contain the following implementation of the
+COleClientItem::OnDeactivateUI method:
+<P>
+<PRE>   void CCntrItem::OnDeactivateUI(BOOL bUndoable)
+   {
+     COleClientItem::OnDeactivateUI(bUndoable);
+
+     // Close an in-place active item whenever it removes the user
+     // interface. The action here should match as closely as possible
+     // the handling of the ESC key in the view.
+
+     Deactivate();   // nothing fancy here -- just deactivate the object
+   }
+
+</PRE>To optimize the deactivation/reactivation process, modify the AppWizard
+generated version of this function to have it invoke the embedded item's
+OLEIVERB_HIDE verb to have the item hide itself:
+<P>
+<PRE>   void CCntrItem::OnDeactivateUI(BOOL bUndoable)
+   {
+     COleClientItem::OnDeactivateUI(bUndoable);
+
+     // Hide the object if it is not an outside-in object
+     DWORD dwMisc = 0;
+     m_lpObject-&gt;GetMiscStatus(GetDrawAspect(), &amp;dwMisc);
+     if (dwMisc &amp; OLEMISC_INSIDEOUT)
+        DoVerb(OLEIVERB_HIDE, NULL);
+   }
+
+</PRE>The second step in optimizing the deactivation/reactivation process
+involves modifying the virtual COleClientItem::OnActivate method to
+correctly handle activation of another embedded object. To override
+COleClientItem::OnActivate, first add the following public method
+declaration to the declaration of the MFC container application's
+COleClientItem derived class:
+<P>
+<PRE>   virtual void OnActivate();
+
+</PRE>Add the following definition of the OnActivate method to the
+implementation file for the container's COleClientItem derived class:
+<P>
+<PRE>   void CCntrItem::OnActivate()
+   {
+     // allow only one in-place active item per frame
+     CView* pView = (CView*)GetActiveView();
+     ASSERT_VALID(pView);
+     COleClientItem* pItem = GetDocument()-&gt;GetInPlaceActiveItem(pView);
+     if (pItem != NULL &amp;&amp; pItem != this)
+       pItem-&gt;Close();
+
+     COleClientItem::OnActivate();
+   }
+
+</PRE>If the container has previously hidden an embedded object, this function
+will close it prior to activating the new item. Note that this optimization
+is similar to the technique that Microsoft Excel and the rich edit control
+use in similar circumstances.
+<P>
+Beginning with Visual C++ version 4.0, AppWizard-generated OLE containers
+contain the optimized versions of COleClientItem::OnDeactivateUI and
+COleClientItem::OnActivate automatically. There is no need to manually add
+the changes shown above.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Word embedded UIActive<BR>
+Keywords          : MfcOLE<BR>
+Technology        : kbMfc kbole<BR>
+Version           : WINDOWS:1.5,1.51,1.52,1.52b;Winnet:2.0,2.1,2.2,4.0<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 17, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

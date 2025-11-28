@@ -1,0 +1,271 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FILE: GetRows.exe Demonstrates #import with ADO and GetRows() </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q172391">
+<META NAME="KBModify" CONTENT="1998/03/06">
+<META NAME="KBCreate" CONTENT="1997/08/05">
+<META NAME="Keywords" CONTENT="kbcode adovc">
+<META NAME="KBArea" CONTENT="Support; KB; adobj">
+<META NAME="Description" CONTENT="  The Visual C++ 5.0 GetRows sample is identical to the ADO GetRows sample that comes with the OLEDBSDK but is re-written to use the #import compiler directive, which was introduced in Visual C++ version 5.0. The code is much cleaner using #import an...">
+<META NAME="Product" CONTENT="adobj">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QAY2,QAI4,QAEQ,QAEF,QBFY,QA5V,QAYY,QAPN,QAMB,QAJX,QADR,QAJ4,QABA,QA56 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FILE: GetRows.exe Demonstrates #import with ADO and GetRows()</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 6, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q172391</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>ActiveX Data Objects (ADO) included with:
+<P><PRE>    - Microsoft Visual C++, 32-bit Editions, version 5.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The Visual C++ 5.0 GetRows sample is identical to the ADO GetRows sample
+that comes with the OLEDBSDK but is re-written to use the #import compiler
+directive, which was introduced in Visual C++ version 5.0. The code is much
+cleaner using #import and is less error-prone.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following file is available for download from the Microsoft Software
+Library:
+<P>
+<PRE> ~ <A href="http://support.microsoft.com/download/support/mslfiles/getrows.exe">GetRows.exe</A> <I>(size: 599958 bytes)</I> 
+
+</PRE>For more information about downloading files from the Microsoft Software
+Library, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../zmiscellaneous/q119591.htm">Q119591</A></B>
+   TITLE     : How to Obtain Microsoft Support Files from Online Services
+
+</PRE>The demonstration code resides in two primary functions; OnExecute and
+DoGetRows(). Here is the code:
+<P>
+<PRE>   #import "c:\program files\Common Files\System\ADO\MSADO10.DLL" \
+      implementation_only
+
+   const _bstr_t bstrSource(_T("DRIVER=Microsoft Access Driver"
+      "(*.mdb);DBQ=nwind.mdb"));
+   const _bstr_t bstrUser(_T("Admin"));
+   const _bstr_t bstrPassword(_T(""));
+   const _bstr_t bstrSQL(_T("select EmployeeId, LastName, FirstName from"
+      "Employees"));
+
+   void CVC5GetRowsDlg::OnExecute()
+   {
+      HRESULT hr;
+      try
+      {
+
+         if ( m_pConn == NULL || m_pRS == NULL)
+         {
+            hr = CoInitialize(NULL);
+            if (FAILED(hr))
+            {
+               AfxMessageBox(_T("Failure to Initialize OLE"));
+               return;
+            }
+
+            m_pConn.CreateInstance(_uuidof(ADODB::Connection));
+
+            m_pConn-&gt;Open( bstrSource, bstrUser, bstrPassword );
+
+            m_pRS.CreateInstance(_uuidof(ADODB::Recordset));
+
+            m_pRS-&gt;PutSource(bstrSQL);
+
+            m_pRS-&gt;ActiveConnection = m_pConn;
+
+            _variant_t vNull;
+            vNull.vt = VT_ERROR;
+            vNull.scode = DISP_E_PARAMNOTFOUND;
+
+            m_pRS-&gt;Open(vNull, vNull, ADODB::adOpenKeyset,
+                        ADODB::adLockOptimistic,  ADODB::adCmdUnknown);
+        }
+
+        // Perform the two GetRows functions
+        DoGetRows();
+
+        // Reset the recordset
+        m_pRS-&gt;MoveFirst();
+
+      }
+      catch(_com_error &amp; err)
+      {
+     ::MessageBox(NULL, (LPCSTR)err.Description(), _T("ADO Error"), MB_OK);
+      }
+   }
+
+   void CVC5GetRowsDlg::DoGetRows()
+   {
+      ASSERT(m_pRS!=NULL);
+
+      HRESULT hr;
+      _variant_t cRows;
+      _variant_t varField, varNewField;
+      CString strLBRow;
+      LONG lNumOfCol, lNumRecords;
+      LONG   lIndex[2];
+      CListBox *pListBox = (CListBox *)GetDlgItem(IDD_GETROWSLIST);
+
+      //Perform GetRows on Employee table
+
+      // NOTE: #import generates vtMissing for default arguments which
+      //       evaluates to a variant with vt=VT_ERROR and
+      //       scode = DISP_E_PARAMNOTFOUND.
+      //       vtMissing is used for the optional second and third
+      //       arguments in the GetRows call.  If vtMissing is used,
+      //       GetRows starts from the current record and gets all columns
+      cRows = m_pRS-&gt;GetRows(ADODB::adGetRowsRest);
+
+      //Find out how many records were actually retrieved
+      //(SafeArrays are 1-based)
+      lNumOfCol = 2;
+      SafeArrayGetUBound(cRows.parray, 2, &amp;lNumRecords);
+
+      //Clear the listbox
+      pListBox-&gt;ResetContent();
+
+      for (lIndex[1] = 0; lIndex[1] &lt;= lNumRecords; lIndex[1]++)
+      {
+         strLBRow.Empty();//Clear the string
+
+         for (lIndex[0] = 0; lIndex[0] &lt;= lNumOfCol; lIndex[0]++)
+             // get 3 columns
+         {
+            SafeArrayGetElement(cRows.parray, &amp;lIndex[0], &amp;varField);
+
+            hr = VariantChangeType(&amp;varNewField, &amp;varField, 0, VT_BSTR);
+
+            if(hr == S_OK)
+            {
+               strLBRow += (LPCWSTR)varNewField.bstrVal;
+               if (lIndex[0] != lNumOfCol)
+               strLBRow += _T(", ");
+            }
+            varField.Clear();
+            varNewField.Clear();
+         }
+      pListBox-&gt;AddString(strLBRow);
+      }
+   }
+
+</PRE>For additional information, please see the following articles in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../adobj/q169496.htm">Q169496</A></B>
+   TITLE     : INFO: Using ActiveX Data Objects (ADO) via #import in VC++
+
+   ARTICLE-ID: <B><A href="../adobj/q166112.htm">Q166112</A></B>
+   TITLE     : PRB: Conflict with EOF When Using #import with ADO
+
+   ARTICLE-ID: <B><A href="../adobj/q169498.htm">Q169498</A></B>
+   TITLE     : INFO: Extracting Error Information from ADO in VC++ with
+               #import
+
+
+</PRE> 
+<PRE>Keywords          : kbcode adovc
+Technology        : odbc
+Version           : WINDOWS:
+Platform          : WINDOWS
+Issue type        : kbfile
+Solution Type     : kbsample</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 6, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

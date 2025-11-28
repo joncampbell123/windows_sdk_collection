@@ -1,0 +1,219 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Determining the Oldest Open Transaction </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q119402">
+<META NAME="KBModify" CONTENT="1997/04/30">
+<META NAME="KBCreate" CONTENT="1994/08/15">
+<META NAME="Keywords" CONTENT="kbusage SSrvServer SSrvWinNT">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  There are many reasons why you would need to determine what the oldest open transaction is and who is holding it open. It could be that the transaction log is not being truncated as expected, leading you to believe that there is an open transaction...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWS,QABM,QAS1,QDMH,QBXJ,QA5V,QAZV,QAY2,QBCF,QADK,QBVV,QA4H,QAML,QAKC,QAOX V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Determining the Oldest Open Transaction</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 30, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q119402</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+  - Microsoft SQL Server, versions 4.2 and 6.0
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+There are many reasons why you would need to determine what the oldest open
+transaction is and who is holding it open. It could be that the transaction
+log is not being truncated as expected, leading you to believe that there
+is an open transaction preventing truncation. Or, you could be running into
+significant blocking (or livelocks) that is preventing updates to the
+database. Viewing the information in the oldest open transaction can
+provide information on which user is holding the open transaction, as well
+as what time the transaction was begun.
+<P>
+For more information on the transaction log filling up, please see the
+following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q110139.htm">Q110139</A></B>
+   TITLE: INF: Causes of SQL Transaction Log Filling Up
+
+</PRE>A quick way of determining if an open transaction is preventing the log
+from being truncated is to run the following query:
+<P>
+<PRE>   use &lt;database name&gt;
+   go
+   select first from sysindexes where id = 8
+   dump tran &lt;database name&gt; with truncate_only
+   select first from sysindexes where id = 8
+   go
+
+</PRE>If the values from the selects do not change, then you can follow the
+method below to get more details.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following steps will allow you to examine the oldest open transaction
+in SQL Server. The following steps must be run by the SA.
+
+<OL><P><LI>First, determine the database ID of the database you are working on,
+   send trace output to the client, and force a checkpoint record to be
+   written out. This will ensure we are dealing with the most recent (and
+   up-to-date) checkpoint record:
+<P>
+<P><PRE>      use &lt;database name&gt;
+      go
+      select db_id()
+      checkpoint
+      dbcc traceon(3604)
+      go
+</PRE>
+<P><LI>Run the following command, replacing the &lt;dbid&gt; with the database ID
+   found in step 1:
+<P>
+<P><PRE>      dbcc log(&lt;dbid&gt;,0,0,0,-1,17,0)
+      go
+</PRE><P>
+   This will print out the last checkpoint written to syslogs. Find the
+   section that looks like "active xacts:(449, 14)". This is the page and
+   row number of the oldest open transaction. Although it is theoretically
+   possible to have about a hundred log rows on a page, if the second
+   number is over 40, it is likely there are no open transactions.
+
+<P><LI>Now retrieve the begin transaction information:
+<P>
+<P><PRE>      dbcc log(&lt;dbid&gt;,1,&lt;page&gt;,&lt;row&gt;,0,0,0)
+      go
+</PRE><P>
+   From the example in #2, the command would be (for the pubs database):
+<P>
+<P><PRE>      dbcc log(4,1,449,14,0,0,0)
+      go
+</PRE><P>
+   If this command prints out no information, or you receive an error such
+   as:
+<P>
+<P><PRE>      Invalid transaction id: 449,14
+</PRE><P>
+   then, it is possible that there are no active transactions. The field of
+   interest here is the "spid=&lt;number&gt;". This is the spid (as seen in
+   sp_who) of the process that created this transaction.
+
+<P><LI>You should now confirm that there is an open transaction. The following
+   command will try to retrieve the end of the transaction:
+<P>
+<P><PRE>      dbcc log(&lt;dbid&gt;,1,&lt;page&gt;,&lt;row&gt;,0,30,0)
+      go
+</PRE><P>
+   If this command does not return any information, then you have found the
+   oldest open transaction. You can identify the user by running sp_who and
+   matching the "spid" values from #3 and sp_who. If it does return
+   information about the end of the transaction, follow this procedure one
+   more time to ensure that the values were input correctly.
+
+<P><LI>The last bit of information is to determine if the log has been
+   truncated up to the oldest transaction.  Run the following command:
+<P>
+<P><PRE>      select first from sysindexes where id = 8
+      go
+</PRE><P>
+   If the value for first is the same as the page number from step #2, then
+   the log is truncated as small as it can go until the transaction is
+   committed or aborted.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: sql6 Windows NT<BR>
+Keywords            : kbusage SSrvServer SSrvWinNT<BR>
+Version             : 4.2 | 4.2 6.0<BR>
+Platform            : OS/2 WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 30, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

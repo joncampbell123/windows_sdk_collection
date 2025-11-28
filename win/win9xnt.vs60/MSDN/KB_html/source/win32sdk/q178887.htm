@@ -1,0 +1,302 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: Troubleshooting Performance Registry Access Violations </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q178887">
+<META NAME="KBModify" CONTENT="1998/01/14">
+<META NAME="KBCreate" CONTENT="1998/01/06">
+<META NAME="Keywords" CONTENT="BsePerfmon">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  An application for Windows NT uses RegQueryValueEx with the predefined HKEY_PERFORMANCE_DATA key to gather Windows NT performance data. Under some circumstances the function may cause an Access Violation in the calling process. Or, in some cases, t...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAY5,QAMR,QAU3,QAOG,QBWP,QBHQ,QAO4,QAYY,QBVV,QA1S,QAPN,QAGI,QAUD,QALZ,QAKP V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: Troubleshooting Performance Registry Access Violations</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 14, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q178887</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT versions 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+An application for Windows NT uses RegQueryValueEx with the predefined
+HKEY_PERFORMANCE_DATA key to gather Windows NT performance data. Under some
+circumstances the function may cause an Access Violation in the calling
+process. Or, in some cases, the function fails to return the data for the
+counters requested. This article describes how to troubleshoot these
+problems.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Background and Architecture</h3>
+ 
+<P>
+To help you understand why these problems occur and the steps to resolve
+the problem, the overall architecture of the performance library is
+described here.
+<P>
+Within Advapi32.dll, the performance library supplies the functionality
+behind the RegQueryValueEx API with the HKEY_PERFORMANCE_DATA key. On
+Windows NT, the performance data is collected at the time RegQueryValueEx
+is called. It is not continuously stored in the registry.
+<P>
+Some performance data is collected within the performance library in
+Advapi32.dll. Advapi32.dll uses internal functions to get data for system
+objects, such as Memory and Process. The performance library collects other
+data by calling DLLs, known as performance monitor extensions. The DLLs
+export three functions (that is, the Open, Collect, and Close functions),
+which the performance library uses to gather data from the extensions. See
+the References section of this article for more information about adding
+custom performance counters.
+<P>
+When an application queries for performance data, the library loads all
+performance extension DLLs and calls the Open and Collect functions in a
+loop. For the extension DLLs, which do not support the object index that is
+being queried, the extension DLL indicates to the performance library that
+it does not fill in any performance data in the data buffer. The following
+sample code from the Collect function of a sample performance counter
+extension illustrates this:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   lpszNameTitleIndex = DataDefinition.ObjectType.ObjectNameTitleIndex;
+
+   if (dwQueryType == QUERY_ITEMS){
+      if (!(IsNumberInUnicodeList(lpszNameTitleIndex, lpValueName))) {
+         *lpcbTotalBytes = (DWORD) 0;
+         *lpNumObjectTypes = (DWORD) 0;
+         return ERROR_SUCCESS;
+      }
+   }
+
+</PRE>The performance library calls the Collect function for all extensions
+within a try/except block so an unhandled Access Violation exception will
+not be presented to the user if the DLL's Collect function executes code
+that generates an exception. Instead an error is posted in the Windows NT
+Event Log.
+<P>
+<P><h3>Troubleshooting Access Violations</h3>
+ 
+<P>
+If RegQueryValueEx presents an unhandled Access Violation exception in a
+dialog box to the user, typically one of the performance extension DLLs is
+the cause, not the caller of RegQueryValueEx. Because an extension's
+Collect function is protected by structured exception handling in the
+performance library, the fault occurs inside RegQueryValueEx but after the
+Collect function has returned. Since all extensions get loaded regardless
+of which counters are queried, the exception information does not indicate
+which extension DLL caused the problem. Therefore, it is necessary to
+enumerate the extensions and disable them. To get a list of the extensions
+installed, use the Exctrlst.exe utility from the Windows NT Resource Kit.
+This will display a list of all extensions by the service name and the name
+of the extension DLL.
+<P>
+Following is a trial and error method that you can use to identify which
+extension DLL is causing the problem. The performance library loads the
+extension DLLs that are registered in:
+<P>
+<PRE>   HKEY_LOCAL_MACHINE
+      SYSTEM
+      CurrentControlSet
+      Services
+      &lt;service name&gt;    (as indicated in EXCTRLST.EXE)
+      Performance
+
+</PRE>There is a registry value named Library that holds the name of the
+extension DLL. For each performance extension, edit the Library name and
+prefix it with an "x". By doing this, the performance library will
+temporarily not load the extensions. Execute the code that calls
+RegQueryValueEx again to verify that the exception does not occur. Although
+unlikely, if the exception still occurs, then the problem is not related to
+performance extensions. Otherwise, enable the performance libraries one at
+a time by removing the "x" character from its registered library name and
+then execute the code that calls RegQueryValueEx. After doing so (that is,
+one extension at a time), it will identify the extension that is causing
+the problem at the point the RegQueryValueEx causes an exception.
+<P>
+<P><h3>Additional Information and Comparing Installations</h3>
+ 
+<P>
+Use Tlist.exe in the Windows NT Resource Kit to get additional information
+about the process. At the time the Access Violation error message is
+presented, open a command prompt window and use the following tlist
+command:
+<P>
+<PRE>   tlist &lt;name of process&gt;
+
+</PRE>This command dumps out some memory usage information and lists all modules
+loaded by the process. The list of DLLs includes the version stamp
+information. Sometimes a problem occurs because a conflicting DLL version
+is present. If the problem occurs on one machine, but not on another
+machine then you can compare the output from both machines.
+<P>
+Depending on which extension is causing the problem, you may or may not be
+able to debug the DLL further. If it belongs to another company, you may
+want to contact that company to report the problem.
+<P>
+<P><h3>Troubleshooting Other Problems with Collecting Data</h3>
+ 
+<P>
+Another symptom of a problem that occurs when collecting performance data
+is that the buffer returns without any data. Be sure to zero buffers before
+the call to RegQueryValueEx to verify if this is the case. Typically, the
+reason the buffer does not contain any data is that the Collect function
+one of the extensions caused an exception, but it was handled by try/except
+block implemented in the performance library.
+<P>
+The exception handler in the performance library will post an Event Log
+message. Use Event Viewer to view the Application log to see event message
+of source Perflib. If an exception occurred in the Collect function, an
+event log message that has the following Event Detail dialog box
+description will be posted:
+<P>
+<PRE>   The Collect Procedure for the &lt;service name&gt; service in DLL
+   &lt;extension DLL name&gt; generated an exception or returned an invalid
+   status. Performance data returned by counter DLL will not be
+   returned in Perf Data Block. Exception or status code returned is
+   DWORD 0.
+
+</PRE>And, the first DWORD in the data window of the Event Detail dialog box may
+be 05 00 00 c0 (which is exception status 0xC0000005).
+<P>
+There may be other reasons why performance data is not returned.
+Specifically, if the extension relies on a service to be installed and
+running for it to gather the data, then performance data may not be
+returned. This will not generate an exception, and it may not cause an
+event log error to be posted. For example, the TCP counters. For more
+information, query the Microsoft Knowledge Base with the following
+keywords:
+<P>
+<PRE>   BsePerfmon tcp udp ip
+
+</PRE><h3>Getting More Information in the Event Log</h3>
+ 
+<P>
+The performance library reads a Windows NT registry value to select how
+much information it will place in the Event Log. The REG_DWORD value named
+EventLogLevel is placed in the following key:
+<P>
+<PRE>   HKEY_LOCAL_MACHINE
+      Software
+      Microsoft
+      Windows NT
+      CurrentVersion
+      Perflib
+
+</PRE>If you set the value to 1 the performance library will only post errors. A
+value of 2 selects the posting of warnings and errors. A value of 3 selects
+the posting of all success information as well as errors and warnings. A
+value of 0 (default) posts no additional information. If you change this
+registry value, stop and restart the process that reads the performance
+data to see the change in event logging.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For more information about adding custom performance counters, see:
+<P>
+Platform SDK: Windows Base Services; Windows NT Features; Performance Data
+Helper; Adding Performance Counters.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: crash bug av perfmon pdh<BR>
+Keywords          : BsePerfmon<BR>
+Version           : WINNT:3.51,4.0<BR>
+Platform          : winnt<BR>
+Issue type        : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 14, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

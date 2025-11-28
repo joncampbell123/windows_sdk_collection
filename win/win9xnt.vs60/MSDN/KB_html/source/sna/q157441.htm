@@ -1,0 +1,262 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BIND Negative Response When Open TSO on a Channel Connection </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q157441">
+<META NAME="KBModify" CONTENT="1997/04/17">
+<META NAME="KBCreate" CONTENT="1996/10/10">
+<META NAME="Keywords" CONTENT="kb3rdparty kbbug2.11 kbbug2.11.sp1 snachannel snaserverservice">
+<META NAME="KBArea" CONTENT="Support; KB; sna">
+<META NAME="Description" CONTENT="  When you try to enter the TSO area of a mainframe, you will receive an error message, and when you examine the Application log, the log will show that a BIND negative Response was sent on the connection:     Event ID: 21    Description: BIND Negati...">
+<META NAME="Product" CONTENT="SNA Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEF,QDO3,QBWS,QAJX,QADR,QA2Q,QAY2,QAR4,QAKD,QAH4,QAHE,QAB4,QAG2,QAKP,QAC2 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BIND Negative Response When Open TSO on a Channel Connection</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q157441</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SNA Server for Windows NT, versions 2.0, 2.1, 2.11,
+   2.11 Service Pack 1, and 3.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When you try to enter the TSO area of a mainframe, you will receive an
+error message, and when you examine the Application log, the log will show
+that a BIND negative Response was sent on the connection:
+<P>
+<PRE>   Event ID: 21
+   Description: BIND Negative Response Sent on Connection XXXX
+   (SENSE=08350001)
+
+</PRE>The sense code will be 08350001 in every instance, if this is the problem.
+If the sense code value does not match, the information in this article
+will not apply.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The channel adapter link service is providing PU 2.0 node capabilities,
+even though SNA Server thinks that it is operating at PU 2.1 node
+capabilities. The host will set a value greater than one in the OAF
+(Origination Address Field), which in a PU 2.1 is reserved for independent
+LU 6.2:
+<P>
+<PRE>   |DLC    ---------------------------------------------- 10:35:20.55
+   |DLC    05160001-&gt;01020101 DLC DATA
+   |DLC                       DAF:02 OAF:02 ODAI:off Exp.
+   ************************* Notice the value of 02 for the OAF.
+   |DLC                       BIND   RQD SC  FI BC ECDR1
+   |DLC
+   |DLC    ---- Header  at address 00CF4D70, 1 elements----
+   |DLC    01020200 00012D00 02024C48 0100DA00&lt;......-...LH....&gt;
+   |DLC
+   |DLC    ---- Element at address 011EAC94, start 10, end 44 ----
+   |DLC    6B800031 010303B1 90308000 0087C780&lt;k..1.....0...gG.&gt;
+   ************************* Notice the value of 0x01 in the first byte
+      of the second double-word.
+   |DLC    00020000 00000018 5000007E 000003E3&lt;........P..~...T&gt;
+   |DLC    E2D600                                  &lt;SO.&gt;
+
+</PRE>Notice that byte one (byte 0 is 0x31 in the Element data) of the BIND is
+set to 0x01, which implies a value of nonnegotiable according to the IBM
+SNA Formats. However, the only value allowed for LU 6.2 is 0x00 that
+implies a value of negotiable. SNA Server, as any other PU 2.1, is
+interpreting this BIND as if it was for an LU 6.2; therefore, it rejects
+the BIND on the basis that byte 1 should be set to negotiable:
+<P>
+<PRE>   |DLC    ---------------------------------------------- 10:35:20.56
+   |DLC    01020101-&gt;05160001 DLC DATA
+   |DLC                       DAF:02 OAF:02 ODAI:offExp.
+   |DLC                       BIND   -RSP SC  FI SD BCEC DR1
+   |DLC
+   |DLC    ---- Header  at address 00CF4D70, 1 elements----
+   |DLC    01020200 00002D00 02024C48 0100DA00&lt;......-...LH....&gt;
+   |DLC
+   |DLC    ---- Element at address 011EA498, start 10, end 17 ----
+   |DLC    EF900008 35000131&lt;....5..1        &gt;
+   ************************* Notice the sense code of 0x08350001.
+
+</PRE>The above frames were taken from a Data Link Control trace of the SNA
+Server Service.  To enable this tracing do the following:
+<P>
+For SNA Server 2.x:
+
+<OL><P><LI>Run the SNA Server trace utility on the SNA Server and click the
+   Clear All button.
+
+<P><LI>Verify that no files exist in the &lt;SNA Root&gt;\traces directory. Move
+   any files to another directory.
+
+<P><LI>Select SNA Server from the pull down list box labeled Service Name.
+
+<P><LI>Select the Data Link Control checkbox from the message traces group.
+
+<P><LI>Click the Apply button, and recreate the situation.
+
+<P><LI>After the problem appears, switch to the SNA Server trace
+   application and click the Clear All button.
+<P>
+</OL>For SNA Server 3.x:
+
+<OL><P><LI>Run the SNA Server trace utility on the SNA Server and click the
+   Clear All Traces button.
+
+<P><LI>Verify that no files exist in the &lt;SNA Root&gt;\traces directory. Move
+   any files to another directory.
+
+<P><LI>Select SNA Server from the Trace Items tab and then select Properties
+   button.
+
+<P><LI>Select the Message Trace tab, and then select Data Link Control check
+   box.
+
+<P><LI>Click the Apply button, and recreate the situation.
+
+<P><LI>After the problem appears, switch to the SNA Server trace
+   application and click the Clear All Traces button.
+<P>
+   The file(s) in the &lt;SNA Root&gt;\traces should contain a DLC trace of
+   what transpired from the point in time that Apply was selected to the
+   point in time that Clear All was selected. If you experience the problem
+   described in this article, you should see the frames presented above.
+<P>
+</OL><h2>RESOLUTION</h2>
+ 
+<P>
+A hotfix to SNA Server 2.11 Service Pack 1 SNACFG.DLL is available to
+enable the SNA Server to indicate whether PU 2.0 or PU 2.1 should be
+used by a channel link service.
+<P>
+Also, SNA Server now indicates the correct XID type if Format 0 XID is
+configured on the connection.
+<P>
+This hotfix will be included in an upcoming SNA Server 2.11 service
+pack. This update is already included in SNA Server 3.0.
+<P>
+If SNA Server 2.11 is being used and this hotfix isn't applied, versions of
+VTAM that can support independent LU6.2 can resolve this problem by adding
+the following parameter to the VTAM PU definition:
+<P>
+<PRE>   XID=YES
+
+</PRE></OL>Versions of VTAM that can support independent LU 6.2 can resolve the
+problem by adding the following parameter to the VTAM PU definition:
+<P>
+<PRE>   XID=YES
+
+</PRE>This would allow both systems to negotiate the same type of node, providing
+for propriety in the parameters sent to and from the host. However, VTAM
+3.11 does not support independent LU 6.2; therefore, the node type cannot
+be forced to be a PU 2.1. A Program Temporary Fix (PTF) is available from
+IBM to correct this problem. Contact IBM for more information on the PTF.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in SNA Server 2.11 and 2.11
+Service Pack 1.
+This problem was corrected in the latest Microsoft SNA Server 2.11 U.S.
+Service Pack. For information on obtaining the service pack, query on the
+following word in the Microsoft Knowledge Base (without the spaces):
+<P>
+<PRE>   S E R V P A C K
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: prodsna bustech bus-tech sna nt ibm sp1<BR>
+Keywords            : kb3rdparty kbbug2.11 kbbug2.11.sp1 snachannel snaserverservice<BR>
+Version             : 2.0 2.1 2.11 2.11.sp1 3.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbbug<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

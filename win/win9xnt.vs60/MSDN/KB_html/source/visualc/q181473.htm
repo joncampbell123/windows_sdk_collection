@@ -1,0 +1,237 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Use OLE Automation from a C Application Rather Than C++ </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q181473">
+<META NAME="KBModify" CONTENT="1998/02/19">
+<META NAME="KBCreate" CONTENT="1998/02/19">
+<META NAME="Keywords" CONTENT="kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  If you need to program in C, rather than C++, OLE Automation can be difficult, because the Component Object Model (COM), the building blocks of OLE, was designed around the binary layout of a C++ class. The header files included by WINDOWS.H, howev...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBFY,QBVP,QA9Q,QAPN,QA2K,QAB4,QAI4,QDL9,QDIV,QBWQ,QBWO,QBWN,QA56,QA55,QAMA V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Use OLE Automation from a C Application Rather Than C++</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 19, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q181473</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual C++, 32-bit Editions, versions 4.0, 5.0
+<LI>Microsoft Excel 97 for Windows
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+If you need to program in C, rather than C++, OLE Automation can be
+difficult, because the Component Object Model (COM), the building blocks of
+OLE, was designed around the binary layout of a C++ class. The header files
+included by WINDOWS.H, however, have built-in support for C compilations;
+therefore, you can mimic the behavior of a C++ object and make OLE
+Automation calls. This article describes how to build a Win32 console
+application, using C, that starts up Microsoft Excel and makes it visible
+via OLE Automation.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Use the following method:
+
+<OL><P><LI>Create a new "Win32 Console Application" project in Microsoft Visual C++
+   5.0.
+
+<P><LI>Add a Main.c (not Main.cpp) text file to your project.
+
+<P><LI>Add the following code to your Main.c file
+<P>
+<P><PRE>      #include &lt;stdio.h&gt;
+      #include &lt;windows.h&gt;
+</PRE><P>
+<P><PRE>      void main(void) {
+<PRE></PRE>         IDispatch *pDisp; // Main IDispatch pointer.
+         unsigned short *ucPtr; // Temporary variable to hold names.
+         DISPID dispID; // Temporary variable to hold DISPIDs.
+         CLSID clsid; // Holds CLSID of server after CLSIDFromProgID.
+         HRESULT hr; // General error/result holder.
+         char buf[8192]; // Generic buffer for output.
+
+         // IDispatch::Invoke() parameters...
+         DISPPARAMS dispParams = { NULL, NULL, 0, 0 };
+         VARIANT parm1;
+         DISPID dispidNamed = DISPID_PROPERTYPUT;
+
+         // Initialize OLE Libraries.
+         OleInitialize(NULL);
+         {
+            // Get CLSID for Excel.Application from registry.
+            hr = CLSIDFromProgID(L"Excel.Application", &amp;clsid);
+            if(FAILED(hr)) {
+               MessageBox(NULL, "Excel not registered.", "Error",
+                          MB_SETFOREGROUND);
+               return;
+            }
+            // Start Excel97 and get its IDispatch pointer.
+            hr = CoCreateInstance(&amp;clsid, NULL, CLSCTX_LOCAL_SERVER,
+                                  &amp;IID_IDispatch, (void **)&amp;pDisp);
+            if(FAILED(hr)) {
+               MessageBox(NULL, "Couldn't start Excel.", "Error",
+                          MB_SETFOREGROUND);
+               return;
+            }
+
+            // Get the 'visible' property's DISPID.
+            ucPtr = L"Visible";
+            pDisp-&gt;lpVtbl-&gt;GetIDsOfNames(pDisp, &amp;IID_NULL, &amp;ucPtr, 1,
+                                         LOCALE_USER_DEFAULT, &amp;dispID);
+
+            sprintf(buf, "DISPID for 'Visible' property = 0x%08lx",
+                    dispID);
+            MessageBox(NULL, buf, "Debug Notice", MB_SETFOREGROUND);
+
+            // Initiate parameters to set visible property to true.
+            VariantInit(&amp;parm1);
+            parm1.vt = VT_I4;
+            parm1.lVal = 1; // true
+
+            // One argument.
+            dispParams.cArgs = 1;
+            dispParams.rgvarg = &amp;parm1;
+
+            // Handle special-case for property-puts!
+            dispParams.cNamedArgs = 1;
+            dispParams.rgdispidNamedArgs = &amp;dispidNamed;
+
+            // Set 'visible' property to true.
+            hr = pDisp-&gt;lpVtbl-&gt;Invoke(pDisp,
+               dispID, &amp;IID_NULL, LOCALE_SYSTEM_DEFAULT,
+               DISPATCH_PROPERTYPUT | DISPATCH_METHOD,
+               &amp;dispParams, NULL, NULL, NULL
+            );
+            if(FAILED(hr)) {
+               sprintf(buf, "IDispatch::Invoke() failed with %08lx", hr);
+               MessageBox(NULL, buf, "Debug Notice", MB_SETFOREGROUND);
+            }
+
+            // All done.
+            MessageBox(NULL, "done.", "Notice", MB_SETFOREGROUND);
+         }
+         // Uninitialize OLE Libraries.
+         OleUninitialize();
+
+      }
+
+</PRE><P><LI>Compile and run.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+For more general information regarding OLE, COM, and Automation, consult
+the book "Inside OLE" by Kraig Brockschmidt (Microsoft Press).
+<P>
+For more information about IDispatch, consult the Microsoft Visual C++
+online help.
+<P>
+For more information about COM, OLE, and automating Microsoft Excel using
+Microsoft Visual C++, see Chapters 23-27 of the book "Inside Visual C++" by
+David J. Kruglinski (Microsoft Press).
+<P>
+(c) Microsoft Corporation 1998, All Rights Reserved. Contributions by Joe
+Crump, Microsoft Corporation
+ 
+<PRE>Keywords          : kbcode
+Technology        : ole com
+Version           : WINDOWS:97; WINNT:4.0,5.0
+Platform          : WINDOWS winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 19, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

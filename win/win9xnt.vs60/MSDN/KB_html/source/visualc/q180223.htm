@@ -1,0 +1,259 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Synchronizing Reads and Writes Between Two DAO Processes </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q180223">
+<META NAME="KBModify" CONTENT="1998/01/30">
+<META NAME="KBCreate" CONTENT="1998/01/30">
+<META NAME="Keywords" CONTENT="MfcDAO">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The Microsoft Jet database engine (the underlying engine used by DAO to write and read to a Microsoft Access database file) uses a page buffer to improve write and read performance. Because of this buffering activity, you cannot accurately predict ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA1S,QAZV,QDKY,QBFN,QAH4,QAPN,QA8T,QA63,QAY2,QALH,QAGI,QAYY,QBVV,QAYV,QAW6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Synchronizing Reads and Writes Between Two DAO Processes</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 30, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q180223</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual C++, 32-bit Editions, version 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The Microsoft Jet database engine (the underlying engine used by DAO to
+write and read to a Microsoft Access database file) uses a page buffer to
+improve write and read performance. Because of this buffering activity, you
+cannot accurately predict the time it will take for a write from one
+process to be subsequently read by another process.
+<P>
+Every process that uses the Jet database engine maintains a private page
+buffer, which makes synchronous write/read activity between two processes
+difficult to achieve. For example, suppose you have two processes (Process
+1 and Process 2) using the Jet database engine to write and read data to
+and from the same database file. When Process 1 writes to the database, the
+new data may not immediately get flushed to the physical database file.
+When Process 2 reads from the database, it may be reading a data page in
+the page buffer, rather that the new information written by Process 1.
+<P>
+So if Process 1 writes a record to the database and then signals Process 2
+to read the same record, the read may occasionally fail due to the
+independent buffers.
+<P>
+This article demonstrates how to optimize a DAO-based program so that
+writes to a physical database and reads from a physical database are likely
+to occur in a synchronous manner. Use the techniques described here to help
+you obtain the best possible synchronous writing and reading performance
+when using DAO.
+<P>
+<P><h3>Important Notes</h3>
+ 
+
+<UL><LI>The techniques described in this article help ensure that writes and
+   reads are performed synchronously. However, due to factors beyond the
+   control of Jet, such as network and operating system latency, there is
+   no way to guarantee such behavior. The Jet Engine was not designed to
+   support ACID (Atomic, Concurrent, Independent, Durable) transactions and
+   should not be used in any application environment where such
+   transactions are required.
+
+<LI>Because the Microsoft Access ODBC driver does not expose the
+   functionality of the DAO SDK's Idle method, it is not possible to
+   optimize ODBC-based programs for synchronous writing and reading.
+<P>
+</UL><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h2>Forcing a Write Using DAO</h2>
+ 
+<P>
+With the release of the Microsoft Jet 3.5 database engine, you can force a
+write to the physical database file by using the dbForceOSFlush flag in
+conjunction with a DAO workspace transaction. This functionality is
+available to both the DAO 3.5 SDK and to the MFC DAO classes that ship with
+Visual C++ 5.0. Calling the CommitTrans(dbForceOSFlush) method tells the
+Microsoft Jet database engine to write the contents of the page buffer out
+to the physical database file. All new information in the page buffer is
+written out to the physical database file before the call to CommitTrans
+returns.
+<P>
+<P><h3>Using DAO 3.5 SDK Code</h3>
+ 
+<P>
+<PRE>   CdbWorkspace wsDAO;
+   ... Open DAO workspace and various
+   ... DAO objects needed.
+   // Start workspace transaction.
+   wsDAO.BeginTrans();
+   ... Write data to database using DAO
+   ... objects opened under workspace ws.
+   // Commit changes and force flush.
+   wsDAO.CommitTrans( dbForceOSFlush );
+   ... Send signal to Process 2 to READ data.
+
+</PRE><h3>Using MFC DAO Code</h3>
+ 
+<P>
+<PRE>   CDaoWorkspace wsMFC;
+   ... Open DAO workspace and various
+   ... DAO objects needed.
+   // Start transaction.
+   wsMFC.BeginTrans();
+   ... Write data to database using DAO
+   ... objects opened under workspace ws.
+   // Commit changes and force flush.
+   wsMFC.m_pDAOWorkspace-&gt;CommitTrans( dbForceOSFlush );
+   ... Send signal to Process 2 to READ data.
+
+</PRE>Note the MFC DAO code above uses the underlying DAO workspace pointer to
+call CommitTrans because the MFC DAO classes do not allow passing in the
+dbForceOSFlush flag to the CDaoWorkspace CommitTrans method.
+<P>
+<P><h2>Forcing a Read Using DAO</h2>
+ 
+<P>
+With the release of the Microsoft Jet 3.5 database engine, you can force a
+synchronous read from the physical database file by using the
+dbRefreshCache flag in conjunction with the workspace Idle method. This
+functionality is available to both the DAO 3.5 SDK and to the MFC DAO
+classes that ship with Visual C++ 5.0.
+<P>
+Calling the Idle(dbRefreshCache) method tells the Microsoft Jet database
+engine to completely refresh the page buffer with the current information
+from the physical database file. All updated pages in the physical database
+is pulled into the page buffer before the call to Idle returns.
+<P>
+<P><h3>Using DAO 3.5 SDK Code</h3>
+ 
+<P>
+<PRE>   CdbEngine engDAO;
+   CdbWorkspace wsDAO;
+
+   // Note: You must append workspace in order for
+   // Idle to work for your workspace.
+   wsDAO = engDAO.CreateWorkspace( _T("MyWS"), _T("Admin"),
+                                   _T(""), dbUseJet );
+   engDAO.Workspaces.Append( wsDAO );
+   ... Open DAO database and various
+   ... DAO objects using wsDAO workspace.
+
+   ... Wait here for READ signal from Process 1.
+
+   dbEngine.Idle( dbRefreshCache );
+   ... Read data from process#1 here.
+
+</PRE><h3>Using MFC DAO Code</h3>
+ 
+<P>
+<PRE>   CDaoWorkspace wsMFC;
+   // Note: You must append workspace in order for
+   // Idle to work for your workspace.
+   wsMFC.Create( _T("MyWs"), _T("Admin"), _T("") );
+   wsMFC.Append();
+   ... Open DAO database and various
+   ... DAO objects needed using workspace above
+
+   ... Wait here for READ signal from Process 1.
+
+   wsMFC.Idle( dbRefreshCache );
+   ... Read data from Process 1 here.
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: PageTimeout MaxBufferSize MFCDA0 DAOSDK DOA<BR>
+Keywords          : MfcDAO<BR>
+Component         : dao jet<BR>
+Technology        : mfc<BR>
+Version           : WINNT:5.0<BR>
+Platform          : winnt<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 30, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

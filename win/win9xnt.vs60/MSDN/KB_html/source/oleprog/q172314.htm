@@ -1,0 +1,207 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO:  RPC_E_WRONG_THREAD If Thread Calls Via Interface Pointer </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q172314">
+<META NAME="KBModify" CONTENT="1997/09/05">
+<META NAME="KBCreate" CONTENT="1997/08/01">
+<META NAME="Keywords" CONTENT="LeTwoArc LeTwoCom LeTwoDCom kberrmsg">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  A RPC_E_WRONG_THREAD error occurs when a thread calls via an interface pointer which is for a proxy object that does not belong to the thread's apartment.  MORE INFORMATION  See the REFERENCES section at the bottom of this article for more informat...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAO2,QAO3,QAGI,QAPN,QAW6,QDKF,QBVW,QAPP,QBBS,QAUQ,QAIF,QAH6,QBVV,QAAP,QAB4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO:  RPC_E_WRONG_THREAD If Thread Calls Via Interface Pointer</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 5, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q172314</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE Libraries included with:
+<P><PRE>    - Microsoft Win32 Software Development Kit (SDK)
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+A RPC_E_WRONG_THREAD error occurs when a thread calls via an interface
+pointer which is for a proxy object that does not belong to the thread's
+apartment.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+See the REFERENCES section at the bottom of this article for more
+information on the workings of the COM threading models. Briefly, an
+interface pointer held by a client thread can be of one of the following
+types:
+
+<UL><LI>A direct pointer to the object. In this case, the object is in the same
+   apartment as the client thread. Also, no system (COM) provided code is
+   in between the caller and the callee.
+<P>
+ -or-
+
+<LI>A pointer to a proxy. In this case, the object is in a different
+   apartment from the client thread. Also, system (COM) provided code sits
+   in between the caller and the callee.
+<P>
+</UL>Whether the client has one type of pointer or the other is dependent on
+such factors as whether the object is in-process or out-of-process, and if
+the object is in-process, whether the threading model of the object is
+compatible with the apartment model of the calling thread. See the article
+in the REFERENCES section below for more information.
+<P>
+When a proxy object is created, it is associated with the apartment that
+creates it. If a pointer to a proxy object is somehow passed to a thread
+which does not belong to the apartment (e.g., via a shared global
+variable), and if this thread then calls through this pointer, the call
+returns a RPC_E_WRONG_THREAD error. COM returns this error because the
+proxy object is invalid for a thread that does not belong to the apartment
+that created the proxy object. The following is also an error. One
+apartment holds a direct pointer to the object. It then transfers the
+pointer to another apartment via a global variable (without marshaling).
+The second apartment calls through this pointer. This call is indeed in
+error. However, COM has no way of detecting this unlike the proxy case.
+<P>
+The correct way of transferring an interface pointer (either a direct
+pointer or a proxy pointer) from one apartment to another is via COM's
+marshaling mechanism. The source apartment can call
+CoMarshalInterThreadInterfaceInStream() to marshal the interface pointer to
+a shared (global) stream. The destination apartment can unmarshal this
+interface pointer by calling CoGetInterfaceAndReleaseStream(). This action
+creates a proxy that is valid for the destination apartment. Note that
+COM's proxy objects are "smart" enough to avoid the problem of "proxy
+chaining." That is, if apartment A marshals an interface pointer to
+apartment B, and if B marshals the same to C, the proxy object that is
+created in C is directly connected to the stub in A. Therefore, when C
+calls through the proxy pointer it is calling A directly and B is not in
+the picture. COM also prevents the "circular" interface-passing problem.
+That is, if A marshals to B and B marshals to C, and C then marshals to A,
+then the resultant pointer in A is a direct pointer, not a proxy pointer.
+<P>
+NOTE: The RPC_E_WRONG_THREAD error can occur even when all the COM rules
+are followed and no interfaces are explicitly passed between apartments
+without marshaling. This happens when an in-process object aggregates with
+the system provided Free Threaded Marshaler (FTM) by calling
+CoCreateFreeThreadMarshaler and also holds pointers to COM proxies.
+Typically in-process objects that can be marked as Threading Model "Both"
+use the FTM. When an interface pointer to such an object is marshaled from
+one apartment to another, a direct pointer to the object is passed (no
+proxy/stub is created). This is the benefit of using the FTM, however this
+also results in an RPC_E_WRONG_THREAD error if the object's implementation
+tries to call through the proxy pointer on a non-original-apartment thread.
+There is no good workaround to this problem, in general, objects that use
+the FTM should not themselves be clients of out-of-apartment COM servers.
+If they need to do this infrequently, then they should pass the call to a
+forwarding object that does not use the FTM. If they do this frequently,
+they should just mark themselves "free" or "both" and not use the FTM. When
+an interface pointer to such an object is marshaled to another apartment,
+the system creates the proxys/stub code needed as the object no longer
+aggregates with the FTM.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For additional information, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../oleprog/q150777.htm">Q150777</A></B>
+   TITLE     : INFO: Descriptions and Workings of OLE Threading Models
+</PRE> 
+<PRE>Keywords          : LeTwoArc LeTwoCom LeTwoDCom kberrmsg
+Version           : WINDOWS:
+Platform          : WINDOWS
+Issue type        : kbinfo
+Solution Type     : Info_Provided</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 5, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

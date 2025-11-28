@@ -1,0 +1,265 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How To Handle FNERR_BUFFERTOOSMALL in Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q131462">
+<META NAME="KBModify" CONTENT="1996/12/09">
+<META NAME="KBCreate" CONTENT="1995/06/12">
+<META NAME="Keywords" CONTENT="kbui kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  When an application uses the Open File common dialog with the OFN_ALLOWMULTISELECT flag, there is a danger that the buffer passed to the common dialog in the OPENFILENAME.lpstrFile field will be too small. In this situation, GetOpenFileName() will ...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QA01,QDL9,QBWO,QBWN,QATK,QATL,QAHE,QBWQ,QAKR,QALW,QBSO,QACJ,QAGX,QAD7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How To Handle FNERR_BUFFERTOOSMALL in Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 9, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q131462</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When an application uses the Open File common dialog with the
+OFN_ALLOWMULTISELECT flag, there is a danger that the buffer passed to the
+common dialog in the OPENFILENAME.lpstrFile field will be too small. In
+this situation, GetOpenFileName() will return an error value and
+CommDlgExtendedError() will return FNERR_BUFFERTOOSMALL.
+<P>
+To work around this problem, watch for the Open or OK button to be pressed
+in the dialog hook; then reallocate the buffer if necessary.
+<P>
+This technique works on Windows version 3.1, Windows NT, and Windows 95,
+but the implementation details are different when dealing with Windows 95
+Explorer-type dialog boxes versus traditional Open and Save common dialog
+boxes. This article explains how to do it in Windows 95.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+With the introduction of the new common dialogs for Windows 95, a new way
+of handling the FNERR_BUFFERTOOSMALL error was developed. It is still
+necessary to watch for the Open button to be pressed and reallocate the
+buffer if needed, but the way to watch for the OK is much different.
+<P>
+When you install a hook on the Open File common dialog in Windows 95 using
+the OPENFILENAME.lpfnHook member, the dialog you are hooking is a child of
+the main Open File dialog. Therefore, to intercept the OK button, you need
+to subclass the parent dialog. To do this, you can install the hook
+procedure and watch for the CDN_INITDONE notification. The Open File dialog
+will send this as part of a WM_NOTIFY message when the initialization for
+the dialog is complete. For example:
+<P>
+LRESULT CALLBACK DialogHook(HWND hwnd, UINT uMsg, WPARAM wParam,
+<PRE>                            LPARAM lParam)
+{
+    static HWND hwndParentDialog;
+    LPOFNOTIFY lpofn;
+
+    switch (uMsg)
+    {
+        case WM_INITDIALOG:
+            // You need to use a copy of the OPENFILENAME struct used to
+            // create this dialog. You can store a pointer to the
+            // OPENFILENAME struct in the ofn.lCustData so you can retrieve
+            // it here in the lParam. Once you have it, you need to hang on
+            // to it. Using window properties provides a good thread safe
+            // solution to using a global variable.
+
+            SetProp(hwnd, "OFN", lParam);
+            return (0);
+
+        case WM_NOTIFY:
+            // The OFNOTIFY struct is passed in the lParam of this message.
+
+            lpofn = (LPOFNOTIFY) lParam;
+
+            switch (lpofn-&gt;hdr.code)
+            {
+                case CDN_INITDONE:
+                    // Subclass the parent dialog to watch for the OK
+                    // button.
+
+                    hwndParentDialog = GetParent(hwnd);
+                    g_lpfnDialogProc =
+                            (FARPROC) SetWindowLong(hwndParentDialog,
+                                                    DWL_DLGPROC,
+                                                    OpenFileSubclassProc);
+                    break;
+
+            }
+            return (0);
+
+        case WM_DESTROY:
+            // Need to clean up the subclassing we did on the dialog.
+            SetWindowLong(hwndParentDialog, DWL_DLGPROC, g_lpfnDialogProc);
+
+            // Also need to free the property with the OPENFILENAME struct
+            RemoveProp(hwnd, "OFN");
+            return (0);
+    }
+    return (0);
+</PRE>}
+<P>
+Once the parent dialog is subclassed, the program can watch for the actual
+Open button. When the program gets the Open button command, it needs to
+check to see if the buffer originally allocated is large enough to handle
+all the files selected. The CommDlg_OpenSave_GetFilePath() API will return
+the length needed. Here is an example of the subclass procedure:
+<P>
+LRESULT CALLBACK OpenFileSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam,
+<PRE>                                      LPARAM lParam)
+{
+    LPTSTR lpsz;
+    WORD   cbLength;
+
+    switch (uMsg)
+    {
+        case WM_COMMAND:
+            switch (LOWORD(wParam))
+            {
+                case IDOK:
+                    // Need to verify the original buffer size is large
+                    // enough to handle the files selected. The
+                    // CommDlg_OpenSave_GetFilePath() API will return the
+                    // length needed for this buffer.
+
+                    cbLength = CommDlg_OpenSave_GetFilePath(hwnd, NULL, 0);
+
+                    // OFN_BUFFER_SIZE is the size of the buffer originally
+                    // used in the OPENFILENAME.lpstrFile member.
+
+                    if (OFN_BUFFER_SIZE &lt; cbLength)
+                    {
+                        // The buffer is too small, so allocate a
+                        // new buffer.
+                        lpsz = (LPTSTR) HeapAlloc(GetProcessHeap(),
+                                                  HEAP_ZERO_MEMORY,
+                                                  cbLength);
+                        if (lpsz)
+                        {
+                            // The OFN struct is stored in a property of
+                            // the dialog window.
+
+                            lpofn = (LPOPENFILENAME) GetProp(hwnd, "OFN");
+
+                            lpofn-&gt;lpstrFile = lpsz;
+                            lpofn-&gt;nMaxFile  = cbLength;
+                        }
+                    }
+
+                    // Now let the dialog handle the message normally.
+                    break;
+            }
+            break;
+    }
+
+    return (CallWindowProc(g_lpfnDialogProc, hwnd, uMsg, wParam, lParam));
+</PRE>}
+<P>
+The dialog should now return without error. Be aware that the buffer
+allocated in the subclass procedure needs to be freed once the dialog
+returns.
+<P>
+Finally, this technique only works for 32-bit applications that are using
+the Explorer-type common dialogs. For 32-bit applications that don't use
+the OFN_EXPLORER flag, Windows 95 thunks to the 16-bit common dialog and
+the hook function only gets a copy of the OPENFILENAME structure.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00<BR>
+KBCategory: kbui kbcode<BR>
+KBSubcategory: UsrCmnDlg<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 9, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

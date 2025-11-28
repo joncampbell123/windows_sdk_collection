@@ -1,0 +1,201 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Using Printer Escapes w/PS Printers on Windows NT &amp; Win32s </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q124135">
+<META NAME="KBModify" CONTENT="1995/09/29">
+<META NAME="KBCreate" CONTENT="1994/12/19">
+<META NAME="Keywords" CONTENT="kbprint kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  To identify and print to PostScript printers from a Win32-based application under Windows NT and under Win32s, you need to special-case your code. This is because the printer drivers respond to different Printer Escapes under Windows NT and Windows...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QACT,QAOX,QAIW,QADF,QAN8,QAGB,QAH4,QADB,QDL9,QBWQ,QBWO,QBWN,QA6E,QA4Q V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Using Printer Escapes w/PS Printers on Windows NT &amp; Win32s</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 29, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q124135</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.1, 3.5, and 3.51
+    - Microsoft Win32s versions 1.1, 1.15, 1.15a, and 1.2
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+To identify and print to PostScript printers from a Win32-based application
+under Windows NT and under Win32s, you need to special-case your code. This
+is because the printer drivers respond to different Printer Escapes under
+Windows NT and Windows/Win32s.
+<P>
+This article discusses how to identify and print to PostScript printers on
+both Windows NT and Win32s.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Identification</h3>
+ 
+<P>
+To identify the printer as a PostScript printer, use this code:
+<P>
+<PRE>   int gPrCode = 0;  // Set according to platform.
+
+   if( Win32s ) // Using the Win16 driver.
+   {
+      gPrCode = PASSTHROUGH;
+      if((Escape(printerIC, GETTECHNOLOGY, NULL, NULL, (LPSTR)szTech) &amp;&amp;
+         !lstrcmp(szTech, "PostScript")) &amp;&amp;
+         Escape(printerIC, QUERYESCSUPPORT, sizeof(int),
+            (LPSTR)gPrCode, NULL )
+      {
+      // The printer is PostScript.
+         ...
+      }
+   }
+   else // Using Win32 driver under Windows NT.
+   {
+      gPrCode = POSTSCRIPT_PASSTHROUGH; // Fails with Win16 driver
+      if( Escape(printerIC, QUERYESCSUPPORT, sizeof(int), (LPSTR)gPrCode,
+          NULL))
+      {
+      // The printer is PostScript.
+         ...
+      }
+   }
+
+</PRE><h3>Printing</h3>
+ 
+<P>
+To send PostScript data to the printer on either platform, use this code:
+<P>
+<PRE>// Assuming a buffer, szPSBuf, of max size MAX_PSBUF containing
+// nPSData bytes of PostScript data.
+
+   char szBuf[MAX_PSBUF+sizeof(short)];
+
+// Store length in buffer.
+   *((short *)szBuf) = nPSData;
+
+// Store data in buffer.
+   memcpy( (char *)szBuf + sizeof(short), szPSBuf, nPSData );
+
+// Note that gPrCode (set when identifying the printer) depends on
+// the platform.
+   Escape( printerDC, gPrCode, (int) nPSData, szBuf, NULL );
+
+</PRE>However, your output may appear scaled or translated incorrectly or data
+may be transformed off the page under Win32s.
+<P>
+The origin and scale for Windows printer drivers is not the PostScript
+default (bottom left/72 dpi) but is instead at the upper left and at the
+device scale(300 dpi). Therefore, before sending data to the printer, you
+may need to send a couple of PostScript commands to scale or translate the
+matrix. For example, for scaling, send the following escape to scale the
+PostScript transform to 72 dpi:
+<P>
+<PRE>   xres = GetDeviceCaps(printerDC, LOGPIXELSX);
+   yres = GetDeviceCaps(printerDC, LOGPIXELSY);
+
+// Two leading spaces for the following operation.
+   wsprintf(szBuf, "  %d 72 div %d 72 div scale\n", xres, yres);
+
+// Put actual size into buffer
+   *((short *)szBuf) = strlen(szBuf)-2;
+   Escape( printerDC, gPrCode, strlen(szBuf)-2, szBuf, NULL );
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.10 1.20 3.10 3.50<BR>
+KBCategory: kbprint kbcode<BR>
+KBSubcategory: GdiPrn W32s<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 29, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,481 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>IIS ISAPI ServerSupportFunction and Keep-Alive Session </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q171617">
+<META NAME="KBModify" CONTENT="1997/11/13">
+<META NAME="KBCreate" CONTENT="1997/07/17">
+<META NAME="Keywords" CONTENT="iisscript kbinterop">
+<META NAME="KBArea" CONTENT="Support; KB; iis">
+<META NAME="Description" CONTENT="  When you create an ISAPI application for Internet Information Server  (IIS), this application will require that the session between the  client browser and IIS be maintained via the Keep-Alive header.   MORE INFORMATION  To implement Keep-Alive, II...">
+<META NAME="Product" CONTENT="Internet Information Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QBWA,QAI4,QAPF,QAPN,QBCF,QALW,QAGI,QAUQ,QBXN,QAH6,QA6A,QAOG,QAK9,QABC V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>IIS ISAPI ServerSupportFunction and Keep-Alive Session</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 13, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q171617</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Internet Server Application Programming Interface (API)
+<LI>Microsoft Internet Information Server version 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When you create an ISAPI application for Internet Information Server 
+(IIS), this application will require that the session between the 
+client browser and IIS be maintained via the Keep-Alive header. 
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To implement Keep-Alive, IIS uses an async I/O read request via a 
+completion port on the session to maintain it. This method requires 
+that the thread that sent the read request still be active when the 
+read request returns, or else the session will be torn down. 
+<P>
+When an IIS ISAPI extension implements a WorkerFunction, and then 
+that worker function completes its task, the worker function thread 
+and the associated thread within IIS that issued the read request 
+are torn down. As a result, the session is torn down.
+<P>
+To test if you are running into this situation, you can add a 
+statement ("Sleep ( INFINITE );" ) to the end of your WorkerFunction 
+to delay it so the read request can return.
+<PRE> 
+</PRE>To verify this is what is taking place, you should take a network 
+trace and check to make sure that the socket number for the session 
+is being maintained when the client hits refresh or some other 
+object on the web page.  
+<P>
+The following are examples of how to maintain the session with 
+Keep-Alive, and one example that shows it failing.
+<P>
+SAMPLE ONE:
+<P>
+<PRE>// **************************************************************
+//   Code sample showing Keep-Alive while implementing
+//   a worker thread.
+//
+//   KeepAlive.c  -&gt; Sample ISAPI Extension demonstrating Keep-Alive.
+// ************************************************************** 
+
+
+#include &lt;windows.h&gt;
+#include &lt;httpext.h&gt;
+#include &lt;stdio.h&gt;
+
+</PRE>BOOL WINAPI GetExtensionVersion(HSE_VERSION_INFO *pVer)
+{
+<PRE>	pVer-&gt;dwExtensionVersion = MAKELONG(HSE_VERSION_MINOR, HSE_VERSION_MAJOR);
+	lstrcpyn(pVer-&gt;lpszExtensionDesc, "ISAPI Keep-Alive Extension Sample", 
+			HSE_MAX_EXT_DLL_NAME_LEN);
+
+	return TRUE;
+</PRE>}
+<P>
+DWORD WINAPI HttpExtensionProc(EXTENSION_CONTROL_BLOCK *pECB)
+{
+<PRE>	DWORD dwSize;
+
+// This header will be filled in with the content length
+
+	char szHeader[]="Connection: Keep-Alive\r\nContent-Length: %lu\r\nContent-type:
+                                    text/html\r\n\r\n";
+	char szContent[]="&lt;html&gt; &lt;form method=get action=KeepAlive.dll&gt;&lt;input type=submit&gt;
+                                    &lt;/form&gt;&lt;/html&gt;";
+	char szBuffer[4096];
+
+// Send outgoing header
+
+	sprintf(szBuffer, szHeader, strlen(szContent));
+	dwSize = strlen(szBuffer);
+	pECB-&gt;ServerSupportFunction(pECB, HSE_REQ_SEND_RESPONSE_HEADER,
+				            NULL, &amp;dwSize, (unsigned long *)szBuffer);
+	
+	// Send content
+	dwSize = strlen(szContent);
+	pECB-&gt;WriteClient(pECB, szContent, &amp;dwSize, 0);
+
+	return HSE_STATUS_SUCCESS_AND_KEEP_CONN;
+</PRE>}
+<P>
+<P>
+SAMPLE TWO:
+<PRE>	
+// *******************************************************************
+//	The same code sample as above, but using a worker thread
+//    implementing Keep-Alive.
+//
+// 	KeepAliveT.c  -&gt; Sample ISAPI Extension demonstrating Keep-Alive
+//    in a worker thread that terminates immediately which causes the
+//	session to NOT be maintained.
+//  *******************************************************************
+
+#include &lt;windows.h&gt;
+#include &lt;httpext.h&gt;
+#include &lt;stdio.h&gt;
+
+</PRE>DWORD WINAPI WorkerFunction( LPVOID ); 
+<P>
+BOOL WINAPI GetExtensionVersion(HSE_VERSION_INFO *pVer)
+{
+<PRE>	pVer-&gt;dwExtensionVersion = MAKELONG(HSE_VERSION_MINOR, HSE_VERSION_MAJOR);
+	lstrcpyn(pVer-&gt;lpszExtensionDesc, "ISAPI Keep-Alive Extension Sample", 
+			HSE_MAX_EXT_DLL_NAME_LEN);
+
+	return TRUE;
+</PRE>}
+<P>
+DWORD WINAPI HttpExtensionProc(EXTENSION_CONTROL_BLOCK *pECB)
+{
+<PRE>	DWORD dwThreadID;
+
+	CreateThread(NULL, 0, WorkerFunction, pECB, 0, &amp;dwThreadID);
+
+	return HSE_STATUS_PENDING;
+</PRE>}
+<P>
+<P>
+DWORD WINAPI WorkerFunction(LPVOID vECB)
+{
+<PRE>	EXTENSION_CONTROL_BLOCK *pECB;
+	DWORD dwState, dwSize;
+
+	//This header will be filled in with the content length
+	char szHeader[]="Connection: Keep-Alive\r\nContent-Length: %lu\r\nContent-type: text/html\r\n\r\n";
+	char szContent[]="&lt;html&gt; &lt;form method=get action=KeepAliveT.dll&gt;&lt;input type=submit&gt; &lt;/form&gt;&lt;/html&gt;";
+	char szBuffer[4096];
+
+	pECB = vECB;
+	
+	// Send outgoing header
+	sprintf(szBuffer, szHeader, strlen(szContent));
+	dwSize = strlen(szBuffer);
+	pECB-&gt;ServerSupportFunction(pECB-&gt;ConnID, HSE_REQ_SEND_RESPONSE_HEADER,
+				NULL, &amp;dwSize, (unsigned long *)szBuffer);
+	
+	// Send content
+	dwSize = strlen(szContent);
+	pECB-&gt;WriteClient(pECB-&gt;ConnID, szContent, &amp;dwSize, 0);
+	
+	dwState = HSE_STATUS_SUCCESS_AND_KEEP_CONN;
+	pECB-&gt;ServerSupportFunction(pECB-&gt;ConnID, HSE_REQ_DONE_WITH_SESSION, &amp;dwState, NULL, 0);
+
+	return 0;
+</PRE>}
+<P>
+<P>
+<P>
+SAMPLE THREE:
+<P>
+<PRE>// ***************************************************************
+// This program demonstates the recommendated method for
+// implementing Keep-Alive in a worker function using a thread pool
+// and work queue.
+//
+// KeepAliveP.c  -&gt; Sample ISAPI Extension demonstrating
+//                  Keep-Alive with a thread pool.
+// ***************************************************************
+
+#include &lt;windows.h&gt;
+#include &lt;httpext.h&gt;
+#include &lt;stdio.h&gt;
+
+#define POOL_THREADS 2
+#define WORK_QUEUE_ENTRIES 2
+
+</PRE>typedef struct {
+<PRE>	EXTENSION_CONTROL_BLOCK * pECB;
+	DWORD dwNextEntry;
+</PRE>} ECB_QUEUE_ENTRY;
+<P>
+ECB_QUEUE_ENTRY ECBqueue[WORK_QUEUE_ENTRIES];
+<P>
+DWORD dwCurrentEntry, dwLastEntry;
+CRITICAL_SECTION csQueueLock;
+BOOL fFirstCall;
+HANDLE hWorkSem;
+<P>
+BOOL AddWorkQueueEntry(EXTENSION_CONTROL_BLOCK *);
+BOOL GetWorkQueueEntry(EXTENSION_CONTROL_BLOCK ** ppECB);
+DWORD WINAPI WorkerFunction(LPVOID vThreadNum);
+<P>
+BOOL WINAPI DllMain(IN HINSTANCE hinstDll, IN DWORD fdwReason, IN LPVOID lpvContext OPTIONAL)
+{
+<PRE>    BOOL        fReturn = TRUE;
+    DWORD       i;
+    DWORD       dwThreadID;
+
+    switch (fdwReason )
+    {
+	case DLL_PROCESS_ATTACH:
+		{
+			// Create Semaphore in nonsignaled state
+	        if( (hWorkSem = CreateSemaphore( NULL, 0, 0x7fffffff, NULL )) ==NULL)
+	            return FALSE;
+
+			InitializeCriticalSection(&amp;csQueueLock );
+			
+			fFirstCall=TRUE;
+
+			// Create Pool Threads
+			for(i=0; i&lt;POOL_THREADS; i++)
+			{	
+				if(CreateThread(NULL, 0, WorkerFunction, (LPVOID)i, 0, &amp;dwThreadID)==NULL)
+					return FALSE;
+			}
+
+			// Clear work queue
+			ZeroMemory(ECBqueue, WORK_QUEUE_ENTRIES*sizeof(ECB_QUEUE_ENTRY) );
+		}
+	}
+	
+	return fReturn;
+</PRE>}
+<P>
+<P>
+DWORD WINAPI WorkerFunction( LPVOID ); 
+<P>
+BOOL WINAPI GetExtensionVersion(HSE_VERSION_INFO *pVer)
+{
+<PRE>	pVer-&gt;dwExtensionVersion = MAKELONG(HSE_VERSION_MINOR, HSE_VERSION_MAJOR);
+	lstrcpyn(pVer-&gt;lpszExtensionDesc, "ISAPI Keep-Alive Extension Sample", 
+			HSE_MAX_EXT_DLL_NAME_LEN);
+
+	return TRUE;
+</PRE>}
+<P>
+DWORD WINAPI HttpExtensionProc(EXTENSION_CONTROL_BLOCK *pECB)
+{
+<PRE>	DWORD dwSize;
+	char szHeader[]="Connection: Keep-Alive\r\nContent-Length: %lu\r\nContent-type: text/html\r\n\r\n";
+	char szContent[]="&lt;html&gt; &lt;form method=get action=KeepAliveP.dll&gt; &lt;input type=submit&gt; " \
+					 "&lt;br&gt;pECB-&gt;ConnID=%lu  &lt;br&gt;Server was too busy. &lt;/form&gt;&lt;/html&gt;";
+	char szBuffer[4096];
+	char szBuffer2[4096];
+
+	EnterCriticalSection(&amp;csQueueLock);
+	if(!AddWorkQueueEntry(pECB)) // if ECB could not be assigned
+	{
+		LeaveCriticalSection(&amp;csQueueLock);
+
+		sprintf(szBuffer2, szContent, pECB-&gt;ConnID);
+
+		// Send outgoing header
+		sprintf(szBuffer, szHeader, strlen(szBuffer2));
+		dwSize = strlen(szBuffer);
+		pECB-&gt;ServerSupportFunction(pECB-&gt;ConnID, HSE_REQ_SEND_RESPONSE_HEADER,
+			NULL, &amp;dwSize, (unsigned long *)szBuffer);
+	
+		// Send content
+		dwSize = strlen(szBuffer2);
+		pECB-&gt;WriteClient(pECB-&gt;ConnID, szBuffer2, &amp;dwSize, 0);
+
+		return HSE_STATUS_SUCCESS_AND_KEEP_CONN;
+	}
+	else
+	{
+		ReleaseSemaphore( hWorkSem, 1, NULL );  //Release 1 thread from pool
+		LeaveCriticalSection(&amp;csQueueLock);
+	}
+
+	return HSE_STATUS_PENDING;
+</PRE>}
+<P>
+<P>
+BOOL AddWorkQueueEntry(EXTENSION_CONTROL_BLOCK * pECB)
+{
+<PRE>	DWORD i;
+
+	for(i=0; i&lt;WORK_QUEUE_ENTRIES; i++)
+	{
+		if (ECBqueue[i].pECB==NULL)
+		{
+			if(fFirstCall)
+			{
+				dwCurrentEntry=i;
+				fFirstCall = FALSE;
+			}
+			else
+				ECBqueue[dwLastEntry].dwNextEntry=i;
+			ECBqueue[i].pECB=pECB;
+			dwLastEntry=i;
+			return TRUE;
+		}
+	}
+
+	// If no NULL queue entry found, indicate failure
+	return FALSE;
+</PRE>}
+<P>
+BOOL GetWorkQueueEntry(EXTENSION_CONTROL_BLOCK ** ppECB)
+{
+<PRE>	if(	(*ppECB=ECBqueue[dwCurrentEntry].pECB) == NULL)
+		return FALSE;
+	else
+	{
+		ECBqueue[dwCurrentEntry].pECB = NULL;
+		if(dwCurrentEntry == dwLastEntry) // If this is only pending item
+			fFirstCall = TRUE;
+		else
+			dwCurrentEntry = ECBqueue[dwCurrentEntry].dwNextEntry;
+	}
+	
+	return TRUE;
+</PRE>}
+<P>
+<P>
+DWORD WINAPI WorkerFunction(LPVOID pvThreadNum)
+{
+<PRE>	EXTENSION_CONTROL_BLOCK *pECB;
+	DWORD dwRet, dwState, dwSize, dwThreadNum;
+
+	//This header will be filled in with the content length
+	char szHeader[]="Connection: Keep-Alive\r\nContent-Length: %lu\r\nContent-type: text/html\r\n\r\n";
+	char szContent[]="&lt;html&gt; &lt;form method=get action=KeepAliveP.dll&gt;&lt;input type=submit&gt; "\
+					"&lt;br&gt;pECB-&gt;ConnID=%lu  &lt;br&gt;dwThreadNum=%lu&lt;/form&gt;&lt;/html&gt;";
+	char szBuffer[4096];
+	char szBuffer2[4096];
+
+	dwThreadNum=(DWORD)pvThreadNum;
+
+	while(TRUE)
+	{
+		dwRet = WaitForSingleObject( hWorkSem, INFINITE );
+		if ( dwRet == WAIT_OBJECT_0 )
+		{
+
+			EnterCriticalSection(&amp;csQueueLock);
+
+			if( GetWorkQueueEntry(&amp;pECB) )  // This function should always return true
+			{
+				LeaveCriticalSection(&amp;csQueueLock);
+	
+				sprintf(szBuffer2, szContent, pECB-&gt;ConnID, dwThreadNum);
+
+				// Send outgoing header
+				sprintf(szBuffer, szHeader, strlen(szBuffer2));
+				dwSize = strlen(szBuffer);
+				pECB-&gt;ServerSupportFunction(pECB-&gt;ConnID, HSE_REQ_SEND_RESPONSE_HEADER,
+					NULL, &amp;dwSize, (unsigned long *)szBuffer);
+		
+				Sleep(3000);
+	
+				// Send content
+				dwSize = strlen(szBuffer2);
+				pECB-&gt;WriteClient(pECB-&gt;ConnID, szBuffer2, &amp;dwSize, 0);
+
+				dwState = HSE_STATUS_SUCCESS_AND_KEEP_CONN;
+				pECB-&gt;ServerSupportFunction(pECB-&gt;ConnID, HSE_REQ_DONE_WITH_SESSION, &amp;dwState, NULL, 0);
+			}
+			else
+				LeaveCriticalSection(&amp;csQueueLock);
+				
+		}
+		else
+			break;
+	}
+
+	return 0;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: iis<BR>
+Keywords          : iisscript kbinterop<BR>
+Version           : WinNT:3.0<BR>
+Platform          : winnt<BR>
+Hardware          : ALPHA x86<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 13, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

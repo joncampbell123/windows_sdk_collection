@@ -1,0 +1,262 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Some CTRL Accelerator Keys Conflict with Edit Controls </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q67293 ">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1990/11/29">
+<META NAME="Keywords" CONTENT="kbui kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Some keys produce the same ASCII values as CTRL+key combinations. These keys conflict with edit controls if one of the CTRL+key combinations is used as a keyboard accelerator.  The following table lists some of the conflicting keys.     ASCII Value...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAHP,QAGH,QAEV,QAJQ,QAUD,QAH4,QAEF,QDL9,QBWO,QBWN,QAQT,QAYC,QAVK,QABG,QAI4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Some CTRL Accelerator Keys Conflict with Edit Controls</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q67293 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) versions 3.0 and 3.1
+
+<LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.5 and 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Some keys produce the same ASCII values as CTRL+key combinations.
+These keys conflict with edit controls if one of the CTRL+key
+combinations is used as a keyboard accelerator.
+<P>
+The following table lists some of the conflicting keys.
+<P>
+<PRE>   ASCII Value  Key Combination  Equivalent  Windows Virtual Key
+   -----------  ---------------  ----------  -------------------
+   0x08         CTRL+H           BACKSPACE   VK_BACK
+   0x09         CTRL+I           TAB         VK_TAB
+   0x0D         CTRL+M           RETURN      VK_RETURN
+
+
+</PRE>For example, consider the following scenario:
+
+<OL><P><LI>CTRL+H has been assigned as an accelerator keystroke to invoke Help
+
+<P><LI>An edit control has the focus
+
+<P><LI>BACKSPACE is pressed to erase the previous character in the edit
+   control
+<P>
+</OL>This results in Help being invoked because pressing BACKSPACE is
+equivalent to pressing CTRL+H. The edit control does not receive the
+BACKSPACE key press that it requires because TranslateAccelerator()
+encounters the 0x08 ASCII value and invokes the action assigned to
+that accelerator. This limitation is caused by the use of the ASCII
+key code for accelerators instead of the system-dependent virtual key
+code.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When messages for the edit control are processed in a message loop
+that translates accelerators, this translation conflict will occur.
+Child windows and modeless dialog boxes are the most common situations
+where this happens.
+<P>
+The affected keystrokes are translated during the processing of the
+WM_KEYDOWN message for the letter. For example, when the user types
+CTRL+H, a WM_KEYDOWN is processed for the CTRL key, then another
+WM_KEYDOWN is processed for the letter "H". In response to this
+message, TranslateAccelerator() posts a WM_COMMAND message to the
+owner of the CTRL+H accelerator. Similarly, when the user presses the
+BACKSPACE key, a WM_KEYDOWN is generated with VK_BACK as the key code.
+Because the ASCII value of BACKSPACE is the same as that for CTRL+H,
+TranslateAccelerator() treats them as the same character. Either
+sequence will cause a WM_COMMAND message to be sent to the owner of
+the CTRL+H accelerator, which deprives the child window with the input
+focus of the BACKSPACE key message.
+<P>
+Because this conflict is inherent to ASCII, the safest way to avoid
+the difficulty is to avoid using the conflicting sequences as
+accelerators. Any other ways around the problem may be version
+dependent rather than a permanent fix.
+<P>
+A second way around the situation is to subclass each edit control
+that is affected. In the subclass procedure, watch for the desired key
+sequence(s). The following code sample demonstrates this procedure:
+<P>
+<PRE>/* This code subclasses a child window edit control to allow it to
+ * process the RETURN and BACKSPACE keys without interfering with the
+ * parent window's reception of WM_COMMAND messages for its CTRL+H
+ * and CTRL+M accelerator keys.
+ */
+
+/* forward declaration */
+</PRE></OL>long FAR PASCAL NewEditProc(HWND, unsigned, WORD, LONG);
+<P>
+<PRE>/* required global variables */
+</PRE>FARPROC lpfnOldEditProc;
+<PRE>HWND    hWndOwner;
+
+
+/* edit control creation in MainWndProc */
+
+</PRE>TEXTMETRIC tm;
+HDC hDC;
+HWND hWndEdit;
+FARPROC lpProcEdit;
+<P>
+...
+<P>
+<PRE> case WM_CREATE:
+
+    hDC = GetDC(hWnd);
+    GetTextMetrics(hDC, &amp;tm);
+    ReleaseDC(hWnd, hDC);
+
+    hWndEdit = CreateWindow("Edit", NULL,
+        WS_CHILD | WS_VISIBLE | ES_LEFT | WS_BORDER,
+        50, 50, 50 * tm.tmAveCharWidth, 1.5 * tm.tmHeight,
+        hWnd, 1, hInst, NULL);
+
+    lpfnOldEditProc = (FARPROC) GetWindowLong (hWndEdit, GWL_WNDPROC);
+    lpProcEdit = MakeProcInstance ((FARPROC) NewEditProc, hInst);
+    SetWindowLong(hWndEdit, GWL_WNDPROC, (LONG) lpProcEdit);
+    break;
+
+</PRE>...
+<P>
+<PRE>/* subclass procedure */
+
+</PRE>long FAR PASCAL NewEditProc(HWND hWndEditCtrl, unsigned iMessage,
+<PRE>                            WORD wParam, LONG lParam )
+{
+  MSG  msg;
+
+  switch (iMessage)
+    {
+  case WM_KEYDOWN:
+    switch (wParam)
+        {
+    case VK_BACK:
+        // This assumes that the next message in the queue will be a
+        // WM_COMMAND for the window which owns the accelerators. If
+        // this edit control were in a modeless dialog box, hWndOwner
+        // should be set to NULL. It may also be NULL in this case.
+        PeekMessage(&amp;msg, hWndOwner, 0, 0, PM_REMOVE);
+
+        // Since TranslateAccelerator() processed this message as an
+        // accelerator, a WM_CHAR message must be supplied manually to
+        // the edit control.
+        SendMessage(hWndEditCtrl, WM_CHAR, wParam, MAKELONG(1, 14));
+        return 0L;
+
+    case VK_RETURN:
+        // Same procedures here.
+        PeekMessage(&amp;msg, hWndOwner, 0, 0, PM_REMOVE);
+        SendMessage(hWndEditCtrl, WM_CHAR, wParam, MAKELONG(1, 28));
+        return 0L;
+        }
+        break;
+    }
+    return CallWindowProc(lpfnOldEditProc, hWndEditCtrl, iMessage,
+                          wParam, lParam);
+}
+
+</PRE>NOTE: Be sure to export the subclass function in the DEF file.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.10 3.50 3.51 4.00 95<BR>
+KBCategory: kbui kbcode<BR>
+KBSubcategory: UsrCtl<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

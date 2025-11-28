@@ -1,0 +1,211 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: AfxOleInit Returns TRUE Without Initializing OLE in a DLL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q154320">
+<META NAME="KBModify" CONTENT="1998/03/11">
+<META NAME="KBCreate" CONTENT="1996/08/01">
+<META NAME="Keywords" CONTENT="MfcOLE">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When developing an MFC Regular DLL, you may want to use OLE without exposing an OLE object, such as displaying a dialog from within the DLL which contains an OLE control. A failure may occur when calling DoModal() in the dialog creation if you used...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA9Q,QAUD,QAGI,QAPN,QDNN,QARL,QAJH,QABA,QALW,QAH4,QAIF,QAKP,QDIX,QBVV,QAW6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: AfxOleInit Returns TRUE Without Initializing OLE in a DLL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 11, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q154320</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes, included with:
+   Microsoft Visual C++, 32-bit Edition, version 4.2
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When developing an MFC Regular DLL, you may want to use OLE without
+exposing an OLE object, such as displaying a dialog from within the DLL
+which contains an OLE control. A failure may occur when calling DoModal()
+in the dialog creation if you used AfxOleInit or AfxEnableControlContainer
+to initialize OLE within the DLL. Typically, this would be done by calling
+them in the InitInstance of the CWinApp derived class.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+In an MFC Regular DLL, AfxOleInit() will not initialize OLE since MFC
+cannot uninitialize OLE in the DLL_PROCESS_DETACH, ExitInstance(). In that
+case, OLE may already have been unloaded. The decision to not initialize
+OLE is by design. The bug is that AfxOleInit() will return TRUE after
+setting m_bNeedTerm to -1. According to the documentation, AfxOleInit()
+returning TRUE means that OLE was initialized, which is not the case in a
+DLL.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+In order to uninitialize OLE when initialized in the DLL, would require
+exported methods for initialization and uninitialization that the client
+would have to call, since the uninitialization would have to occur before
+CWinApp::ExitInstance, which is a part of DLL_PROCESS_DETACH.
+<P>
+A better solution is to initialize and uninitialize OLE in the client
+application. This can be done in MFC by calling AfxOleInit in the
+application's InitInstance method of the CWinApp derived class. MFC will
+then uninitialize OLE when exiting the application.
+<P>
+Alternatively, you could use the SDK to initialize and uninitialize OLE
+in the client application by calling OleInitialize(NULL) in the
+InitInstance method and OleUninitialize in the ExitInstance method.
+<P>
+To ensure that the container initializes OLE before using the DLL, use
+the sample code below to display a message to the user when OLE hasn't
+been initialized.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed: None
+*/
+
+</PRE>BOOL CMyRegularDll::InitInstance()
+{
+<PRE>   #ifdef _DEBUG
+   // Initialize OLE
+   HRESULT hr = OleInitialize(NULL);
+   if (hr == S_FALSE) {
+      OleUninitialize();
+   }else{
+      if (hr == S_OK) {
+         AfxMessageBox("OLE needs to be initialized in the Client
+                       Application before using this DLL");
+      }else{
+         AfxMessageBox("There is a problem with initializing OLE");
+      }
+      return FALSE;
+    }
+  #endif
+
+     // Call if using OLE Controls
+     AfxEnableControlContainer();
+
+   // Register all OLE server (factories) as running. This enables the
+   // OLE libraries to create objects from other applications.
+   COleObjectFactory::RegisterAll();
+
+   // TODO: Add your specialized code here
+
+   return TRUE;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.20 kbdsi CoCreateInstance 0x800401f0<BR>
+CreateDlgControls Dialog creation failed registered vcbuglist420<BR>
+Keywords          : MfcOLE<BR>
+Technology        : kbMfc; kbole<BR>
+Version           : winnt:4.20<BR>
+Platform          : winnt<BR>
+Issue type        : kbbug<BR>
+Solution Type     : kbnofix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 11, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

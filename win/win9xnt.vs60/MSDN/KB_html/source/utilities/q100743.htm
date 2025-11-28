@@ -1,0 +1,232 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: DOSGetCurDate Incorrect in DISKMENU PWB Extension </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q100743">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1993/06/28">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; utilities">
+<META NAME="Description" CONTENT="  An attempt to use the DOSGetCurDate function in the DISKMENU.C sample Programmer's WorkBench (PWB) extension provided with Microsoft C/C++ version 7.0 fails to return the date correctly.  CAUSE =====  The DOSGetCurDate function is designed to retur...">
+<META NAME="Product" CONTENT="Programming Utilities">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QACE,QAH4,QACI,QAY5,QAMN,QAOG,QBV8,QAB9,QDNG,QAYA,QBFY,QA4Q,QAY2,QALW V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: DOSGetCurDate Incorrect in DISKMENU PWB Extension</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q100743</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+2.00 2.01.49
+MS-DOS
+kbtool kbcode kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Programmer's WorkBench for MS-DOS, versions 2.0 and
+   2.01.49
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+An attempt to use the DOSGetCurDate function in the DISKMENU.C sample
+Programmer's WorkBench (PWB) extension provided with Microsoft C/C++
+version 7.0 fails to return the date correctly.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The DOSGetCurDate function is designed to return the date in a packed MS-
+DOS format. This format is used by Interrupt 21h Function 57h that the
+DOSSetFileTime function calls. Therefore, the format of the unsigned
+integer result value should be as follows:
+<P>
+<PRE>    bits 00h-04h   = day   (1-31)
+    bits 05h-08h   = month (1-12)
+    bits 09h-0Fh   = year  (relative to 1980)
+
+</PRE>However, because the extension code shifts the DH register left by five
+bits the most significant bit of the month number is lost and only the
+first seven months are represented.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Replace the DOSGetCurDate function in the DISKMENU extension with the
+following code:
+<P>
+<PRE>   //  DOSGetCurDate - Get current DOS date
+   //
+   //  Returns the current DOS date in packed format
+   //
+   unsigned __pascal DOSGetCurDate(void)
+   {
+      unsigned rv;
+      _asm
+      {
+         mov ah, 2ah         // Get the date
+         int 21h
+         sub cx, 1980        // CX contains the year. Make relative
+                             // to 1980 for DOSSetFileTime function
+      #ifdef _M_I8086
+         shl cx, 1           // shift to add month from DH
+         shl cx, 1
+         shl cx, 1
+         shl cx, 1
+      #else
+         shl cx, 4
+      #endif
+         or  cl, dh           // insert month from DH
+      #ifdef _M_I8086
+         shl cx, 1            // shift to add day
+         shl cx, 1
+         shl cx, 1
+         shl cx, 1
+         shl cx, 1
+      #else
+         shl cx, 5
+      #endif
+         or  cl, dl           // insert day from DL
+         mov rv, cx
+      }
+      return rv;
+   }
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+The incorrect code is as follows:
+<P>
+<P><h3>Sample code</h3>
+ 
+<P>
+<PRE>   unsigned __pascal DOSGetCurDate( void )
+   {
+      unsigned rv;
+      _asm
+      {
+         mov ah, 2ah
+         int 21h
+         sub cx, 1980
+      #ifdef _M_I8086
+         shl cx, 1
+         shl cx, 1
+         shl cx, 1
+         shl cx, 1
+         shl cx, 1
+         shl cx, 1
+         shl cx, 1
+         shl cx, 1
+         shl cx, 1
+      #else
+         shl cx, 9
+      #endif
+         or  cl, dl
+      #ifdef _M_I8086
+         shl dh, 1
+         shl dh, 1
+         shl dh, 1
+         shl dh, 1
+         shl dh, 1
+      #else
+         shl dh, 5
+      #endif
+         or  cl, dh
+         mov rv, cx
+      }
+      return rv;
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.00 2.01.49 buglist2.00 buglist2.01.49<BR>
+KBCategory: kbtool kbcode kbbuglist<BR>
+KBSubcategory: PwbIss<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

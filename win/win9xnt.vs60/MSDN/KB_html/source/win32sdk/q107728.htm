@@ -1,0 +1,346 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Retrieving Counter Data from the Registry </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q107728">
+<META NAME="KBModify" CONTENT="1997/01/15">
+<META NAME="KBCreate" CONTENT="1993/11/24">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The performance data begins with a structure of type PERF_DATA_BLOCK and is followed by PERF_DATA_BLOCK.NumObjectTypes data blocks. Each data block begins with a structure of type PERF_OBJECT_TYPE, followed by PERF_OBJECT_TYPE.NumCounters structure...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QALX,QAM9,QAW6,QAPN,QAYY,QAWF,QAKJ,QAP2,QAXC,QALW,QAGI,QBWP,QATJ,QA28,QAI4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Retrieving Counter Data from the Registry</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 15, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q107728</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT, versions 3.1, 3.5, 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The performance data begins with a structure of type PERF_DATA_BLOCK and is
+followed by PERF_DATA_BLOCK.NumObjectTypes data blocks. Each data block
+begins with a structure of type PERF_OBJECT_TYPE, followed by
+PERF_OBJECT_TYPE.NumCounters structures of type PERF_COUNTER_DEFINITION.
+Next, there are PERF_OBJECT_TYPE.NumInstances structures of type
+PERF_INSTANCE DEFINITION, each directly followed by an instance name, a
+structure of type PERF_COUNTER_BLOCK and PERF_OBJECT_TYPE.NumCounters
+counters. All of these data types are described in WINPERF.H.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following steps are used to retrieve all of the counter information
+from the registry:
+
+<OL><P><LI>Allocate a buffer to obtain the performance data. For single objects,
+   you may need at little as 1.5K. For global objects, you may need as
+   much as 50K. Call RegQueryValueEx() to obtain the data. If the call
+   returns ERROR_MORE_DATA, then the buffer size was not big enough.
+   Increase the size of the buffer and try again. Repeat until the call
+   is successful.
+
+<P><LI>Get the first object type in PerfObj.
+
+<P><LI>Get the first instance.
+
+<P><LI>Get the first counter and its data. At this point, if the object has no
+   instances, the next thing will be a pointer to a single
+   PERF_COUNTER_BLOCK; otherwise, the next thing will be a pointer to the
+   first PERF_INSTANCE_DEFINITION. Check PerfObj-&gt;NumInstances to find out
+   how many instances there are.
+
+<P><LI>Get the next counter and its data. Repeat for all PerfObj-&gt;NumCounters
+   counters.
+
+<P><LI>After all counters are retrieved for the instance, get the next
+   instance and all its counters. Repeat for all PerfObj-&gt;NumInstances
+   instances.
+
+<P><LI>After all instances of the object type are retrieved, move to the next
+   object type and repeat steps 3 - 7.
+<P>
+</OL><h3>Sample Code</h3>
+ 
+<P>
+<PRE>#include &lt;windows.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;malloc.h&gt;
+
+#define TOTALBYTES    8192
+#define BYTEINCREMENT 1024
+
+void main()
+</PRE></OL>{
+<PRE>   PPERF_DATA_BLOCK PerfData = NULL;
+   PPERF_OBJECT_TYPE PerfObj;
+   PPERF_INSTANCE_DEFINITION PerfInst;
+   PPERF_COUNTER_DEFINITION PerfCntr, CurCntr;
+   PPERF_COUNTER_BLOCK PtrToCntr;
+   DWORD BufferSize = TOTALBYTES;
+   DWORD i, j, k;
+
+// Allocate the buffer.
+   PerfData = (PPERF_DATA_BLOCK) malloc( BufferSize );
+
+   while( RegQueryValueEx( HKEY_PERFORMANCE_DATA,
+                           "Global",
+                           NULL,
+                           NULL,
+                           (LPBYTE) PerfData,
+                           &amp;BufferSize ) == ERROR_MORE_DATA )
+   {
+   // Get a buffer that is big enough.
+      BufferSize += BYTEINCREMENT;
+      PerfData = (PPERF_DATA_BLOCK) realloc( PerfData, BufferSize );
+   }
+
+// Get the first object type.
+   PerfObj = (PPERF_OBJECT_TYPE)((PBYTE)PerfData +
+      PerfData-&gt;HeaderLength);
+
+// Process all objects.
+   for( i=0; i &lt; PerfData-&gt;NumObjectTypes; i++ )
+   {
+      printf( "\nObject: %ld\n", PerfObj-&gt;ObjectNameTitleIndex );
+
+   // Get the counter block.
+      PerfCntr = (PPERF_COUNTER_DEFINITION) ((PBYTE)PerfObj +
+                 PerfObj-&gt;HeaderLength);
+
+      if( PerfObj-&gt;NumInstances &gt; 0 )
+      {
+      // Get the first instance.
+         PerfInst = (PPERF_INSTANCE_DEFINITION)((PBYTE)PerfObj +
+                    PerfObj-&gt;DefinitionLength);
+
+      // Retrieve all instances.
+         for( k=0; k &lt; PerfObj-&gt;NumInstances; k++ )
+         {
+            printf( "\n\tInstance: %S\n", (char *)((PBYTE)PerfInst +
+                    PerfInst-&gt;NameOffset) );
+            CurCntr = PerfCntr;
+
+         // Get the first counter.
+            PtrToCntr = (PPERF_COUNTER_BLOCK)((PBYTE)PerfInst +
+                        PerfInst-&gt;ByteLength);
+
+         // Retrieve all counters.
+            for( j=0; j &lt; PerfObj-&gt;NumCounters; j++ )
+            {
+               printf("\t\tCounter: %ld\n",CurCntr-&gt;CounterNameTitleIndex);
+            // Data is (LPVOID)((PBYTE)PtrToCntr + CurCntr-&gt;CounterOffset);
+
+            // Get next counter.
+               CurCntr =  (PPERF_COUNTER_DEFINITION)((PBYTE)CurCntr +
+                          CurCntr-&gt;ByteLength);
+
+            }
+
+         // Get the next instance.
+            PerfInst = (PPERF_INSTANCE_DEFINITION)((PBYTE)PtrToCntr +
+                       PtrToCntr-&gt;ByteLength);
+         }
+      }
+      else
+      {
+      // Get the first counter.
+         PtrToCntr = (PPERF_COUNTER_BLOCK) ((PBYTE)PerfObj +
+                     PerfObj-&gt;DefinitionLength );
+
+      // Retrieve all counters.
+         for( j=0; j &lt; PerfObj-&gt;NumCounters; j++ )
+         {
+            printf( "\tCounter: %ld\n", PerfCntr-&gt;CounterNameTitleIndex );
+
+         // Data is (LPVOID)((PBYTE)PtrToCntr + PerfCntr-&gt;CounterOffset);
+
+            PerfCntr = (PPERF_COUNTER_DEFINITION)((PBYTE)PerfCntr +
+                       PerfCntr-&gt;ByteLength);
+         }
+      }
+
+      // Get the next object type.
+      PerfObj = (PPERF_OBJECT_TYPE)((PBYTE)PerfObj +
+                PerfObj-&gt;TotalByteLength);
+   }
+}
+
+</PRE>Note that the instance names are retrieved in a fashion that is similar to
+retrieving the data.
+<P>
+The steps above showed how to obtain all of the counters. You can retrieve
+only the counters that pertain to a particular object by using the titles
+database. The information is stored in the registry in the format index,
+name, index, name, and so forth.
+<P>
+To retrieve the titles database and store it in TitlesDatabase:
+
+<OL><P><LI>Open the key:
+<P>
+<P><PRE>      RegOpenKeyEx( HKEY_LOCAL_MACHINE,
+<PRE></PRE>         "Software\\Microsoft\\Windows NT\\CurrentVersion\\Perflib\\009",
+                0,
+         KEY_READ,
+            &amp;Hkey);
+
+   Note that 009 is a language ID, so this value will be different on a
+   non-English version of the operating system.
+
+</PRE><P><LI>Query the information from the key:
+<P>
+<P><PRE>      RegQueryInfoKey(
+<PRE></PRE>                   Hkey,
+         (LPTSTR) Class,
+             &amp;ClassSize,
+                   NULL,
+                &amp;Subkey,
+              MaxSubKey,
+              &amp;MaxClass,
+                &amp;Values,
+               &amp;MaxName,
+               &amp;MaxData,
+               &amp;SecDesc,
+          &amp;LastWriteTime );
+
+</PRE><P><LI>Allocate a buffer to store the information:
+<P>
+<P><PRE>      TitlesDataBase = (PSTR) malloc( (MaxData+1) * sizeof(TCHAR) )
+</PRE>
+<P><LI>Retrieve the data:
+<P>
+<PRE>      RegQueryValueEx(     Hkey,
+            (LPTSTR) "Counters",
+                           NULL,
+                           NULL,
+        (LPBYTE) TitlesDataBase,
+                       &amp;MaxData );
+
+</PRE></OL>Once you have the database, it is possible to write code that will go
+through all objects, searching by index (field ObjectNameTitleIndex) or by
+type (field ObjectNameTitle - which is initially NULL).
+<P>
+Or, you could obtain only the performance data for specified objects by
+changing the call to ReqQueryValueEx() in step 1 of the SUMMARY section
+above to:
+<P>
+<PRE>   RegQueryValueEx( HKEY_PERFORMANCE_DATA,
+                           Indices,
+                              NULL,
+                              NULL,
+                          PerfData,
+                        &amp;BufferSize );
+
+</PRE>Note that the only difference here is that instead of specifying "Global"
+as the second parameter, you specify a string that represents the decimal
+value(s) for the object(s) of interest that are obtained from the titles
+database.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+The PVIEWER and PERFMON samples in the MSTOOLS\SAMPLES\SDKTOOLS\WINNT
+directory contain complete sample code that deals with performance data.
+<P>
+For more information, please see the "Performance Overview" in the Win32
+SDK documentation and the volume titled "Optimizing Windows NT" in the
+Windows NT Resource Kit.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg<BR>
+KBSubcategory: BsePerfmon<BR>
+Additional reference words: 3.10 3.50 3.51 4.00 Perfmon<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 15, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

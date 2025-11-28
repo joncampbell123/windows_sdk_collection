@@ -1,0 +1,245 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: WOW System Hooks Limit Number of Concurrent MFC Apps </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q129429">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1995/04/26">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  There is a limit to the number of 16-bit MFC applications that can be run under the WOW subsystem of Windows at one time. You will see one of two symptoms depending on whether the application manifesting the problem is a release or debug build:   -...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEF,QBWP,QAG9,QAJH,QAA1,QA01,QAGI,QDH6,QBVV,QA9N,QANJ,QAY5,QABN,QBKN,QBJC V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: WOW System Hooks Limit Number of Concurrent MFC Apps</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q129429</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50 1.51 1.52
+WINDOWS
+kbprg kbtshoot kbinterop kbprb
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++ for Windows, versions 1.0, 1.5, 1.51, and 1.52
+   when running under the WOW Subsystem of Windows NT 3.1 and 3.5
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+There is a limit to the number of 16-bit MFC applications that can be run
+under the WOW subsystem of Windows at one time. You will see one of two
+symptoms depending on whether the application manifesting the problem is a
+release or debug build:
+
+<UL><LI>If the application manifesting the problem is a release build, it will
+   cause a general protection (GP) fault before the main window is
+   displayed.
+<P>
+   -or-
+
+<LI>If the application manifesting the problem is a debug build, an
+   assertion failure will occur, ASSERT(pWnd != NULL), in the AfxWndProc
+   function. Each of the following lines denotes where assert can be
+   found in WINCORE.CPP:
+<P>
+   MFC 2.00 asserts at line 161.
+   MFC 2.50 asserts at line 210.
+   MFC 2.51 asserts at line 210.
+   MFC 2.52 asserts at line 210.
+<P>
+</UL><h2>CAUSE</h2>
+ 
+<P>
+MFC uses a WH_CALLWNDPROC hook during the creation of a window to connect a
+CWnd object to the window. If the hook cannot be set, the window is not
+properly added to MFC's permanent handle map. When the window receives a
+message, MFC attempts to retrieve a pointer to the corresponding CWnd
+object from the permanent handle map. Because the window is not in the map,
+a NULL pointer is retrieved. In release builds, the pointer is used,
+causing an access violation, which results in a GP fault. In debug builds,
+the pointer is trapped by the assertion.
+<P>
+The WOW subsystem of Windows NT provides a limited number of system hooks.
+Windows NT version 3.1 has 16 hooks available. Windows NT version 3.5 has
+32 hooks available. When the hooks are exhausted, an attempt to set a hook
+fails without reporting an error, so MFC is unable to detect that the hook
+was not set and recover gracefully.
+<P>
+MFC applications are particularly susceptible to exhausting the available
+system hooks because they typically install two hooks (one for F1 help, the
+other for gray dialogs) at application startup. These two hooks last for
+the lifetime of the application. Applications that use the autosubclassing
+feature of CTL3D consume an additional hook.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To run more 16-bit MFC applications under the WOW subsystem, you must
+reduce the number of hooks consumed by each application.
+<P>
+The following are three common uses of hooks by MFC applications that you
+need to prevent if you want to execute more applications:
+
+<UL><LI>Providing F1 Help.
+<LI>Setting the background color of dialogs.
+<LI>Using CTL3D to generate 3D effects for controls and dialogs.
+<P>
+</UL><h3>Removing the F1 Help Hook</h3>
+ 
+<P>
+The F1 Help hook is installed whether or not your application uses F1
+Help. If you do not support F1 help, you can remove this hook by following
+these steps:
+
+<OL><P><LI>Add the MFC source directory to your Include Files path, typically
+   &lt;drive&gt;:\msvc\mfc\src.
+
+<P><LI>Include AUXDATA.H and the function definition for _AfxMsgFilterHook
+   so that it can be used by your CWinApp derived class:
+<P>
+<PRE>   #include "auxdata.h"
+
+   extern LRESULT CALLBACK AFX_EXPORT
+     _AfxMsgFilterHook(int code, WPARAM wParam, LPARAM lParam);
+
+</PRE><P><LI>At the beginning of your derived CWinApp's InitInstance() function, add
+   the following code to unhook the msg filter hook in your application:
+<P>
+<PRE>   // Remove system hook for F1 Help
+   if (_afxHHookOldMsgFilter != NULL) {
+      if (!afxData.bWin31) {
+         ::UnhookWindowsHook(WH_MSGFILTER,
+                          (HOOKPROC)_AfxMsgFilterHook);
+      }else{
+         ::UnhookWindowsHookEx(_afxHHookOldMsgFilter);
+      }
+      _afxHHookOldMsgFilter = NULL;
+   }
+
+</PRE></OL>Note that if you remove this hook, your ProcessMessageFilter() function
+will not be called.
+<P>
+<P><h3>Removing the Dialog Background Color Hook</h3>
+ 
+<P>
+The Dialog Background Color hook is only installed if you call
+CWinApp::SetDialogBkColor(). AppWizard places a call to SetDialogBkColor()
+at the start of your CWinApp derived classes InitInstance() function. To
+remove the hook, remove this and all other calls to SetDialogBkColor() from
+your application.
+<P>
+NOTE: If you are using the CTL3D library, it will paint the background of
+dialogs, so you do not need to call SetDialogBkColor().
+<P>
+<P><h3>Removing the CTL3D Hook</h3>
+ 
+<P>
+If you are using the autosubclassing feature of CTL3D to add 3D effects to
+your application's controls and dialogs, a hook is used. You can still use
+CTL3D without consuming a hook if you explicitly subclass each dialog by
+using the Ctl3dSubclassDlgEx() function. See the CTL3D documentation for
+more information on how to explicitly subclass dialogs using CTL3D.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00 1.50 1.51 1.52 2.00 2.50 2.51 2.52 GPF<BR>
+KBCategory: kbprg kbtshoot kbinterop kbprb<BR>
+KBSubcategory: VCGenIss<BR>
+Keywords            : kb16bitonly<BR>
+Technology          : kbMfc<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

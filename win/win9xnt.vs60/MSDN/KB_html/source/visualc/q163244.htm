@@ -1,0 +1,331 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: RFX Unnecessarily Updates Floating Point Fields </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q163244">
+<META NAME="KBModify" CONTENT="1997/08/07">
+<META NAME="KBCreate" CONTENT="1997/02/06">
+<META NAME="Keywords" CONTENT="MfcDatabase kbcode kbtshoot kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When you use the Microsoft Foundation Classes (MFC) ODBC database classes to access tables containing floating point numeric data, you may observe that some numeric fields are updated unnecessarily. Fields that contain values that were not modified...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAKD,QA7O,QA7N,QAHH,QBC9,QBC8,QA8N,QANO,QBHK,QAG7,QAH4,QAXB,QBVV,QAKC,QAYL V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: RFX Unnecessarily Updates Floating Point Fields</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 7, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q163244</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.51 1.52 | 2.00 2.10 2.20 4.00 4.10 4.20 5.00
+<PRE>WINDOWS   | WINDOWS NT
+</PRE>kbtshoot kbusage kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   - Microsoft Visual C++ for Windows, versions 1.51, 1.52, 1.52b, 1.52c
+   - Microsoft Visual C++, 32-bit Edition, versions 2.0, 2.1, 2.2, 4.0,
+<P><PRE>     4.1, 4.2, 5.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When you use the Microsoft Foundation Classes (MFC) ODBC database classes
+to access tables containing floating point numeric data, you may observe
+that some numeric fields are updated unnecessarily. Fields that contain
+values that were not modified may be marked as dirty and, as a result, are
+unnecessarily updated.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+RFX_Double and RFX_Single are the RFX functions that the wizards select to
+handle the SQL data types SQL_DOUBLE and SQL_REAL, respectively. Both of
+these functions detect when recordset member variable values have changed
+and require an update to change the corresponding fields in the actual
+database table. The detection of dirty fields is based on caching the
+original value of the recordset member variable and comparing it to the
+current value of the variable. The comparison that Microsoft Foundation
+Classes uses to detect dirty floating point values has always been some
+form of exact comparison.
+<P>
+It is generally not recommended that you perform exact comparisons of
+floating point values because when store a decimal fraction in binary it is
+inherently imprecise. Rounding and truncation can occur when these values
+are processed (particularly when the Floating Point Unit (FPU) is invoked)
+and can lead two values that were initially exactly equal to eventually be
+only nearly equal. It is preferable to either treat a floating point field
+as character data that is immune to rounding errors or incorporate a small
+offset value into comparisons (known as an epsilon value) to allow nearly
+equal values to be considered sufficiently equal.
+<P>
+RFX_Double and RFX_Single do not employ an epsilon value in their dirty
+field detection comparisons so they will occasionally mark fields whose
+values have undergone some form of rounding or truncation as being dirty.
+The process of transferring recordset member variables via DDX to and from
+the edit controls of a record view or a dialog box can introduce sufficient
+rounding errors to result in a field that is marked dirty. In addition, in
+Visual C++ 4.2 Microsoft Foundation Classes has been modified to use the
+"==" equality operator when comparing the cached and current values. The
+"==" invokes the Floating Point Unit and that, in itself, causes rounding
+that may result in the field being flagged dirty when it could actually be
+unchanged.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+There are several ways to address this problem:
+
+<UL><LI>Modify the tables of the database to use a data type different from
+   SQL_DOUBLE and SQL_REAL. If you store the value as a CHAR type or using
+   some type of integer representation, then the wizards will use RFX
+   functions that will not result in unneeded updates. Your application
+   will then need to manage any needed conversions of the recordset member
+   variables.
+
+<LI>For Visual C++ 4.x users only: Turn off field caching (which turns off
+   automatic dirty field detection. Now you need to manage the dirty status
+   of all fields manually with the CRecordset::SetFieldDirty() function.
+<P>
+   To turn off field caching include this line in your recordset's
+   constructor:
+<PRE>                    m_bCheckCacheForDirtyFields = FALSE;
+
+</PRE><LI>Modify Microsoft Foundation Classes to use an epsilon value in its dirty
+   field detection comparison. This is not a simple process since the RFX
+   functions are not virtual and they often delegate to
+   CFieldExchange::Default() which is also not virtual. See below for an
+   example of an alternate implementation of RFX_Double.
+<P>
+</UL><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following sample code is designed to replace RFX_Double for MFC 4.2.
+You can use this code as a guide for replacing RFX_Single and for making
+similar modifications to other versions of Microsoft Foundation Classes.
+<P>
+<PRE>//****************************************************************
+// rfx_double2.cpp
+
+// Most of this code is copied from the MFC source--see comments
+// for NEW code.
+//
+// .cpp file for version of RFX_Double that uses an epsilon value
+// in its dirty field comparison.
+//
+// THIS CODE IS WRITTEN TO WORK WITH MFC 4.2, TO WORK WITH OTHER
+// VERSIONS, THIS CODE MAY REQUIRE EXTENSIVE MODIFICATION.
+
+#include "stdafx.h"
+
+// NEW: Constant required for clean compile--different versions of MFC
+//      use different constants.
+</PRE>static const double afxDoublePseudoNull = AFX_RFX_DOUBLE_PSEUDO_NULL;
+<P>
+<P>
+<PRE>// NEW: Comparison that uses an epsilon to define a window within
+//      which two values are considered equal.
+</PRE>BOOL AFXAPI CompareValueWithEpsilon(void* pvSrc, void* pvDest,
+<PRE>                                    int nSrcType, double epsilon)
+{
+    // Only call with type of double -- you can modify this to accept
+    // other types.
+    if (nSrcType != AFX_RFX_DOUBLE)
+    {
+        // called with unexpected type
+        ASSERT(FALSE);
+        return FALSE;
+    }
+
+    BOOL bDirty = FALSE;
+
+    // Do dirty detection comparison factoring in epsilon value.
+    if ((*(double *)pvDest) &gt; ((*(double *)pvSrc) + epsilon) ||
+        (*(double *)pvDest) &lt; ((*(double *)pvSrc) - epsilon))
+        bDirty = TRUE;
+
+    return !bDirty;
+</PRE>}
+<P>
+<PRE>// Fourth parameter is new to this version--it allows you to specify
+// the width of the comparison window.
+//
+// NOTE: Epsilon is expected to be positive.
+void AFXAPI RFX_Double2(CFieldExchange* pFX, LPCTSTR szName,
+    double&amp; value, double epsilon)
+</PRE>{
+<PRE>    ASSERT(AfxIsValidAddress(pFX, sizeof(CFieldExchange)));
+    ASSERT(AfxIsValidString(szName));
+
+    switch (pFX-&gt;m_nOperation)
+    {
+    case CFieldExchange::MarkForUpdate:
+        {
+            // NEW: You must move this from original MFC location
+            //      to avoid problems with delegating in default case.
+            UINT nField;
+            if (!pFX-&gt;IsFieldType(&amp;nField))
+                return;
+
+            if (value != afxDoublePseudoNull)
+               pFX-&gt;m_prs-&gt;ClearNullFieldStatus(nField - 1);
+
+            // Get the field data,
+            CFieldInfo* pInfo = &amp;pFX-&gt;m_prs-&gt;m_rgFieldInfos[nField - 1];
+
+            // If the user changed the field value from previous value,
+            // mark field dirty.
+            if ((pInfo-&gt;m_bStatus &amp; AFX_SQL_FIELD_FLAG_NULL))
+            {
+                if (!pFX-&gt;m_prs-&gt;IsFieldStatusNull(nField - 1))
+                    pFX-&gt;m_prs-&gt;SetDirtyFieldStatus(nField - 1);
+            }
+            else
+            {
+                // Saved field is not NULL. The current field is null,
+                // so the field is dirty.
+                BOOL bDirty = pFX-&gt;m_prs-&gt;IsFieldStatusNull(nField - 1);
+
+                // If values differ, then field dirty
+                void* pvDataCache = pInfo-&gt;m_pvDataCache;
+
+                // NEW: Now call a function that does dirty field
+                //      detection based on an epsilon value.
+                if (bDirty ||
+                    !CompareValueWithEpsilon(&amp;value, pvDataCache,
+                        pInfo-&gt;m_nDataType, epsilon))
+                    pFX-&gt;m_prs-&gt;SetDirtyFieldStatus(nField - 1);
+            }
+
+</PRE>#ifdef _DEBUG
+<PRE>            // Field address must not change--ODBC's SQLBindCol depends
+            // upon this.
+            void* pvBind = &amp;value;
+
+            if (pInfo-&gt;m_pvBindAddress != pvBind)
+            {
+                TRACE1("Error: field address (column %u) has changed!\n",
+                    nField);
+                ASSERT(FALSE);
+            }
+</PRE>#endif // _DEBUG
+<P>
+<PRE>            if ((pFX-&gt;m_pvField == NULL  || pFX-&gt;m_pvField == &amp;value) &amp;&amp;
+                pFX-&gt;m_prs-&gt;IsFieldStatusDirty(nField - 1))
+            {
+                pFX-&gt;m_bField = TRUE;
+            }
+            break;
+        }
+        // NEW: Only process MarkForUpdate--delegate all else.
+        default:
+            {
+                // NEW: Call the original RFX function for all
+                //      cases but MarkForUpdate.
+                RFX_Double(pFX,szName, value);
+            }
+        return;
+    }
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbtshoot kbusage kbcode<BR>
+KBSubcategory: MfcDatabase<BR>
+Additional reference words: CRecordview DDX_FieldText FPP 1.51 1.52 2.00<BR>
+2.10 2.20 4.00 4.10 4.20 5.00<BR>
+Keywords          : MfcDatabase kbcode kbtshoot kbusage<BR>
+Technology        : kbMfc<BR>
+Version           : 1.51 1.52 | 2.00 2.10 2.20 4.00<BR>
+Platform          : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 7, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

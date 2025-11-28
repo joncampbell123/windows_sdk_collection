@@ -1,0 +1,260 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: CDaoRecordView Toolbar Buttons Malfunction </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q150122">
+<META NAME="KBModify" CONTENT="1997/06/26">
+<META NAME="KBCreate" CONTENT="1996/04/22">
+<META NAME="Keywords" CONTENT="kbcode kbusage MfcDAO">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  CDaoRecordView depends on an instance of CDaoRecordset to display data. The CDaoRecordView class also needs to stay in synchronization with the current record displayed by the CDaoRecordset instance. Calling the Seek, MoveFirst, MoveNext, or other ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA5D,QA5V,QAYL,QAPN,QAPP,QAH4,QAML,QBXS,QAGI,QDMH,QAC1,QAEF,QBWR,QANS,QA62 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: CDaoRecordView Toolbar Buttons Malfunction</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q150122</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++, 32-bit Edition, version 4.0, 4.1, 4.2, 4.2b, 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+CDaoRecordView depends on an instance of CDaoRecordset to display data. The
+CDaoRecordView class also needs to stay in synchronization with the current
+record displayed by the CDaoRecordset instance. Calling the Seek,
+MoveFirst, MoveNext, or other methods directly on the CDaoRecordset being
+used by a CDaoRecordView causes the CDaoRecordView to behave incorrectly.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+CDaoRecordView uses four member variables to keep track of bookkeeping
+information. The first three variables listed below store bookmarks for the
+first, last, and current record. The fourth variable is used to enable or
+disable the toolbar buttons corresponding to MoveFirst, MovePrev, MoveNext,
+and MoveLast.
+<P>
+<PRE>   m_varBookmarkCurrent
+   m_varBookmarkFirst
+   m_varBookmarkLast
+   m_nStatus
+
+</PRE>These variables are only maintained when the CDaoRecordView::OnMove method
+is invoked. This method invokes the CDaoRecordset MoveFirst, MoveNext,
+MovePrevious, or MoveLast methods, and updates the variables. Only OnMove
+keeps these variables in synchronization.
+<P>
+The following list contains the more common CDaoRecordset methods that
+change the current record:
+<P>
+<PRE>   - Find            - Move            - Requery
+   - FindFirst       - MoveFirst       - Seek
+   - FindLast        - MoveLast        - SetAbsolutePosition
+   - FindNext        - MoveNext        - SetBookmark
+   - FindPrev        - MovePrev        - SetPercentPosition
+
+</PRE>When the AddNew method is called, a new record is added to the recordset
+but the current record bookmark does not change. To change the newly added
+record to the current record, use the following method:
+<P>
+<PRE>   // set the current bookmark to the newly added record
+   m_pSet-&gt;SetBookmark(GetLastModifiedBookmark());
+
+</PRE>NOTE: GetLastModifiedBookmark() needs to be called right after the call to
+Update() to return the newly added record. Calling it after one of the
+recordview MoveXXXX functions returns a bookmark to the record that was
+current prior to the move operation.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+After performing a CDaoRecordset method for an instance utilized by
+CDaoRecordView, reset the CDaoRecordView's bookkeeping variables as shown
+in the following code:
+<P>
+<PRE>   if (!m_pSet-&gt;Seek(...))
+   {
+     if( !m_pSet-&gt;IsEOF() )
+     {
+         m_varBookmarkCurrent = 1L;   // &lt;&lt;- re-initialize
+         m_varBookmarkFirst =         // &lt;&lt;- the bookmark
+            m_varBookmarkLast = 0L;   // &lt;&lt;- member variables!
+
+        // Enable toolbar buttons
+        m_nStatus |= AFX_DAOVIEW_SCROLL_BACKWARD;// First &amp; Prev buttons
+        m_nStatus |= AFX_DAOVIEW_SCROLL_NEXT;    // next toolbar button
+        m_nStatus |= AFX_DAOVIEW_SCROLL_LAST;    // last toolbar button
+     }
+     else
+     {
+        // Move to some valid record
+     }
+  }
+  else
+  {
+     // Seek failed - move to a valid record
+  }
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+
+<OL><P><LI>Generate a default AppWizard application named SeekTest, and give it the
+   following attributes:
+<P>
+<P><PRE>    - Database View without File Support.
+</PRE><P>
+<P><PRE>    - Select a data source, using DAO and a Table recordset type.
+</PRE><P>
+<P><PRE>    - Open the Student Registration database (STDREG32.MDB) on the
+      SECTION table.
+</PRE>
+<P><LI>Using the Resource View, add several text boxes to the IDD_SEEKTEST_FORM
+   dialog resource that appears. Use the CTRL-DBLCLK short-cut to bind
+   columns in SECTION to the dialog resource.
+
+<P><LI>Add a button to the IDD_SEEKTEST_FORM resource. Using ClassWizard, add
+   the following code:
+<P>
+<P><PRE>      m_pSet-&gt;SetCurrentIndex( _T("PrimaryKey") );
+</PRE><P>
+<P><PRE>      COleVariant varCourse ( _T("MATH201"), VT_BSTRT );
+<PRE></PRE>      COleVariant varSection( _T( "1"     ), VT_BSTRT );
+
+      if(! m_pSet-&gt;Seek( _T( "=" ), &amp;varCourse, &amp;varSection ) )
+      {
+          // Seek failed - need to move to a valid record
+          m_pSet-&gt;MoveFirst();
+      }
+      UpdateData( FALSE );
+
+</PRE><P><LI>Compile, build, and run the program.
+
+<P><LI>Click the MoveNext (&gt;) button and then the MovePrevious (&lt;) button to
+   disable the MoveFirst (|&lt;) and MovePrevious (&lt;) toolbar buttons.
+
+<P><LI>Click the Seek button. Note that the MoveFirst and MovePrevious buttons
+   are still incorrectly disabled.
+<P>
+</OL>Adding the code to clear the bookmarks, and resetting the m_nStatus
+variable corrects the toolbar and prevents other problems.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For additional information, please see the following articles in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q145686.htm">Q145686</A></B>
+   TITLE     : CDaoRecordView Bookmark Members Invalid After Requery()
+
+   ARTICLE-ID: <B><A href="../visualc/q145719.htm">Q145719</A></B>
+   TITLE:      BUG: DAOENROL - Can't See Added Records in Windows 95
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : kbcode kbusage MfcDAO<BR>
+Technology          : kbMfc<BR>
+Version             : 4.00 4.10 4.20 4.20b 5.00<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

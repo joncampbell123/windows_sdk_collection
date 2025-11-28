@@ -1,0 +1,252 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Why SHOWPLAN Shows Query Using "Dynamic Index" </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q89387 ">
+<META NAME="KBModify" CONTENT="1997/04/28">
+<META NAME="KBCreate" CONTENT="1992/09/21">
+<META NAME="Keywords" CONTENT="kbother SSrvServer SSrvWinNT">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The SET SHOWPLAN ON command can be used to help analyze how SQL Server's query optimizer is producing an access plan for returning data. This access plan includes the order in which the optimizer joins tables and what, if any, available indexes it ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA5V,QATJ,QA28,QABM,QA4H,QAEN,QAPN,QDMG,QBW7,QAI5,QAEF,QAY2,QAFO,QACF,QBXN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Why SHOWPLAN Shows Query Using "Dynamic Index"</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 28, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q89387 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+  - Microsoft SQL Server version 4.2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The SET SHOWPLAN ON command can be used to help analyze how SQL
+Server's query optimizer is producing an access plan for returning
+data. This access plan includes the order in which the optimizer joins
+tables and what, if any, available indexes it will make use of. With
+some queries, the output from SHOWPLAN will show that the optimizer is
+accessing the data using a "dynamic index." This is part of the
+optimizer's "OR strategy": that is, how it optimizes access plans for
+queries involving one or more OR conditions in the WHERE clause.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Queries involving OR clauses are generally not very efficient in terms
+of accessing the data. For example, suppose a report is needed that
+includes all books from the Titles table that either are of type
+"business", or have a price greater that $20. Assume that the Titles
+table in this example is a large table with a nonclustered index on
+"type" and a nonclustered index on "price". The following query could
+be used to get the desired results:
+<P>
+<PRE>   SELECT title_id, type, price
+   FROM pubs..titles
+   WHERE type = 'business'
+   OR price &gt; $20
+
+</PRE>There are two ways that the desired data could be obtained. One way is
+to start at the first row of the table, check its type and price, and
+if either match the criteria, return that row, then move to the next
+row and do the same, and so on. The other option is to first find all
+the rows that match the first criteria of "type = 'business'" and
+store them in an intermediate table, then find all the rows that meet
+the second criteria of "price &gt; $20", and store those rows in the
+intermediate table. Since it's possible (and likely) that a business
+book may cost more than $20, there's a chance of having duplicate rows
+in the intermediate table, so the intermediate table would need to be
+searched to eliminate duplicates, and the remaining rows would be the
+desired results.
+<P>
+The second method from the above scenario is very similar to SQL
+Server's OR strategy. The query optimizer breaks the WHERE clause into
+its component OR clauses and evaluates them separately. It then places
+all the qualifying row IDs in a work table, sorts the table to remove
+any duplicate rows, and uses the remaining row IDs to quickly retrieve
+the correct rows from the data pages. The final work table containing
+the qualifying row IDs is termed the dynamic index. The row IDs are an
+internal representation of the page number and the row number on that
+page of the given row.
+<P>
+To illustrate the above process, assume the following is a subset of
+the Titles table (the "row ID" is the internal row ID of each row, not
+an actual column of the table).
+<P>
+<PRE>   Row ID     Title_id   Type        Price
+   ---------------------------------------
+      1       BU9033     Business    19.00
+      2       PS3840     Psychology  28.00
+      3       CS1011     Computers   16.00
+      4       BU8845     Business    32.00
+      5       CO5490     Cooking     14.00
+      6       BU7349     Business    26.00
+      7       HL7204     Health      41.00
+      8       PS2099     Psychology  17.00
+
+</PRE>If the SQL Server query optimizer decided to evaluate the query using
+the OR strategy, it would first use the index on the "type" column to
+retrieve all row IDs that satisfy the first clause (type='business'):
+<P>
+<PRE>   row ID 1
+   row ID 4
+   row ID 6
+
+</PRE>It then could use the index on the "price" column to retrieve all row
+IDs that satisfy the second clause (price &gt; $20):
+<P>
+<PRE>   row ID 2
+   row ID 4
+   row ID 6
+   row ID 7
+
+</PRE>The results of these two searches are combined in a single work table,
+the row IDs are sorted, and duplicates are removed:
+<P>
+<PRE>   row ID 1
+   row ID 2
+   row ID 4
+   row ID 4 &lt;--duplicate removed
+   row ID 6
+   row ID 6 &lt;--duplicate removed
+   row ID 7
+
+</PRE>Finally, SQL Server can quickly scan the work table and retrieve the
+rows from the data pages with the given row IDs.
+<P>
+SQL Server does not always resort to using the OR strategy for every
+query that contains OR clauses. The following conditions must be met
+before it will choose to use the OR strategy:
+
+<UL><LI>All columns in the OR clause must belong to the same table.
+
+<LI>If any portion of the OR clause requires a table scan (due to lack
+   of an index or poor selectivity of a given index), a table scan
+   will be used for the entire query, rather than the OR strategy.
+
+<LI>The decision to use the OR strategy is made after all indexes and
+   costs are evaluated. If any other access plan is less costly (in
+   terms of page I/Os), SQL Server will choose to use the plan with
+   the least cost. In the example above, if a straight table scan
+   would result in fewer page I/Os than using the OR strategy,  the
+   query would be processed as a table scan instead of using the
+   dynamic index.
+<P>
+</UL>Note: SQL Server interprets queries that use the IN clause as though
+they were ORs. For example, assume the following query is used to get
+title information:
+<P>
+<PRE>   SELECT *
+   FROM pubs..titles
+   WHERE title_id IN ('BU9033', 'CO5490', 'PS7732')
+
+</PRE>SQL Server will break this query down so that it is equivalent to the
+following:
+<P>
+<PRE>   SELECT *
+   FROM pubs..titles
+   WHERE (title_id = 'BU9033'
+   OR title_id = 'CO5490'
+   OR title_id = 'PS7732')
+
+</PRE>The query optimizer can then evaluate the cost of using the OR
+strategy as an access plan for this query.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Windows NT<BR>
+Keywords            : kbother SSrvServer SSrvWinNT<BR>
+Version             : 4.2 | 4.2<BR>
+Platform            : OS/2 Windows<BR>
+Issue type          : kbtshoot<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 28, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

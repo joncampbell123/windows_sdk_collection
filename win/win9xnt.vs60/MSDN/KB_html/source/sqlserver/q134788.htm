@@ -1,0 +1,295 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Database Device File Image Backup and sp_dboption </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q134788">
+<META NAME="KBModify" CONTENT="1997/04/30">
+<META NAME="KBCreate" CONTENT="1995/08/10">
+<META NAME="Keywords" CONTENT="kbenv kbusage SSrvAdmin SSrvProg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  One of the advantages of using Microsoft SQL Server version 6.0 is the variety of methods that can be used to perform a database backup. This article explores a variation of the file image backup.  There are two tape formats used on the Windows NT ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAZV,QAUR,QAB5,QABM,QDIU,QA3W,QAMA,QBXS,QBWP,QA2X,QBV8,QAB9,QAVX,QAVW,QAPN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Database Device File Image Backup and sp_dboption</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 30, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q134788</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+One of the advantages of using Microsoft SQL Server version 6.0 is the
+variety of methods that can be used to perform a database backup. This
+article explores a variation of the file image backup.
+<P>
+There are two tape formats used on the Windows NT platform, and they are
+incompatible with each other. The first is the tape format supported by
+Windows NT, NTBACKUP.EXE, and other third party tape archiving products
+which use the Microsoft Tape Format (MTF). The second is the SQL Server
+tape format. In some scenarios, customers have elected to have an operator
+change tapes in between NTBackup's backup operation, and those database
+dumps to tape performed by SQL Server. Other customers have chosen to have
+SQL Server dump to disk, and then use NTBackup to archive this dump to
+tape.
+<P>
+There are two basic backup strategies for SQL Server. The primary backup
+strategy for SQL Server is the database dump which can then be loaded in a
+recovery scenario. This method is used primarily by companies whose servers
+must be in operation 7 days a week and 24 hours a day. Many of these
+companies also use the hot backup server strategy in which the dump is
+loaded to the backup server. These SQL Server database dumps are frequently
+performed to disk locally, to a network drive, and to tape.
+<P>
+The second basic SQL Server backup strategy is the use of a file image
+backup, where SQL Server is shutdown and the all the database device files
+are archived to tape using NTBackup. Because this method uses the NET
+STOP/NET START SQL Server commands, most customers use this method by
+combining batch scripts which are setup using the AT command and run by the
+Windows NT Scheduler Service.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+With the release of SQL Server version 6.0, you can perform some of the
+same operations without stopping SQL Server and select which databases and
+the associated device files are archived to tape. Before going further,
+there are several precautions that must be stated:
+
+<OL><P><LI>This method will not make a file image copy of master, model, or
+   tempdb, and all of these databases must be online.
+
+<P><LI>File image backups of SQL Server's database device files are safely
+   performed when all are archived as a set. This method of selectively
+   archiving database device files requires an understanding of the
+   following:
+<P>
+   a) Relationships among sysdatabases, sysusages, sysdevices.
+   b) The DISK REINIT and DISK REFIT statements.
+   c) Relationship between the syslogins table in the master
+<P><PRE>      database and the user database sysusers table.
+</PRE>   d) Each database exists on its own database devices. Device
+<P><PRE>      fragments must not be shared between databases.
+</PRE>
+<P><LI>The file image backup will only preserve the state of the database
+   at the time when sp_dboption is executed. Up to the minute recovery
+   can only be achieved through the use of database dumps and transaction
+   log dumps.
+
+<P><LI>You should perform database checks on the Master database
+   (DBCC CHECKDB and DBCC NEWALLOC) and periodic database dumps of the
+   master database. You should also use the MASTER.SQL script
+   found in the Knowledge Base article "INF: Recovering a Full Master
+   Database" (article number <B><A href="../sqlserver/q102077.htm">Q102077</A></B>) which can be used to extract to a
+   text file important configuration information about the installation of
+   SQL Server.
+
+<P><LI>If the file image backup method is used on a database that is currently
+   using database and transaction log dumps as a backup method, a database
+   dump needs to be performed after the database is brought online. The
+   sp_dboption system stored procedure writes a checkpoint record when
+   bringing the database online which may invalidate previous
+   database/transaction log dumps.
+<P>
+</OL>The cornerstone of this technique is the use of sp_dboption which has
+an additional option to take a database offline. As a side effect of
+using this stored procedure, the database has its status updated so
+that it is unavailable, the associated database devices are closed,
+and their status in sysdevices is updated to 'deferred' or 8192.
+<P>
+Here is an example which uses a 4 MB database called 'test' which has two
+2MB devices, one called 'testdata,' located on C:\SQL60\DATA\TESTDATA.DAT,
+and the second called 'testlog,' located on C:\SQL60\DATA\TESTLOG.DAT.
+The database options on test are TRUNCATE LOG ON CHECKPOINT and
+SELECT/INTO BULK COPY.
+<P>
+<P><h3>Step 1</h3>
+ 
+Issue the command:
+<P>
+<PRE>   sp_dboption test,offline,true
+   go
+
+</PRE></OL>Which results in the following messages returned to the client:
+<P>
+<PRE>   Database is now offline
+   Closing device 'testdata' and marking it 'deferred'.
+   Device option set.
+   Closing device 'testlog' and marking it 'deferred'.
+   Device option set.
+
+</PRE>This command resets the status for the 'test' database, and the
+value in sysdatabase.status will be 512 plus the status at the time the
+stored procedure was executed. Verify this with the following command:
+<P>
+<PRE>   select name,dbid,status,mode
+   from master..sysdatabases
+   where dbid = db_name('test')
+
+</PRE>which results in the following:
+<P>
+<PRE> name                           dbid   status mode
+ ------------------------------ ------ ------ ------
+ test                                6    524      0
+
+
+</PRE>The stored procedure checks to ensure that there are no users
+currently using the database; if there are, the following message is
+returned:
+<P>
+<PRE>   Msg 5160, Level 16, State 1:
+   Cannot take 'test' offline because usecount=1.
+   Msg 15245, Level 16, State 1:
+   'DBCC DBCONTROL' error.  Database not placed offline.
+
+</PRE><h3>Step 2</h3>
+ 
+<P>
+Now execute the extended stored procedure to either copy the associated
+database device files from share to share, or, as in this example, execute
+NTBackup:
+<P>
+<PRE>   xp_cmdshell 'ntbackup backup c:\sql60\data /a /v
+   /d "Image Backup of Test Database" /t Incremental /tape:0'
+
+</PRE>The basis for the above command is that when NTBackup performs a 'NORMAL'
+backup, the archive attribute for a file is cleared until it is
+subsequently changed. If all the archive bits are cleared for a set of
+database device files, when a database is taken offline the database device
+files will be marked with +A or the archive bit set on. An incremental
+backup will locate these files, back them up, and reset the archive bit to
+an off position. The files in the directories specified with the archive
+bit set on will tend to be those most recently closed, and this status bit
+set. (See the NTBackup Help file for details regarding the command line
+execution of NTBACKUP.EXE, or Windows NT Help Commands for additional
+information on the Attrib command)
+<P>
+<P><h3>Step 3</h3>
+ 
+<P>
+When the above command completes, bring the database back online with the
+following command:
+<P>
+<PRE>   sp_dboption test,offline,false
+   go
+
+</PRE>which returns the following statements:
+<P>
+<PRE>   Opening device 'testdata' and marking it as non-deferred.
+   Device option set.
+   Opening device 'testlog' and marking it as non-deferred.
+   Device option set.
+   Recovering database 'test'
+   Database is now online.
+
+</PRE>If there is a problem opening one of the devices, the following errors
+are displayed:
+<P>
+<PRE>   Opening device 'testdata' and marking it as non-deferred.
+   Device option set.
+   Opening device 'testlog' and marking it as non-deferred.
+   Msg 5153, Level 16, State 1:
+   Failed to open device 'testlog', see errorlog for details.
+   Msg 15246, Level 16, State 1:
+   Cannot bring database online due to problem opening device 'testlog'.
+
+</PRE>The selected database should now be online and accessible.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: sql6 methods<BR>
+Keywords            : kbenv kbusage SSrvAdmin SSrvProg<BR>
+Version             : 6.0<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 30, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

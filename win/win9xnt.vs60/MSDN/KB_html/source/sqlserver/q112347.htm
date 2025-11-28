@@ -1,0 +1,212 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Page Locks of Large Insert Trans Not Promote Table Lock </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q112347">
+<META NAME="KBModify" CONTENT="1997/04/29">
+<META NAME="KBCreate" CONTENT="1994/03/07">
+<META NAME="Keywords" CONTENT="kbprg SSrvProg SSrvWinNT">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  More than 200 page locks held by a large insert transaction may not be promoted to a table lock if the transaction has a while loop.  MORE INFORMATION  The following is an example:       /* create a table */       create table test_tab      (RecNum...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QACI,QA9N,QABT,QAA8,QAG8,QAY4,QA2Q,QAY2,QAK7,QAJ6,QBVV,QAG2,QAKC,QBWA V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Page Locks of Large Insert Trans Not Promote Table Lock</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 29, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q112347</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+  - Microsoft SQL Server version 4.2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+More than 200 page locks held by a large insert transaction may not
+be promoted to a table lock if the transaction has a while loop.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following is an example:
+<P>
+<PRE>     /* create a table */
+
+     create table test_tab
+     (RecNum int,
+       txt1 char(40),
+       txt2 char(40),
+       txt3 char(40),
+       txt4 char(40),
+       txt5 char(40),
+       txt6 char(40),
+       txt7 char(40) )
+     go
+
+     declare @count int
+     select @count = 0
+
+     set nocount on
+
+     begin tran big_insert
+
+       while (@count &lt; 5000)
+             begin
+          select @count = @count+1
+
+          insert into test_tab
+          values ( @count, 'A', 'B', 'C', 'D', 'E', 'F', 'G')
+             end
+
+     commit tran big_insert
+
+     go
+
+</PRE>This behavior is as expected. Since the insert statements are inside
+a while loop each one is considered an individual statement with
+its own private session. Since the total number of locks are kept on
+a per session basis, this number is 1 for every session; thus, it
+never gets escalated to a table lock.
+<P>
+SQL Server is designed for an OLTP environment where transactions are
+typified by a relatively small size, and the design point of SQL Server is
+to maximize concurrency for a typical OLTP query/transaction mix.
+<P>
+To meet this goal, SQL Server uses page-level locking as its finest
+granularity and usually escalates to table locking at 200 page locks
+per SDES. SDES is the SQL Server session descriptor structure used
+to maintain session information. A session in this context is an
+active query from a process which affects a single object.
+Exceptions to this include some types of inserts, which for
+concurrency reasons retain page locks, and extent locks used in
+clustered index creation.
+<P>
+The below example queries all escalate to a table lock:
+
+<UL><LI>select * from t1 holdlock order by col1 desc
+
+<LI>select * from t1 holdlock
+
+<LI>update t1 set col1=col1
+
+<LI>delete from t1
+
+<LI>insert into t1 select * from t1
+
+<LI>insert into t1 select * from t2
+<P>
+</UL>Whereas this query does not escalate:
+<P>
+<PRE>   begin transaction
+   insert into t1 values("test data")
+   go
+   insert into t1 values("test data")
+   go
+   &lt;repeat several hundred times&gt;
+   commit transaction
+
+</PRE>To avoid situations where too many page locks are being held by a
+transaction which has a while loop or separate insert statements,
+break the transaction into smaller ones, or increase the lock
+configuration number.
+<P>
+Page locks held by a bcp process are not escalated to table lock
+either. If that is a problem, the transaction should be broken down
+into smaller batches.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 4.2930824 Windows NT<BR>
+Keywords            : kbprg SSrvProg SSrvWinNT<BR>
+Version             : 4.2 | 4.2<BR>
+Platform            : OS/2 WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 29, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

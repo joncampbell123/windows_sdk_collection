@@ -1,0 +1,251 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Using PROTO and INVOKE to Call a C Function from MASM </TITLE>
+
+<!--STYLE_BEGIN-->
+<LINK REL="STYLESHEET" href="/support/kbstyle.css" TYPE="text/css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q73407 ">
+<META NAME="KBModify" CONTENT="1995/02/21">
+<META NAME="KBCreate" CONTENT="1991/06/27">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; masm">
+<META NAME="Description" CONTENT="  With the Microsoft Macro Assembler (MASM) version 6.0, the coding for a procedure call may be simplified by the use of the PROTO and INVOKE directives. These directives handle many of the details, such as pushing the parameters on the stack in the ...">
+<META NAME="Product" CONTENT="Macro Assembler">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAPN,QAHE,QAY5,QAB9,QBV8,QBFY,QBB3,QA7R,QAH4,QAIF,QAR4,QAC2,QAP2,QBII V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Using PROTO and INVOKE to Call a C Function from MASM</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 21, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q73407 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Macro Assembler for MS-DOS, versions 6.0, 6.0a, and 6.0b
+<LI>Microsoft Macro Assembler for OS/2, versions 6.0, 6.0a, and 6.0b
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+With the Microsoft Macro Assembler (MASM) version 6.0, the coding for
+a procedure call may be simplified by the use of the PROTO and INVOKE
+directives. These directives handle many of the details, such as
+pushing the parameters on the stack in the correct order, generating
+the correct external references, coercing arguments to the correct
+size, and cleaning up the stack (if required) after the function
+terminates.
+<P>
+The two sample programs below illustrate how a C function is called
+from MASM, both with and without the PROTO and INVOKE directives.
+Sample Code 1 calls the C printf() function using the conventional
+method of coding. Sample Code 2 shows the simplified call to the same
+function through the use of PROTO and INVOKE.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+PROTO defines a prototype for a procedure much the way a function
+prototype works in C. This is the syntax for PROTO:
+<P>
+<PRE>   label PROTO [distance] [langtype] [,[parameter]:tag]
+
+</PRE>The PROTO statement is used by the assembler to check parameter types
+and quantity along with indicating the naming convention for the
+function. Arguments for the function are indicated by listing the
+type, and optionally, a parameter name. For example,
+<P>
+<PRE>   myfunc PROTO C arg1:SWORD, arg2:SBYTE
+
+</PRE>This indicates that the function myfunc takes two arguments. The first
+is a signed word, the second is a signed byte. If you need a variable
+argument list, you use the type VARARG.
+<P>
+INVOKE actually generates the code to call the function. You must have
+defined the function previously with either a PROC, an EXTERNDEF, a
+TYPEDEF, or a PROTO statement. This is the syntax for INVOKE:
+<P>
+<PRE>   INVOKE expression [,arguments]
+
+</PRE>Because the assembler knows what the function is expecting in the way
+of arguments and calling convention, it can take the arguments passed
+in the INVOKE statement and push them on the stack in the correct
+order, call the function using the required function name, and clean
+up the stack afterwards (if required by the calling convention used).
+<P>
+If an argument passed by INVOKE is smaller than the type specified in
+the PROTO statement, MASM does a type conversion. It widens the
+argument in the PROTO statement to match that in the INVOKE statement
+(for example, SBYTE to SWORD). These types of conversions use the AX
+and DX registers on the 8086 and 8088 and the EAX and EDX registers on
+the 80386/80486. Because these registers are effectively overwritten,
+you should take care to avoid using these registers to pass arguments.
+<P>
+The language type for the function determines the naming and calling
+conventions. In addition to the language type in the PROTO statement,
+the language type can be set by the .MODEL directive, the OPTION
+LANGTYPE:, or by the command line switches /Gc (for Pascal) and /Gd
+(for C). There is a table of the various language conventions provided
+in Help.
+<P>
+<P><h3>Sample Code 1</h3>
+ 
+<P>
+; Assemble options needed: /MX
+<P>
+<PRE>          .MODEL small,c             ; The "c" langtype prepends
+                                     ; labels with an underscore.
+     ;-----for OS/2-------
+     ;INCLUDELIB OS2.LIB
+     ;INCLUDE    OS2.INC
+     ;--------------------
+
+EXTRN     _acrtused:NEAR
+EXTRN     printf:NEAR
+
+          .DATA
+fmtlist   db     "%s, %d, %lu", 0Ah,0
+string_1  db     "signed byte and unsigned double word", 0
+data_1    db     -2
+data_2    dd     0FFFFFFFFh
+
+          .CODE
+
+main      PROC
+          push   word ptr data_2+2   ; push the high word of data_2
+          push   word ptr data_2     ; push the low word of data_2
+          mov    al,data_1
+          cbw                        ; converts data_1 to a word
+          push   ax
+          mov    ax,offset string_1  ; load the address of string_1
+          push   ax                  ; push the address on the stack
+          lea    ax,fmtlist          ; load the address of fmtlist
+          push   ax                  ; push the address on the stack
+          call   printf              ; call the C library function
+          add    sp,0Ah              ; adjust the stackpointer
+main      ENDP
+          ret
+          end
+
+</PRE><h3>Sample Code 2</h3>
+ 
+<P>
+; Assemble options needed: none
+<P>
+<PRE>          .MODEL small,c
+
+    ;-----for OS/2--------|
+    ;.MODEL small,c,os_os2|
+    ;INCLUDELIB OS2.LIB   &lt;---Not needed if "os_os2" indicated. The
+    ;INCLUDE    OS2.INC   |   assembler knows to look for os2.lib
+    ;---------------------|   in the path set by the lib environment
+    ;                     |   variable.
+
+</PRE>EXTERNDEF _acrtused:WORD
+<P>
+<PRE>printf    PROTO arg1:Ptr Byte, printlist: VARARG
+
+</PRE>;The first argument is a pointer to a string. The second is a keyword
+; that permits a variable number of arguments.
+<P>
+<PRE>          .STACK 100h
+          .DATA
+fmtlist   BYTE   "%s, %d, %lu", 0Ah,0
+string_1  BYTE   "signed byte and unsigned double word", 0
+data_1    SBYTE  -2
+data_2    DWORD  0FFFFFFFFh
+
+          .CODE
+main      PROC
+INVOKE    printf, ADDR fmtlist, ADDR string_1, data_1, data_2
+main      ENDP
+          ret
+          end
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 6.00 6.00a 6.00b<BR>
+KBCategory: kbprg<BR>
+KBSubCategory: MASMLngIss<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 21, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

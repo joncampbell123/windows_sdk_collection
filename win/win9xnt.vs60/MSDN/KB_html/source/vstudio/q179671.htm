@@ -1,0 +1,327 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: DFX_Text() Sets CString Length Incorrectly in Unicode Build </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q179671">
+<META NAME="KBModify" CONTENT="1998/01/22">
+<META NAME="KBCreate" CONTENT="1998/01/21">
+<META NAME="Keywords" CONTENT="">
+<META NAME="KBArea" CONTENT="Support; KB; vstudio">
+<META NAME="Description" CONTENT="  In a Unicode build of an MFC DAO project, the Record Field Exchange function DFX_Text() incorrectly sets the length of its CString argument to twice the actual length of the data fetched from the database. This action causes any concatenation opera...">
+<META NAME="Product" CONTENT="vstudio">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAKD,QAKC,QAY5,QAR4,QBXS,QA5V,QAAP,QABA,QAM1,QALW,QABI,QBV8,QAB9,QBXT V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: DFX_Text() Sets CString Length Incorrectly in Unicode Build</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 22, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q179671</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual Studio versions 97, 97sp3
+<LI>Microsoft Visual C++, 32-bit Enterprise Edition, versions 5.0, 5.0sp1,
+   5.0sp2, 5.0sp3
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+In a Unicode build of an MFC DAO project, the Record Field Exchange
+function DFX_Text() incorrectly sets the length of its CString argument to
+twice the actual length of the data fetched from the database. This action
+causes any concatenation operation with the CString to behave unexpectedly.
+<P>
+NOTE: This article contains the source code to corrected versions of
+DFX_Text() and DAOStringAllocCallback.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+At line 906 in the Daodfx.cpp file within the DFX_Text() function, the
+length of the CString is set to the number of bytes rather than the number
+of characters returned from the database:
+<P>
+<PRE>   value.GetBufferSetLength(
+   pFX-&gt;m_prs-&gt;m_pulColumnLengths[pFX-&gt;m_nField-1] - 1);
+
+</PRE>Also, at line 1391 in the Daodfx.cpp file within the
+DAOStringAllocCallback() function [used as a callback function by
+DFX_Text()], the length of the CString is set to the number of bytes rather
+than the number of characters returned from the database:
+<P>
+<PRE>   pstr-&gt;ReleaseBuffer(dwLen);
+
+</PRE><h2>RESOLUTION</h2>
+ 
+<P>
+To resolve this problem, divide the string length by sizeof(TCHAR). In an
+ANSI build, a TCHAR is 1 byte in length; in a Unicode build, a TCHAR is 2
+bytes in length.
+<P>
+This article contains the source code to corrected versions of DFX_Text()
+and DAOStringAllocCallback(), which contain the two fixes shown below:
+<P>
+<P><h3>Line 906, Daodfx.cpp, DFX_Text()</h3>
+ 
+<P>
+Original version:
+<P>
+<PRE>   pFX-&gt;m_prs-&gt;m_pulColumnLengths[pFX-&gt;m_nField-1] - 1);
+
+</PRE>Fixed version:
+<P>
+<PRE>   (pFX-&gt;m_prs-&gt;m_pulColumnLengths[pFX-&gt;m_nField-1] / sizeof(TCHAR)) –
+      sizeof(TCHAR));
+
+</PRE><h3>Line 1391, Daodfx.cpp, DAOStringAllocCallback()</h3>
+ 
+<P>
+Original version:
+<P>
+<PRE>   lpsz = pstr-&gt;GetBuffer(dwLen);
+
+</PRE>Fixed version:
+<P>
+<PRE>   lpsz = pstr-&gt;GetBuffer(dwLen / sizeof(TCHAR));
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Copy and paste the following two functions and function declarations into
+your project:
+<P>
+<PRE>////////////////////////////////////////////////
+
+   STDAPI DaoStringAllocCallback2(DWORD dwLen, DWORD pData, void** ppv);
+
+   STDAPI DaoStringAllocCallback2(DWORD dwLen, DWORD pData, void** ppv)
+   {
+      LPTSTR lpsz;
+      CString* pstr = (CString*)pData;
+
+   #ifndef _UNICODE
+      // If using ANSI DAO interfaces, DAO reports field length
+      // rather than data length. In this case there will not be space
+      // for NULL terminator if data length equals field length. Make room.
+      dwLen++;
+   #endif
+
+      TRY
+      {
+         // Only re-allocate if necessary
+         lpsz = pstr-&gt;GetBuffer(dwLen / sizeof(TCHAR));
+         pstr-&gt;ReleaseBuffer(dwLen);
+         *ppv = (void*)(dwLen &gt; 0 ? lpsz : NULL);
+      }
+      CATCH_ALL(e)
+      {
+         e-&gt;Delete();
+         return E_OUTOFMEMORY;
+      }
+      END_CATCH_ALL
+
+      return S_OK;
+   }
+
+   void AFXAPI DFX_Text2(CDaoFieldExchange* pFX, LPCTSTR lpszName,
+      CString&amp; value, int nPreAllocSize = AFX_DAO_TEXT_DEFAULT_SIZE,
+      DWORD dwBindOptions = AFX_DAO_ENABLE_FIELD_CACHE);
+
+   void AFXAPI DFX_Text2(CDaoFieldExchange* pFX, LPCTSTR lpszName,
+      CString&amp; value, int nPreAllocSize, DWORD dwBindOptions)
+   {
+      (pFX-&gt;m_nFieldType == CDaoFieldExchange::outputColumn) ?
+         ++pFX-&gt;m_nField: ++pFX-&gt;m_nParam;
+
+      // Do nothing if op not supported for outputColumn or param type
+      if (!pFX-&gt;IsValidOperation())
+         return;
+
+      DWORD dwDAOType;
+
+   #ifdef _UNICODE
+      dwDAOType = DAO_WCHAR;
+   #else
+      dwDAOType = DAO_CHAR;
+   #endif
+
+      switch (pFX-&gt;m_nOperation)
+      {
+      case CDaoFieldExchange::BindField:
+         {
+            // Pre-allocate buffer to prevent needless re-allocations
+            value.GetBuffer(nPreAllocSize);
+            value.ReleaseBuffer();
+
+            LPDAOCOLUMNBINDING pcb =
+               &amp;pFX-&gt;m_prs-&gt;m_prgDaoColBindInfo[pFX-&gt;m_nField-1];
+            pcb-&gt;dwDataType = dwDAOType;
+            pcb-&gt;dwBinding = DAOBINDING_DIRECT | DAOBINDING_CALLBACK;
+            pcb-&gt;dwUser = (DWORD)&amp;value;
+            pcb-&gt;cbDataOffset = (DWORD)DaoStringAllocCallback2;
+            pcb-&gt;cbMaxLen = INT_MAX;
+         }
+         // Fall through to finish setting up column binding struct
+
+      default:
+         pFX-&gt;Default(lpszName, (void*)&amp;value, AFX_RFX_TEXT,
+            dwBindOptions);
+         return;
+
+      case CDaoFieldExchange::Fixup:
+         if (pFX-&gt;m_prs-&gt;m_pulColumnLengths[pFX-&gt;m_nField-1] == 0 ||
+            pFX-&gt;m_prs-&gt;m_pulColumnLengths[pFX-&gt;m_nField-1] == DAO_NULL)
+         {
+            // If null or empty string set length zero
+            value.GetBufferSetLength(0);
+         }
+         else
+         {
+            // Make sure length correct (and doesn't include NULL
+            //terminator)
+            value.GetBufferSetLength(
+     
+        (pFX-&gt;m_prs-&gt;m_pulColumnLengths[pFX-&gt;m_nField-1] /
+   sizeof(TCHAR))- sizeof(TCHAR));
+
+         }
+
+         pFX-&gt;Default(lpszName, (void*)&amp;value,
+            AFX_RFX_TEXT, dwBindOptions);
+         return;
+
+   #ifdef _DEBUG
+      case CDaoFieldExchange::DumpField:
+         *pFX-&gt;m_pdcDump &lt;&lt; "\n" &lt;&lt; lpszName &lt;&lt; " = " &lt;&lt; value;
+         return;
+   #endif //_DEBUG
+      }
+   }
+
+//////////////////////////////////////////////
+
+</PRE>Below is an example of how to use the DFX_Text2 function in your project:
+<P>
+<PRE>   void CDaoSet::DoFieldExchange(CDaoFieldExchange* pFX)
+   {
+   #ifdef _UNICODE
+      //{{AFX_FIELD_MAP(CDaoSet)
+      pFX-&gt;SetFieldType(CDaoFieldExchange::outputColumn);
+      DFX_Short(pFX, _T("[Hours]"), m_Hours);
+      //}}AFX_FIELD_MAP
+      DFX_Text2(pFX, _T("[CourseID]"), m_CourseID);
+      DFX_Text2(pFX, _T("[CourseTitle]"), m_CourseTitle);
+   #else
+   //{{AFX_FIELD_MAP(CDaoSet)
+      pFX-&gt;SetFieldType(CDaoFieldExchange::outputColumn);
+      DFX_Text(pFX, _T("[CourseID]"), m_CourseID);
+      DFX_Text(pFX, _T("[CourseTitle]"), m_CourseTitle);
+      DFX_Short(pFX, _T("[Hours]"), m_Hours);
+      //}}AFX_FIELD_MAP
+   #endif
+
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: MFCDAO MFCDatabase<BR>
+Component         : dao<BR>
+Version           : WINDOWS:5.0,5.0sp1,5.0sp2,5.0sp3,97,97sp3<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbbug<BR>
+Solution Type     : kbpending<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 22, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

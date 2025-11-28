@@ -1,0 +1,289 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Assertion or Problems Using DAO in a DLL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q149889">
+<META NAME="KBModify" CONTENT="1997/10/13">
+<META NAME="KBCreate" CONTENT="1996/04/15">
+<META NAME="Keywords" CONTENT="MfcDAO kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  This article provides some guidelines for using DAO in regular DLLs. In general, avoid performing any DAO construction, destruction, or operations inside the DLL's InitInstance or ExitInstance functions. Otherwise, you might see the following asser...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAPN,QAIF,QAY5,QAW6,QABA,QAGB,QBV8,QAB9,QALQ,QBWP,QBFY,QBDM,QA6A,QA56 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Assertion or Problems Using DAO in a DLL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 13, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q149889</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++, 32-bit Edition, versions 4.0, 4.1, 4.1b, 4.2,
+<P><PRE>     4.2b, 5.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+This article provides some guidelines for using DAO in regular DLLs. In
+general, avoid performing any DAO construction, destruction, or operations
+inside the DLL's InitInstance or ExitInstance functions. Otherwise, you
+might see the following assertions:
+<P>
+<PRE>   Assertion failed in DAOCORE.CPP, line 36  (in Visual C++ 4.0)
+   Assertion failed in APPCORE.CPP, line 585 (in Visual C++ 4.1)
+
+</PRE><h2>WORKAROUND</h2>
+ 
+<P>
+All MFC/DAO objects in the DLL must be destroyed before the call to
+AfxDaoTerm. Be careful about the scope of local and global DAO objects.
+For example, the following code causes an assert:
+<P>
+<PRE>   SomeExportedFunc( .. )
+   {
+      // Only call for regular MFC DLL's
+      #ifndef _AFXDLL
+      AFX_MANAGE_STATE(AfxGetStaticModuleState());
+      #endif
+
+      CDaoDatabase db;
+      db.Open(..);
+      db.Close();
+      AfxDaoTerm();
+   }
+
+</PRE>Because the DAO object db is a local variable, it remains in scope until
+SomeExportedFunc returns. The call to AfxDaoTerm causes an assertion
+because DAO terminates while db still has scope. Similarly, a global DAO
+object has scope throughout the life of the DLL, so a call to AfxDaoTerm
+also results in an assertion.
+<P>
+To ensure that your MFC/DAO objects are destroyed before calling
+AfxDaoTerm, avoid global objects and create local objects dynamically by
+using the new operator as in this example:
+<P>
+<PRE>   SomeExportedFunc( .. )
+   {
+      // Only call for regular MFC DLL's
+      #ifndef _AFXDLL
+      AFX_MANAGE_STATE(AfxGetStaticModuleState());
+      #endif
+
+      CDaoDatabase *DB = new CDaoDatabase;
+      pDB-&gt;Open(..);
+
+      // do something
+
+      pDB-&gt;Close();
+
+      // Destroy the object with delete
+      delete pDB;
+
+      // can now safely terminate DAO
+      AfxDaoTerm();
+   }
+
+</PRE>A variation is to export special creation and termination functions as in
+the following example. The advantage of this method is that DAO is running
+and connections remain open during the life of the DLL. The disadvantage is
+that the user of the DLL is responsible for explicitly calling these
+special functions.
+<P>
+<PRE>   SomeExportedInitializeDAO( .. )
+   {
+      // Only call for regular MFC DLL's
+      #ifndef _AFXDLL
+      AFX_MANAGE_STATE(AfxGetStaticModuleState());
+      #endif
+
+      m_pDB = new CDaoDatabase;
+      m_pDB-&gt;Open(..);
+   }
+
+</PRE>Then, to terminate MFC/DAO:
+<P>
+<PRE>   SomeExportedDestroyObjectsAndTerminateDAO( .. )
+   {
+      // Only call for regular MFC DLL's
+      #ifndef _AFXDLL
+      AFX_MANAGE_STATE(AfxGetStaticModuleState());
+      #endif
+
+     m_pDB-&gt;Close();
+     delete m_pDB;
+     AfxDaoTerm();
+   }
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design. MFC/DAO objects need to be created after
+CWinApp::InitInstance and destroyed before terminating DAO. By default,
+MFC attempts to terminate DAO within CWinApp::ExitInstance.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The AfxDaoTerm helper function terminates the DAO database engine. In
+applications, AfxDaoTerm is called automatically, but in DLLs, it must be
+explicitly invoked before the DLL's ExitInstance function.
+<P>
+Here are some general guidelines to follow:
+
+<UL><LI>Create any MFC/DAO objects after the DLL's InitInstance function. For
+   additional information, please see the following article in the
+   Microsoft Knowledge Base:
+<P>
+   ARTICLE-ID: <B><A href="../visualc/q147629.htm">Q147629</A></B>
+<PRE>   TITLE     : PRB: Problems If ODBC or DAO in DLL's InitInstance or
+               DLLMain
+
+</PRE><LI>Destroy these objects before calling AfxDaoTerm.
+
+<LI>Call AfxDaoTerm before calling the DLL's ExitInstance function.
+<P>
+</UL>Because the AfxDaoTerm helper function terminates the database engine, it
+must be called after all MFC/DAO objects have been destroyed.
+<P>
+<P><h3>AfxDaoInit</h3>
+ 
+<P>
+This function initializes the DAO database engine. In most cases, you don't
+need to call AfxDaoInit because the application calls it when it is needed.
+AfxDaoInit is called during the construction of the first MFC/DAO object.
+<P>
+<P><h3>AfxDaoTerm</h3>
+ 
+<P>
+This function terminates the DAO database engine. Typically, this function
+only needs to be called in a DLL; an application automatically calls
+AfxDaTerm when it is needed.
+<P>
+When DAO is initialized, MFC will set the m_lpfnDaoTerm pointer in the
+CWinApp class to point to AfxDaoTerm(). When CWinApp::ExitInstance is
+invoked, by default it invokes the value of m_lpfnDaoTerm if it is set.
+<P>
+In a Regular DLL, you need to call AfxDaoTerm() before the default
+ExitInstance is invoked because ExitInstance is invoked by DllMain. Visual
+C++ 4.0 had a documented bug where the .exe's ExitInstance would shut down
+DAO, causing an assertion when the Regular DLL's ExitInstance was called.
+<P>
+For additional information, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q143084.htm">Q143084</A></B>
+   TITLE     : FIX: Problems with Using the MFC DAO Classes in a .DLL or
+              .OCX
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For related information, see Technical Note 54. Technical Notes are
+available under MFC Technical Notes, under MFC Books Online.
+<P>
+For additional information on how to use AFX_MANAGE_STATE correctly, please
+see MFC Technical Note 58 (TN058) and the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q140850.htm">Q140850</A></B>
+   TITLE     : How to Convert DLLTRACE to Use MFC in Shared Library
+
+</PRE>AFX_MANAGE_STATE should be used in Regular DLLs only.
+ 
+<PRE>Keywords          : MfcDAO kbprg
+Technology        : kbMfc
+Version           : WINDOWS NT: 4.0 4.1 4.1b 4.2 4.2b 5.0
+Platform          : NT WINDOWS
+Issue type        : kbprb</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 13, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

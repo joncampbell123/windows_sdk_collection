@@ -1,0 +1,251 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Retrieving a Disk Volume Serial Number from C </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q69223 ">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1991/02/09">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Beginning with MS-DOS version 4.0, a semi-random 32-bit binary identification number (ID) is assigned to each disk that MS-DOS formats. The volume serial number (or ID) is stored at offset 27H to 2AH in the boot sector of each disk.  NOTE: code com...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAKC,QAHC,QBC6,QBFY,QA7T,QAG8,QBE7,QBE6,QDJ9,QAH4,QAC9,QA4Q,QAEF,QAA8,QAI4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Retrieving a Disk Volume Serial Number from C</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q69223 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+5.10 6.00 6.00a 6.00ax 7.00 | 1.00 1.50
+<PRE>MS-DOS                      | WINDOWS
+</PRE>kbprg
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The C Run-time (CRT) included with:
+<P>
+<P><PRE>    - Microsoft C for MS-DOS, versions 5.1, 6.0, 6.0a, and 6.0ax
+    - Microsoft C/C++ for MS-DOS, version 7.0
+    - Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Beginning with MS-DOS version 4.0, a semi-random 32-bit binary
+identification number (ID) is assigned to each disk that MS-DOS
+formats. The volume serial number (or ID) is stored at offset 27H to
+2AH in the boot sector of each disk.
+<P>
+NOTE: code compiled with Visual C++ version 1.5 may yield the following
+message from Windows NT:
+<P>
+<PRE>   An applicaion has attempted to directly access the hard disk, which
+   cannot be supported. This may cause the application to function
+   incorrectly.
+
+</PRE>It provides Terminate and Ignore buttons. If the user is logged on with
+Administrative privileges, this will succeed for a FAT partition, else it
+fails for a FAT partition. It always fails for an NTFS partition. After
+clicking Terminate or Ignore the program returns with the error message
+that has been coded (error on int 25).
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following program illustrates how to retrieve this information:
+<P>
+<PRE>/***************************************************************/
+/*                                                             */
+/* This program reads the volume serial number (or ID) from    */
+/* the boot sector of a specified disk. The DOS interrupt 25   */
+/* Absolute Disk Read is used to read in the boot sector.      */
+/*                                                             */
+/* Note: The volume ID is only implemented from MS-DOS 4.0     */
+/*       and later.                                            */
+/*                                                             */
+/* The output consists of the OEM name and version of the      */
+/* disk-formatting program (stored at offset 03H to 0AH in the */
+/* boot sector), the disk volume label, and the disk-volume    */
+/* serial number.                                              */
+/*                                                             */
+/***************************************************************/
+
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;dos.h&gt;
+#include &lt;conio.h&gt;
+
+char bootsector[1024];
+char volume[12];
+char ver[9];
+char block[10];
+
+void main(void)
+</PRE>{
+<PRE>   int ax, _far *p, drive;
+   struct find_t fileinfo;
+   char filename[13], _far *myvar, _far *q;
+   union REGS inregs, outregs;
+   struct SREGS segregs;
+
+   printf("Enter drive number (0=A,1=B,2=C, ...): ");
+   drive = getche() - '0';
+
+   /**************************************/
+   /* Parameter block for int 25H        */
+   /* Bytes    Description               */
+   /* -------  -----------               */
+   /* 00H-03H  32-bit sector number      */
+   /* 04H-05H  Number of sectors to read */
+   /* 06H-07H  Offset of buffer          */
+   /* 08H-09H  Segment of buffer         */
+   /**************************************/
+
+   block[0] = block[1] = block[2] = block[3] = 0;
+   block[4] = 1;
+   block[5] = 0;
+
+   myvar = bootsector;
+
+   p = (int *)&amp;block[6];
+   *p = FP_OFF(myvar);
+
+   p = (int *)&amp;block[8];
+   *p = FP_SEG(myvar);
+
+   q = block;
+   inregs.h.al = (char)drive;
+   inregs.x.cx = -1;
+   inregs.x.bx = FP_OFF(q);
+   segregs.ds = FP_SEG(q);
+   ax = int86x(0x25, &amp;inregs, &amp;outregs, &amp;segregs);
+
+   /*** Error routine ***/
+
+   if (outregs.x.cflag)
+   {
+      printf("\n\nerror on int 25\n");
+      printf("this is AX:%04X", ax);
+      exit(-1);
+   }
+
+   /*** Output ***/
+
+   printf("\n\nDrive %c\n-------\n\n", drive +'A');
+
+   strncpy(ver, &amp;bootsector[3], 8);
+   printf("OEM name and version: %s\n", ver);
+
+   /* Use _dos_findfirst for the volume label */
+
+   filename[0] = (char)(drive + 'A');
+   filename[1] = '\0';
+   strcat(filename, ":\\*.*");
+   if(!_dos_findfirst(filename, _A_VOLID, &amp;fileinfo))
+   printf("Volume name         : %s\n", fileinfo.name);
+
+   /* Before printing serial number, check if version &gt;= 4.x */
+
+   if ((ver[6] == '.') &amp;&amp; (ver[5] &gt;= '4') &amp;&amp; (ver[5] &lt;= '9'))
+      printf("Serial number       : %02X%02X-%02X%02X\n\n",
+                              (unsigned char) bootsector[0x2a],
+                              (unsigned char) bootsector[0x29],
+                              (unsigned char) bootsector[0x28],
+                              (unsigned char) bootsector[0x27]);
+}
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 5.10 6.00 6.00a 6.00ax 7.00 1.00 1.50<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: CRTIss<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

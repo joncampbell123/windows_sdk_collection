@@ -1,0 +1,224 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: SetFieldNull() Asserts in DBCORE.CPP Line 4055 or 4062 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q157876">
+<META NAME="KBModify" CONTENT="1997/09/19">
+<META NAME="KBCreate" CONTENT="1996/10/18">
+<META NAME="Keywords" CONTENT="MfcDatabase vcbuglist420 vcfixlist500 kbprg kbtshoot">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Calling SetFieldNull() for a date or, in UNICODE builds, a text field causes an assert in DBCORE.CPP at line 4055 or line 4062:     void CRecordset::SetNullParamStatus(DWORD nParam)    {      ASSERT(nParam                                           ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QBXT,QA7O,QA7N,QA5V,QA28,QATJ,QAIB,QAHE,QAMB,QAY5,QAUD,QAR4,QAKD,QAGX V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: SetFieldNull() Asserts in DBCORE.CPP Line 4055 or 4062</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 19, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q157876</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++, 32-bit Edition, version 4.2
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Calling SetFieldNull() for a date or, in UNICODE builds, a text field
+causes an assert in DBCORE.CPP at line 4055 or line 4062:
+<P>
+<PRE>   void CRecordset::SetNullParamStatus(DWORD nParam)
+   {
+     ASSERT(nParam &lt; m_nParams);                         // &lt;= Line 4055
+
+     m_pbParamFlags[nParam] |= AFX_SQL_FIELD_FLAG_NULL;
+   }
+
+   void CRecordset::ClearNullParamStatus(DWORD nParam)
+   {
+     ASSERT(nParam &lt; m_nParams);                         // &lt;= Line 4062
+
+     m_pbParamFlags[nParam] &amp;= ~AFX_SQL_FIELD_FLAG_NULL;
+   }
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+During Update(), both the RFX_Date() and RFX_Text() functions incorrectly
+add the date or unicode text field to the parameter map:
+<P>
+<PRE>   case CFieldExchange::NameValue:
+     ...
+     // Fall through
+
+   case CFieldExchange::Value:
+     ...
+     // Add the member address to the param map
+     pFX-&gt;m_prs-&gt;m_mapParamIndex.SetAt(&amp;value, (void*)nField);
+
+</PRE>A subsequent call to SetFieldNull() will try to determine whether the field
+is a parameter by checking the index returned by GetBoundParamIndex(). An
+index &gt;= 0 implies that the field is a parameter:
+<P>
+<PRE>   void CRecordset::SetFieldNull(void* pv, BOOL bNull)
+   {
+     ...
+    int nIndex = GetBoundParamIndex(pv);
+     if (nIndex &gt;= 0)
+     {
+      if (bNull)
+         SetNullParamStatus(nIndex);
+       else
+         ClearNullParamStatus(nIndex);
+       return;
+     }
+     ... // Handle the case where the field is not a parameter
+   }
+
+</PRE>Because the RFX function incorrectly added the field to the parameter map,
+an index &gt;= 0 is returned by GetBoundParamIndex(). Because of this,
+SetFieldNull() incorrectly calls the function to set or clear the Null
+parameter status rather than the Null field status. If the index returned
+by GetBoundParamIndex() is less the member variable CRecordset::m_nParams,
+then the assert will occur:
+<P>
+<PRE>   ASSERT(nParam &lt; m_nParams);
+
+</PRE><h2>RESOLUTION</h2>
+ 
+<P>
+Create your own RFX_Date() or RFX_Text() function and comment out the line
+that adds the field to the parameter map. See the MORE INFORMATION section
+below for more for the steps to accomplish this.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This bug was corrected in Visual C++
+version 5.0.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following steps detail one method of making the needed changes in
+RFX_Date or RFX_Text:
+
+<OL><P><LI>Copy the implementation of RFX_Date() or RFX_Text()
+   (MSDEV\MFC\SRX\DBRFX.CPP) into a new .cpp file, and rename the function
+   to something such as RFX_Date2() or RFX_Text2(). Create a header file
+   for the .cpp file and include that in your recordset .cpp file. Be sure
+   to type:
+<P>
+<PRE>   #include"stdafx.h"
+
+   at the top of your new .cpp file, and include the .cpp file in your
+   project.
+
+</PRE><P><LI>Change all RFX_Date() calls in your recordset's DoFieldExchange() to
+   calls to RFX_Date2(), or change all RFX_Text() to RFX_Text2().
+
+<P><LI>In your new RFX_Date2() or RFX_Text2() implementation, comment out the
+   following line, which appears under the CFieldExchange::Value case:
+<P>
+<PRE>   //      pFX-&gt;m_prs-&gt;m_mapParamIndex.SetAt(&amp;value, (void*)nField);
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: crash gpf
+<P>
+
+Keywords          : MfcDatabase vcbuglist420 vcfixlist500 kbprg kbtshoot<BR>
+Technology        : kbMfc<BR>
+Version           : 4.2<BR>
+Platform          : NT WINDOWS<BR>
+Issue type        : kbbug<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 19, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

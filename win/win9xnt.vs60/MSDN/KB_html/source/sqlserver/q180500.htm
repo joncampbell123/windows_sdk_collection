@@ -1,0 +1,258 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Missing Device Causes Database to Be Marked Suspect </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q180500">
+<META NAME="KBModify" CONTENT="1998/02/23">
+<META NAME="KBCreate" CONTENT="1998/02/04">
+<META NAME="Keywords" CONTENT="SSrvGen">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  SQL Server marks a database suspect if any of the device files for the database are unavailable when it attempts to start. You may see either of the following sets of messages in the SQL Server error log:     96/11/18 10:48:32.60 kernel   udopen: O...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAZV,QABM,QAB5,QAB4,QDIR,QAMA,QAAP,QBTP,QBXS,QBWS,QBFY,QA5W,QA5E,QAY2,QAYY V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Missing Device Causes Database to Be Marked Suspect</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 23, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q180500</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+SQL Server marks a database suspect if any of the device files for the
+database are unavailable when it attempts to start. You may see either of
+the following sets of messages in the SQL Server error log:
+<P>
+<PRE>   96/11/18 10:48:32.60 kernel   udopen: Operating System Error 32 (The
+   process cannot access the file because it is being used by another
+   process.) during the creation/opening of physical device,
+   C:\DATA\SQL\MSDB.DAT
+
+   96/11/18 10:48:32.60 kernel   udactivate (primary): failed to open
+   device C:\MSSQL\DATA\MSDB.DAT for vdn 127
+
+   -or-
+
+   96/11/18 10:48:32.60 kernel   udopen: operating system error 2(The
+   system cannot find the file specified.) during the creation/opening
+   of physical device C:\MSSQL\DATA\MSDB.DAT
+
+   96/11/18 10:48:32.60 kernel   udactivate (primary): failed to open
+   device C:\MSSQL\DATA\MSDB.DAT for vdn 127
+
+</PRE>These will be followed later in the log by:
+<P>
+<PRE>   96/11/18 10:48:36.70 kernel   udread: Operating system error 6(The
+   handle is invalid.) on device 'C:\MSSQL\DATA\MSDB.DAT' (virtpage
+   0x7f000018).
+
+   96/11/18 10:48:36.77 spid11   Error : 840, Severity: 17, State: 2
+
+   96/11/18 10:48:36.77 spid11   Device 'MSDBData' (with physical name
+   'C:\MSSQL\DATA\MSDB.DAT', and virtual device number 127) is not
+   available. Please contact System Administrator for assistance.
+
+   96/11/18 10:48:36.77 spid11   Buffer 1092480 from database 'msdb'
+   has page number 0 in the page header and page number 24 in the
+   buffer header
+
+   96/11/18 10:48:37.43 spid11   Unable to proceed with the recovery of
+   dbid &lt;5&gt; because of previous errors.  Continuing with the next
+   database.
+
+</PRE>For example, performing the following steps will demonstrate the problem:
+
+<OL><P><LI>Stop SQL Server.
+
+<P><LI>Issue the following command from a command prompt at the Mssql\Data
+   directory:
+<P>
+<P><PRE>      ren msdb.dat msdb.sav
+</PRE>
+<P><LI>Start SQL Server.
+<P>
+</OL>You will see the above errors (the ones from the second set) in the SQL
+Server errorlog. If you then issue the following query in the master
+database
+<P>
+<PRE>   select name, dbid, mode, status from sysdatabases where dbid =
+   select db_id('msdb')
+
+</PRE></OL>You receive the following results:
+<P>
+<PRE>   name     dbid   mode   status
+   ------------------------------
+
+   msdb      5      0      328
+
+</PRE>The status of 328 evaluates to:
+<P>
+<PRE>   truncate log on chkpt
+   database not recovered yet
+   database is suspect
+
+</PRE>For more information, see the "Sysdatabases (Master Database Only)" topic
+in the SQL Server Books Online.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+At startup, SQL Server attempts to obtain an exclusive lock on the device
+file. If the device is being used by another process (for example, backup
+software) or if the file is missing, the scenario described above will be
+encountered. In these cases, there is usually nothing wrong with the
+devices and database. For the database to recover correctly, the device
+must be made available, and the database status must be reset.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+To work around this problem, perform the steps below. Note that the
+final step is critical.
+
+<OL><P><LI>Ensure that the device file is actually available.
+
+<P><LI>Use the supplemental stored procedure sp_resetstatus to reset the status
+   of a suspect database. If you have not already done so, create this
+   procedure by executing the Instsupl.sql script, found in the
+   Mssql\Install directory. For more information on sp_resetstatus, see the
+   "Resetting the Suspect Status" topic in the SQL Server Books Online.
+
+<P><LI>Execute sp_resetstatus in the master database for the suspect database:
+<P>
+<P><PRE>      use master
+      go
+<PRE></PRE>      exec sp_resetstatus msdb   -- replace msdb with your database name
+
+   You will see the following output:
+
+      Prior to Update sysdatabases attempt for DBName='msdb', the mode=0
+      and status=328 (status suspect_bit=256). For DBName='msdb' in
+      sysdatabases, status bit 256 was forced Off and mode was forced to
+      0. WARNING: You MUST stop/restart SQL Server prior to accessing this
+      database!
+
+</PRE><P><LI>Stop and restart SQL Server.
+
+<P><LI>Verify that the database was recovered and is available.
+
+<P><LI>Run DBCC NEWALLOC, DBCC TEXTALL, and DBCC CHECKDB.
+<P>
+</OL><h2>MORE INFORMATION</h2>
+ 
+<P>
+If the database is still marked as suspect after performing these steps,
+there may be other problems preventing the database from recovering. At
+this point, you can either restore from a good backup or set the database
+to emergency mode and use the bulk copy program (BCP) to bulk copy the data
+out. For more information, see the following article in the Microsoft
+Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q165918.htm">Q165918</A></B>
+   TITLE     : INF: Bypass (Emergency) Mode and DUMP TRANSACTION WITH
+               NO_LOG
+
+</PRE></OL>IMPORTANT: If you use this article (<B><A href="../sqlserver/q165918.htm">Q165918</A></B>) and are unsure of the full
+consequences of any of the actions you are performing, contact your primary
+support provider for assistance.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: db checkpoint<BR>
+Keywords          : SSrvGen<BR>
+Version           : WinNT:6.0 6.5<BR>
+Platform          : winnt<BR>
+Issue type        : kbprb<BR>
+Solution Type     : kbworkaround<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 23, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

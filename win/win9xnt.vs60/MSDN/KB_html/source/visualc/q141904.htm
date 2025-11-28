@@ -1,0 +1,228 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Use SQL Aggregrate Functions with the MFC DAO Classes </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q141904">
+<META NAME="KBModify" CONTENT="1997/06/26">
+<META NAME="KBCreate" CONTENT="1995/12/31">
+<META NAME="Keywords" CONTENT="kbprg MfcDAO">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  There are two ways to use SQL aggregate functions to retrieve information with the MFC DAO classes. One method uses the GetFieldValue() member function of the CDaoRecordset class to retrieve the values. The other involves modifying a CDaoRecordset-...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAY5,QAB9,QABM,QAUJ,QBV8,QABO,QAPN,QARM,QAVX,QAVW,QAY2,QAH4,QAF6,QAUD,QAPF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Use SQL Aggregrate Functions with the MFC DAO Classes</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q141904</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++, 32-bit Edition, versions 4.0, 4.1, 4.1b, 4.2,
+<P><PRE>     4.2b, 5.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+There are two ways to use SQL aggregate functions to retrieve information
+with the MFC DAO classes. One method uses the GetFieldValue() member
+function of the CDaoRecordset class to retrieve the values. The other
+involves modifying a CDaoRecordset-derived class by changing the SQL
+statement used to open the recordset and placing column alias names in the
+DFX calls of the recordset's DoFieldExchange() member function.
+<P>
+NOTE: You can't use the technique described in the MFC Encylopedia article
+"Recordset: Obtaining SUMs and Other Aggregate Results (ODBC)" to work with
+SQL aggregate functions under DAO. That article pertains to the MFC ODBC
+classes only.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>SQL Aggregate Functions Using CDaoRecordset::GetFieldValue()</h3>
+ 
+<P>
+The Visual C++ documentation discusses how to use the
+CDaoRecordset::GetFieldValue() member function. This function allows you to
+use a CDaoRecordset object without deriving from it. One technique for
+retrieving records returned from a SQL statement that contains an aggregate
+function is to use this GetFieldValue() member function to retrieve the
+values.
+<P>
+For example, assume that you have a student database that contains the
+name of the student and scores from tests they have taken. If you want the
+average score for each of the students, you could use this code:
+<P>
+<PRE>   CDaoDatabase db;
+   db.Open(_T("d:\\scores.mdb"));
+
+   CDaoRecordset rs(&amp;db);
+   rs.Open(dbOpenDynaset,
+      _T("SELECT [Student Name], AVG([Test Score]) AS AvgScore "
+         "FROM Scores GROUP BY [Student Name]"));
+
+   while (!rs.IsEOF())
+   {
+      COleVariant varName;
+      COleVariant varAvg;
+      varName = rs.GetFieldValue(_T("student name"));
+      varAvg = rs.GetFieldValue(_T("AvgScore"));
+
+      // You know that the return values are BSTR and VT_R8 types.
+      // if you didn't know, you would have to do some checking
+      // here. Look at the vt member of the COleVariant to see what
+      // type the data is.
+
+      // Do something with the data. This sample prints the
+      // information to the output window of the debugger.
+      TRACE(_T("%s\n%f\n"), V_BSTRT(&amp;varName), V_R8(&amp;varAvg));
+      rs.MoveNext();
+   }
+   rs.Close();
+   db.Close();
+
+</PRE>Notice that the alias name "AvgScore" is used for the column that will
+contain the average score for each student.
+<P>
+<P><h3>SQL Aggregate Functions Using a CDaoRecordset-Derived Class</h3>
+ 
+<P>
+To create a CDaoRecordset-derived class that retrieves the results of a SQL
+statement with an SQL aggregate function, you need to:
+
+<UL><LI>Explicitly specify the full SQL statement as the second argument of the
+   Open() call or return the full SQL statement from the GetDefaultSQL()
+   member function. In the SQL statement, specify a column alias for the
+   functions that will contain the results of SQL aggregate functions such
+   as AVG() or SUM(). For example:
+<P>
+   rs.Open(dbOpenDynaset,
+<P><PRE>       _T("SELECT [Student Name], AVG([Test Score]) AS AvgScore "
+<PRE></PRE>          "FROM Scores GROUP BY [Student Name]"));
+
+</PRE><LI>Modify the DFX functions in the DoFieldExchange() member function of
+   the CDaoRecordset-derived class so that it uses the alias names. For
+   example:
+<P>
+<PRE>   void CMyRecordset::DoFieldExchange(CDaoFieldExchange* pFX)
+   {
+      ...
+      DFX_Text(pFX, _T("[student name]"), m_student_name);
+      DFX_Double(pFX, _T("[AvgScore]"), m_avg_score);
+      ...
+   }
+
+</PRE></UL>Using this second technique makes the code a little cleaner. For example,
+after the CDaoRecordset-derived class has been modified as described above,
+here is what the code might look like:
+<P>
+<PRE>   CAvgSet rs;
+   rs.Open(dbOpenDynaset,
+      _T("SELECT [Student Name], AVG([Test Score]) AS AvgScore "
+         "FROM Scores GROUP BY [Sudent Name]"));
+   while (!rs.IsEOF())
+   {
+      TRACE(_T("%s\n%f\n"), (LPCTSTR)rs.m_student_name, rs.m_test_score);
+      rs.MoveNext();
+   }
+   rs.Close();
+
+</PRE>Notice that there isn't a need to work with COleVariants unlike the
+GetFieldValue() technique described previously.
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : kbprg MfcDAO<BR>
+Technology          : kbMfc<BR>
+Version             : 4.0 4.1 4.1b 4.2 4.2b 5.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

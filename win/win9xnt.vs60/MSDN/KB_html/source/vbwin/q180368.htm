@@ -1,0 +1,371 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Retrieve and Update a SQL Server Text Field Using ADO </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q180368">
+<META NAME="KBModify" CONTENT="1998/02/04">
+<META NAME="KBCreate" CONTENT="1998/02/02">
+<META NAME="Keywords" CONTENT="vb5all vb5howto">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  This article demonstrates how to access and update large text fields (Binary Large Objects/BLOBS) using ADO. This is accomplished using the GetChunk and AppendChunk methods of an ADODB RecordSet's field object.  MORE INFORMATION  Step by Step Sampl...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QANF,QATX,QAFF,QAPN,QAXB,QA5V,QAGB,QA7O,QACJ,QBXS,QBVV,QBD2,QAGI,QAC1,QAMB V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Retrieve and Update a SQL Server Text Field Using ADO</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 4, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q180368</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual Basic Control Creation, Professional, and Enterprise
+   Editions for Windows, version 5.0
+   on the following platforms: NT, Win95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article demonstrates how to access and update large text fields
+(Binary Large Objects/BLOBS) using ADO. This is accomplished using the
+GetChunk and AppendChunk methods of an ADODB RecordSet's field object.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Step by Step Sample Project</h3>
+ 
+
+<OL><P><LI>Open a new project. Form1 is created by default. In Projects,
+   References, set a reference to the Microsoft ActiveX Data Objects 1.5
+   Library.
+
+<P><LI>Add a new standard module to your project and paste in the following
+   code:
+<P>
+<P><PRE>      Global cn As ADODB.Connection
+      Global cmd1 As ADODB.Command
+      Global rsset As ADODB.Recordset
+</PRE><P>
+<P><PRE>      Const BLOCKSIZE As Long = 4096
+</PRE><P>
+<P><PRE>      Public Sub ColumnToFile(Col As ADODB.Field, DiskFile As String)
+       'Retrieves data from the database and puts it into a temp file on
+       'the hard drive.
+       'The size of the chunk is in the variable BLOCKSIZE (4096).
+</PRE><P>
+<P><PRE>      Dim NumBlocks As Long  'Holds the number of chunks.
+<PRE></PRE>       Dim LeftOver As Long   '# of chars left over after last whole chunk.
+       Dim strData As String
+       Dim DestFileNum As Long
+       Dim I As Long
+       Dim ColSize As Long
+
+       'Make sure that you aren't in an empty recordset.
+       If Not rsset.EOF And Not rsset.BOF Then
+        ColSize = Col.ActualSize
+
+        'If filelength &gt; 0, then it is soiled:
+        ' throw away contents.
+        If Len(Dir$(DiskFile)) &gt; 0 Then
+         Kill DiskFile
+        End If
+
+        DestFileNum = FreeFile
+        Open DiskFile For Binary As DestFileNum
+        NumBlocks = ColSize \ BLOCKSIZE
+        LeftOver = ColSize Mod BLOCKSIZE
+
+        'Now Write data to the file in chunks.
+        For I = 1 To NumBlocks
+         strData = String(BLOCKSIZE, 0)
+         strData = Col.GetChunk(BLOCKSIZE)
+         Put DestFileNum, , strData
+        Next I
+        strData = String(LeftOver, 0)
+        strData = Col.GetChunk(LeftOver)
+        Put DestFileNum, , strData
+
+        Close DestFileNum
+       End If
+      End Sub
+
+      Sub FileToColumn(Col As ADODB.Field, DiskFile As String)
+       'Takes data from the temp file and saves it to the database.
+
+       Dim strData As String
+       Dim NumBlocks As Long
+       Dim FileLength As Long
+       Dim LeftOver As Long
+       Dim SourceFile As Long
+       Dim I As Long
+
+       SourceFile = FreeFile
+       Open DiskFile For Binary Access Read As SourceFile
+       FileLength = LOF(SourceFile)
+       If FileLength = 0 Then
+        Close SourceFile
+        MsgBox DiskFile &amp; " Empty or Not Found."
+       Else
+        NumBlocks = FileLength \ BLOCKSIZE
+        LeftOver = FileLength Mod BLOCKSIZE
+        Col.AppendChunk Null
+        strData = String(BLOCKSIZE, 0)
+        For I = 1 To NumBlocks
+         Get SourceFile, , strData
+         Col.AppendChunk strData
+        Next I
+        strData = String(LeftOver, 0)
+        Get SourceFile, , strData
+        Col.AppendChunk strData
+        rsset.Update
+        Close SourceFile
+       End If
+      End Sub
+
+      Public Sub FileToForm(DiskFile As String, SomeControl As Control)
+       'Retrieves data from the temp file and puts it onto the control.
+
+       Dim SourceFile As Long
+       Dim FileLength As Long
+       Dim strData As String
+
+       SourceFile = FreeFile
+       Open DiskFile For Binary Access Read As SourceFile
+       FileLength = LOF(SourceFile)
+       If FileLength = 0 Then
+        Close SourceFile
+        MsgBox DiskFile &amp; " Empty or Not Found."
+       Else
+        strData = String(FileLength, 0)
+        Get SourceFile, , strData
+        SomeControl.Text = strData
+        Close SourceFile
+       End If
+      End Sub
+
+      Sub FormToFile(DiskFile As String, SomeControl As Control)
+       'Saves data from the form into a temp file on the local hard drive.
+
+       Dim DestinationFile As Long
+       Dim FileLength As Long
+       Dim strData As String
+
+       If Len(Dir$(DiskFile)) &gt; 0 Then
+        Kill DiskFile
+       End If
+       DestinationFile = FreeFile
+       Open DiskFile For Binary As DestinationFile
+       strData = SomeControl.Text
+       Put DestinationFile, , strData
+       Close DestinationFile
+      End Sub
+
+</PRE><P><LI>Add a new form to your project and also do the following:
+<P>
+   a. Add a RichTextBox control and set its name property to "rtbText."
+<P>
+   b. Add a CommandButton and set its name property to "cmdPrev" and its
+<P><PRE>      Caption property to "Prev."
+</PRE><P>
+   c. Add a CommandButton and set its name property to "cmdNext" and its
+<P><PRE>      Caption property to "Next."
+</PRE><P>
+   d. Add a CommandButton and set its name property to "cmdSave" and its
+<P><PRE>      Caption property to "Update."
+</PRE>
+<P><LI>Paste the following code into the form:
+<P>
+<P><PRE>      Option Explicit
+</PRE><P>
+<P><PRE>      Dim DiskFile As String
+</PRE><P>
+<P><PRE>      Private Sub cmdNext_Click()
+       If (rsset.RecordCount &gt; 0) And (Not rsset.EOF) Then
+<PRE></PRE>        rsset.MoveNext
+        If Not rsset.EOF Then
+         rtbText.Text = ""
+         ColumnToFile rsset.Fields("pr_info"), DiskFile
+         FileToForm DiskFile, rtbText
+        Else
+         rsset.MoveLast
+        End If
+       End If
+      End Sub
+
+      Private Sub cmdPrev_Click()
+       If (rsset.RecordCount &gt; 0) And (Not rsset.BOF) Then
+        rsset.MovePrevious
+        If Not rsset.BOF Then
+         rtbText.Text = ""
+         ColumnToFile rsset.Fields("pr_info"), DiskFile
+         FileToForm DiskFile, rtbText
+        Else
+         rsset.MoveFirst
+        End If
+       End If
+      End Sub
+
+      Private Sub cmdSave_Click()
+       FormToFile DiskFile, rtbText
+       FileToColumn rsset.Fields("pr_info"), DiskFile
+      End Sub
+
+      Private Sub Form_Activate()
+       rtbText.Text = ""
+       If rsset.RecordCount &gt; 0 Then
+        rsset.MoveFirst
+        ColumnToFile rsset.Fields("pr_info"), DiskFile
+        FileToForm DiskFile, rtbText
+       End If
+      End Sub
+
+      Private Sub Form_Load()
+
+       Dim ConnectString As String
+       Dim anerror As ADODB.Error
+       Dim Sql As String
+
+       On Error GoTo handler
+
+       DiskFile = App.Path &amp; "\BLOB.txt"
+
+       'Set the connect string to use pubs on your SQL server.
+       ConnectString = _
+       "Driver={SQL SERVER};Server=&lt;yourserver&gt;;Database=pubs;UID=sa;pwd=;"
+       Sql = "SELECT pr_info FROM pub_info;"
+       Set cn = New ADODB.Connection
+       cn.ConnectionString = ConnectString
+       cn.Open
+       Set rsset = New ADODB.Recordset
+       rsset.Open Sql, cn, adOpenKeyset, adLockOptimistic, adCmdText
+      Exit Sub
+
+      handler:
+       For Each anerror In cn.Errors
+        Debug.Print anerror.Number &amp; ":  " &amp; anerror.Description &amp; _
+        " - " &amp; anerror.SQLState
+       Next anerror
+      End Sub
+
+</PRE><P><LI>Change the ServerName in the connectstring to your server name.
+
+<P><LI>Run the sample project. The RichTextBox will contain the first record
+   of the recordset.
+
+<P><LI>Select the "Next" button and you will see the contents of the
+   RichTextBox change to the next record until you reach the last record.
+   The "Next" button is calling the recordset's "MoveNext" method and then
+   calling the ColumnToFile and FileToForm methods.
+
+<P><LI>Select the "Prev" button and you will see the contents of the
+   RichTextBox change to the previous record until you reach the first
+   record. The "Prev" button is calling the recordset's "MovePrevious"
+   method and then calling the ColumnToFile and FileToForm methods.
+
+<P><LI>Type something new in the text box and click "Update" to modify the
+   text field in whatever record you are on. The "Update" button calls the
+   FormToFile and FileToColumn methods, which in turn calls the recordset's
+   "Update" method. The new data should get updated in the database.
+<P>
+</OL>(c) Microsoft Corporation 1998, All Rights Reserved.
+Contributions by Randy Russell, Microsoft Corporation
+<P>
+(c) Microsoft Corporation 1998, All Rights Reserved.
+Contributions by Scott Mason, Microsoft Corporation
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: chunk BLOB<BR>
+Keywords          : vb5all vb5howto<BR>
+Technology        : ado<BR>
+Version           : WINDOWS:5.0<BR>
+Platform          : NT Win95 WINDOWS<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 4, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

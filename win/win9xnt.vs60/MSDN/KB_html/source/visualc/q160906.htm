@@ -1,0 +1,406 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Use MFC 4.2 ODBC Classes in an ISAPI DLL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q160906">
+<META NAME="KBModify" CONTENT="1997/07/31">
+<META NAME="KBCreate" CONTENT="1996/12/12">
+<META NAME="Keywords" CONTENT="MfcDatabase kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Beginning with MFC 4.2, it is possible to use the MFC ODBC classes within the multithreaded environment of an ISAPI DLL. Versions of MFC ODBC classes prior to Visual C++ 4.2 were not thread-safe and should not be used in a ISAPI DLL.  The remainder...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QA9E,QAB4,QAUQ,QAGI,QDNN,QAO3,QANE,QABA,QABO,QAPF,QAVZ,QAAP,QAGB,QABG V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Use MFC 4.2 ODBC Classes in an ISAPI DLL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 31, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q160906</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++, 32-bit Edition, versions 4.2, 4.2b, 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Beginning with MFC 4.2, it is possible to use the MFC ODBC classes within
+the multithreaded environment of an ISAPI DLL. Versions of MFC ODBC classes
+prior to Visual C++ 4.2 were not thread-safe and should not be used in a
+ISAPI DLL.
+<P>
+The remainder of this article explores the use of MFC-based Database
+classes within an ISAPI DLL and includes the following:
+
+<UL><LI>General Rules or Using MFC ODBC in a ISAPI DLL
+<LI>How ISAPI and Internet Information Server Work
+<LI>Debugging Tips
+<LI>Sample Code
+<P>
+</UL><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>General Rules for Using MFC ODBC in a ISAPI DLL</h3>
+ 
+<P>
+An ISAPI DLL is running as part of an NT Service. Therefore, all the rules
+and best practices using MFC ODBC in a NT Service apply. Specifically:
+
+<UL><LI>Use an ODBC driver that is thread-safe.
+
+<LI>Use a global instance of CCriticalSection to provide synchronization
+   when using MFC ODBC classes.
+
+<LI>Avoid using MFC ODBC globally or across multiple threads.
+
+<LI>Use a system DSN for your ODBC DataSource.
+
+<LI>It may be necessary to impersonate a valid NT user to connect to a
+   remote data source such as SQL Server.
+
+<LI>Do not use MFC DAO or the DAO SDK within your ISAPI DLL.
+<P>
+</UL>Details for these procedures are provided in the Knowledge Base MFC ODBC
+and NT Services listed in the REFERENCES section of this article.
+<P>
+<P><h3>How ISAPI and Internet Information Server Work</h3>
+ 
+<P>
+Internet Information Server (IIS) maintains a thread pool to handle
+requests made to an ISAPI DLL. If a request is made of an ISAPI DLL, the
+thread will call the DLL's entry point (HttpExtensionProc) and follow it to
+whatever the extension does until it returns. If multiple users are hitting
+the page, then the DLL entry point gets called by an additional thread
+before the prior thread (or threads) have returned.
+<P>
+If a user hits "refresh" repeatedly, the browser ignores the responses to
+any outstanding requests and submits a new request. Because of the
+"stateless" nature of HTTP, there is no way for the server to know that the
+browser is not still waiting for the request. Therefore, when a user hits
+"refresh" repeatedly, he or she is emulating a large group of users hitting
+the DLL simultaneously.
+<P>
+You can use CCriticalSection to provide safety in your code, and hit the
+refresh button of a browser repeatedly to verify that your code and its
+underlying components are thread-safe. Use of Critical Sections will help
+create thread-safe code, but it also will impact performance of the ISAPI
+DLL. If a user keeps hitting refresh, more and more threads will be
+blocked waiting for the original thread (and then successive threads) to
+exit the critical section.
+<P>
+<P><h3>Debugging Tips</h3>
+ 
+<P>
+There is a separate Microsoft Knowledge Base article that lists useful
+debugging tips for ISAPI DLLs. However, the following three areas stand
+out:
+<P>
+Tip 1: IIS and Caching of ISAPI DLLs
+<P>
+Internet Information Server will load an ISAPI DLL the first time the DLL
+is called, and will then cache it. It will not unload the ISAPI DLL until
+IIS stops. When you are making frequent changes to an ISAPI DLL, it can be
+time consuming to start and stop IIS with each rebuild of the DLL. There is
+a registry entry, however, that will force IIS to flush the ISAPI DLL from
+memory after it is no longer used. Consult the IIS 2.0 on-line
+documentation, Chapter 10 "Configuring Registry Entries," for details on
+how to use the CacheExtensions registry entry. Note that CacheExtensions
+should only be used for debugging and not in a production environment for
+performance reasons.
+<P>
+Tip 2: Validating Thread Safety with a Console Application
+<P>
+You may also want to validate your code in a multithreaded environment
+other than an ISAPI DLL. Sample code is provided below for a console
+application that spawns threads and performs database operations within
+them. This will help determine if a problem is in your code or in the
+underlying ODBC components used by your code. Debugging a console
+application can also be easier than debugging a ISAPI DLL. For tips on
+using MFC ODBC in a console application, see the REFERENCES section below.
+<P>
+Tip 3:  Identifying the Reason for Network Errors
+<P>
+When attempting operations with MFC ODBC, you may get an exception thrown
+with information such as this:
+<P>
+<PRE>   *   [State=01000][Error=1326][Microsoft][ODBC SQLServer
+       Driver][dbnmpntw]ConnectionOpen (CreateFile()).
+
+   *   [State=08001][Error=1326][Microsoft][ODBC SQL Server Driver]Unable
+       to connect to datasource.
+
+</PRE>A error message with "[Error=1326]" usually relates to a network error.
+You won't find these error numbers explained in the ODBC documentation.
+For the sample message given above, you can discover what the network
+error is with the following command:
+<P>
+<PRE>    net helpmsg 1326
+
+</PRE><h3>Sample Code</h3>
+ 
+<P>
+Sample 1: Using CCriticalSection within an ISAPI DLL
+<P>
+The following sample code demonstrates how to use a global instance of
+CCriticalSection to protect use of MFC ODBC classes with an MFC ISAPI DLL:
+<P>
+<PRE>    CCriticalSection crit;
+
+    void CMyExtension::Default(CHttpServerContext* pCtxt)
+    {
+        int nRecCount = 1;
+
+        StartContent(pCtxt);
+        WriteTitle(pCtxt);
+
+        CMyRecSet rs;
+
+        // Safely open recordset
+        crit.Lock();
+        rs.Open();
+        crit.Unlock();
+
+        // Safely traverse through recordset
+        while( !rs.IsEOF() )
+        {
+            // BEGIN ... your code goes here ...
+            CString tmp;
+            tmp.Format( _T("Record #%d&lt;BR&gt;"), nRecCount++ );
+            *pCtxt &lt;&lt; tmp;
+            // END ... your code goes here ...
+
+            crit.Lock();
+            rs.MoveNext();
+            crit.Unlock();
+        }
+
+        // Safely close recordset
+        crit.Lock();
+        rs.Close();
+        crit.Unlock();
+
+        EndContent(pCtxt);
+    }
+
+</PRE>Sample 2: Validating Code in a Console Application
+<P>
+The console application below emulates the multithreaded environment of an
+ISAPI DLL. This provides a simple way to debug your code as well as verify
+that the code and its underlying ODBC components are thread-safe.
+<P>
+Use the following steps to build this test code:
+
+<OL><P><LI>Create a new project workspace.
+
+<P><LI>Select console.
+
+<P><LI>Modify the project's Build Settings to:
+<P>
+   - use MFC in a shared DLL (from the General tab).
+<P>
+   - use the "Debug Multithreaded DLL" for the Run Time library (from
+<P><PRE>     the C++ tab, Code Generation category). If building a release
+     version, use the "Multithreaded DLL."
+</PRE>
+<P><LI>Insert a file with the following code:
+<P>
+<PRE>    #include &lt;afxwin.h&gt;             // MFC core and standard components
+    #include &lt;afxdb.h&gt;              // MFC Database classes
+    #include &lt;afxmt.h&gt;              // MFC Multithreading Support
+
+    #include &lt;iostream.h&gt;
+
+    #define MT_MAX_OPENEX   10      // # of times open DB per/thread
+    #define MT_MAX_THREAD   10      // # of threads to spawn
+    #define MT_MILLISECONDS 10000   // # of millisec to wait for per/thread
+
+    int ThreadNo = 0;               // instance of thread giving output
+
+    CCriticalSection lock;          // Lock critical sections
+
+    UINT ThreadProc(LPVOID)
+    {
+        CString     strConnect = _T("DSN=CharlotteTown; "
+                                    "SERVER=CharlotteTown; UID=sa; PWD=;");
+        CDatabase   *pDb=NULL;
+
+        lock.Lock();
+        int m_ThreadNo = ++ThreadNo;
+        lock.Unlock();
+
+        pDb = new CDatabase();
+
+        for( int i = 0; i &lt; MT_MAX_OPENEX; i++)
+        {
+            lock.Lock();
+            // Your code goes here. This sample just tests opening/closing
+            // a database.
+            pDb-&gt;OpenEx(strConnect,
+                        CDatabase::noOdbcDialog |
+                        CDatabase::useCursorLib);
+            pDb-&gt;Close();
+            lock.Unlock();
+
+            cout &lt;&lt; "Thread #" &lt;&lt; m_ThreadNo;
+            cout &lt;&lt; "  Iteration #" &lt;&lt; i &lt;&lt; endl;
+        }
+
+        if (pDb != NULL)
+            delete pDb;
+
+        cout &lt;&lt; "Thread #" &lt;&lt; m_ThreadNo &lt;&lt; " finished." &lt;&lt; endl;
+
+        return 0;
+    }
+
+    void main ( void )
+    {
+        DWORD   dwThread[ MT_MAX_THREAD ];  // Thread ID
+        HANDLE  hThreads[ MT_MAX_THREAD ];  // Thread Handle
+
+        // Spawn Threads
+        for( int i = 0; i &lt; MT_MAX_THREAD; i++ )
+        {
+            hThreads[i] = CreateThread( NULL,
+                                        0,
+                                        (LPTHREAD_START_ROUTINE)ThreadProc,
+                                        NULL,
+                                        0,
+                                        &amp;dwThread[ i ] );
+        }
+
+        // Wait for threads to finish, then clean up
+        WaitForMultipleObjects( (DWORD) MT_MAX_THREAD,
+                                hThreads,
+                                TRUE,
+                                (DWORD) MT_MAX_THREAD * MT_MILLISECONDS);
+
+        for( i = 0; i &lt; MT_MAX_THREAD; i++ )
+        {
+            CloseHandle(hThreads[i]);
+        }
+    }
+
+</PRE></OL><h2>REFERENCES</h2>
+ 
+<P>
+For more information about thread safety with MFC ODBC, please see:
+<P>
+"ODBC Classes and Threads" in the Visual C++ Books On-Line, or the
+following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q156138.htm">Q156138</A></B>
+   TITLE     : How to Use MFC ODBC/DAO, DAO SDK in NT Service or with
+               Threads
+
+</PRE>For more information about MFC in a console application, please see the
+following articles in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q152696.htm">Q152696</A></B>
+   TITLE     : How to Use the MFC Database Classes in Console Applications
+
+   ARTICLE-ID: <B><A href="../visualc/q150764.htm">Q150764</A></B>
+   TITLE     : PRB: CString::LoadString Fails in Console Application
+
+</PRE>For more information about debugging tips for ISAPI DLL, please see the
+following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID:  <B><A href="../isapi/q152054.htm">Q152054</A></B>
+   TITLE:       Tips for Debugging ISAPI DLLs
+</PRE> 
+<PRE>Keywords          : MfcDatabase kbusage
+Technology        : kbMfc
+Version           : 4.2 4.2b 5.0
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 31, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,410 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: CString::Format Gives Assertion Failed, Access Violation </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q127038">
+<META NAME="KBModify" CONTENT="1997/09/18">
+<META NAME="KBCreate" CONTENT="1995/03/09">
+<META NAME="Keywords" CONTENT="MfcMisc kbbuglist kbcode kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Using CString::Format causes one of the following:   - Assertion Failed:              : File strex.cpp, Line 360     -or-   - Assertion Failed:              : File strex.cpp, Line 348     -or-   - An Access Violation with output similar to this:   ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGX,QDNG,QA4Q,QATX,QAH4,QAFV,QA1S,QAHE,QAI4,QDIX,QAKP,QANY,QAY5,QAR4,QAM1 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: CString::Format Gives Assertion Failed, Access Violation</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q127038</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+2.00 2.10
+WINDOWS NT
+kbprg kbfixlist kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   Microsoft Visual C++, 32-bit Edition, versions 2.0, 2.1
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Using CString::Format causes one of the following:
+
+<UL><LI>Assertion Failed: &lt;application&gt;: File strex.cpp, Line 360
+<P>
+   -or-
+
+<LI>Assertion Failed: &lt;application&gt;: File strex.cpp, Line 348
+<P>
+   -or-
+
+<LI>An Access Violation with output similar to this:
+<P>
+<P><PRE>    Unhandled Exception in &lt;application&gt; (MFC30D.DLL)
+    0xC0000005: Access Violation
+</PRE><P>
+</UL><h2>CAUSE</h2>
+ 
+<P>
+There are three known bugs in the CString::Format() member function in MFC
+version 3.0 that can cause this behavior:
+
+<UL><LI>Bug One: Using a format width specifier that is greater than the length
+   of the data passed to CString::Format().
+
+<LI>Bug Two: Using an asterisk width specifier.
+
+<LI>Bug Three: Using an asterisk precision specifier.
+<P>
+</UL><h2>RESOLUTION</h2>
+ 
+<P>
+Create an updated function by using the code listed below. To use the code,
+define a new function named Format. The new format function will take a
+CString as the first parameter. Then use the new Format function instead of
+CString::Format.
+<P>
+For example, instead of using this:
+<P>
+<PRE>   CString str;
+   str.Format(...)
+
+</PRE>use this:
+<P>
+<PRE>   CString str;
+   Format(str,...)
+
+</PRE><h3>Updated CString::Format Code with Necessary Constant Definitions</h3>
+ 
+<P>
+<PRE>#define FORCE_ANSI      0x10000
+#define FORCE_UNICODE   0x20000
+
+// formatting (using wsprintf style formatting)
+void Format(CString&amp; str, LPCTSTR lpszFormat, ...)
+</PRE>{
+<PRE>     ASSERT(AfxIsValidString(lpszFormat, FALSE));
+
+     va_list argList;
+     va_start(argList, lpszFormat);
+
+     // make a guess at the maximum length of the resulting string
+     int nMaxLen = 0;
+     for (LPCTSTR lpsz = lpszFormat; *lpsz != '\0';
+          lpsz = _tcsinc(lpsz))
+     {
+          // handle '%' character, but watch out for '%%'
+          if (*lpsz != '%' || *(lpsz = _tcsinc(lpsz)) == '%')
+          {
+               nMaxLen += _tclen(lpsz);
+               continue;
+          }
+
+          int nItemLen = 0;
+
+          // handle '%' character with format
+          int nWidth = 0;
+          for (; *lpsz != '\0'; lpsz = _tcsinc(lpsz))
+          {
+               // check for valid flags
+               if (*lpsz == '#')
+                    nMaxLen += 2;   // for '0x'
+               else if (*lpsz == '*')
+                    nWidth = va_arg(argList, int);
+               else if (*lpsz == '-' || *lpsz == '+' || *lpsz == '0'
+                        || *lpsz == ' ')
+                           ;
+               else // hit non-flag character
+                          break;
+          }
+          // get width and skip it
+          if (nWidth == 0)
+          {
+               // width indicated by
+               nWidth = _ttoi(lpsz);
+               for (; *lpsz != '\0' &amp;&amp; _istdigit(*lpsz);
+                        lpsz = _tcsinc(lpsz))
+                     ;
+          }
+          ASSERT(nWidth &gt;= 0);
+
+          int nPrecision = 0;
+          if (*lpsz == '.')
+          {
+               // skip past '.' separator (width.precision)
+               lpsz = _tcsinc(lpsz);
+
+               // get precision and skip it
+               if (*lpsz == '*')
+               {
+                    nPrecision = va_arg(argList, int);
+                    lpsz = _tcsinc(lpsz);
+               }
+               else
+               {
+                    nPrecision = _ttoi(lpsz);
+                    for (; *lpsz != '\0' &amp;&amp; _istdigit(*lpsz);
+                    lpsz = _tcsinc(lpsz))
+                            ;
+               }
+               ASSERT(nPrecision &gt;= 0);
+          }
+
+          // should be on type modifier or specifier
+          int nModifier = 0;
+          switch (*lpsz)
+          {
+          // modifiers that affect size
+          case 'h':
+               nModifier = FORCE_ANSI;
+               lpsz = _tcsinc(lpsz);
+               break;
+          case 'l':
+               nModifier = FORCE_UNICODE;
+               lpsz = _tcsinc(lpsz);
+               break;
+
+          // modifiers that do not affect size
+          case 'F':
+          case 'N':
+          case 'L':
+               lpsz = _tcsinc(lpsz);
+               break;
+          }
+
+          // now should be on specifier
+          switch (*lpsz | nModifier)
+          {
+          // single characters
+          case 'c':
+          case 'C':
+               nItemLen = 2;
+               va_arg(argList, TCHAR);
+               break;
+          case 'c'|FORCE_ANSI:
+          case 'C'|FORCE_ANSI:
+               nItemLen = 2;
+               va_arg(argList, char);
+               break;
+          case 'c'|FORCE_UNICODE:
+          case 'C'|FORCE_UNICODE:
+               nItemLen = 2;
+               va_arg(argList, WCHAR);
+               break;
+
+          // strings
+          case 's':
+          case 'S':
+               nItemLen = lstrlen(va_arg(argList, LPCTSTR));
+               nItemLen = max(1, nItemLen);
+               break;
+          case 's'|FORCE_ANSI:
+          case 'S'|FORCE_ANSI:
+               nItemLen = lstrlenA(va_arg(argList, LPCSTR));
+               nItemLen = max(1, nItemLen);
+               break;
+</PRE>#ifndef _MAC
+<PRE>          case 's'|FORCE_UNICODE:
+          case 'S'|FORCE_UNICODE:
+               nItemLen = wcslen(va_arg(argList, LPWSTR));
+               nItemLen = max(1, nItemLen);
+               break;
+</PRE>#endif
+<PRE>          }
+
+          // adjust nItemLen for strings
+          if (nItemLen != 0)
+          {
+               nItemLen = max(nItemLen, nWidth);
+               if (nPrecision != 0)
+               nItemLen = min(nItemLen, nPrecision);
+          }
+          else
+          {
+               switch (*lpsz)
+               {
+               // integers
+               case 'd':
+               case 'i':
+               case 'u':
+               case 'x':
+               case 'X':
+               case 'o':
+                    va_arg(argList, int);
+                    nItemLen = 32;
+                    nItemLen = max(nItemLen, nWidth+nPrecision);
+                    break;
+
+               case 'e':
+               case 'f':
+               case 'g':
+               case 'G':
+                    va_arg(argList, _AFX_DOUBLE);
+                    nItemLen = 32;
+                    nItemLen = max(nItemLen, nWidth+nPrecision);
+                    break;
+
+               case 'p':
+                    va_arg(argList, void*);
+                    nItemLen = 32;
+                    nItemLen = max(nItemLen, nWidth+nPrecision);
+                    break;
+
+               // no output
+               case 'n':
+                    va_arg(argList, int*);
+                    break;
+
+               default:
+                    ASSERT(FALSE);  // unknown formatting option
+               }
+          }
+
+          // adjust nMaxLen for output nItemLen
+          nMaxLen += nItemLen;
+     }
+     va_end(argList);
+
+     // finally, set the buffer length and format the string
+     va_start(argList, lpszFormat);  // restart the arg list
+     str.GetBuffer(nMaxLen);
+     VERIFY(_vstprintf(str.GetBuffer(1), lpszFormat, argList) &lt;= nMaxLen);
+     str.ReleaseBuffer();
+     va_end(argList);
+</PRE>}
+<P>
+STATUS
+ 
+<P>
+Microsoft has confirmed these to be bugs in the Microsoft products listed
+at the beginning of this article. The first two bugs were fixed in MFC
+version 3.1 that shipped with Microsoft Visual C++, 32-bit Edition, version
+2.1, and the third was fixed in Visual C++, 32-bit Edition, version 2.2.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code to Reproduce Problems</h3>
+ 
+<P>
+The following code fragments illustrate the bugs.
+<P>
+Bug One: Using width format specifier greater than data length causes
+failure:
+<P>
+<PRE>   char *pstr = "four";
+   CString string;
+
+   string.Format("%4s", pstr);    // Okay
+   string.Format("%10s", pstr);   // Causes failure
+   string.Format("%-10s", pstr);  // Causes failure
+
+</PRE>Bug Two: Using asterisk width specifier causes failure:
+<P>
+<PRE>   char *pstr = "data";
+   CString string;
+   string.Format("%*s", 4, pstr);     // Causes error
+
+</PRE>Bug Three: Using an asterisk precision specifier causes failure:
+<P>
+<PRE>   CString str;
+   str.Format("%*.*s",5,5,"Hello World"); // Causes assertion
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.00 3.00 2.10 3.10<BR>
+KBCategory: kbprg kbfixlist kbbuglist kbcode<BR>
+KBSubcategory: MfcMisc<BR>
+Keywords          : MfcMisc kbbuglist kbcode kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 2.00 2.10<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

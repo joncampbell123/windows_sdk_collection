@@ -1,0 +1,340 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Fill a 32-bit VBA Array of UDType via a Visual C++ DLL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q171583">
+<META NAME="KBModify" CONTENT="1997/10/10">
+<META NAME="KBCreate" CONTENT="1997/07/17">
+<META NAME="Keywords" CONTENT="GnrlVb kbinterop kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; vbapps">
+<META NAME="Description" CONTENT="  This article provides sample DLL code in Microsoft Visual C++ 4.x that illustrates how to fill a 32-bit VBA array of a user-defined type (UDT) containing fixed-length strings with data. It also provides VBA code that defines the equivalent structur...">
+<META NAME="Product" CONTENT="vbapps">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QALG,QBS0,QAH6,QAH4,QBFY,QA56,QA55,QAH7,QAD7,QA5F,QATX,QAYL,QAVX,QAEB,QBTI P1 P2 P3 P4 P5 P6 T2 P7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Fill a 32-bit VBA Array of UDType via a Visual C++ DLL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q171583</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual Basic Control Creation, Learning, Professional, and
+   Enterprise Editions for Windows, version 5.0
+<LI>Microsoft Visual Basic Standard, Professional, and Enterprise Editions,
+   32-bit only, for Windows, version 4.0
+<LI>Microsoft Access versions 7.0, 97
+<LI>Microsoft Excel 97 for Windows
+<LI>Microsoft PowerPoint 97 for Windows
+<LI>Microsoft Word 97 for Windows
+<LI>Microsoft Visual C++, 32-bit Editions, version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article provides sample DLL code in Microsoft Visual C++ 4.x that
+illustrates how to fill a 32-bit VBA array of a user-defined type (UDT)
+containing fixed-length strings with data. It also provides VBA code that
+defines the equivalent structure and how to pass the array to the DLL.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The VB4DLL.TXT file that ships with Visual Basic 4.0 describes both passing
+a variable of UDT to a DLL and passing an array of String (SAFEARRAY of
+BSTR) to a DLL, but does not discuss passing an array of UDTs. This article
+provides an example of a Visual Basic program passing an array of UDTs to a
+C++ DLL and filling the array with data in the DLL.
+<P>
+NOTE: This article does not address:
+
+<UL><LI>Resizing the array.
+
+<LI>UDTs that contain variable length strings, Objects, or Variants.
+
+<LI>Multi-dimension arrays.
+<P>
+</UL><h3>Issues</h3>
+ 
+
+<OL><P><LI>When passing an array of UDTs with string elements, the strings are not
+   converted from UNICODE to ANSI as when passing a variable of UDT.
+
+<P><LI>Elements of a UDT in Visual Basic use a 4-byte alignment. The default
+   Visual C++ alignment is on 8-byte boundaries, so you have to explicitly
+   set a smaller alignment.
+
+<P><LI>In Visual Basic, UNICODE strings are implemented as an array of bytes;
+   in Visual C++, they are implemented as an array of unsigned short int.
+   This means that Visual Basic aligns UNICODE characters on 1-byte
+   boundaries and Visual C++ aligns them on 2-byte boundaries. Because of
+   this, your Visual C++ code has to specify 1-byte alignment as opposed to
+   4-byte alignment if you have any fixed-length strings in your UDT. With
+   the 1-byte alignment, you will have to add filler fields in your Visual
+   C++ struct to fix the alignment of other types on a 4-byte boundary.
+
+<P><LI>Visual C++ mangles function names. You will need to build a .DEF file to
+   make the names readable by Visual Basic.
+<P>
+</OL>Table of Visual Basic Structure Alignment in SAFEARRAYS:
+<P>
+<PRE>Type         Alignment   Size
+</PRE></OL> 
+<PRE>Byte          1 byte     1 byte
+String * n    1 byte     2 bytes per UNICODE character
+Integer       2 bytes    2 bytes
+Boolean       2 bytes    2 bytes
+String        4 bytes    4 byte pointer - UNICODE data not in structure
+Long          4 bytes    4 bytes
+Single        4 bytes    4 bytes
+Double        4 bytes    8 bytes
+Currency      4 bytes    8 bytes
+Date          4 bytes    8 bytes
+Variant       4 bytes    16 bytes - may point to data not in structure
+Object        4 bytes    4 byte pointer - object not in structure
+
+</PRE>Visual Basic passes arrays as the OLE SAFEARRAY type. This type contains a
+header structure that contains the following information:
+<P>
+<PRE>   unsigned short cDims;   // Count of dimensions
+   unsigned short fFeatures;  // Flags
+   unsigned long cbElements;  // Size of an element of the array
+   unsigned long cLocks;   // Lock count
+   void HUGEP* pvData;     // Pointer to the data
+   SAFEARRAYBOUND rgsabound[n];  // One bound for each dimension
+
+</PRE>The SAFEARRAYBOUND type contains the following elements:
+<P>
+<PRE>   unsigned long cElements;   // Number of elements in this dimension
+   long lLbound;     // Lower bound
+
+</PRE>The Visual C++ code can read the SAFEARRAY structure and get a pointer to
+the data (pvData), which contains contiguous data items, and read the
+SAFEARRAYBOUND structure to determine the number of elements passed.
+<P>
+WARNING: ANY USE BY YOU OF THE CODE PROVIDED IN THIS ARTICLE IS AT YOUR OWN
+RISK. Microsoft provides this code "as is" without warranty of any kind,
+either express or implied, including but not limited to the implied
+warranties of merchantability and/or fitness for a particular purpose.
+<P>
+<P><h3>Step-by-Step Example</h3>
+ 
+
+<OL><P><LI>Create a new Project Workspace of Dynamic-Link Library type and save as
+   TestType.
+
+<P><LI>Create a Text file and save as TestType.DEF. Add the file to the
+   project:
+<P>
+<PRE>   LIBRARY   TestType
+
+   EXPORTS
+     FillUDTSafeArray
+     FillUDTVariable
+
+</PRE><P><LI>Create a Text file and save as TestType.CPP. Add the file to the
+   project:
+<P>
+<P><PRE>      #include &lt;windows.h&gt;
+      #include &lt;ole2.h&gt;
+</PRE><P>
+<P><PRE>      #pragma pack(1)
+</PRE><P>
+<P><PRE>      typedef struct
+      {
+      short f1;
+      short filler_1;
+      long f2;
+      BYTE f3;
+      WCHAR f4;
+      BYTE filler_2;
+      float f5;
+      } MyStruct;
+</PRE><P>
+<P><PRE>      void _stdcall FillUDTVariable(MyStruct * ms)
+      {
+      ms-&gt;f1 = 2001;
+      ms-&gt;f2 = 20012001;
+      ms-&gt;f3 = 255;
+      ms-&gt;f4 = L'A';
+      ms-&gt;f5 = 200.1f;
+      }
+</PRE><P>
+<P><PRE>      void _stdcall FillUDTSafeArray(LPSAFEARRAY FAR * ppsa)
+      {
+      MyStruct * pdata;
+      unsigned int i;
+      pdata = (MyStruct*)((*ppsa)-&gt;pvData);
+      for (i=0;i&lt;((*ppsa)-&gt;rgsabound-&gt;cElements);i++,pdata++)
+<PRE></PRE>         FillUDTVariable(pdata);
+      }
+
+</PRE><P><LI>Build the DLL.
+
+<P><LI>In your VBA application, add a Module with the following code: (You will
+   need to explicitly specify the path of the DLL or move the DLL to the
+   system directory, application directory, or elsewhere on the path.)
+<P>
+<P><PRE>      Option Explicit
+</PRE><P>
+<P><PRE>      Type My_VarUDT
+<PRE></PRE>        F1 As Integer
+        F2 As Long
+        F3 As Byte
+        F4(0 To 1) As Byte  ' to avoid UNICODE/ANSI conversion
+        F5 As Single
+      End Type
+
+      Type My_ArrayUDT
+        F1 As Integer
+        F2 As Long
+        F3 As Byte
+        F4 As String * 1
+        F5 As Single
+      End Type
+
+      Declare Sub FillUDTVariable Lib "TestType.DLL" (A As My_VarUDT)
+      Declare Sub FillUDTSafeArray Lib "TestType.DLL" (A() As My_ArrayUDT)
+
+      Sub Test()
+      Dim A As Long, B As My_VarUDT, C As String, D(3) As My_ArrayUDT
+        Debug.Print "---Variable of My_VarUDT-------"
+        FillUDTVariable B
+        With B
+          C = .F4
+          Debug.Print .F1, .F2, .F3, C; "("; .F4(0); .F4(1); ")", .F5
+        End With
+        Debug.Print "---Safe array of My_ArrayUDT-------"
+        FillUDTSafeArray D()
+        For A = 0 To 3
+          With D(A)
+            Debug.Print .F1, .F2, .F3, .F4; "("; AscB(MidB(.F4, 1, 1));
+            Debug.Print AscB(MidB(.F4, 2, 1)); ")", .F5
+          End With
+        Next A
+      End Sub
+
+</PRE><P><LI>Save your VBA project and test the code by typing "Test" in the
+   Immediate Window. The output should appear as follows:
+<P>
+   ---Variable of My_VarUDT-------
+<PRE>    2001          20012001      255          A( 65  0 )     200.1
+   ---Safe array of My_ArrayUDT-------
+    2001          20012001      255          A( 65  0 )     200.1
+    2001          20012001      255          A( 65  0 )     200.1
+    2001          20012001      255          A( 65  0 )     200.1
+    2001          20012001      255          A( 65  0 )     200.1
+
+</PRE></OL>NOTE: The My_VarUDT example is included to illustrate avoiding the normal
+UNICODE/ANSI conversion that happens when calling a DLL and passing a
+single variable. This conversion does not happen when passing the entire
+array, so can use STRING * 1 in the My_ArrayUDT as opposed to passing a
+byte array.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+Microsoft Visual C++ Help on SAFEARRAY and related reading
+<P>
+Microsoft Visual Basic file: VB4DLL.TXT
+<P>
+Additional reference material for extending these examples to include
+Variant types can be found at:
+<P>
+<PRE>  <B><A href="http://www.microsoft.com/oledev/olecom/intro.htm">http://www.microsoft.com/oledev/olecom/intro.htm</A></B>
+</PRE> 
+<PRE>Keywords          : GnrlVb kbinterop kbprg
+Technology        : kbvba
+Version           : WINDOWS:4.0 5.0 7.0 97
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,299 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Locking Behavior of Cursors on SQL Server Version 6.0 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q132037">
+<META NAME="KBModify" CONTENT="1997/04/30">
+<META NAME="KBCreate" CONTENT="1995/06/27">
+<META NAME="Keywords" CONTENT="kbusage SSrvWinNT">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  Microsoft SQL Server version 6.0 has implemented server cursors and a user controllable setting for TRANSACTION ISOLATION LEVEL. When used together, it can be useful to know the expected locking behavior.  MORE INFORMATION  This document attempts t...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAO2,QABT,QALQ,QA28,QATJ,QABM,QAO3,QANE,QAA8,QAK7,QAJ6,QBFY,QBFN,QAL3,QAJ9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Locking Behavior of Cursors on SQL Server Version 6.0</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 30, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q132037</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Microsoft SQL Server version 6.0 has implemented server cursors and a user
+controllable setting for TRANSACTION ISOLATION LEVEL. When used together,
+it can be useful to know the expected locking behavior.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+This document attempts to clarify the effect of optimizer hints and
+isolation levels on the locking considerations of cursors. The nonlocking
+parts of optimizer hints affect the cursor behavior in the following ways:
+
+<UL><LI>INDEX = index_name: If the given index is unique, then this index
+   will be used as the primary keyset for the given table. If the index
+   is not unique, then this optimizer hint will be ignored.
+<P>
+   NOTE: Use of this option may cause dynamic cursors to convert to keyset
+   based cursors if the index chosen does not match the 'ORDER BY' columns
+   in the cursor statement exactly.
+
+<LI>FASTFIRSTROW: Dynamic cursors will always use this option whenever
+   the primary keyset values chosen is from a nonclustered index. For
+   keyset based cursors this option will be honored if used in the
+   cursor statement, not if not given. The locking related parts of
+   optimizer hints and isolation levels will affect cursor locking
+   behavior as follows:
+
+<LI>All exclusive locks and table locks (TABLOCK and TABLOCKX) are
+   taken and maintained inside a user transaction. These are held as
+   long as the transaction is open (even if the cursor closes) and
+   released when the transaction ends. If there are no transactions
+   outstanding the TABLOCKX and TABLOCK options will only have read
+   duration, i.e. the table lock will be taken while the rows are being
+   read and released immediately as soon as the read is complete.
+
+<LI>The isolation level at the time of cursor declare will be in effect
+   throughout the cursor. Changes made to the isolation level after the
+   cursor is declared will not affect the locking behavior.
+
+<LI>The PAGELOCK keyword is ignored in cursor declare statements.
+
+<LI>If a certain optimizer locking hint is used for a given table in a
+   cursor statement, it will override isolation level and cursor
+   concurrency option for that table. For example you can open a cursor
+   with the LOCKCC option and specify NOLOCK option on one of the tables
+   participating in the cursor select statement. This will cause that
+   table to be read uncommitted (with no locks) while other tables are
+   protected by update locks.
+
+<LI>No data modifications (update, delete, insert) can be made to
+   tables that have the NOLOCK optimizer hint.
+
+<LI>If no optimizer locking hint is used, the isolation level locking
+   will take effect on the cursor if the cursor is opened with OPTCC,
+   OPTCCVAL, or READONLY concurrency options. If the cursor is opened
+   with the LOCKCC option, this option will override isolation level
+   locking.
+
+<LI>OPTCC, OPTVAL, and LOCKCC concurrency options are disallowed in
+   cursors when isolation level is 0. Also UPDLOCK and TABLOCKX keywords
+   are disallowed as optimizer hints when at this isolation level.
+
+<LI>If isolation level is 0 during cursor declaration, ANSI cursors
+   will be opened READ ONLY. Extended procedure cursors will fail to
+   open unless READ ONLY option is specified.
+<P>
+</UL>The following page gives a detailed table of the kinds of locks taken with
+various hints and isolation levels. Some of the shorthand terminology is
+explained below:
+<P>
+RDL - Read locks: These are shared page locks that are taken while
+the pages are being read and released immediately after the page read
+is complete.
+<P>
+SCR -Scroll locks: These locks are taken by the cursor fetch command on
+pages that the rows are returned from. These locks will remain in place as
+long as the last fetch command has rows fetched from these pages; and
+released either when a succeeding fetch scrolls off these pages or the
+cursor is closed. These locks come in two varieties: shared SCR(sh), and
+update SCR(up) page locks. Only the locks on the data pages will be kept,
+no locks on the index pages will be taken. Furthermore, if SCROLL locking
+is in effect on the cursor (shared or update) and there is an outstanding
+transaction in effect during opening of a keyset based cursor, shared locks
+will be accumulated on pages generating the keyset and these locks will be
+kept until the transaction ends.
+<P>
+XT/C Locks: These page locks are taken by the cursor fetch command
+on pages that the rows are returned from. If a transaction is
+outstanding, these locks will be kept within the duration of the
+transaction and released when the transaction commits or rolls back.
+If there are no transactions, these locks will be kept as long as the
+cursor is open, or a new transaction is started and then ended. These
+locks also have shared and update varieties. XT/C(sh)  and XT/C(up)
+for page locks
+<P>
+XT(tb) and XT(tbx): Shared and exclusive table locks. These locks can
+only be taken inside a transaction and can only live within the life
+of the transaction, not the cursor.
+<P>
+The following table attempts to clarify in detail what kind of locks
+will be taken with cursors under different locking hints and
+optimizer levels:
+<P>
+TABLE OPTIMIZER HINT
+<P>
+<PRE>Cursor       Isolation
+Concurr.      Level   No hints    NOLOCK    HOLDLOCK   UPDLOCK
+</PRE>Option
+___________________________________________________________________
+<PRE>OPTCC       Uncomm.
+OPTVAL        (0)       Disallowed Disallowed Disallowed Disallowed
+   -----------------------------------------------------------
+</PRE>Comtd.
+<PRE>              (1)       RDL         NONE      SCR(sh)    SCR(up)
+   -----------------------------------------------------------
+            Serial/rpt
+              (2)       SCR(sh)     NONE      SCR(sh)    SCR(up)
+                        XT/C(sh)              XT/C(sh)   XT/C(up)
+</PRE>___________________________________________________________________
+<PRE>LOCKCC      Uncomm.
+              (0)       Disallowed Disallowed Disallowed Disallowed
+
+</PRE> 
+<PRE>            Comtd.
+              (1)       SCR(up)    NONE       SCR(up)    SCR(up)
+</PRE> 
+<PRE>            Serial/rpt
+              (2)       SCR(up)    NONE       SCR(up)    SCR(up)
+                        XT/C(up)              XT/C(up)   XT/C(up)
+</PRE>___________________________________________________________________
+<PRE>READ        Uncomm.
+ONLY          (0)       NONE       NONE       SCR(sh)    Disallowed
+</PRE> 
+<PRE>            Comtd.
+              (1)       RDL        NONE       SCR(sh)    Disallowed
+</PRE> 
+<PRE>            Serial/rpt
+              (2)       SCR(sh)    NONE       SCR(sh)    Disallowed
+                        XT/C(sh)              XT/C(sh)
+</PRE>___________________________________________________________________
+<P>
+Part 2
+TABLE OPTIMIZER HINT
+<P>
+<PRE>Cursor       Isolation
+Concurr.     Level        TABLOCK          TABLOCKX
+</PRE>Option
+___________________________________________________________
+<PRE>OPTCC        Uncomm.
+OPTVAL        (0)         Disallowed      Disallowed
+</PRE> 
+<PRE>             Comtd.     (inside xact only) (inside xact only)
+              (1)         XT(tb)            XT(tbx)
+</PRE> 
+<PRE>             Serial/rpt
+              (2)       (inside xact only) (inside xact only)
+                          XT(tb)            XT(tbx)
+</PRE>____________________________________________________________
+<PRE>LOCKCC       Uncomm.
+              (0)         Disallowed        Disallowed
+</PRE> 
+<PRE>             Comtd.     (inside xact only) (inside xact only)
+              (1)         XT(tb)            XT(tbx)
+</PRE> 
+<PRE>             Serial/rpt
+              (2)       (inside xact only) (inside xact only)
+                          XT(tb)            XT(tbx)
+</PRE>____________________________________________________________
+<PRE>READ         Uncomm.
+ONLY          (0)        NONE               Disallowed
+</PRE> 
+<PRE>             Comtd.
+              (1)        NONE               Disallowed
+</PRE> 
+<PRE>             Serial/rpt
+              (2)       (inside xact only)  Disallowed
+                          XT(tb)
+</PRE>________________________________________________________
+<P>
+NOTE: The above two tables should also fit side by side into one table.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Windows NT sql6 cursor lock concurrency<BR>
+Keywords            : kbusage SSrvWinNT<BR>
+Version             : 6.0<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 30, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,249 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Assertion Failed on Line 837 - Sockcore.cpp </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q140527">
+<META NAME="KBModify" CONTENT="1997/07/31">
+<META NAME="KBCreate" CONTENT="1995/12/03">
+<META NAME="Keywords" CONTENT="MfcSockets kbcode kbprb kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  A multi-threaded application that uses MFC's socket classes encounters a message box or debug output line that contains an error message similar to the following:  For Visual C++ 2.x:     Assertion failed -           :File sockcore.cpp, Line 837  F...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUQ,QAW6,QAPN,QA39,QABT,QAH4,QAGI,QAI5,QBXT,QA5V,QAYV,QAIB,QAHT,QAGK,QAD7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Assertion Failed on Line 837 - Sockcore.cpp</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 31, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q140527</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++, 32-bit Edition, versions 2.1, 2.2, 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+A multi-threaded application that uses MFC's socket classes encounters a
+message box or debug output line that contains an error message similar to
+the following:
+<P>
+For Visual C++ 2.x:
+<P>
+<PRE>   Assertion failed - &lt;app name&gt;:File sockcore.cpp, Line 837
+
+</PRE>For Visual C++ 4.0:
+<P>
+<PRE>   Assertion failed - &lt;app name&gt;:File sockcore.cpp, Line 1041
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+Most frequently, this problem is due to the sharing of CSocket objects
+between multiple threads.
+<P>
+A CSocket object should be used only in the context of a single thread
+because the SOCKET handle encapsulated by a CAsyncSocket object is stored
+in a per-thread handle map. (CSocket is derived from CAsyncSocket.) Other
+information is stored on a per-thread basis, including a hidden
+notification window that MFC uses for socket notifications.
+<P>
+The assertion failure line, which can be found in Sockcore.cpp in the
+\Msvc20\Mfc\Src directory, is:
+<P>
+<PRE>   ASSERT(pThreadState-&gt;m_hSocketWindow != NULL);
+
+</PRE>This assertion failure occurs because the CSocket object was either created
+or accepted in the context of another thread. The socket notification
+window was created in a different thread, and the m_hSocketWindow for the
+current thread is NULL, thus the assertion failure.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+As already mentioned, a CAsyncSocket object should be used only in the
+context of a single thread. If you need to switch the thread that is
+accessing a SOCKET connection with another thread, then you should use a
+separate CAsyncSocket object in each thread, and use the Detach and Attach
+functions to attach the CAsyncSocket object to the SOCKET handle in the
+thread that is about to use the socket. Use this sequence:
+
+<OL><P><LI>Use Detach() to detach the CAsyncSocket object from the SOCKET handle in
+   the thread that is currently using the CAsyncSocket object.
+
+<P><LI>Use Attach() to attach a different CAsyncSocket object to the SOCKET
+   handle while in the context of the MFC UI thread in which you wish to
+   begin accessing the SOCKET connection.
+<P>
+</OL>The code shown in the "Code Sample" section of this article shows how to
+handle the moment when a listening socket accepts a connection request and
+then begins a new thread to handle the new connection.
+<P>
+NOTE: One concern often arises that socket notification messages might be
+lost between the time the call to Detach() is made and the subsequent call
+to Attach() is made. This is not a concern because of the way socket
+notifications are handled. The implementation of CAsyncSocket::Attach()
+makes a call to WSAAsyncSelect to enable notifications. As mentioned in the
+documentation for WSAAsyncSelect, if any socket noficiations were already
+pending for the SOCKET, they will be re-posted.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To Accept a socket in the context of one thread and then begin using it in
+the context of another thread, you need to be sure to detach the
+CAsyncSocket object in the first thread and attach a different CAsyncSocket
+object in the second thread. The following code snippet shows how to do it.
+<P>
+<P><h3>Code Sample</h3>
+ 
+<P>
+<PRE>// ...
+</PRE></OL>class CSockThread : public CWinThread
+{
+<PRE>// ... Other function and member declarations
+</PRE>protected:
+<PRE>  CSocket m_sConnected;
+</PRE>};
+<P>
+SOCKET hConnected;
+<P>
+BOOL CSockThread::InitInstance()
+{
+<PRE>  // Attach the socket object to the socket handle
+  // in the context of this thread.
+  //
+  m_sConnected.Attach(hConnected);
+
+  return TRUE;
+</PRE>}
+<P>
+<PRE>// This listening socket has been constructed
+// in the primary thread.
+//
+void CListeningSocket::OnAccept(int nErrorCode)
+</PRE>{
+<PRE>  // This CSocket object is used just temporarily
+  // to Accept the incoming connection.
+  //
+  CSocket sConnected;
+  Accept(sConnected);
+
+  // Detach the newly accepted socket and save
+  // the SOCKET handle
+  hConnected = sConnected.Detach();
+
+  // After Detaching it, it should no longer be
+  // used in the context of this thread
+
+  // Start the other thread
+  AfxBeginThread(RUNTIME_CLASS(CSockThread));
+</PRE>}
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+MFC Technical Note #2 - Although this technical note does not directly
+address the CAsyncSocket class, it does discuss the mapping of handles to
+objects. The relationship between a SOCKET handle and a CAsyncSocket object
+is maintained in much the same way.
+<P>
+ 
+<PRE>Keywords          : MfcSockets kbcode kbprb kbprg
+Technology        : kbMfc
+Version           : 2.10 2.20 4.00
+Platform          : NT WINDOWS
+Issue type        : kbprb
+Solution Type     : kbcode</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 31, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

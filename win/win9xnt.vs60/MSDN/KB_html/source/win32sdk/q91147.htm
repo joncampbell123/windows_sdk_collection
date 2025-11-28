@@ -1,0 +1,212 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: SEH with return in the finally Body Preempts Unwind </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q91147 ">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1992/10/29">
+<META NAME="Keywords" CONTENT="kbprg kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  When using Structured Exception Handling (SEH), returning out of a finally body results in a return from the containing procedure scope. For example, in the following code fragment, the return in the finally block results in a return from func():  ...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QALW,QAY5,QBVV,QAH4,QAGB,QAJQ,QA4Q,QAY2,QAVX,QAVW,QAPF,QAL3,QAB9,QDL9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: SEH with return in the finally Body Preempts Unwind</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q91147 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.1, 3.5, and 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When using Structured Exception Handling (SEH), returning out of a finally
+body results in a return from the containing procedure scope. For example,
+in the following code fragment, the return in the finally block results in
+a return from func():
+<P>
+<PRE>   int func()
+   {
+       int status = 0;
+       __try {
+          ...
+          status = test();
+          ...
+       }
+       __finally {
+          if (status != 0) {
+             status = FAILURE;
+             return status;
+          }
+       }
+       return status;
+   }
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+A return from within a __finally is equivalent to a goto to the closing
+brace in the enclosing function [for example, func()]. This is allowed,
+but has consequences that should normally be avoided.
+<P>
+Exception handling has two stages. First, the exception stack is walked,
+looking for an accepting __except. When an accepting handler has been
+found, all __finallys between the top-of-exception-stack and the target
+__except will be called. During this "unwind", the __finallys are
+assumed to each execute and then return to their caller (the system
+unwind code).
+<P>
+A return in a finally abnormally aborts this unwinding. Instead of
+returning to the system unwinder, the __finally returns to the enclosing
+function's caller [for example, func()'s parent]. The accepting __except
+filter may set some status or perform an allocation in anticipation of
+the __except handler being entered. In this case, the intervening
+__finally with the return will stop the unwind, and the __except handler
+is never entered.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+This is by design. It makes it possible for a finally handler to stop an
+unwind and return a status. This is what is referred to as a collided
+unwind.
+<P>
+Abnormal termination from try/except or try/finally blocks is not
+generally recommended because it is a performance hit.
+<P>
+The example can be rewritten so that the unwind chain is not aborted:
+<P>
+<PRE>   int func()
+   {
+      int status = 0;
+      __try {
+         ...
+         status = test();
+         ...
+      }
+      __except(status != 0) {
+
+          /* null */
+      }
+      if (status != 0)
+         status = FAILURE;
+      return status;
+   }
+
+</PRE>This does not have identical semantics because the exception filters
+higher up the exception stack will not be executed. However, ensuring
+that both phases of exception handling progress to the same depth is a
+more robust solution.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Normally this behavior is transparent to any higher-level exception
+handling code. If, however, a filter function, as a side effect, stores
+information that it expects to process in an exception handler, then it may
+or may not be transparent. Storing such information in a filter function
+should be avoided because it is always possible that the exception handler
+will not be executed because the unwind is preempted. In the absence of
+storing such side effects, it will be transparent that an exception
+occurred and an attempted unwind occurred if one of the descendent
+functions has a try/finally block with an finally clause that preempts the
+unwind.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 3.50 4.00 95<BR>
+KBCategory: kbprg kbprb<BR>
+KBSubcategory: BseExcept<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

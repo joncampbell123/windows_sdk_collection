@@ -1,0 +1,230 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Description of sysindexes and sp_spaceused </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q90758 ">
+<META NAME="KBModify" CONTENT="1997/05/05">
+<META NAME="KBCreate" CONTENT="1992/10/21">
+<META NAME="Keywords" CONTENT="kbusage SSrvServer">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The system table sysindexes records the number of pages allocated and used by each table, index, and text or image column in a database. The system procedure sp_spaceused reports this information to users. This article explains some of the data in ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA5V,QAKC,QA4H,QBC6,QA28,QA2Q,QATJ,QAG8,QAG2,QAY2,QAUJ,QBWA,QABM,QAE1,QAUD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Description of sysindexes and sp_spaceused</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 5, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q90758 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The system table sysindexes records the number of pages allocated and
+used by each table, index, and text or image column in a database. The
+system procedure sp_spaceused reports this information to users. This
+article explains some of the data in sysindexes and how it is used by
+sp_spaceused to calculate the values it reports.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Sysindexes will have 1 to 255 rows for each table in the database. All
+rows for a given table will have the tables object id in their id
+column. All sysindexes rows for a table can be found with the command:
+<P>
+<PRE>   SELECT *
+   FROM sysindexes
+   WHERE id = object_id('table_name')
+
+</PRE>The sysindexes rows for a table fall into the following categories:
+<P>
+Every table without a clustered index has a row with name = table_name
+and indid = 0. In this row:
+<P>
+<PRE>   dpages   = Number of data pages, excluding text and image columns.
+   reserved = Number of pages reserved for dpages and ALL indexes.
+   used     = Number of pages used for dpages and ALL indexes.
+   rows     = Number of rows in the dpages.
+
+</PRE>A table with a clustered index has no row with name = table_name.
+There is instead a row with name = clustered_index_name and indid = 1.
+In this row:
+<P>
+<PRE>   dpages   = Number of data pages, excluding text and image columns.
+   reserved = Number of pages reserved for the dpages and ALL indexes.
+   used     = Number of pages used for dpages and ALL indexes.
+   rows     = Number of rows in the dpages.
+
+</PRE>A table with at least one text or image column will have a row with
+name = table_name prefixed with "t", and indid = 255. In this row:
+<P>
+<PRE>   reserved = Number of pages reserved for all text or image
+              data in the table (all columns).
+   used     = Number of pages used for all text or image
+              data in the table (all columns).
+   dpages and rows will be 0.
+
+</PRE>Every nonclustered index has a row with name = index_name and indid
+between 2 and 254. The values in these rows for dpages, reserved,
+used, and rows are not used by sp_spaceused.
+<P>
+Note that the data returned by selects on sysindexes is in numbers of
+pages. The number of pages is multiplied by the pagesize from
+spt_values to get the number of bytes in the pages, then divided by
+1024 to get the number of kilobytes, which is the value returned by
+sp_spaceused. The pagesize in spt_values for SQL Server on OS/2 is
+2048, so multiplying the values in the sysindexes columns by 2 gives
+the numbers of kilobytes reported by sp_spaceused.
+<P>
+If the user enters sp_spaceused against a table (exec sp_spaceused
+table_name) it will select only the sysindexes rows that relate to the
+table by first setting @id = object_id('table_name') and then using
+(id= @id) in the WHERE clause to restrict the selects to the table
+named. If the user did not enter a table name, then sp_spaceused does
+not restrict the selects with id = @id, so each SELECT returns rows
+for all tables in the database. The SELECTs given here are in the form
+that is used if a table name is specified. If sp_spaceused is issued
+against the entire database, the selects are the same except that the
+id = @id clause is not used.
+<P>
+The following selects show how sp_spaceused calculates the number of
+pages in each space usage category it reports. sp_spaceused then
+adjusts these numbers using the algorithm above to determine the
+numbers of kilobytes it reports for each category.
+<P>
+#rows=
+<P>
+<PRE> SELECT rows
+ FROM sysindexes
+ WHERE indid &lt; 2 and id = @id
+
+
+</PRE>#reserved=
+<P>
+<PRE> SELECT sum(reserved)
+ FROM sysindexes
+ WHERE indid in (0, 1, 255) and id = @id
+
+
+</PRE>#data=
+<P>
+<PRE> (SELECT sum(dpages)               +    (SELECT sum(used)
+  FROM sysindexes                        FROM sysindexes
+  WHERE indid &lt; 2 and id = @id)          WHERE indid = 255 and id = @id)
+
+
+</PRE>#index_size=
+<P>
+<PRE> (SELECT sum(used)
+  FROM sysindexes
+  WHERE indid in (0, 1, 255) and id = @id)     -     #data
+
+
+</PRE>#unused=
+<P>
+<PRE> #reserved        -     (SELECT sum(used)
+                         FROM sysindexes
+                         WHERE indid in (0, 1, 255) and id = @id)
+
+</PRE>NOTE: To reduce system overhead, sysindexes is not updated until a
+checkpoint. If you need to get a current report, issue a checkpoint
+command before issuing sp_spaceused or selecting from sysindexes.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: system tables stored procedures<BR>
+Keywords            : kbusage SSrvServer<BR>
+Version             : 4.2<BR>
+Platform            : OS/2<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 5, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

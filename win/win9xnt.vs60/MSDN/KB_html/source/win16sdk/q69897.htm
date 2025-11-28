@@ -1,0 +1,215 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Using Variable Argument Lists in DLL Functions </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q69897 ">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1991/03/06">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="  Using variable argument lists in functions in Windows dynamic-link libraries (DLLs) immediately suggests problems because the current data segment is not the same as the current stack segment (DS != SS). However, it is possible to create functions ...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAYL,QAHE,QAY5,QAPN,QAH4,QABB,QDL9,QBWO,QBWN,QBV8,QAB9,QAE1,QBWQ,QAI5,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Using Variable Argument Lists in DLL Functions</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q69897 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+3.00 3.10
+WINDOWS
+kbprg
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   versions 3.0 and 3.1
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Using variable argument lists in functions in Windows dynamic-link
+libraries (DLLs) immediately suggests problems because the current
+data segment is not the same as the current stack segment (DS != SS).
+However, it is possible to create functions declared with the C
+calling convention (_cdecl) that can properly access variable argument
+lists from Windows DLLs using the Windows SDK version 3.0 or later.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+In the STDARG.H file included with the Windows SDK, macros are defined
+to manipulate variable argument lists. Because DS != SS in DLLs
+containing code and data segments, the standard macros will not
+perform properly in small-model or medium-model DLLs. The standard
+macros assume that the stack segment (SS) and data segment (DS) are
+equal for far-data models and use NEAR pointers to access the
+arguments. However, small-model and medium-model DLLs containing code
+and data segments use the calling application's SS and the DLL's DS.
+The standard macros fail to account for this case.
+<P>
+If the DLL is a code-only DLL where DS == SS (using the DATA NONE
+declaration), or if the DLL is large-model, the standard macros will
+work properly.
+<P>
+One way to overcome the problems with the standard macros is to define
+a new set of macros for use with Windows' DLLs. For example:
+<P>
+<PRE>/****************************************************************
+ *
+ *      File:  wstdarg.h
+ *
+ *   Remarks:  Macro definitions for variable argument lists
+ *             used in DLLs
+ *
+ ****************************************************************/
+
+</PRE>typedef char _far *wva_list ;
+<P>
+<PRE>#define wva_start( ap, v )  (ap = (wva_list) &amp;v + sizeof( v ))
+#define wva_arg( ap, t )    (((t _far *)(ap += sizeof( t )))[-1])
+#define wva_end( ap )       (ap = NULL)
+
+/****************************************************************
+ *  End of File: wstdarg.h
+ ****************************************************************/
+
+</PRE>When these macros are compiled, the stack segment is properly selected
+to access the arguments.
+<P>
+Please note the following caveats concerning the use of variable
+argument lists in DLLs:
+
+<OL><P><LI>When passing arguments by reference, always use FAR pointer
+   declarations. The compiler will synthesize FAR pointers by pushing
+   the DS and the offset of the memory location on to the stack. This
+   will provide the DLL will the proper information to access the
+   application's data segment.
+<P>
+   Also note:
+   If the application under development will be run under real mode,
+   avoid calling functions that will yield control from the DLL. If
+   yielding occurs, the data segment could be moved. Movement would
+   result in invalid pointers.
+
+<P><LI>Because functions with variable arguments are defined using _cdecl,
+   all pointer arguments not declared in the parameter list must be
+   typecast in the function call. If this casting is not done,
+   unpredictable results will occur due to the lack of the function
+   parameter prototype. For example:
+<P>
+<PRE>   void FAR _cdecl DebugPrint( LPSTR lpStr, LPSTR lpFmt, ... )
+
+    ...
+
+    DebugPrint( szValue, "%s, value passed: %d\r\n",
+                (LPSTR) "DebugPrint() called", (int) 10 ) ;
+
+</PRE><P><LI>When the function is exported or imported, it must be declared with
+   an underscore (_) prefix in the .DEF file. It is also necessary to
+   preserve uppercase and lowercase letters in the function name.
+<P>
+   Here is the declaration for the function above:
+<P>
+<P><PRE>    EXPORTS
+<PRE></PRE>       WEP          @1   RESIDENTNAME
+       _DebugPrint  @2
+
+</PRE><P><LI>Variable argument C run-time library functions such as vsprintf()
+   and vfprintf() do not take into account that DS != SS. These
+   functions are not available in DLLs.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.10<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: KrDll<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

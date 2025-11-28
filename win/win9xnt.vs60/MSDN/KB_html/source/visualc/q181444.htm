@@ -1,0 +1,240 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Pass an Automation Object from VB to a C/C++ DLL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q181444">
+<META NAME="KBModify" CONTENT="1998/02/19">
+<META NAME="KBCreate" CONTENT="1998/02/19">
+<META NAME="Keywords" CONTENT="MfcOLE kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  This article demonstrates how to pass an automation object from Microsoft Visual Basic to a C/C++ DLL.  MORE INFORMATION  The basic concept is to pass your automation object  ByVal As Object , expect an IUnknown pointer in the DLL and then call IUn...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAIH,QBS0,QAD7,QAH7,QAH6,QBFY,QA2K,QAW6,QAPN,QBWQ,QA5F,QAMA,QDNN,QA56,QA55 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Pass an Automation Object from VB to a C/C++ DLL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 19, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q181444</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual C++, 32-bit Editions, versions 4.0, 5.0
+   on the following platforms: NT, Win95
+<LI>Microsoft Visual Basic Standard, Professional, and Enterprise Editions,
+   32-bit only, for Windows, version 4.0
+   on the following platforms: NT, Win95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article demonstrates how to pass an automation object from Microsoft
+Visual Basic to a C/C++ DLL.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The basic concept is to pass your automation object "ByVal As Object",
+expect an IUnknown pointer in the DLL and then call
+IUnknown::QueryInterface() for the IDispatch interface.
+<P>
+<P><h3>Steps to Create DLL</h3>
+ 
+<P>
+The following steps illustrate how to create a Microsoft Visual C++ DLL
+project and then add and export the talkToObject() routine.
+
+<OL><P><LI>Create a new Microsoft Visual C++ 5.0 "MFC AppWizard (dll)" project
+   named "vcvbdll" and accept all of the default options.
+
+<P><LI>Add the following code to the end of the vcvbdll.cpp file.
+<P>
+<P><PRE>      // Helper message function...
+      void ShowMsg(char *msg, HRESULT hr) {
+<PRE></PRE>            char buf[1024];
+            if((long)hr) {
+               sprintf(buf, "%s, HRESULT = %08lx", msg, (long)hr);
+            }
+            else {
+               sprintf(buf, "%s", msg);
+            }
+            ::MessageBox(NULL, buf, "C/C++ DLL message",
+                         MB_SETFOREGROUND | MB_OK);
+      }
+
+      // The exported function, called from Microsoft Visual Basic...
+      void _stdcall talkToObject(IUnknown *pUnk) {
+            // QueryInterface for a IDispatch pointer...
+            IDispatch *pDisp;
+            HRESULT hr = pUnk-&gt;QueryInterface(IID_IDispatch,
+                                             (void **)&amp;pDisp);
+            if(FAILED(hr)) {
+               ShowMsg("QueryInterface() failed", hr);
+            }
+            else {
+               ShowMsg("We got the dispatch pointer!!!", hr);
+
+               // Attach dispatch to a COleDispatchDriver class.
+               COleDispatchDriver disp(pDisp); // Uses constructor
+
+               // Set visible to FALSE...
+               static BYTE parms[] = VTS_BOOL;
+               disp.InvokeHelper(0x17, DISPATCH_PROPERTYPUT, VT_EMPTY,
+                                 NULL, parms, FALSE);
+
+               ShowMsg("Microsoft Word 97 shouldn't be visible now.", 0);
+
+               // Set visible to TRUE...
+               disp.InvokeHelper(0x17, DISPATCH_PROPERTYPUT, VT_EMPTY,
+                                 NULL, parms, TRUE);
+               ShowMsg("Microsoft Word 97 should now be visible again!",
+                       0);
+         }
+      }
+
+</PRE><P><LI>Add the following line tothe end of the vcvbdll.def file so that the
+   talkToObject function is exported:
+<P>
+<P><PRE>      talkToObject
+</PRE>
+<P><LI>Compile and then copy the .dll to the \Windows\System directory for
+   testing.
+<P>
+</OL><h3>Steps to Create Visual Basic Project</h3>
+ 
+<P>
+Next, build a Microsoft Visual Basic 5.0 project that automates Microsoft
+Word 97 and passes an Application object into the talkToObject function in
+vcvbdll.dll.
+
+<OL><P><LI>Create a new Microsoft Visual Basic 5.0 project.
+
+<P><LI>Add a Command button to Form1.
+
+<P><LI>Add the following code to Form1.
+<P>
+<P><PRE>      Private Declare Sub talkToObject Lib "vcvbdll.dll" ( _
+<PRE></PRE>         ByVal pUnk As Object)
+
+      Private Sub Command1_Click()
+         Dim obj As Object
+
+         ' Start automation to Microsoft Word 97.
+         Set obj = CreateObject("Word.Application")
+
+         ' Make Microsoft Word 97 visible.
+         obj.Visible = True
+         MsgBox "Preparing to call into C/C++ dll..."
+
+         ' Pass automation interface to C/C++ dll.
+         talkToObject obj
+
+         ' Close Microsoft Word 97.
+         obj.Quit
+
+      End Sub
+
+</PRE></OL><h2>REFERENCES</h2>
+ 
+<P>
+For more information about VC++ OLE Automation or COleDispatchDriver,
+search the VC++ online help for "OLE Automation" or "COleDispatchDriver."
+<P>
+(c) Microsoft Corporation 1998, All Rights Reserved. Contributions by Joe
+Crump, Microsoft Corporation
+ 
+<PRE>Keywords          : MfcOLE kbcode
+Technology        : ole
+Version           : WIN95:4.0; WINNT:4.0,5.0
+Platform          : Win95 winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 19, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

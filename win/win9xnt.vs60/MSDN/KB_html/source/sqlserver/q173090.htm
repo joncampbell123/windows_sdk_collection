@@ -1,0 +1,219 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Changing Configuration Values When SQL Server Won't Start </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q173090">
+<META NAME="KBModify" CONTENT="1997/08/29">
+<META NAME="KBCreate" CONTENT="1997/08/25">
+<META NAME="Keywords" CONTENT="SSrvAdmin kbtshoot">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article describes how to change sp_configure parameter values when the MSSQLServer service fails to start after changes have been made to the sp_configure parameters.  MORE INFORMATION  An attempt to start the MSSQLServer service may fail as f...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAIJ,QABM,QDIV,QACK,QAML,QBWS,QAB4,QAAP,QAB9,QBWP,QAIB,QAHE,QDIZ,QBXT,QBW6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Changing Configuration Values When SQL Server Won't Start</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 29, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q173090</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes how to change sp_configure parameter values when the
+MSSQLServer service fails to start after changes have been made to the
+sp_configure parameters.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+An attempt to start the MSSQLServer service may fail as follows:
+
+<UL><LI>From the Windows NT Service Control Manager, the following message is
+   returned:
+<P>
+<P><PRE>      Could not start the MSSQLServer service on \\servername
+      Error 2140: An internal Windows NT error occurred
+</PRE><P>
+   -or-
+
+<LI>From the SQL Service Manager, the light turns green and then turns
+   red.
+<P>
+   -or-
+
+<LI>From the command line, a "net start mssqlserver" command returns the
+   following message:
+<P>
+<P><PRE>      The MSSQLServer service is starting.
+      The MSSQLServer service could not be started.
+      The service did not report an error.
+      More help is available by typing NET HELPMSG 3534.
+</PRE><P>
+</UL>A reason for the failure may be logged in the SQL Server errorlog. Using
+Notepad, open up the file called Errorlog. You can find this file in the
+Log directory of the SQL Server installation, (for example, the Sql60\Log
+directory or the Mssql\Log directory).
+<P>
+The "memory" parameter was set too high if the last line of the errorlog
+is:
+<P>
+<PRE>   initdata: suballocation for buffer pages failed (%d bytes requested)
+
+</PRE>The "tempdb in RAM" parameter was set too high if the last few lines read:
+<P>
+<PRE>   Clearing temp db
+   udactivate(IN_RAM): Operating system error 8(Not enough storage is
+   available to process this command.) encountered
+   Device activation error. The physical filename 'IN_RAM' may be incorrect
+   crdb_tempdb: Unable to move tempdb into RAM; RAM device doesn't exist,
+   cannot be created, or doesn't have enough space for tempdb
+
+</PRE>Follow the steps below to start up the SQL Server and modify the
+sp_configure parameters so that the MSSQLServer service will be able to
+start:
+
+<OL><P><LI>From a command prompt on the server, run the following command:
+<P>
+<P><PRE>      sqlservr -c -f
+</PRE><P>
+   This will start the server in single-user and minimally configured
+   modes. It will also skip the execution of startup stored procedures.
+   When the last line on the screen reads "Warning: override, autoexec
+   procedures skipped", leave the screen as it is and use ISQL/w to connect
+   to the server.
+
+<P><LI>Ensure that SQL Executive and any other services that may log in to SQL
+   Server have been stopped and that there is no attempt to open up
+   multiple ISQL/w connections, because these may cause the following
+   message to be returned:
+<P>
+<P><PRE>      Msg 4002, Level 14, State 1, Server Microsoft SQL Server, Line 0
+      Login failed
+      DB-Library: Login incorrect.
+</PRE>
+<P><LI>In ISQL/w, use sp_configure to change the "memory" or "tempdb in RAM"
+   settings. For example, issue a command similar to the following:
+<P>
+<P><PRE>      Sp_configure memory, 8192
+      Go
+      Sp_configure tempdb, 0
+      Go
+</PRE>
+<P><LI>Run the RECONFIGURE command to install, as in the following example:
+<P>
+<P><PRE>      Reconfigure with override
+      Go
+</PRE>
+<P><LI>Execute the SHUTDOWN command.
+
+<P><LI>Start the MSSQLServer service; it should succeed.
+<P>
+</OL>You can also use these steps for situations where the server may start
+but connections cannot be established to SQL Server because of some other
+sp_configure parameter settings. For example, you can use the method
+described in this article when the procedure cache is set too high.
+<P>
+NOTE: When the server is started up with "sqlservr -c -f", the size of
+tempdb reverts to 2 MB on the master device. You must manually expand
+tempdb as necessary after the operations outlined above have been completed
+successfully.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:<BR>
+Keywords          : SSrvAdmin kbtshoot<BR>
+Version           : WINDOWS:6.0 6.5<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 29, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,314 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Create a Timed MessageBox </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q181934">
+<META NAME="KBModify" CONTENT="1998/03/02">
+<META NAME="KBCreate" CONTENT="1998/03/02">
+<META NAME="Keywords" CONTENT="kbnocat">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article explains how to create a timed a message box that is displayed for a limited amount of time and then automatically dismissed without any user intervention.  MORE INFORMATION  Normally, when you need to display a message box for a limit...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA01,QAEV,QAYC,QAGB,QAUD,QAA7,QBBI,QACE,QAFH,QAI4,QAU3,QATK,QAMR,QALZ,QAH4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Create a Timed MessageBox</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 2, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q181934</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK)
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article explains how to create a timed a message box that is displayed
+for a limited amount of time and then automatically dismissed without any
+user intervention.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Normally, when you need to display a message box for a limited amount of
+time, you must implement a regular dialog box that destroys itself after a
+specified amount of time. The problem with this method is that you lose the
+standard message box functionality that Windows provides.
+<P>
+The example below shows how to use the MessageBox API to create a message
+box that automatically terminates after a specified amount of time. The
+example uses a Windows timer that fires an event after the specified amount
+of time has elapsed. When the timer event occurs, the PostQuitMessage API
+is used to break out of the modal message loop that MessageBox uses. Note
+that the WM_QUIT message must be removed from the message queue to prevent
+it from being retrieved in the main message queue.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   /***********************************************************************
+      THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
+      ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+      THE IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
+      PARTICULAR PURPOSE.
+
+      Copyright 1998 Microsoft Corporation.  All Rights Reserved.
+   ***********************************************************************/
+
+   /***********************************************************************
+    *
+    *  MsgBox.c
+    *
+    *  Abstract:
+    *
+    *      Sample program to demonstrate how a program can display a
+    *      timed message box.
+    *
+    **********************************************************************/
+
+   #define STRICT
+   #include &lt;windows.h&gt;
+
+
+   /**********************************************************************
+    *
+    *      Overview
+    *
+    *      The key to creating a timed message box is exiting the dialog
+    *      box message loop internal to the message box. Since the
+    *      message loop for a message box is part of USER, you cannot
+    *      modify it.
+    *
+    *      However, all message loops exit when they receive a
+    *      WM_QUIT message. Furthermore, a nested message loop, if it
+    *      receives a WM_QUIT message, must break the loop and then re-post
+    *      the quit message so that the next outer layer can process it.
+    *
+    *      Therefore, you can get the nested message loop to exit by
+    *      calling PostQuitMessage(). The nested message loop will
+    *      clean up and post a new quit message. When the MessageBox
+    *      returns, you peek to see if there is a quit message. If so,
+    *      then it means that the message loop was abnormally terminated.
+    *      You also consume the WM_QUIT message instead of re-posting it
+    *      so that the application continues running.
+    *
+    *      Essentially, you have "tricked" the nested message loop into
+    *      thinking that the application is terminating. When it returns,
+    *      you "eat" the quit message, effectively canceling the fake
+    *      quit that you generated.
+    *
+    **********************************************************************/
+
+   /**********************************************************************
+    *
+    *  MessageBoxTimer
+    *
+    *      The timer callback function that posts the fake quit message,
+    *      which causes the message box to exit because it thinks that
+    *      the application is exiting.
+    *
+
+    **********************************************************************/
+
+   void CALLBACK
+   MessageBoxTimer(HWND hwnd, UINT uiMsg, UINT idEvent, DWORD dwTime)
+   {
+       PostQuitMessage(0);
+   }
+
+   /***********************************************************************
+    *
+    *  TimedMessageBox
+    *
+    *      The same as the standard MessageBox, except it also accepts
+    *      a timeout. If the user does not respond within the
+    *      specified timeout, then the value 0 is returned instead
+    *      of one of the ID* values.
+    *
+    **********************************************************************/
+
+   UINT
+   TimedMessageBox(
+       HWND hwndParent,
+       LPCTSTR ptszMessage,
+       LPCTSTR ptszTitle,
+       UINT flags,
+       DWORD dwTimeout)
+   {
+       UINT idTimer;
+       UINT uiResult;
+       MSG msg;
+
+       /*
+        *  Set a timer to dismiss the message box.
+        */
+       idTimer = SetTimer(NULL, 0, dwTimeout, (TIMERPROC)MessageBoxTimer);
+
+       uiResult = MessageBox(hwndParent, ptszMessage, ptszTitle, flags);
+
+       /*
+        *  Finished with the timer.
+        */
+       KillTimer(NULL, idTimer);
+
+       /*
+        *  See if there is a WM_QUIT message in the queue. If so,
+        *  then you timed out. Eat the message so you don't quit the
+        *  entire application.
+        */
+       if (PeekMessage(&amp;msg, NULL, WM_QUIT, WM_QUIT, PM_REMOVE)) {
+
+           /*
+            *  If you timed out, then return zero.
+            */
+           uiResult = 0;
+       }
+
+       return uiResult;
+   }
+
+   /***********************************************************************
+    *
+    *  WinMain
+    *
+    *      Program entry point.
+    *
+    *      Demonstrate TimedMessageBox().
+    *
+    **********************************************************************/
+
+   int WINAPI
+   WinMain(
+       HINSTANCE hinst,
+       HINSTANCE hinstPrev,
+       LPSTR pszCmdLine,
+       int nCmdShow)
+   {
+
+       UINT uiResult;
+
+       /*
+        *  Ask the user a question, and give him or her five seconds to
+        *  answer it.
+        */
+
+       uiResult = TimedMessageBox(NULL, "Does a triangle have three
+                                         sides?",
+                                  "Quiz", MB_YESNO, 5000);
+
+       switch (uiResult) {
+       case IDYES:
+           MessageBox(NULL, "That's right!", "Result", MB_OK);
+           break;
+
+       case IDNO:
+           MessageBox(NULL, "Believe it or not, triangles "
+                            "really do have three sides.", "Result",
+                      MB_OK);
+           break;
+
+       case 0:
+           MessageBox(NULL, "I sensed some hesitation there.  "
+                            "The correct answer is Yes.", "Result", MB_OK);
+           break;
+       }
+
+       return 0;
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: UsrMsgBox UsrTimer KBUser<BR>
+Keywords          : kbnocat<BR>
+Version           : WINNT:4.0; WIN95<BR>
+Platform          : Win95 winnt<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 2, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

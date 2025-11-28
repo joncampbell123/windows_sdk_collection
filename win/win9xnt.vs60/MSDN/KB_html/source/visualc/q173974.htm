@@ -1,0 +1,283 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Add MFC Support to an ATL Project </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q173974">
+<META NAME="KBModify" CONTENT="1998/03/11">
+<META NAME="KBCreate" CONTENT="1997/09/16">
+<META NAME="Keywords" CONTENT="AtlIss">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When creating an ATL EXE project using the AppWizard, the MFC support check box is disabled. This article explains how to add MFC support to an ATL EXE project. This article also explains how to add MFC support to an ATL DLL project if you failed t...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QABI,QAUD,QAJN,QABA,QABO,QBFY,QBAO,QAY5,QAEF,QAB9,QADZ,QDOP,QBHQ,QA9Q V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Add MFC Support to an ATL Project</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 11, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q173974</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Active Template Library (ATL), versions 2.0, 2.1
+   included with:
+   - Microsoft Visual C++, 32-bit Editions, version 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When creating an ATL EXE project using the AppWizard, the MFC support check
+box is disabled. This article explains how to add MFC support to an ATL EXE
+project. This article also explains how to add MFC support to an ATL DLL
+project if you failed to initially select the "support MFC" check box in
+the AppWizard.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Adding MFC Support to an ATL EXE Project</h3>
+ 
+
+<OL><P><LI>Add the following #include directives to StdAfx.h prior to including
+   atlbase.h
+<P>
+<PRE>      #include &lt;afxwin.h&gt;   // MFC core and standard components
+      #include &lt;afxext.h&gt;   // MFC extensions
+      #include &lt;afxdisp.h&gt;  // MFC Automation extensions
+
+</PRE><P><LI>Change project settings to use MFC. From the Project Settings dialog
+   box, click the General tab, and change the setting in the "Microsoft
+   Foundation Classes:" list box to MFC.
+
+<P><LI>Add a CWinApp derived class and declare a global variable of that type
+   as follows:
+<P>
+<P><PRE>      class CMyApp : public CWinApp
+      {
+      public:
+<PRE></PRE>         virtual BOOL InitInstance();
+         virtual int ExitInstance();
+      };
+
+      CMyApp theApp;
+
+</PRE><P><LI>Replace the _tWinMain function with the following InitInstance and
+   ExitInstance code:
+<P>
+<P><PRE>     BOOL CMyApp::InitInstance()
+     {
+<PRE></PRE>        // Initialize OLE libraries
+        if (!AfxOleInit())
+        {
+           AfxMessageBox(_T("OLE Initialization Failed!"));
+           return FALSE;
+        }
+
+        // Initialize the ATL Module
+        _Module.Init(ObjectMap,m_hInstance);
+     #ifdef _AFXDLL
+        Enable3dControls(); // Call this when using MFC in a shared DLL
+     #else
+        Enable3dControlsStatic(); // Call this when linking
+                                  // to MFC statically
+     #endif
+
+        // Update the System Registry
+        COleObjectFactory::UpdateRegistryAll(); // MFC Classes
+        VERIFY(SUCCEEDED(_Module.RegisterServer(TRUE))); // ATL Classes
+
+        // Create the dialog box or other stuff here
+
+        // Register OLE Class Factories
+        // MFC ones are for multiple as specified
+        // by the IMPLEMENT_OLECREATE() macro
+        COleObjectFactory::RegisterAll();
+        // ATL ones specifically register with REGCLS_MULTIPLEUSE
+        VERIFY(SUCCEEDED(_Module.RegisterClassObjects(CLSCTX_LOCAL_SERVER,
+                                                     REGCLS_MULTIPLEUSE)));
+
+        // Parse the command line to see if launched as OLE server
+        if (RunEmbedded() || RunAutomated())
+        {
+           // Application was run with /Embedding or /Automation.
+           // Don't show the main window in this case.
+           return TRUE;
+        }
+
+        return FALSE; // Nothing to do, so exit.
+     }
+
+     int CMyApp::ExitInstance()
+     {
+        // MFC's class factories registration is
+        // automatically revoked by MFC itself
+        _Module.RevokeClassObjects(); // Revoke class factories for ATL
+        _Module.Term();               // cleanup ATL Global Module
+        return CWinApp::ExitInstance();
+  }
+
+</PRE><P><LI>For unicode builds make sure the entry point is set to
+   wWinMainCRTStartup in the "Output" category of the "Link" field in the
+   Project Settings dialog box. For additional information, please see the
+   following article in the Microsoft Knowledge Base:
+<P>
+   ARTICLE-ID: <B><A href="../visualc/q125750.htm">Q125750</A></B>
+<PRE>   TITLE     : PRB: Error LNK2001: '_WinMain@16': Unresolved External
+               Symbol
+
+</PRE><P><LI>Add the following line of code to the beginning of every member function
+   of a COM interface, window procedure, and exported function:
+<P>
+<P><PRE>      AFX_MANAGE_STATE(AfxGetAppModuleState());
+</PRE><P>
+   For more information on AFX_MANAGE_STATE, consult the VC++ online
+   documentation.
+<P>
+</OL><h3>Adding MFC Support to an ATL DLL Project</h3>
+ 
+<P>
+Follow steps 1 to 3 from above.
+
+<OL><P><LI>Move the code in the AppWizard generated DllMain's DLL_PROCESS_ATTACH
+   and DLL_PROCESS_DETACH to the CMyApp's InitInstance and ExitInstance and
+   remove the DllMain as follows:
+<P>
+<P><PRE>      BOOL CMyApp::InitInstance()
+      {
+<PRE></PRE>         _Module.Init(ObjectMap, m_hInstance);
+         return CWinApp::InitInstance();
+      }
+
+      int CMyApp::ExitInstance()
+      {
+         _Module.Term();
+         return CWinApp::ExitInstance();
+      }
+
+</PRE><P><LI>Add the following line of code to the beginning of every member function
+   of a COM interface, window procedure and exported function:
+<P>
+<P><PRE>      AFX_MANAGE_STATE(AfxGetStaticModuleState());
+</PRE><P>
+   For additional information, please see the following article in the
+   Microsoft Knowledge Base:
+<P>
+   ARTICLE-ID: <B><A href="../visualc/q140850.htm">Q140850</A></B>
+<PRE>   TITLE     : HOWTO: Converting DLLTRACE to Use MFC in Shared Library
+
+</PRE></OL>NOTE: For all release builds make sure that the _ATL_MIN_CRT preprocessor
+definition has been removed. You can find these definitions in the
+"Preprocessor" category of the C/C++ tab in the Project Settings dialog
+box.
+<P>
+When adding a class derived from a MFC class using the ClassWizard to an
+ATL EXE project or to an ATL DLL project without "MFC Support", the
+compiler will issue a C2504 error.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+MfcAtl Sample included with Visual C++ 5.0
+<P>
+ARTICLE-ID: <B><A href="../visualc/q166480.htm">Q166480</A></B>
+<PRE>TITLE     : INFO: Active Template Library(ATL) Frequently Asked Questions
+
+</PRE>(c) Microsoft Corporation 1997, All Rights Reserved.
+Contributions by Chuck Bell, Microsoft Corporation
+ 
+<PRE>Keywords          : AtlIss
+Technology        : kbMfc
+Version           : WINDOWS:2.0,2.1
+Platform          : WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 11, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

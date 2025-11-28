@@ -1,0 +1,617 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Manage User Privileges Programmatically in Windows NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q132958">
+<META NAME="KBModify" CONTENT="1997/06/20">
+<META NAME="KBCreate" CONTENT="1995/07/20">
+<META NAME="Keywords" CONTENT="BseSecurity CodeSam kbhowto kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  In Windows NT, privileges are used to provide a means of access control that differs from discretionary access control. A system manager uses privileges to control which users/groups are able to manipulate various aspects of the system. An applicat...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBG2,QAUD,QAI5,QDJX,QDIF,QAOZ,QBWG,QAGU,QBWP,QAI4,QBBI,QATX,QAH6,QAGI,QDJE V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Manage User Privileges Programmatically in Windows NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 20, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q132958</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT, versions 3.51, 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In Windows NT, privileges are used to provide a means of access control
+that differs from discretionary access control. A system manager uses
+privileges to control which users/groups are able to manipulate various
+aspects of the system. An application may use privileges when it changes a
+system resource, such as the system time, or when it shuts down the system.
+<P>
+The User Manager tool can be used to grant and revoke privileges from
+accounts.
+<P>
+Windows NT 3.51 provides functionality which allows the developer to manage
+privileges programmatically. This functionality is made available through
+LSA (Local Security Authority).
+<P>
+An example of an application that would benefit from LSA is a service
+install program. If the service is configured to run under a user account,
+it is necessary for that account to have the  SeServiceLogonRight "logon as
+a service" privilege. This article discusses how to take advantage of LSA
+to grant and revoke privileges from users and groups.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Managing user privileges can be achieved programmatically using the
+following steps:
+
+<OL><P><LI>Open the policy on the target machine with LsaOpenPolicy(). To grant
+   privileges, open the policy with POLICY_CREATE_ACCOUNT and
+   POLICY_LOOKUP_NAMES access. To revoke privileges, open the policy with
+   POLICY_LOOKUP_NAMES access.
+
+<P><LI>Obtain a SID (security identifier) representing the user/group of
+   interest. The LookupAccountName() and LsaLookupNames() APIs can obtain a
+   SID from an account name.
+
+<P><LI>Call LsaAddAccountRights() to grant privileges to the user(s)
+   represented by the supplied SID.
+
+<P><LI>Call LsaRemoveAccountRights() to revoke privileges from the user(s)
+   represented by the supplied SID.
+
+<P><LI>Close the policy with LsaClose().
+<P>
+</OL>To successfully grant and revoke privileges, the caller needs to be an
+administrator on the target system.
+<P>
+The LSA API LsaEnumerateAccountRights() can be used to determine which
+privileges have been granted to an account.
+<P>
+The LSA API LsaEnumerateAccountsWithUserRight() can be used to determine
+which accounts have been granted a specified privilege.
+<P>
+Documentation and header files for these LSA APIs is provided in the
+Windows 32 SDK in the MSTOOLS\SECURITY directory.
+<P>
+In the lastest versions of the Win32 SDK, the headers appear in the
+mstools\samples\win32\winnt\security\include directory and the
+documentation is in ....\security\lsasamp\lsaapi.hlp.
+<P>
+NOTE: These LSA APIs are currently implemented as Unicode only.
+<P>
+This sample will grant the privilege SeServiceLogonRight to the account
+specified on argv[1].
+<P>
+This sample is dependant on these import libs
+<P>
+<PRE>   advapi32.lib (for LsaXxx)
+   user32.lib (for wsprintf)
+
+</PRE></OL>This sample will work properly compiled ANSI or Unicode.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/*++
+
+</PRE>You can use domain\account as argv[1]. For instance, mydomain\scott will
+grant the privilege to the mydomain domain account scott.
+<P>
+The optional target machine is specified as argv[2], otherwise, the
+account database is updated on the local machine.
+<P>
+The LSA APIs used by this sample are Unicode only.
+<P>
+Use LsaRemoveAccountRights() to remove account rights.
+<P>
+<PRE>Scott Field (sfield)    12-Jul-95
+--*/
+
+</PRE>#ifndef UNICODE
+<PRE>#define UNICODE
+</PRE>#endif // UNICODE
+<P>
+<PRE>#include &lt;windows.h&gt;
+#include &lt;stdio.h&gt;
+
+#include "ntsecapi.h"
+
+</PRE>NTSTATUS
+OpenPolicy(
+<PRE>    LPWSTR ServerName,          // machine to open policy on (Unicode)
+    DWORD DesiredAccess,        // desired access to policy
+    PLSA_HANDLE PolicyHandle    // resultant policy handle
+    );
+
+</PRE>BOOL
+GetAccountSid(
+<PRE>    LPTSTR SystemName,          // where to lookup account
+    LPTSTR AccountName,         // account of interest
+    PSID *Sid                   // resultant buffer containing SID
+    );
+
+</PRE>NTSTATUS
+SetPrivilegeOnAccount(
+<PRE>    LSA_HANDLE PolicyHandle,    // open policy handle
+    PSID AccountSid,            // SID to grant privilege to
+    LPWSTR PrivilegeName,       // privilege to grant (Unicode)
+    BOOL bEnable                // enable or disable
+    );
+
+</PRE>void
+InitLsaString(
+<PRE>    PLSA_UNICODE_STRING LsaString, // destination
+    LPWSTR String                  // source (Unicode)
+    );
+
+</PRE>void
+DisplayNtStatus(
+<PRE>    LPSTR szAPI,                // pointer to function name (ANSI)
+    NTSTATUS Status             // NTSTATUS error value
+    );
+
+</PRE>void
+DisplayWinError(
+<PRE>    LPSTR szAPI,                // pointer to function name (ANSI)
+    DWORD WinError              // DWORD WinError
+    );
+
+#define RTN_OK 0
+#define RTN_USAGE 1
+#define RTN_ERROR 13
+
+//
+// If you have the ddk, include ntstatus.h.
+//
+</PRE>#ifndef STATUS_SUCCESS
+<PRE>#define STATUS_SUCCESS  ((NTSTATUS)0x00000000L)
+</PRE>#endif
+<P>
+<PRE>int _cdecl
+</PRE>main(int argc, char *argv[])
+{
+<PRE>    LSA_HANDLE PolicyHandle;
+    WCHAR wComputerName[256]=L"";   // static machine name buffer
+    TCHAR AccountName[256];         // static account name buffer
+    PSID pSid;
+    NTSTATUS Status;
+    int iRetVal=RTN_ERROR;          // assume error from main
+
+    if(argc == 1)
+    {
+        fprintf(stderr,"Usage: %s &lt;Account&gt; [TargetMachine]\n",
+            argv[0]);
+        return RTN_USAGE;
+    }
+
+    //
+    // Pick up account name on argv[1].
+    // Assumes source is ANSI. Resultant string is ANSI or Unicode
+    //
+    wsprintf(AccountName, TEXT("%hS"), argv[1]);
+
+    //
+    // Pick up machine name on argv[2], if appropriate
+    // assumes source is ANSI. Resultant string is Unicode.
+    //
+    if(argc == 3) wsprintfW(wComputerName, L"%hS", argv[2]);
+
+    //
+    // Open the policy on the target machine.
+    //
+    if((Status=OpenPolicy(
+                wComputerName,      // target machine
+                POLICY_CREATE_ACCOUNT | POLICY_LOOKUP_NAMES,
+                &amp;PolicyHandle       // resultant policy handle
+                )) != STATUS_SUCCESS) {
+        DisplayNtStatus("OpenPolicy", Status);
+        return RTN_ERROR;
+    }
+
+    //
+    // Obtain the SID of the user/group.
+    // Note that we could target a specific machine, but we don't.
+    // Specifying NULL for target machine searches for the SID in the
+    // following order: well-known, Built-in and local, primary domain,
+    // trusted domains.
+    //
+    if(GetAccountSid(
+            NULL,       // default lookup logic
+            AccountName,// account to obtain SID
+            &amp;pSid       // buffer to allocate to contain resultant SID
+            )) {
+        //
+        // We only grant the privilege if we succeeded in obtaining the
+        // SID. We can actually add SIDs which cannot be looked up, but
+        // looking up the SID is a good sanity check which is suitable for
+        // most cases.
+
+        //
+        // Grant the SeServiceLogonRight to users represented by pSid.
+        //
+        if((Status=SetPrivilegeOnAccount(
+                    PolicyHandle,           // policy handle
+                    pSid,                   // SID to grant privilege
+                    L"SeServiceLogonRight", // Unicode privilege
+                    TRUE                    // enable the privilege
+                    )) == STATUS_SUCCESS)
+            iRetVal=RTN_OK;
+        else
+            DisplayNtStatus("AddUserRightToAccount", Status);
+    }
+    else {
+        //
+        // Error obtaining SID.
+        //
+        DisplayWinError("GetAccountSid", GetLastError());
+    }
+
+    //
+    // Close the policy handle.
+    //
+    LsaClose(PolicyHandle);
+
+    //
+    // Free memory allocated for SID.
+    //
+    if(pSid != NULL) HeapFree(GetProcessHeap(), 0, pSid);
+
+    return iRetVal;
+</PRE>}
+<P>
+void
+InitLsaString(
+<PRE>    PLSA_UNICODE_STRING LsaString,
+    LPWSTR String
+    )
+</PRE>{
+<PRE>    DWORD StringLength;
+
+    if (String == NULL) {
+        LsaString-&gt;Buffer = NULL;
+        LsaString-&gt;Length = 0;
+        LsaString-&gt;MaximumLength = 0;
+        return;
+    }
+
+    StringLength = wcslen(String);
+    LsaString-&gt;Buffer = String;
+    LsaString-&gt;Length = (USHORT) StringLength * sizeof(WCHAR);
+    LsaString-&gt;MaximumLength=(USHORT)(StringLength+1) * sizeof(WCHAR);
+</PRE>}
+<P>
+NTSTATUS
+OpenPolicy(
+<PRE>    LPWSTR ServerName,
+    DWORD DesiredAccess,
+    PLSA_HANDLE PolicyHandle
+    )
+</PRE>{
+<PRE>    LSA_OBJECT_ATTRIBUTES ObjectAttributes;
+    LSA_UNICODE_STRING ServerString;
+    PLSA_UNICODE_STRING Server = NULL;
+
+    //
+    // Always initialize the object attributes to all zeroes.
+    //
+    ZeroMemory(&amp;ObjectAttributes, sizeof(ObjectAttributes));
+
+    if (ServerName != NULL) {
+        //
+        // Make a LSA_UNICODE_STRING out of the LPWSTR passed in
+        //
+        InitLsaString(&amp;ServerString, ServerName);
+        Server = &amp;ServerString;
+    }
+
+    //
+    // Attempt to open the policy.
+    //
+    return LsaOpenPolicy(
+                Server,
+                &amp;ObjectAttributes,
+                DesiredAccess,
+                PolicyHandle
+                );
+}
+
+/*++
+</PRE>This function attempts to obtain a SID representing the supplied
+account on the supplied system.
+<P>
+If the function succeeds, the return value is TRUE. A buffer is
+allocated which contains the SID representing the supplied account.
+This buffer should be freed when it is no longer needed by calling
+HeapFree(GetProcessHeap(), 0, buffer)
+<P>
+If the function fails, the return value is FALSE. Call GetLastError()
+to obtain extended error information.
+<P>
+<PRE>Scott Field (sfield)    12-Jul-95
+--*/
+
+BOOL
+</PRE>GetAccountSid(
+<PRE>    LPTSTR SystemName,
+    LPTSTR AccountName,
+    PSID *Sid
+    )
+</PRE>{
+<PRE>    LPTSTR ReferencedDomain=NULL;
+    DWORD cbSid=128;    // initial allocation attempt
+    DWORD cchReferencedDomain=16; // initial allocation size
+    SID_NAME_USE peUse;
+    BOOL bSuccess=FALSE; // assume this function will fail
+
+    __try {
+
+    //
+    // initial memory allocations
+    //
+    if((*Sid=HeapAlloc(
+                    GetProcessHeap(),
+                    0,
+                    cbSid
+                    )) == NULL) __leave;
+
+    if((ReferencedDomain=HeapAlloc(
+                    GetProcessHeap(),
+                    0,
+                    cchReferencedDomain * sizeof(TCHAR)
+                    )) == NULL) __leave;
+
+    //
+    // Obtain the SID of the specified account on the specified system.
+    //
+    while(!LookupAccountName(
+                    SystemName,         // machine to lookup account on
+                    AccountName,        // account to lookup
+                    *Sid,               // SID of interest
+                    &amp;cbSid,             // size of SID
+                    ReferencedDomain,   // domain account was found on
+                    &amp;cchReferencedDomain,
+                    &amp;peUse
+                    )) {
+        if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+            //
+            // reallocate memory
+            //
+            if((*Sid=HeapReAlloc(
+                        GetProcessHeap(),
+                        0,
+                        *Sid,
+                        cbSid
+                        )) == NULL) __leave;
+
+            if((ReferencedDomain=HeapReAlloc(
+                        GetProcessHeap(),
+                        0,
+                        ReferencedDomain,
+                        cchReferencedDomain * sizeof(TCHAR)
+                        )) == NULL) __leave;
+        }
+        else __leave;
+    }
+
+    //
+    // Indicate success.
+    //
+    bSuccess=TRUE;
+
+    } // finally
+    __finally {
+
+    //
+    // Cleanup and indicate failure, if appropriate.
+    //
+
+    HeapFree(GetProcessHeap(), 0, ReferencedDomain);
+
+    if(!bSuccess) {
+        if(*Sid != NULL) {
+            HeapFree(GetProcessHeap(), 0, *Sid);
+            *Sid = NULL;
+        }
+    }
+
+    } // finally
+
+    return bSuccess;
+</PRE>}
+<P>
+NTSTATUS
+SetPrivilegeOnAccount(
+<PRE>    LSA_HANDLE PolicyHandle,    // open policy handle
+    PSID AccountSid,            // SID to grant privilege to
+    LPWSTR PrivilegeName,       // privilege to grant (Unicode)
+    BOOL bEnable                // enable or disable
+    )
+</PRE>{
+<PRE>    LSA_UNICODE_STRING PrivilegeString;
+
+    //
+    // Create a LSA_UNICODE_STRING for the privilege name.
+    //
+    InitLsaString(&amp;PrivilegeString, PrivilegeName);
+
+    //
+    // grant or revoke the privilege, accordingly
+    //
+    if(bEnable) {
+        return LsaAddAccountRights(
+                PolicyHandle,       // open policy handle
+                AccountSid,         // target SID
+                &amp;PrivilegeString,   // privileges
+                1                   // privilege count
+                );
+    }
+    else {
+        return LsaRemoveAccountRights(
+                PolicyHandle,       // open policy handle
+                AccountSid,         // target SID
+                FALSE,              // do not disable all rights
+                &amp;PrivilegeString,   // privileges
+                1                   // privilege count
+                );
+    }
+</PRE>}
+<P>
+void
+DisplayNtStatus(
+<PRE>    LPSTR szAPI,
+    NTSTATUS Status
+    )
+</PRE>{
+<PRE>    //
+    // Convert the NTSTATUS to Winerror. Then call DisplayWinError().
+    //
+    DisplayWinError(szAPI, LsaNtStatusToWinError(Status));
+</PRE>}
+<P>
+void
+DisplayWinError(
+<PRE>    LPSTR szAPI,
+    DWORD WinError
+    )
+</PRE>{
+<PRE>    LPSTR MessageBuffer;
+    DWORD dwBufferLength;
+
+    //
+    // TODO: Get this fprintf out of here!
+    //
+    fprintf(stderr,"%s error!\n", szAPI);
+
+    if(dwBufferLength=FormatMessageA(
+                        FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                        FORMAT_MESSAGE_FROM_SYSTEM,
+                        NULL,
+                        WinError,
+                        GetUserDefaultLangID(),
+                        (LPSTR) &amp;MessageBuffer,
+                        0,
+                        NULL
+                        ))
+    {
+        DWORD dwBytesWritten; // unused
+
+        //
+        // Output message string on stderr.
+        //
+        WriteFile(
+            GetStdHandle(STD_ERROR_HANDLE),
+            MessageBuffer,
+            dwBufferLength,
+            &amp;dwBytesWritten,
+            NULL
+            );
+
+        //
+        // Free the buffer allocated by the system.
+        //
+        LocalFree(MessageBuffer);
+    }
+</PRE>}
+<P>
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 3.51 4.00 Privilege User Right<BR>
+Keywords            : BseSecurity CodeSam kbhowto kbprg<BR>
+Version             : 3.51 4.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 20, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

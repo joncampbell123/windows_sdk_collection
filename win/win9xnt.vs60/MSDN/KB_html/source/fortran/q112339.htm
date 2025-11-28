@@ -1,0 +1,234 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Opening More Than 61 Files in a FORTRAN Windows NT App </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q112339">
+<META NAME="KBModify" CONTENT="1995/12/11">
+<META NAME="KBCreate" CONTENT="1994/03/07">
+<META NAME="Keywords" CONTENT="kbprg kbdocerr kbcode kbbuglist">
+<META NAME="KBArea" CONTENT="Support; KB; fortran">
+<META NAME="Description" CONTENT="  A FORTRAN PowerStation application on Windows NT can have only 61 files open at a time. Attempting to OPEN the file number 62 will produce the run- time error:     error F6417: too many open files  Page 806 of the FORTRAN PowerStation  Programmer's...">
+<META NAME="Product" CONTENT="Fortran">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA4Q,QBWP,QAKD,QBFY,QAKC,QBBS,QARM,QAY5,QBJQ,QAJZ,QBWS,QA2P,QBC6,QA8T,QBV8 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Opening More Than 61 Files in a FORTRAN Windows NT App</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 11, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q112339</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft FORTRAN PowerStation 32 for Windows NT, version 1.0 and
+   4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+A FORTRAN PowerStation application on Windows NT can have only 61 files
+open at a time. Attempting to OPEN the file number 62 will produce the run-
+time error:
+<P>
+<PRE>   error F6417: too many open files
+
+</PRE>Page 806 of the FORTRAN PowerStation "Programmer's Guide" incorrectly
+states that the fix for this problem is to change the FILES= setting in
+CONFIG.SYS.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The 64-file limit of the PowerStation for MS-DOS has been carried over to
+Powerstation for Windows NT. Three of these files are reserved for system
+use, leaving 61 files for the program to use.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Use WIN32 application programming interface (API) functions to perform some
+or all of your file I/O.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the Microsoft products
+listed at the beginning of this article. We are researching this problem
+and will post new information here in the Microsoft Knowledge Base as it
+becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following sample keeps 100 files open at the same time:
+<P>
+<P><h3>Sample Code #1</h3>
+ 
+<P>
+c Compile options needed: none
+c
+<PRE>      include 'IO.FI'
+      program OPEN_TEST
+      character*9 fname/'FILE.000 '/
+      integer*4 j
+      fname(9:9) = CHAR(0)  ! Append null character
+      do j = 1,100
+         write(*,*) fname
+         call open(fname)
+         write(fname(6:8),'(i3.3)') j ! Write file extension
+      enddo
+      end
+</PRE>c
+<PRE>      subroutine open(name)
+      character*(*) name, buffer*16
+      integer lcreat, handle, len
+      data buffer/'Open many files.'/
+
+      handle = lcreat(name, 0)         ! Create a new file
+      len = lwrite(handle, buffer, 16) ! Write to file
+      len = llseek(handle, 0, 0)       ! Seek to the beginning
+      len = lread(handle, buffer, 16)  ! Read data back from file
+      end
+
+</PRE>The following interface file, IO.FI, is used by the program above:
+<P>
+<P><h3>Sample Code #2</h3>
+ 
+<P>
+C Open an existing file
+<PRE>      interface to integer function lopen
+     +  [stdcall, alias:'__lopen@8'](filename, mode)
+      character*1 filename[reference] ! null terminated file name
+      integer mode[value] ! 0 = read-only, 1 = write-only
+                          ! 2 = read-write
+      end
+
+</PRE>C Create a file (erase the old file if one exists)
+<PRE>      interface to integer function lcreat
+     +  [stdcall, alias:'__lcreat@8'](filename, mode)
+      character*1 filename [reference] ! null terminated file name
+      integer mode[value] ! 0 = read-write, 1 = read-only
+                          ! 2 = hidden, 3 = system
+      end
+
+</PRE>C Close a file (use with files opened by lcreat or lopen)
+<PRE>      interface to integer function lclose
+     +  [stdcall, alias:'__lclose@4'](handle)
+      integer handle[value]
+      end
+
+</PRE>C Move the file pointer to a specific offset in a file
+<PRE>      interface to integer function llseek
+     +  [stdcall, alias:'__llseek@12'](handle,offset,origin)
+      integer handle[value]
+      integer offset[value] ! number of bytes to move pointer
+      integer origin[value] ! 0 = beginning, 1 = current position
+                            ! 2 = end of the file
+      end
+
+</PRE>C Read a specified number of bytes from a file
+<PRE>      interface to integer function lread
+     +  [stdcall, alias:'__lread@12'](handle,buffer,length)
+      integer handle[value]
+      character*1 buffer
+      integer length[value]  ! number of bytes
+      end
+
+</PRE>C Write a specified number of bytes to a file
+<PRE>      interface to integer function lwrite
+     +  [stdcall, alias:'__lwrite@12'](handle,buffer,length)
+      integer handle[value]
+      character*1 buffer
+      integer length[value]
+      end
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00 4.00<BR>
+KBCategory: kbprg kbdocerr kbcode kbbuglist<BR>
+KBSubcategory: FORTLngIss<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 11, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

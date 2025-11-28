@@ -1,0 +1,747 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>LONG: How to Print a Metafile and Text to Form or Printer </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q113682">
+<META NAME="KBModify" CONTENT="1996/02/16">
+<META NAME="KBCreate" CONTENT="1994/04/11">
+<META NAME="Keywords" CONTENT="kbprint kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  Visual Basic has only one native method for printing graphical objects, the PrintForm method. The PrintForm method is limited to printing one form per page and there is no way to control the placement of the image on the page or to place text on th...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA4Q,QAOX,QAY5,QAPN,QAB9,QAB5,QADX,QATX,QBXT,QA5V,QAIB,QAUD,QAMB,QAOE,QAMN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>LONG: How to Print a Metafile and Text to Form or Printer</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 16, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q113682</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+<P>
+- Professional Edition of Microsoft Visual Basic for Windows,
+<PRE>  versions 1.0 (Professional Toolkit only), 2.0, and 3.0
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Visual Basic has only one native method for printing graphical objects, the
+PrintForm method. The PrintForm method is limited to printing one form per
+page and there is no way to control the placement of the image on the page
+or to place text on the same page with the image.
+<P>
+This article shows by example how to print Windows metafiles, such as those
+created by the graph control of the Professional edition, along with text,
+to the printer, a form, or a picture control. The size and placement of
+both the metafile and the text are under the program's control.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following example shows you how to use Windows API functions to play a
+metafile and draw text to the hDC of the chosen object. Choose from the
+following objects: the printer object, a Visual Basic form, or a picture
+control.
+<P>
+The example uses the graph control of the Professional Edition to create a
+metafile for demonstration. Any Windows metafile, such as those provided in
+the \VB\METAFILES directories, can be used as well. The technique allows
+you to overlay text on the body of the metafile or overlay the metafile on
+an area containing text -- by simply changing the order in which the
+operations are executed. The last operation prints over the previous
+operation.
+<P>
+NOTE: if the x and y scaling factors differ when metafiles are rendered,
+the more restrictive of the two axes acts as the limiting factor.
+<P>
+<P><h3>Step-by-Step Example</h3>
+ 
+<P>
+Here are the steps necessary to construct a sample program that prints
+metafiles and text:
+
+<OL><P><LI>Start a new project in Visual Basic. Form1 is created by default.
+
+<P><LI>Add a Graph control (Graph1) and two Picture controls (Picture1
+   and Picture2) to the form.
+
+<P><LI>Build the menu. The following is an excerpt from the text format version
+   of the form. You can paste it into your form's text format file, or you
+   can build the menus by using the menu design dialog in Visual Basic.
+<P>
+   Begin Menu mnuPrint
+<PRE>      Caption         =   "&amp;Print "
+      Begin Menu mnuToPic
+         Caption         =   "To P&amp;icture"
+      End
+      Begin Menu mnuToForm
+         Caption         =   "To &amp;Form"
+      End
+      Begin Menu mnuToPrinter
+         Caption         =   "To P&amp;rinter"
+      End
+   End
+
+</PRE><P><LI>Add a code module (Module1) to the project by choosing New Module from
+   the File menu (ALT, F, M).
+
+<P><LI>Add the following code to the general declarations section of Module1:
+<P>
+   Type RECT
+<P><PRE>      left As Integer
+      top As Integer
+      right As Integer
+      bottom As Integer
+</PRE>   End Type
+<P>
+   Global lpDrawTextRect As RECT
+<P>
+   Type Size
+<P><PRE>      cx As Integer
+      cy As Integer
+</PRE>   End Type
+<P>
+   Global lpold_vpextent As Size
+   Global lpold_winextent As Size
+   Global lpoldsize As Size
+<P>
+   Type POINTAPI
+<P><PRE>      X As Integer
+      Y As Integer
+</PRE>   End Type
+<P>
+   Global lpoldwindoworg As POINTAPI
+   Global lpoldvieworg As POINTAPI
+<P>
+<PRE>   ' Set actual location of the window on the device, in device units:
+   ' Enter each of the following Declare statements on one, single line:
+   Declare Function PlayMetafile% Lib "GDI" (ByVal hDC%, ByVal hmf%)
+   Declare Function SetMapMode Lib "GDI" (ByVal hDC As Integer,
+      ByVal nMapMode As Integer) As Integer
+   Declare Function SetViewPortExt Lib "GDI" (ByVal hDC As Integer,
+      ByVal X As Integer, ByVal Y As Integer) As Long
+   Declare Function SetViewPortExtEx Lib "GDI" (ByVal hDC As Integer,
+      ByVal nX As Integer, ByVal nY As Integer, lpSize As Size) As Integer
+   Declare Function SetViewPortOrg Lib "GDI" (ByVal hDC As Integer,
+      ByVal X As Integer, ByVal Y As Integer) As Long
+   Declare Function SetViewPortOrgEx Lib "GDI" (ByVal hDC As Integer,
+      ByVal nX As Integer, ByVal nY As Integer, lpPoint As POINTAPI)
+      As Integer
+   Declare Function ScaleViewPortExtEx% Lib "GDI" (ByVal hDC%,
+      ByVal nXnum%, ByVal nXdenom%, ByVal nYnum%, ByVal nYdenom%,
+      lpSize As Size)
+   Declare Function GetViewportExtEx Lib "GDI" (ByVal hDC As Integer,
+      lpSize As Size) As Integer
+   Declare Function SetWindowExt Lib "GDI" (ByVal hDC As Integer,
+      ByVal X As Integer, ByVal Y As Integer) As Long
+   Declare Function SetWindowExtEx Lib "GDI" (ByVal hDC As Integer,
+      ByVal nX As Integer, ByVal nY As Integer, lpSize As Size) As Integer
+   Declare Function SetWindowOrg Lib "GDI" (ByVal hDC As Integer,
+      ByVal X As Integer, ByVal Y As Integer) As Long
+   Declare Function SetWindowOrgEx Lib "GDI" (ByVal hDC As Integer,
+      ByVal nX As Integer, ByVal nY As Integer, lpPoint As POINTAPI)
+      As Integer
+   Declare Function DrawText Lib "User" (ByVal hDC As Integer,
+      ByVal lpStr As String, ByVal nCount As Integer, lpRect As RECT,
+      ByVal wFormat As Integer) As Integer
+
+   Global Const DT_WORDBREAK = &amp;H10
+   Global Const DT_CENTER = &amp;H1
+   Global Const DT_RIGHT = &amp;H2
+   Global Const DT_LEFT = &amp;H0
+   Global Const MM_TEXT = 1
+   Global Const MM_ISOTROPIC = 7
+
+</PRE><P><LI>Add the following code to Module1:
+<P>
+<PRE>   ' Enter the following four lines as one, single line:
+   Function PrintMetafile (printtarget As Integer, pmpicture As Control,
+      pmform As Form, mfsource As Control, originx As Integer,
+      originy As Integer, scalingx As Integer, scalingy As Integer)
+      As Integer
+
+      '*****************************************************************
+      '*  PrintMetafileaccepts parameters and then prints either text or
+      '*  Windows metafiles to one of three targets: printer, form or
+      '*  picture control.
+      '*
+      '* Parameters:
+      '*
+      '*     printtarget accepts three values:
+      '*           1 - sends output to printer object
+      '*           2 - sends output to  picture control
+      '*           3 - sends output to  form
+      '*
+      '*     pmpicture - accepts a picture control for use as output target
+      '*     pmform    - accepts a form for use as the output target
+      '*     mfsource  - accepts a picture control containing the metafile
+      '*                 to be printed to the target
+      '*
+      '*     originx, originy - specifies the x and y coordinates of the
+      '*                        origin of the output area
+      '*
+      '*     scalingx, scalingy - specifies the scaling factors in percent
+      '*                          of the total output area, to create the
+      '*                          output window, controlling both x, y axes
+      '*
+      '********************************************************************
+
+      On Error GoTo handler
+
+      ' Display hour glass:
+      screen.MousePointer = 11
+
+      ' Get the x and y extents depending on the target of printmapping:
+
+      Select Case printtarget
+
+      Case 1    ' For printer target:
+         ' Initialize the printer object's hDC from VB's perspective:
+         printer.Print " "
+         printer.ScaleMode = 3  ' pixels equivalent to MM_TEXT
+         pagewidth% = printer.ScaleWidth
+         pageheight% = printer.ScaleHeight
+
+         oldmapmode% = SetMapMode(printer.hDC, MM_ISOTROPIC)
+         ' Make logical units equal to device units:
+         ' The SDK recommends that this be done when using MM_ISOTROPIC:
+         success% = SetWindowOrgEx(printer.hDC, 0, 0, lpoldwindoworg)
+
+         ' Enter each of the following statements as one, single line:
+         success% = SetWindowExtEx(printer.hDC, pagewidth%, pageheight%,
+            lpold_winextent)
+         success% = SetViewPortOrgEx(printer.hDC, originx, originy,
+            lpoldvieworg)
+         success% = SetViewPortExtEx(printer.hDC, pagewidth% / 100,
+            pageheight% / 100, lpold_vpextent)
+         success% = ScaleViewPortExtEx(printer.hDC, scalingx, 1,
+            scalingy, 1, lpoldsize)
+
+         ' Send the metafile to the target hDC:
+         ApiError% = PlayMetafile(printer.hDC, mfsource.Picture)
+         If ApiError% = 0 Then
+            MsgBox "PlayMetaFile failed"
+            PrintMetafile = False
+         End If
+
+         ' Reset device context to initial values:
+         ' Enter each of the following statements as one, single line:
+         successl&amp; = SetWindowOrg(printer.hDC, lpoldwindoworg.X,
+            lpoldwindoworg.Y)
+         successl&amp; = SetWindowExt(printer.hDC, lpold_winextent.cx,
+            lpold_winextent.cy)
+         successl&amp; = SetViewPortOrg(printer.hDC, lpoldvieworg.X,
+            lpoldvieworg.Y)
+         successl&amp; = SetViewPortExt(printer.hDC, lpold_vpextent.cx,
+            lpold_vpextent.cy)
+
+         oldmapmode% = SetMapMode(printer.hDC, oldmapmode%)
+         PrintMetafile = True
+
+      Case 2    ' For picture1 target:
+
+         If TypeOf pmpicture Is PictureBox Then
+            pmpicture.ScaleMode = 3  ' pixels equivalent to MM_TEXT
+            pagewidth% = pmpicture.ScaleWidth
+            pageheight% = pmpicture.ScaleHeight
+            oldmapmode% = SetMapMode(pmpicture.hDC, MM_ISOTROPIC)
+            ' Make logical units equal to device units:
+            ' SDK recommends that this be done when using MM_ISOTROPIC:
+            ' Enter each of following statements as one, single line:
+            success% = SetWindowOrgEx(pmpicture.hDC, 0, 0,
+               lpoldwindoworg)
+            success% = SetWindowExtEx(pmpicture.hDC, pagewidth%,
+               pageheight%, lpold_winextent)
+            success% = SetViewPortOrgEx(pmpicture.hDC, originx, originy,
+               lpoldvieworg)
+            success% = SetViewPortExtEx(pmpicture.hDC, pagewidth% / 100,
+               pageheight% / 100, lpold_vpextent)
+            success% = ScaleViewPortExtEx(pmpicture.hDC, scalingx, 1,
+               scalingy, 1, lpoldsize)
+
+            ' Send the metafile to the target hDC:
+            ApiError% = PlayMetafile(pmpicture.hDC, mfsource.Picture)
+            If ApiError% = 0 Then
+               MsgBox "PlayMetaFile failed"
+               PrintMetafile = False
+            End If
+
+            ' Reset device context to initial values:
+            ' Enter each of following statements as one, single line:
+            successl&amp; = SetWindowOrg(pmpicture.hDC, lpoldwindoworg.X,
+               lpoldwindoworg.Y)
+            successl&amp; = SetWindowExt(pmpicture.hDC, lpold_winextent.cx,
+               lpold_winextent.cy)
+            successl&amp; = SetViewPortOrg(pmpicture.hDC, lpoldvieworg.X,
+               lpoldvieworg.Y)
+            successl&amp; = SetViewPortExt(pmpicture.hDC, lpold_vpextent.cx,
+               lpold_vpextent.cy)
+            oldmapmode% = SetMapMode(pmpicture.hDC, oldmapmode%)
+
+            PrintMetafile = True
+
+         Else
+            MsgBox "Target not a PictureBox control!"
+            screen.MousePointer = 0
+            PrintMetafile = False
+            Exit Function
+         End If
+
+      Case 3      ' For form target:
+
+         pmform.ScaleMode = 3
+         pagewidth% = pmform.ScaleWidth
+         pageheight% = pmform.ScaleHeight
+
+         oldmapmode% = SetMapMode(pmform.hDC, MM_ISOTROPIC)
+
+         ' make logical units equal to device units
+         ' The SDK recommends that this be done when using MM_ISOTROPIC:
+         success% = SetWindowOrgEx(pmform.hDC, 0, 0, lpoldwindoworg)
+
+         ' Enter each of the following statements as one, single line:
+         success% = SetWindowExtEx(pmform.hDC, pagewidth%, pageheight%,
+            lpold_winextent)
+         success% = SetViewPortOrgEx(pmform.hDC, originx, originy,
+             lpoldvieworg)
+         success% = SetViewPortExtEx(pmform.hDC, pagewidth% / 100,
+             pageheight% / 100, lpold_vpextent)
+         success% = ScaleViewPortExtEx(pmform.hDC, scalingx, 1,
+             scalingy, 1, lpoldsize)
+
+         ' Send the metafile to the target hDC:
+         ApiError% = PlayMetafile(pmform.hDC, mfsource.Picture)
+         If ApiError% = 0 Then
+            MsgBox "PlayMetaFile failed"
+            PrintMetafile = False
+         End If
+
+         ' Reset device context to initial values:
+         ' Enter each of the following statements as one, single line:
+         successl&amp; = SetWindowOrg(pmform.hDC, lpoldwindoworg.X,
+            lpoldwindoworg.Y)
+         successl&amp; = SetWindowExt(pmform.hDC, lpold_winextent.cx,
+            lpold_winextent.cy)
+         successl&amp; = SetViewPortOrg(pmform.hDC, lpoldvieworg.X,
+            lpoldvieworg.Y)
+         successl&amp; = SetViewPortExt(pmform.hDC, lpold_vpextent.cx,
+            lpold_vpextent.cy)
+         oldmapmode% = SetMapMode(pmform.hDC, oldmapmode%)
+         PrintMetafile = True
+
+      Case Else
+
+         ' Enter the following statement as one, single line:
+         MsgBox "Unknown value passed to parameter printtarget
+            - exiting function"
+
+         screen.MousePointer = 0
+         Exit Function
+
+      End Select
+
+      screen.MousePointer = 0
+      Exit Function
+
+      handler:
+      ' Enter the following statement as one, single line:
+      MsgBox "Function PrintMetafile has failed with error number " &amp;
+          Trim(Str(Err)) &amp; " - recheck your parameters"
+
+      screen.MousePointer = 0
+      PrintMetafile = False
+      Exit Function
+
+   End Function
+
+   ' Enter the following four lines as one, single line:
+   Function PrintText (printtarget As Integer, pmpicture As Control,
+      pmform As Form, ptext As String, pfontname As String, pfontsize As
+      Integer, originx As Integer, originy As Integer, offsetx As Integer,
+      offsety As Integer, fuFormat)
+
+      '********************************************************************
+      '*  PrintText accepts parameters and then prints text to the one of
+      '*  three targets: printer, form or picture control.
+      '*
+      '* Parameters:
+      '*     printtarget accepts three values:
+      '*           1 - sends output to printer object
+      '*           2 - sends output to picture control
+      '*           3 - sends output to form
+      '*
+      '*     pmpicture - accepts picture control for use as output target
+      '*     pmform    - accepts form for use as the output target
+      '*
+      '*     ptext - contains the string to be printed
+      '*     pfontname - contains the fontname to be used
+      '*     pfontsize - contains the fontsize to be used
+      '*
+      '*     originx, originy - specifies the x and y coordinates of the
+      '*                        upper left origin of the output area
+      '*
+      '*     offsetx, offsety - specifies the coordinates of the lower
+      '*                  right corner of the DrawText Rectangle
+      '*                  relative to the upper left corner
+      '*
+      '*     fuFormat  -  Accepts four values for formatting the text
+      '*                  within the rectangle specified by the previous
+      '*                  four parameters
+      '*                  0 - align left
+      '*                  1 - align center
+      '*                  2 - align right
+      '*                  16 - do word wrapping in rectangle
+      '*
+      '*  Return value is the height of the text in current logical units
+      '*
+      '********************************************************************
+
+      On Error GoTo handler2
+
+      ' Display hour glass:
+       screen.MousePointer = 11
+
+      Select Case printtarget
+
+      Case 1
+
+         oldmapmode% = SetMapMode(printer.hDC, MM_TEXT)
+         printer.FontName = pfontname
+         printer.FontSize = pfontsize
+
+         lpDrawTextRect.left = originx
+         lpDrawTextRect.top = originy
+         lpDrawTextRect.right = originx + offsetx
+         lpDrawTextRect.bottom = originy + offsety
+
+         ' Enter the following statement as one, single line:
+         success% = DrawText(printer.hDC, ptext, Len(ptext),
+            lpDrawTextRect, fuFormat)
+
+         PrintText = success%
+
+         ' Reset device context to initial values:
+         oldmapmode% = SetMapMode(printer.hDC, oldmapmode%)
+         PrintText = success%
+
+      Case 2
+
+         If TypeOf pmpicture Is PictureBox Then
+
+            oldmapmode% = SetMapMode(pmpicture.hDC, MM_TEXT)
+            pmpicture.FontName = pfontname
+            pmpicture.FontSize = pfontsize
+
+            lpDrawTextRect.left = originx
+            lpDrawTextRect.top = originy
+            lpDrawTextRect.right = originx + offsetx
+            lpDrawTextRect.bottom = originy + offsety
+
+            ' Enter the following statement as one, single line:
+            success% = DrawText(pmpicture.hDC, ptext, Len(ptext),
+               lpDrawTextRect, fuFormat)
+
+            PrintText = success%
+
+            ' Reset device context to initial values:
+            oldmapmode% = SetMapMode(pmpicture.hDC, oldmapmode%)
+
+         Else
+            MsgBox "Target not a PictureBox control!"
+            screen.MousePointer = 0
+            PrintText = False
+            Exit Function
+         End If
+
+      Case 3
+
+         oldmapmode% = SetMapMode(pmform.hDC, MM_TEXT)
+         pmform.FontName = pfontname
+         pmform.FontSize = pfontsize
+
+         lpDrawTextRect.left = originx
+         lpDrawTextRect.top = originy
+         lpDrawTextRect.right = originx + offsetx
+         lpDrawTextRect.bottom = originy + offsety
+
+         ' Enter the following statement as one, single line:
+         success% = DrawText(pmform.hDC, ptext, Len(ptext),
+            lpDrawTextRect, fuFormat)
+         PrintText = success%
+
+         ' Reset device context to initial values:
+         oldmapmode% = SetMapMode(pmform.hDC, oldmapmode%)
+         PrintText = success%
+
+      Case Else
+
+         ' Enter the following statement as one, single line:
+         MsgBox "Unknown value passed to parameter printtarget -
+            exiting function"
+         screen.MousePointer = 0
+         Exit Function
+      End Select
+      screen.MousePointer = 0
+
+      Exit Function
+
+      handler2:
+      ' Enter the following statement as one, single line:
+      MsgBox "Function PrintText has failed with error number " &amp;
+         Trim(Str(Err)) &amp; " - recheck your parameters"
+
+      screen.MousePointer = 0
+      PrintText = False
+      Exit Function
+
+   End Function
+
+</PRE><P><LI>Add the following Sub procedures to the appropriate event procedure of
+   Form1:
+<P>
+<PRE>   Sub Form_Load ()
+      graph1.GraphStyle = 6
+      graph1.GraphType = 4          '3D Bar
+      graph1.NumSets = 3
+      graph1.Move 0, 0, 975, 855
+      picture2.Move 0, graph1.Top + graph1.Height, 975, 855
+   End Sub
+
+   Sub Form_Resize ()
+      picture1.Move Me.ScaleLeft, Me.ScaleHeight / 2, Me.ScaleWidth,
+      Me.ScaleHeight / 2
+   End Sub
+
+   Sub mnuToPic_Click ()
+      ' Save the graph as a metafile to disk:
+      graph1.ImageFile = app.Path &amp; "\GRAPHMF"
+      graph1.DrawMode = 6
+      graph1.Visible = False
+      ' Allow time for graph to save the file to disk:
+      DoEvents
+
+      picture2.Picture = LoadPicture(app.Path &amp; "\GRAPHMF.WMF")
+      ' Or grab a metafile supplied with VB3:
+      ' picture2.Picture =
+      LoadPicture("C:\VB\METAFILE\BUSINESS\CENT.WMF")
+
+      ' Allow the file to be loaded:
+      DoEvents
+
+      ret% = PrintMetafile(2, picture1, Me, picture2, 0, 0, 100, 100)
+
+      NL$ = Chr$(13) &amp; Chr$(10)
+
+      ' Enter each of the following statements as one, single line:
+      st1$ = "This is a string of characters that will be wrapped to fit
+         the rectangle!"
+      st2$ = "This is one string!" &amp; NL$ &amp; "This on the second line" &amp; NL$
+         &amp; "and this is on the third!"
+
+      fn$ = "Courier New"
+
+      ret% = PrintMetafile(2, picture1, Me, picture2, 62, 170, 25, 25)
+      ret% = PrintMetafile(2, picture1, Me, picture2, 62, 200, 16, 16)
+
+      ' Word wrap in the rectangle:
+      ' Enter the following statement as one, single line:
+      ret% = PrintText(2, picture1, Me, st1$, fn$, 13, 190, 100,
+         139, 139, 16)
+
+      ' Center the text in the rectangle:
+      ret% = PrintText(2, picture1, Me, st2$, fn$, 13, 69, 47, 254, 139, 1)
+
+   End Sub
+
+   Sub mnuToForm_Click ()
+      ' Save the graph as a metafile to disk:
+      graph1.ImageFile = app.Path &amp; "\GRAPHMF"
+      graph1.DrawMode = 6
+      graph1.Visible = False
+
+      ' Allow time for graph to save the file to disk:
+      DoEvents
+
+      picture2.Picture = LoadPicture(app.Path &amp; "\GRAPHMF.WMF")
+
+      ' or grab a metafile supplied with VB3:
+      ' picture2.Picture =
+
+      LoadPicture("C:\VB\METAFILE\BUSINESS\CENT.WMF")
+
+      ' Allow the file to be loaded:
+      DoEvents
+
+      ret% = PrintMetafile(3, picture1, Me, picture2, 0, 0, 100, 100)
+      NL$ = Chr$(13) &amp; Chr$(10)
+
+      ' Enter each of the following statements as one, single line:
+      st1$ = "This is a string of characters that will be wrapped to fit
+         the rectangle!"
+      st2$ = "This is one string!" &amp; NL$ &amp; "This on the second line" &amp;
+         NL$ &amp; "and this is on the third!"
+
+      fn$ = "Times New Roman"
+
+      ret% = PrintMetafile(3, picture1, Me, picture2, 62, 170, 25, 25)
+      ret% = PrintMetafile(3, picture1, Me, picture2, 62, 200, 16, 16)
+
+      ' Word wrap in the rectangle:
+      ' Enter the following statement as one, single line:
+      ret% = PrintText(3, picture1, Me, st1$, fn$, 13, 190, 100,
+         139, 139, 16)
+
+      ' Center the text in the rectangle:
+      ret% = PrintText(3, picture1, Me, st2$, fn$, 13, 69, 47, 254, 139, 1)
+
+   End Sub
+
+   Sub mnuToPrinter_Click ()
+      ' Save the graph as a metafile to disk:
+      graph1.ImageFile = app.Path &amp; "\GRAPHMF"
+      graph1.DrawMode = 6
+      graph1.Visible = False
+
+      ' Allow time for graph to save the file to disk:
+      DoEvents
+
+      picture2.Picture = LoadPicture(app.Path &amp; "\GRAPHMF.WMF")
+      ' or grab a metafile supplied with VB3
+      ' picture1.Picture =
+
+      LoadPicture("C:\VB\METAFILE\BUSINESS\CENT.WMF")
+
+      ' Allow the file to be loaded:
+      DoEvents
+
+      ret% = PrintMetafile(1, picture1, Me, picture2, 0, 0, 100, 100)
+
+      NL$ = Chr$(13) &amp; Chr$(10)
+
+      ' Enter each of the following statements as one, single line:
+      st1$ = "This is a string of characters that will be wrapped to fit
+         the rectangle!"
+      st2$ = "This is one string!" &amp; NL$ &amp; "This on the second line" &amp; NL$
+         &amp; "and this is on the third!"
+
+      fn$ = "Times New Roman"
+
+      ret% = PrintMetafile(1, picture1, Me, picture2, 540, 1100, 29, 29)
+      ret% = PrintMetafile(1, picture1, Me, picture2, 540, 1300, 19, 19)
+
+      ' Word wrap in the rectangle:
+      ' Enter the following statement as one, single line:
+      ret% = PrintText(1, picture1, Me, st1$, fn$, 13, 1100, 300,
+         400, 300, 16)
+
+      ' Center the text in the rectangle:
+      ' Enter the following statement as one, single line:
+      ret% = PrintText(1, picture1, Me, st2$, fn$, 13, 1040, 690, 600,
+         139, 1)
+
+      printer.EndDoc
+
+   End Sub
+
+</PRE><P><LI>Save the project and run the program by pressing the F5 key.
+
+<P><LI>Select any of the three targets for the composite of text and
+   metafiles to be rendered.
+
+<P><LI>The code in the three menu events (mnuToPrinter_Click, mnuToForm_Click,
+<P><PRE>    and mnuToPic_Click) are just three parallel examples demonstrating the
+    technique. The PrintMetafile and PrintText functions are designed to
+    be generic wrappers for the API functions used.
+<P></BLOCKQUOTE>
+</OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00 2.00 3.00<BR>
+KBCategory: kbprint kbprg kbcode<BR>
+KBSubcategory: APrgPrint<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 16, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

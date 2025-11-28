@@ -1,0 +1,345 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Multiple 16-bit USRDLL Clients Cannot Share MFC ODBC Objects </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q137307">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1995/09/25">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  You cannot share CDatabase or CRecordset objects among multiple clients of a 16-bit _USRDLL DLL.  MORE INFORMATION  The CDatabase and CRecordset classes (and classes derived from them) use ODBC to gain access to data sources. Internal to ODBC, memo...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QARL,QAGI,QA4Q,QAUD,QA3P,QAH6,QAW6,QAPN,QAH7,QAD7,QAZV,QA9E,QAGB,QAIF,QA28 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Multiple 16-bit USRDLL Clients Cannot Share MFC ODBC Objects</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q137307</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.5x
+WINDOWS
+kbinterop kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++ For Windows, versions 1.5x
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+You cannot share CDatabase or CRecordset objects among multiple clients of
+a 16-bit _USRDLL DLL.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The CDatabase and CRecordset classes (and classes derived from them) use
+ODBC to gain access to data sources. Internal to ODBC, memory is allocated
+to hold state information on behalf of each client calling into ODBC. This
+memory is allocated task-specific (that is, not using GMEM_SHARE). This
+means that only the client that made the call that initially caused the
+internal memory to be allocated can reliably use that object.
+<P>
+One strategy for dealing with this situation is to have each _USRDLL DLL
+client call an initialization function in the DLL that returns a unique
+number that identifies the client. Then, in subsequent calls to the DLL,
+have the client pass this number back to identify which client is making a
+call.
+<P>
+On the DLL side, create separate database/recordset objects for each DLL
+client. Use the passed identifier to know which database/recordset to
+operate on.
+<P>
+The following "Sample Code" section shows the code for a simple _USRDLL DLL
+that allows for multiple clients and allocates a CDatabase object for each
+one. It provides a function that allows the client to retrieve the driver
+name for the CDatabase object created on its behalf. The client can pass in
+a data source name or NULL if it wants the user to select a registered ODBC
+data source. The following functions are provided by the DLL:
+<P>
+<PRE>  Init() - Initializes the client's database object and returns an
+           identifier to be used in subsequent calls.
+
+  DriverName() - returns the database's driver name in a caller-supplied
+                 buffer.
+
+  Term() - Tells the DLL that the client will not be using its services
+           any more.
+
+</PRE>A typical sequence of calls would be:
+<P>
+<PRE>  char buffer[20];
+  int  nID = Init(myHwnd,NULL);
+  DriverName(nID,buffer,20);
+  MessageBox(buffer,"Driver Name");
+  Term(nID);
+
+</PRE>The DLL maintains an array of CDatabase objects and passes the index of
+the element of the array as the return value of the Init() function.
+The caller then passes this array index as a parameter in any further
+calls to the DLL. The DLL uses this index to determine which database
+object should be used to process the call.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed: /ALw /D "_USRDLL" /GD
+*/
+
+//----------------------------------------------------------------------
+// mydll.h - header file
+
+</PRE>#ifdef __cplusplus
+extern "C" {
+#endif
+<P>
+<PRE>int  FAR PASCAL _export Init(HWND hwnd,char* szDSN);
+void FAR PASCAL _export DriverName(int nID,char* szName,int cbName);
+void FAR PASCAL _export Term(int nID);
+
+</PRE>#ifdef __cplusplus
+}
+#endif
+<P>
+<PRE>//----------------------------------------------------------------------
+// mydll.cpp - implementation file
+
+#include &lt;afxwin.h&gt;
+#include &lt;afxext.h&gt;
+#include &lt;afxcoll.h&gt;
+#include &lt;afxdb.h&gt;
+
+// data members
+//
+</PRE>CPtrArray* pDbArray = NULL;
+<PRE>int        nClients = 0;
+
+// exported functions
+//
+</PRE>extern "C" int FAR PASCAL _export Init(HWND hwnd,char* szDSN)
+{
+<PRE>  int nReturn = -1;
+  AfxLockTempMaps();
+  TRY
+  {
+    // make sure m_pMainWnd is valid for CDatabase::Open()
+    AfxGetApp()-&gt;m_pMainWnd = CWnd::FromHandle(hwnd);
+    CDatabase*  pDb = new CDatabase;
+    if (pDb-&gt;Open(szDSN))
+    {
+      // if database array is not allocated, do so
+      if (pDbArray == NULL)
+        pDbArray = new CPtrArray;
+
+      // first try to reuse existing elements
+      BOOL  bFound = FALSE;
+      for (int i = 0; i &lt;= pDbArray-&gt;GetUpperBound(); i++)
+      {
+        CDatabase* ptr = (CDatabase*)pDbArray-&gt;GetAt(i);
+        if (!ptr)
+        {
+          pDbArray-&gt;SetAt(i,(void*)pDb);
+          nReturn = i;
+          bFound = TRUE;
+          break;
+        }
+      }
+
+      // if you can't reuse existing elements, add one
+      if (!bFound)
+        nReturn = pDbArray-&gt;Add((void*)pDb);
+
+      nClients++;
+    }
+  }
+  CATCH(CException,e)
+  {
+    // handle exceptions here
+  }
+  END_CATCH
+
+  // free the temporary CWnd object
+  AfxUnlockTempMaps();
+  return nReturn;
+</PRE>}
+<P>
+extern "C" void FAR PASCAL _export DriverName(int nID,char* szName,
+<PRE>  int cbName)
+</PRE>{
+<PRE>  TRY
+  {
+    short  cbReturned;
+
+    // get the database for this client
+    CDatabase*  pDb = (CDatabase*)pDbArray-&gt;GetAt(nID));
+
+    // get the driver name for the database
+    ::SQLGetInfo(pDb-&gt;m_hdbc,SQL_DRIVER_NAME,
+    szName,cbName,&amp;cbReturned);
+  }
+  CATCH(CException,e)
+  {
+    // handle exceptions here
+  }
+  END_CATCH
+</PRE>}
+<P>
+extern "C" void FAR PASCAL _export Term(int nID)
+{
+<PRE>  TRY
+  {
+    // get this client's database, close and delete it
+    CDatabase*  pDb = (CDatabase*)pDbArray-&gt;GetAt(nID));
+    pDb-&gt;Close();
+    delete pDb;
+
+    // set the array element to NULL
+    pDbArray-&gt;SetAt(nID,NULL);
+
+    // if no more clients, empty and delete the array
+    if (!(--nClients))
+    {
+      pDbArray-&gt;RemoveAll();
+      delete pDbArray;
+      pDbArray = 0;
+    }
+  }
+  CATCH(CException,e)
+  {
+    // handle exceptions here
+  }
+  END_CATCH
+</PRE>}
+<P>
+<PRE>// CWinApp-derived class
+//
+</PRE>class CMyDLL : public CWinApp
+{
+public:
+<PRE>  virtual BOOL InitInstance();
+  virtual int ExitInstance();
+
+  CMyDLL(const char* pszAppName)
+    : CWinApp(pszAppName) { }
+</PRE>};
+<P>
+BOOL CMyDLL::InitInstance()
+{
+<PRE>  return TRUE;
+</PRE>}
+<P>
+<PRE>int CMyDLL::ExitInstance()
+</PRE>{
+<PRE>  return CWinApp::ExitInstance();
+</PRE>}
+<P>
+CMyDLL  NEAR myDLL("mydll.dll");
+<P>
+<PRE>// end source code
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For more information, please see the following article in the Microsoft
+Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../odbc/q110475.htm">Q110475</A></B>
+   TITLE     : INF: Sharing ODBC Handles Among Several Applications
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.50 1.51 1.52 1.52a 1.52b 2.50 2.51 2.52<BR>
+2.52a 2.52b<BR>
+KBCategory: kbinterop kbcode<BR>
+KBSubcategory: MfcDatabase<BR>
+Keywords            : kb16bitonly<BR>
+Technology          : kbMfc<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

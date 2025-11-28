@@ -1,0 +1,228 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Code Generation Problem with /Oc and /f Compiler Options </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q116238">
+<META NAME="KBModify" CONTENT="1997/07/18">
+<META NAME="KBCreate" CONTENT="1994/06/14">
+<META NAME="Keywords" CONTENT="CodeGen kb16bitonly kbbuglist kbtool">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  A structure assignment produces incorrect results when you use the /Oc compiler option (local common subexpression optimization) in conjunction with the /f option (fast compile). This also happens when the /Ox compiler option is used in conjunction...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QBFY,QBE7,QBE6,QBV8,QAOT,QAKD,QAKP,QDKW,QAEF,QAYA,QBXT,QA5V,QA4Q,QAIB V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Code Generation Problem with /Oc and /f Compiler Options</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q116238</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50
+WINDOWS
+kbtool kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft C/C++ Compiler (CL.EXE), included with:
+   Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+A structure assignment produces incorrect results when you use the /Oc
+compiler option (local common subexpression optimization) in conjunction
+with the /f option (fast compile). This also happens when the /Ox compiler
+option is used in conjunction with the /f option, because /Ox includes /Oc
+as one of its optimizations.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The assembly that is generated when you use the optimization stores the
+value of the array in the AL register, but then proceeds to use AX for
+another purpose before actually storing the value in the structure element.
+The original value of AL is then lost and the structure element is assigned
+an incorrect value.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To work around this problem, either do not use the /Oc or /Ox optimization
+or disable the optimization for the function that contains the code by
+using the #pragma optimize("",off) option.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the C/C++ Compiler for MS-DOS,
+versions 8.0 and 8.0c. We are researching this problem and will post new
+information here in the Microsoft Knowledge Base as it becomes available.
+<P>
+This is not a problem in the 32-bit C/C++ Compiler, versions 8.0 and 9.0,
+which support neither the /Oc option nor the /f option.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following sample code demonstrates this problem:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed: /f /Oc
+*/
+
+   static struct
+   {
+      char a[3];
+   } s[10];
+
+   static char x[] = "ABCDEFGHIJ";
+
+   int main(void)
+   {
+      int i;
+      memset(&amp;s,0,sizeof(s));
+      for (i=0; i&lt;10; i++)
+      {
+         s[i].a[0] = x[i];  //bad code generated from this line
+         printf("s[%d] = ""%s""\n", i, s[i].a);
+      }
+   }
+
+//The following line of code produces the incorrect assembly:
+
+</PRE>; Line 13
+<PRE>;                 s[i].a[0] = x[i];
+</PRE>; Line 14
+<PRE>     *** 000025     mov     bx,WORD PTR -4[bp]
+     *** 000028     mov     al,BYTE PTR x[bx]  // x[i] is moved into
+     *** 00002c     mov     cx,OFFSET 3    // the AL register
+     *** 00002f     mov     ax,bx          // the x[i] value in AL is
+     *** 000031     imul     cx             // then overwritten
+     *** 000033     mov     bx,ax
+     *** 000035     mov     BYTE PTR s[bx],al  // the last value in AL
+                                        // is moved into the structure
+                                        // but the AL value is incorrect
+
+//This is the example rewritten using the #pragma to work around the
+//problem:
+/* Compile options needed: /f /Oc
+/*
+   static struct
+   {
+      char a[3];
+   } s[10];
+
+   static char x[] = "ABCDEFGHIJ";
+
+   #pragma optimize("c",off)
+
+   int main(void)
+   {
+      int i;
+      memset(&amp;s,0,sizeof(s));
+      for (i=0; i&lt;10; i++)
+      {
+         s[i].a[0] = x[i];
+         printf("s[%d] = ""%s""\n", i, s[i].a);
+      }
+   }
+
+   #pragma optimize("c",on)
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00 1.50 8.00 8.00c<BR>
+KBCategory: kbtool kbbuglist<BR>
+KBSubcategory: CodeGen<BR>
+Keywords            : CodeGen kb16bitonly kbbuglist kbtool<BR>
+Version             : 1.00 1.50<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

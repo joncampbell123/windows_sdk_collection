@@ -1,0 +1,275 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Access the Application Desktop from a Service </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q173687">
+<META NAME="KBModify" CONTENT="1997/09/11">
+<META NAME="KBCreate" CONTENT="1997/09/10">
+<META NAME="Keywords" CONTENT="BseService">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The configuration of a Windows NT service determines how it may access the application desktop. The application desktop is named  default  and belongs to the  WinSta0  Window station object. The application desktop is associated with the interactiv...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA01,QAUD,QA0J,QAI5,QACK,QBW7,QAJH,QBG2,QABA,QBWP,QBWG,QALW,QDIZ,QAGU,QDJ3 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Access the Application Desktop from a Service</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 11, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q173687</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT versions 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The configuration of a Windows NT service determines how it may access the
+application desktop. The application desktop is named "default" and belongs
+to the "WinSta0" Window station object. The application desktop is
+associated with the interactively logged-on user. A process that has access
+to the application desktop can display message boxes, windows, and dialog
+boxes that can be seen visually by the interactively logged-on user. In
+addition, a process with access to the application desktop can send
+messages to other processes running on the desktop. The application desktop
+is not destroyed when the interactively logged-on user logs off.
+<P>
+NOTE: Running interactive services under the LocalSystem account is a VERY
+dangerous practice. This is especially true of the command processor and
+batch files. A user who wants to control the system can just hit CTRL+C to
+get an interactive system command prompt.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+A service that is configured in the LocalSystem account and is interacting
+with the desktop (the service type includes the SERVICE_INTERACTIVE_PROCESS
+flag) has access to the application desktop.
+<P>
+A service that is configured in the LocalSystem account and is not
+interacting with the desktop does not have access to the application
+desktop by default. If the service needs to display information through a
+message box, you can do this by specifying one of the following two flag
+types:
+<P>
+<PRE>   MB_DEFAULT_DESKTOP_ONLY - The message box will appear on the application
+                             desktop, for example, "winsta0\default".
+   MB_SERVICE_NOTIFICATION - The message box will appear on the currently
+                             active desktop.
+
+</PRE>In addition, a service configured in the LocalSystem account can
+reconfigure its thread to access the application desktop. This is
+demonstrated in the following sample code. The sample code obtains handles
+to the "WinSta0" window station and the "default" desktop. Then it re-
+associates the current thread to the application desktop. Then the sample
+will display a message box and, when access to the interactive desktop is
+no longer needed, it resets the thread to the original window station and
+desktop. This must be done for every thread that wants access to the
+application desktop.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   BOOL ThreadInteract(void)
+   {
+      HDESK   hdeskCurrent;
+      HDESK   hdeskTest;
+      HDESK   hdesk;
+      HWINSTA hwinstaCurrent;
+      HWINSTA hwinsta;
+
+      //
+      // Save the current Window station
+      //
+      hwinstaCurrent = GetProcessWindowStation();
+      if (hwinstaCurrent == NULL)
+         return FALSE;
+
+      //
+      // Save the current desktop
+      //
+      hdeskCurrent = GetThreadDesktop(GetCurrentThreadId());
+      if (hdeskCurrent == NULL)
+         return FALSE;
+
+      //
+      // Obtain a handle to WinSta0 - service must be running
+      // in the LocalSystem account
+      //
+      hwinsta = OpenWindowStation("winsta0", FALSE,
+                                  WINSTA_ACCESSCLIPBOARD   |
+                                  WINSTA_ACCESSGLOBALATOMS |
+                                  WINSTA_CREATEDESKTOP     |
+                                  WINSTA_ENUMDESKTOPS      |
+                                  WINSTA_ENUMERATE         |
+                                  WINSTA_EXITWINDOWS       |
+                                  WINSTA_READATTRIBUTES    |
+                                  WINSTA_READSCREEN        |
+                                  WINSTA_WRITEATTRIBUTES);
+      if (hwinsta == NULL)
+         return FALSE;
+
+      //
+      // Set the windowstation to be winsta0
+      //
+      if (!SetProcessWindowStation(hwinsta))
+         return FALSE;
+
+      //
+      // Get the desktop
+      //
+      hdeskTest = GetThreadDesktop(GetCurrentThreadId());
+      if (hdeskTest == NULL)
+         return FALSE;
+
+      //
+      // Get the default desktop on winsta0
+      //
+      hdesk = OpenDesktop("default", 0, FALSE,
+                            DESKTOP_CREATEMENU |
+                  DESKTOP_CREATEWINDOW |
+                            DESKTOP_ENUMERATE    |
+                            DESKTOP_HOOKCONTROL  |
+                            DESKTOP_JOURNALPLAYBACK |
+                            DESKTOP_JOURNALRECORD |
+                            DESKTOP_READOBJECTS |
+                            DESKTOP_SWITCHDESKTOP |
+                            DESKTOP_WRITEOBJECTS);
+   if (hdesk == NULL)
+           return FALSE;
+
+   //
+   // Set the desktop to be "default"
+   //
+   if (!SetThreadDesktop(hdesk))
+           return FALSE;
+
+   //
+   // Do a message box
+   //
+   MessageBox(NULL, "MB_OK", "test_interact", MB_OK);
+
+   //
+   // Reset the Window station and desktop
+   //
+   if (!SetProcessWindowStation(hwinstaCurrent))
+           return FALSE;
+
+   if (!SetThreadDesktop(hdeskCurrent))
+      return FALSE;
+
+   //
+   // Close the windowstation and desktop handles
+   //
+   if (!CloseWindowStation(hwinsta))
+      return FALSE;
+
+   if (!CloseDesktop(hdesk))
+           return FALSE;
+
+      return TRUE;
+   }
+
+</PRE>A service configured for a user account can access the application desktop
+through the message box types mentioned above. The above code will fail for
+a service configured for a user account due to security reasons but it will
+work for a service that impersonates the interactively logged-on user. For
+example, impersonation can be done through a named pipe connection from a
+process running on the application desktop. The service would have to
+impersonate the named pipe client.
+ 
+<PRE>Keywords          : BseService
+Version           : WINDOWS NT:3.51,4.0
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 11, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

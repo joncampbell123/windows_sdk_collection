@@ -1,0 +1,271 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>WINS Does Not Replicate &lt;1c&gt; Names Properly </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q140978">
+<META NAME="KBModify" CONTENT="1997/12/18">
+<META NAME="KBCreate" CONTENT="1995/12/07">
+<META NAME="Keywords" CONTENT="kbfix3.51.sp4 NTSrvWkst nttcp kbnetwork">
+<META NAME="KBArea" CONTENT="Support; KB; winnt, crossnet, iis">
+<META NAME="Description" CONTENT="  Among Windows Internet Name Service (WINS) servers, the [1C] group name is not replicating properly, resulting in certain WINS databases that contain only a partial list of domain controllers in the [1C] group.  CAUSE =====  The [1C] record is not ...">
+<META NAME="Product" CONTENT="Windows NT">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA5V,QBFY,QBWP,QAXB,QBVV,QBWD,QA9A,QAC1,QBD2,QDMH,QABO,QBWO,QBW3,QAE1,QAUJ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>WINS Does Not Replicate &lt;1c&gt; Names Properly</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q140978</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+<P>
+- Microsoft Windows NT Server versions 3.5 and 3.51
+ 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Among Windows Internet Name Service (WINS) servers, the [1C] group name is
+not replicating properly, resulting in certain WINS databases that contain
+only a partial list of domain controllers in the [1C] group.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The [1C] record is not replicated because the [1C] version ID was not
+updated to indicate that it had changed.
+<P>
+<P><h3>Description of Problem</h3>
+ 
+<P>
+When a DC registers with a WINS server, the DC will register its IP
+address in the &lt;domain&gt;[1C] group, (along with any other servers already
+listed,) and the WINS server will update the 'version ID' of that [1C]
+record. That record will then get propagated from the WINS server, to a
+partner-WINS server.
+<P>
+If the partner-WINS already has a previous replica (copy) of the [1C]
+record, it will update its own database to include the new IP addresses in
+that record, but it will not update its version ID of that [1C] record.
+(The original WINS and the partner-WINS will maintain different version
+IDs of the records that they pass to each other.)
+<P>
+At this point the partner-WINS has an updated [1C] record, however it will
+not push that record to a third partner-WINS because the version ID was
+not updated.
+<P>
+For example:
+<P>
+Assume a network with at least 3 WINS servers WINS_X, WINS_Y, and WINS_Z;
+where WINS_X is the primary WINS server that all DCs register with; WINS_Y
+and WINS_Z are sequential partners; thus, during propagation the flow of
+the [1C] group is as follows:
+<P>
+<PRE>   (WINS_X)  --&gt;  (WINS_Y)  --&gt;  (WINS_Z) ....
+
+</PRE>Assume that initial propagation has already occurred, so that WINS_Y and
+WINS_Z have a replica [1C] record. Then, a new DC registers with WINS_X,
+the version ID of the [1C] record is updated, and it gets propagated to
+WINS_Y. WINS_Y already has a replica of the [1C] record, so it will update
+the DC addresses in that record, but not the version ID. WINS_Z then pulls
+from WINS_Y, however the [1C] record was not included because the [1C]
+version ID was not updated to indicate that it had changed.
+<P>
+The result of this is that the domain controllers in the list at WINS_Z
+may get overloaded with network requests; and DC redundancy is reduced.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+To work around this problem, you have three options.
+
+<UL><LI>This option works best if you have all DCs registering at one
+   WINS:
+<P>
+   1. Use WINSCL.EXE (from the Windows NT Resource Kit) to delete the [1C]
+<P><PRE>      entry on all WINS databases that merely contain a replica of the
+      record (that is, no DCs are registering to those WINS servers). Also
+      delete any static [1C] record from any WINS (because the 'migrate
+      on' feature will not resolve the problem.)
+</PRE><P>
+   2. From your WINS server(s) that accepts DC registrations, do something
+<P><PRE>      to cause an update to the [1C] record, such as rebooting a DC, or
+      typing IPCONFIG /RENEW if you are using DHCP.
+</PRE><P>
+   3. Force propagation to all partner WINS servers. Since owner [1C]
+<P><PRE>      records are updated, and the partners do not have any replica copy
+      at all, it should get completely replicated because it is a new
+      record (and high version ID) at every partner.
+</PRE><P>
+   -or-
+
+<LI>Set up your WINS push/pull configuration in a star pattern, such
+   that there is a central WINS where all your DCs register, and the
+   partner WINS servers only replicate with the central server. In this
+   configuration the problem should not occur at all.
+<P>
+   -or-
+
+<LI>Although Microsoft generally does not recommend using Static entries
+   for computers that are WINS aware, you can overcome this problem by
+   creating a static record for the [1C] domain name. This will disable
+   the functionality of controllers dynamically registering their address
+   in the [1C] group, however it will allow you to manually add
+   controllers to the [1C] record on any partner WINS database, and thus
+   have control of the list.
+<P>
+   NOTE: If you have a Windows NT 3.1 DC in your domain, this static
+   method will be required because Windows NT 3.1 is not WINS aware.
+<P>
+</UL><h2>RESOLUTION</h2>
+ 
+<P>
+This problem has been corrected in the latest Service Pack for Windows NT
+version 3.51.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in Windows NT version 3.51.
+This problem was corrected in the latest Windows NT 3.51 U.S. Service
+Pack. For information on obtaining the Service Pack, query on the
+following word in the Microsoft Knowledge Base (without the spaces):
+<P>
+<PRE>   S E R V P A C K
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+The [1C] (that is, [1Ch] or [0x1Ch]) is a special group name registered
+for use by the domain controllers (DCs) within the domain, and can contain
+up to 25 IP addresses.
+<P>
+In a large network with more than 25 DCs, new registrations will overwrite
+the oldest ones. This means that the primary DC (PDC) will remain in the
+[1C] list unless it gets overwritten, too. However, when a client does a
+query for the [1C] list, the PDC address will still be returned because
+the PDC registers the &lt;domain&gt;[1B] name, and that address will always be
+returned with the [1C] list.
+<P>
+The [1C] domain name is used for the following functions:
+
+<UL><LI>Domain logon process through WINS (when Windows for Workgroups,
+   Windows95, and Windows NT clients log on):
+<P>
+   1. A client will send a name query to the WINS server for the
+<P><PRE>      &lt;domain name&gt;[1C].
+</PRE><P>
+   2. The WINS server will return the list of IP addresses (DCs) in the
+<P><PRE>      [1C] group.
+</PRE><P>
+   3. The client will send a directed datagram to each DC in an attempt to
+<P><PRE>      logon to the domain.
+</PRE><P>
+   4. The DCs will start responding to the logon request.
+<P>
+   5. The client will continue the logon process with the first DC that
+<P><PRE>      responds; the client will ignore the other responses.
+</PRE>
+<LI>Secure Channel establishment:
+<P>
+<P><PRE>    -  Interdomain: When Windows NT workstations and servers are started,
+       they will use the [1C] list of addresses to find a DC and establish
+       a secure channel for their domain machine account.
+</PRE><P>
+<P><PRE>    -  Trusted domains: When a DC comes up, it will set up a secure
+       channel with a DC from the &lt;remote domain&gt;[1C] list. This channel
+       will be used for pass-through authentication.
+<P></BLOCKQUOTE>
+</UL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: prodnt mappings<BR>
+Keywords          : kbfix3.51.sp4 NTSrvWkst nttcp kbnetwork<BR>
+Version           : 3.5 3.51<BR>
+Platform          : winnt<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

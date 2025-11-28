@@ -1,0 +1,459 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Handle Data Types Correctly with the Thunk Compiler </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q142564">
+<META NAME="KBModify" CONTENT="1997/10/10">
+<META NAME="KBCreate" CONTENT="1996/01/16">
+<META NAME="Keywords" CONTENT="BseMisc kbcode kbhowto kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The thunk compiler supports most of the built-in and user-defined types that the C or C++ languages support. It also supports a subset of the calling conventions that the Microsoft Visual C++ compiler supports. To handle situations where you need t...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAH6,QAH7,QAD7,QAP2,QAOT,QAGI,QAO3,QAO2,QAY5,QAH4,QBVV,QBFY,QAHH,QAKD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Handle Data Types Correctly with the Thunk Compiler</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q142564</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+4.00
+WINDOWS
+kbprg kbhowto kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included
+   with Microsoft Windows 95, version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The thunk compiler supports most of the built-in and user-defined types
+that the C or C++ languages support. It also supports a subset of the
+calling conventions that the Microsoft Visual C++ compiler supports. To
+handle situations where you need to pass or return data of an unsupported
+type, you need to massage the data into a type that the thunk compiler does
+recognize. This article explains how to do so for commonly used types
+supported by the C and C++ languages but not by the thunk compiler.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+There are several strategies for handling data types and function calling
+conventions that the thunk compiler does not support. These strategies
+generally rely on substitution and pre- or post-processing the data, and
+require an understanding of how the thunk compiler translates data. The
+thunk compiler uses the following rules to translate data:
+
+<UL><LI>Automatically translate 32-bit pointers into 16-bit far pointers and
+   vice-versa.
+
+<LI>Pass signed and unsigned scalar types (varieties of char, int, and long)
+   unmodified with the exception of int. Because the type int is 32 bits
+   wide in 32-bit code and 16 bits wide in 16-bit code, truncate int values
+   on the 16-bit side, and sign-extend them on the 32-bit side.
+<P>
+</UL>These two translation rules make thunks handle parameters as expected in C
+or C++. A pointer is a pointer on both sides, and a scalar value is the
+same on both sides too. These rules come in handy when you need to use the
+Generic Thunk API functions in combination with flat thunks.
+<P>
+Before delving into how to handle specific data types, you need to consider
+the general principles for substituting function calling conventions and
+data types. These are simple:
+
+<UL><LI>Write wrapper functions around the thunk to handle unsupported calling
+   conventions.
+
+<LI>Substitute supported types for unsupported types in the thunk scripts.
+   The supported type must be the same length as the unsupported type, and
+   generally should not be a pointer type.
+
+<LI>If the unsupported type is larger than eight bytes, then it usually
+   should be handled by passing a pointer to it and then manually
+   interpreting it on the other side of the thunk. Unions and arrays of
+   structures fall into this category.
+
+<LI>To handle unsupported types in return values, write wrapper functions
+   for both sides of the thunk and where necessary, give the actual thunk
+   function an extra parameter that points to a dynamically-allocated
+   buffer.
+<P>
+</UL><h3>Function Calling Conventions</h3>
+ 
+<P>
+The Windows 95 thunk compiler supports a subset of the calling conventions
+supported by the Microsoft Visual C++ compiler. Only __stdcall is supported
+on the 32-bit side of a thunk; on the 16-bit side, only __pascal is
+supported. __cdecl and __fastcall are not supported calling conventions for
+either the 16-bit or 32-bit sides of the thunk. Although the thunk must use
+__pascal and __stdcall calling conventions, the thunk may call or be called
+by other functions that use any calling convention.
+<P>
+To thunk to a function that uses the __cdecl or __fastcall calling
+convention, you must create your thunk function with the supported calling
+conventions and have the target side of the thunk call the real function.
+Here is an example that shows how a Win32 application might call a 16-bit
+__cdecl function:
+<P>
+<PRE>/*-------------------------------------------------------------
+</PRE>Code inside Win32 application or DLL
+-------------------------------------------------------------*/
+<P>
+<PRE>/*
+   Declaration for benefit of the 32-bit side of thunk, note
+   that in Win32 programs, PASCAL is defined as __stdcall,
+   and FAR is defined as nothing.
+*/
+void FAR PASCAL C_Function16 (int x);
+
+/*
+   MyCFunction is a C calling convention function to interface
+   with rest of the Win32 application.  It calls the thunk,
+   which is __stdcall.
+*/
+void MyCFunction (int x)
+</PRE>{
+<PRE>   C_Function16 (x);
+</PRE>}
+<P>
+<PRE>/*-------------------------------------------------------------
+</PRE>Code inside Win16 DLL (target of thunk)
+-------------------------------------------------------------*/
+<P>
+<PRE>// Declaration for the real C function
+void Real_C_Function (int x);
+
+/*
+   C_Function16 is the 16-bit side of the thunk.  In a 32-&gt;16
+   thunk, it is the target.  Here, it calls the real C function
+   that the Win32 application wanted to call in the first
+   place. The FAR macro and the __export keyword are used to
+   make sure the function is exported correctly from the 16-bit
+   DLL.
+*/
+void FAR PASCAL __export C_Function16 (int x)
+</PRE>{
+<PRE>   Real_C_Function (x);
+</PRE>}
+<P>
+<P>
+<PRE>/*-------------------------------------------------------------
+</PRE>Thunk script
+-------------------------------------------------------------*/
+enablemapdirect3216 = true;
+<P>
+<PRE>void C_Function16 (int x)
+</PRE>{
+}
+<P>
+If you try to build a thunk and don't use the __stdcall or __pascal calling
+conventions, you will get "unresolved external" errors from the linker when
+building because the function names produced by the C/C++ compiler don't
+match the names in the code produced by the thunk compiler.
+<P>
+<P><h3>Return Values</h3>
+ 
+<P>
+The thunk compiler does not support all types as return values that the C
+and C++ languages support. The limitations stem from the problems of
+translating addresses from 32-bit address spaces to 16-bit address spaces
+and vice-versa.
+<P>
+The thunk compiler supports returning all integral types. The signed and
+unsigned varieties of char, short int, and long int are the same size on
+both sides of a thunk and thus are returned unmodified. The values of the
+<PRE>int type will be truncated to 16-bits upon return from a 16-&gt;32 thunk, and
+</PRE>will be sign-extended to 32-bits on return from a 32-&gt;16 thunk.
+<P>
+Structures may not be returned from either 32-&gt;16 or 16-&gt;32 thunks.
+However, pointers to structures can be returned from 32-&gt;16 thunks if the
+structure does not need to be repacked and does not contain pointers. A
+structure does not require repacking if the types of all members of the
+structure are the same size in 16-bit and 32-bit code and the structure is
+packed with the same alignment on both sides of the thunk. Use #pragma pack
+to pack the structure with the same value in the 32-bit and 16-bit source
+code, and specify the same packing on the thunk compiler command line.
+<P>
+Pointers cannot be returned from 16-&gt;32 thunks because the context of the
+32-bit address space is not global. The 32-bit address space for the Win32
+target DLL is mapped between 4 megabytes and 2 gigabytes, and it is context-
+switched as are all other Win32 process address spaces. This means that a
+Win16 application or DLL could not use a pointer returned by a 16-&gt;32 thunk
+without causing a general protection (GP) fault. You can work around this
+limitation by writing a wrapper function for the 16-bit side of the thunk
+that allocates memory and passes it to the thunk function as an extra
+parameter. The 32-bit side of the thunk should also be a wrapper around the
+real function to handle the extra parameter and copy the data to the memory
+allocated by the 16-bit wrapper function.
+<P>
+Pointers are supported as return types in 32-&gt;16 thunks as long as the base
+type requires the same number of bytes on both sides of the thunk and does
+not require repacking. If the size of the base type of a pointer differs
+between the Win16 and Win32 sides, the thunk compiler generates an error.
+For example, a char is one byte on both sides of the thunk, and thus a
+pointer to a char is supported as a return type. A pointer to an int cannot
+be returned because an int is 16 bits on the 16-bit side of the thunk, but
+32 bits on the 32-bit side.
+<P>
+To return a pointer to a data type whose size is different on the 16-bit
+and 32-bit sides of a 32-&gt;16 thunk, you should write a wrapper function
+that returns the real type, and have the wrapper pass a buffer to the thunk
+function as an extra parameter. The target side of the thunk should put the
+return value into this buffer, and then the wrapper on the calling side
+should return the data from the buffer once the target side of the thunk
+returns.
+<P>
+The thunk compiler has one special type (bool) that is not found in C or
+C++ compilers. You should use this type in your thunk scripts for functions
+that return boolean values when the TRUE result is any non-zero value.
+<P>
+<P><h3>Floating-Point Data Types</h3>
+ 
+<P>
+The thunk compiler does not support any floating point types. There are
+three floating point types to consider, and how you approach them depends
+on which you need to use.
+<P>
+A float is four bytes long on both the 16-bit and 32-bit sides of a thunk.
+A float can be passed to a thunk function by declaring it as a DWORD
+(unsigned long) in the thunk script. This makes the thunk compiler pass a
+four byte value without translating its value.
+<P>
+A double is eight bytes long on both the 16-bit and 32-bit sides of the
+thunk. To pass a double to a thunk function, declare a struct containing
+two DWORDs (unsigned longs) in the thunk script, and pass the struct into
+the function in the thunk script. Here is an example 32-&gt;16 thunk:
+<P>
+<PRE>/*-------------------------------------------------------------
+</PRE>Code on Win32 side of thunk
+-------------------------------------------------------------*/
+<P>
+<PRE>/*
+   Declaration for the benefit of the 32-bit side of thunk,
+   note that in Win32 programs, PASCAL is defined as __stdcall,
+   and FAR is defined as nothing.
+*/
+</PRE>double FAR PASCAL sqr16 (double x);
+<P>
+double sqr32 (double x)
+{
+<PRE>   return(sqr16 (x));
+</PRE>}
+<P>
+<P>
+<PRE>/*-------------------------------------------------------------
+</PRE>Code inside Win16 DLL (target of thunk)
+-------------------------------------------------------------*/
+<P>
+<PRE>/*
+   sqr16() is the 16-bit side of the thunk. In a 32-&gt;16 thunk,
+   it is the target. The FAR macro and the __export keyword
+   are used to make sure it is exported correctly from the 16-bit
+   DLL.
+*/
+</PRE>double FAR PASCAL __export sqr16 (double x)
+{
+<PRE>   return (x * x);
+</PRE>}
+<P>
+<P>
+<PRE>/*-------------------------------------------------------------
+</PRE>Thunk script
+-------------------------------------------------------------*/
+enablemapdirect3216 = true;
+typedef unsigned long DWORD;
+typedef struct _MYDOUBLE
+{
+<PRE>   DWORD dwLow;
+   DWORD dwHigh;
+</PRE>} MYDOUBLE;
+<P>
+MYDOUBLE sqr16 (MYDOUBLE x)
+{
+}
+<P>
+<P>
+In 16-bit code, a long double is a native 80-bit type of the floating point
+processors in the Intel x86 microprocessor family. Because RISC processors
+do not have a native 80-bit floating point type, C and C++ compilers for
+Win32 platforms such as Microsoft Visual C++ implement this type as a
+64-bit double. If you cannot tolerate the loss of precision of converting
+80-bit long doubles to 64-bit doubles, then you should pass the 80-bit
+value as a structure consisting of two DWORDs (unsigned longs) and a WORD
+(unsigned short), and you will have to handle the value manually on the
+32-bit side of the thunk.
+<P>
+<P><h3>Pointers</h3>
+ 
+<P>
+The thunk compiler automatically translates pointers to most types. It
+properly handles pointers to the following data types:
+
+<UL><LI>All scalar data types
+<LI>Structures
+<LI>Pointers within structures if the object pointed to does not require
+   repacking (such as the int type).
+<P>
+</UL>Pointers to pointers are translated partially. The "outside" pointer is
+translated, but the pointer it points to -- the "inside" pointer-- is not
+translated.
+<P>
+The thunk compiler does not handle all cases of pointers used in aggregate
+types, such as arrays of pointers.
+<P>
+Finally, the thunk compiler places limitations on pointers as return values
+as described in the "Return Values" section earlier in this article.
+<P>
+There may be times when you want to pass an address without having it
+translated. Because the thunk compiler automatically translates pointers,
+you should use the DWORD type instead of a pointer type to pass addresses
+that you don't want translated. Then, you can use the untranslated address
+on the target side of the thunk, possibly in calls to the Generic Thunk
+APIs. However, keep in mind that addresses that have not been translated
+will cause an access violation if dereferenced on the target side of the
+thunk.
+<P>
+<P><h3>Unions and C++ Classes</h3>
+ 
+<P>
+Unions are not supported by the thunk compiler because it cannot determine
+which type the union will actually hold at run time. For example, the
+following union must be treated differently by the thunk compiler depending
+on which member the application was actually using when it made the thunk
+call:
+<P>
+<PRE>   union
+   {
+      DWORD dwIntegerValue;
+      LPSTR szFileName;
+   }
+
+</PRE>The problem the thunk compiler has with this union is whether it should
+generate code to pass the value unchanged, assuming that the dwIntegerValue
+member will be used, or to translate the value as a pointer, assuming that
+szFileName will be used. Because the thunk compiler cannot make this
+determination, it cannot generate the correct code to handle this union.
+You should handle union types in thunks by declaring a structure in the
+thunk script large enough to hold the union, and then handle the union's
+data manually on both sides of the thunk.
+<P>
+Do not thunk C++ objects. Objects are not supported by the thunk compiler
+because there isn't any way to reliably pass them as parameters to thunks.
+In addition to specifying the object's physical layout, a class may also
+define a vtable which contains addresses of all the class's virtual
+functions. Because all objects of a class share a single vtable, there is
+no way to translate the vtable so that it can be used by some objects that
+have been thunked and others that haven't.
+<P>
+<P><h3>Linked Lists and other Dynamic Data Structures</h3>
+ 
+<P>
+Although the thunk compiler supports structures with pointers, it does not
+provide a way to handle linked lists and other dynamic structures. This is
+because the thunk compiler must know the size of the data it translates at
+compile time, but the number of elements that dynamically-allocated
+structures contain is indeterminate at compile time.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+Thunk Compiler reference in the Microsoft Win32 SDK Documentation
+Generic Thunk API reference in the Microsoft Win32 SDK Documentation
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbhowto kbcode<BR>
+KBSubcategory: BseMisc<BR>
+Additional reference words: 4.00 GPF<BR>
+Keywords          : BseMisc kbcode kbhowto kbprg<BR>
+Version           : 4.00<BR>
+Platform          : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

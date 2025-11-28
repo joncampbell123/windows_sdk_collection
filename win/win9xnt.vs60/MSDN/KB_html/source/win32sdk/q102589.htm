@@ -1,0 +1,320 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Using ENTER Key from Edit Controls in a Dialog Box </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q102589">
+<META NAME="KBModify" CONTENT="1996/09/06">
+<META NAME="KBCreate" CONTENT="1993/08/04">
+<META NAME="Keywords" CONTENT="kbui">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Windows-based applications often display data-entry dialog boxes to request information from users. These dialog boxes may contain several edit controls and two command (push) buttons, labeled OK and CANCEL. An example of a data-entry dialog box is...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAHP,QADO,QA01,QAMN,QA7O,QAOE,QAB5,QAEV,QABA,QANX,QAB9,QAY5,QAPN,QBV8 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Using ENTER Key from Edit Controls in a Dialog Box</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 6, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q102589</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) versions 3.1
+
+<LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.5 and 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Windows-based applications often display data-entry dialog boxes to request
+information from users. These dialog boxes may contain several edit
+controls and two command (push) buttons, labeled OK and CANCEL. An example
+of a data-entry dialog box is one that requests personal information, such
+as social security number, address, identification (ID) number, date/time,
+and so on, from users. Each of these items is entered into an edit control.
+<P>
+By default, the TAB key is used in a dialog box to shift focus between
+edit controls. As a common user-interface, however, one could also use
+the ENTER (RETURN) key to move between the edit controls (for example,
+after the user enters a piece of information, pressing ENTER moves the
+focus to the next field).
+<P>
+There are a few ways to enable the use of the ENTER key to move
+between edit controls. One method is to make use of WM_COMMAND and the
+notification messages that come with it in the dialog box for edit
+controls and buttons. Another method involves subclassing the edit
+controls. A third involves using App Studio and Class Wizard and creating a
+new dialog box member function.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Method I: (WM_COMMAND)</h3>
+ 
+<P>
+This method is based on the following behavior of dialog boxes (Dialog
+Manager) and focus handling in Windows.
+<P>
+If a dialog box or one of its controls currently has the input focus,
+then pressing the ENTER key causes Windows to send a WM_COMMAND
+message with the idItem (wParam) parameter set to the ID of the
+default command button. If the dialog box does not have a default
+command button, then the idItem parameter is set to IDOK by default.
+<P>
+When an application receives the WM_COMMAND message with idItem set to
+the ID of the default command button, the focus remains with the
+control that had the focus before the ENTER key was pressed. Calling
+GetFocus() at this point returns the handle of the control that had
+the focus before the ENTER key was pressed. The application can check
+this control handle and determine whether it belongs to any of the
+edit controls in the dialog box. If it does, then the user was
+entering data into one of the edit controls and after doing so,
+pressed ENTER. At this point, the application can send the
+WM_NEXTDLGCTL message to the dialog box to move the focus to the next
+control.
+<P>
+However, if the focus was with one of the command buttons (CANCEL or
+OK), then GetFocus() returns a button control handle, at which point
+one can dismiss the dialog box. The pseudo code for this logic
+resembles the following in the application's dialog box procedure:
+<P>
+<PRE>     case WM_COMMAND:
+
+     if(wParam=IDOFDEFBUTTON || IDOK) {
+          // User has hit the ENTER key.
+
+          hwndTest = GetFocus() ;
+          retVal = TesthWnd(hWndTest) ;
+
+          //Where retVal is a boolean variable that indicates whether
+        //the hwndTest is the handle of one of the edit controls.
+
+          if(hwndTest) {
+         //Focus is with an edit control, so do not close the dialog.
+            //Move focus to the next control in the dialog.
+
+         PostMessage(hDlg, WM_NEXTDLGCTL, 0, 0L) ;
+         return TRUE ;
+          }
+          else {
+            //Focus is with the default button, so close the dialog.
+            EndDialog(hDlg, TRUE) ;
+            return FALSE ;
+          }
+        }
+     break ;
+
+</PRE><h3>Method II</h3>
+ 
+<P>
+This method involves subclassing/superclassing the edit control in the
+dialog box. Once the edit controls are subclassed or superclassed, all
+keyboard input is sent the subclass/superclass procedure of the edit
+control that currently has input focus, regardless of whether or not
+the dialog box has a default command button. The application can trap
+the key down (or char) messages, look for the ENTER key, and do the
+processing accordingly. The following is a sample subclass procedure
+that looks for the ENTER key:
+<P>
+<PRE>//*-------------------------------------------------------------------
+//| Title:
+//|     SubClassProc
+//|
+//| Parameters:
+//|     hWnd            - Handle to the message's destination window
+//|     wMessage        - Message number of the current message
+//|     wParam          - Additional info associated with the message
+//|     lParam          - Additional info associated with the message
+//|
+//| Purpose:
+//|     This is the window procedure used to subclass the edit control.
+//*---------------------------------------------------------------------
+
+</PRE>long FAR PASCAL SubProc(HWND hWnd, WORD wMessage,WORD wParam,LONG lParam)
+{
+<P>
+<PRE>    switch (wMessage)
+     {
+
+          case WM_GETDLGCODE:
+            return (DLGC_WANTALLKEYS |
+                    CallWindowProc(lpOldProc, hWnd, wMessage,
+                                   wParam, lParam));
+
+          case WM_CHAR:
+          //Process this message to avoid message beeps.
+         if ((wParam == VK_RETURN) || (wParam == VK_TAB))
+           return 0;
+            else
+           return (CallWindowProc(lpOldProc, hWnd,
+                                     wMessage, wParam, lParam));
+
+       case WM_KEYDOWN:
+            if ((wParam == VK_RETURN) || (wParam == VK_TAB)) {
+              PostMessage (ghDlg, WM_NEXTDLGCTL, 0, 0L);
+              return FALSE;
+            }
+
+         return (CallWindowProc(lpOldProc, hWnd, wMessage,
+                                   wParam, lParam));
+         break ;
+
+       default:
+            break;
+
+     } /* end switch */
+
+</PRE><h3>Method 3</h3>
+ 
+<P>
+This method involves using App Studio and ClassWizard and creating a new
+dialog box member function.
+<P>
+This method will allow a user to press the ENTER key and have the focus
+advance to the next edit control. If the focus is currently on the last
+edit control in the dialog box, the focus will advance to the first edit
+control.
+<P>
+First, use App Studio to change the ID of the OK button of the dialog box.
+The default behavior of App Studio is to give the OK button the ID IDOK.
+The OK button's ID should be changed to another value, such as IDC_OK.
+Also, change the properties of the OK button so that it is not a default
+pushbutton.
+<P>
+Next, use ClassWizard to create a new dialog box member funciton. Name the
+new member function something like OnClickedOK. This function should be
+tied to the BN_CLICKED message from the IDC_OK control.
+<P>
+Once this is done, write the body of the OnClickedOK function. You should
+put the code that you would normally put in the OnOK function into the new
+OnClickedOK function, including a class's OnOK function.
+<P>
+Add the following prototype to the header file for the dialog box:
+<P>
+<PRE>   protected:
+      virtual void OnOK();
+
+</PRE>Add an OnOK function to the dialog box and code is as demonstrated below:
+<P>
+<PRE>void CMyDialog::OnOK()
+</PRE>{
+<PRE>     CWnd* pwndCtrl = GetFocus();
+     CWnd* pwndCtrlNext = pwndCtrl;
+     int ctrl_ID = pwndCtrl-&gt;GetDlgCtrlID();
+
+     switch (ctrl_ID) {
+         case IDC_EDIT1:
+             pwndCtrlNext = GetDlgItem(IDC_EDIT2);
+             break;
+         case IDC_EDIT2:
+             pwndCtrlNext = GetDlgItem(IDC_EDIT3);
+             break;
+         case IDC_EDIT3:
+             pwndCtrlNext = GetDlgItem(IDC_EDIT4);
+             break;
+         case IDC_EDIT4:
+             pwndCtrlNext = GetDlgItem(IDC_EDIT1);
+             break;
+         case IDOK:
+             CDialog::OnOK();
+             break;
+         default:
+             break;
+     }
+     pwndCtrlNext-&gt;SetFocus();
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 3.50 3.51 4.00 95  push RETURN keydown<BR>
+KBCategory: kbui<BR>
+KBSubcategory: UsrDlgs<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 6, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

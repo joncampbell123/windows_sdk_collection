@@ -1,0 +1,290 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Max Async IO Configuration Parameter </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q112539">
+<META NAME="KBModify" CONTENT="1997/04/29">
+<META NAME="KBCreate" CONTENT="1994/03/10">
+<META NAME="Keywords" CONTENT="kbother SSrvWinNT">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  SQL Server for Windows NT has a configuration parameter called Max Async IO that can be viewed or changed with the sp_configure stored procedure. This parameter controls the number of outstanding asynchronous disk input/output (I/O) requests the SQ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QAGI,QA26,QABM,QAY5,QAU3,QAMR,QAC9,QAKC,QAHE,QAH6,QASP,QAY2,QBVV,QBC6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Max Async IO Configuration Parameter</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 29, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q112539</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.21
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+SQL Server for Windows NT has a configuration parameter called Max Async IO
+that can be viewed or changed with the sp_configure stored procedure. This
+parameter controls the number of outstanding asynchronous disk input/output
+(I/O) requests the SQL Server checkpoint and lazywriter threads use. The
+default setting is 8, which is adequate for most systems. However, high
+performance servers with intelligent disk subsystems may gain some
+performance benefit by increasing this number.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+SQL Server for Windows NT uses the asynchronous I/O capability of the
+Windows NT operating system. Examples of these are the Win32 API calls
+ReadFile(), ReadFileEx(), WriteFile(), and WriteFileEx(). See the Microsoft
+Windows Software Development Kit (Win32 SDK) for more information.
+Asynchronous, or overlapped I/O, refers to the ability of a calling program
+to issue an I/O request and without waiting for completion to continue with
+another activity. When the I/O finishes, the operating system will notify
+the program via a callback or other Win32 synchronization mechanism.
+<P>
+This has two main advantages. The first is it makes implementation easier
+for an application designer, since the operating system can be used to
+perform async I/O rather than having to simulate this capability in the
+application. The second advantage is that the multiple outstanding I/O
+requests can drive certain high performance disk subsystems at greater
+performance levels than would be otherwise possible.
+<P>
+This is generally only possible with very high performance intelligent disk
+subsystems. Examples include, but are not limited to, the Compaq SMART SCSI-
+2 Array Controller, Mylex DAC960 Disk Array Subsystem, and the Tricord and
+Sequent SCSI Intelligent Storage Subsystems. Contact your hardware vendor
+for more information on how the particular disk subsystem handles Windows
+NT async disk I/O.
+<P>
+The reason is that only these types of systems have the specific features
+necessary to rapidly accept multiple async I/O requests from a Win32
+application such as SQL Server. On these systems increasing the Max Async
+IO parameter of SQL Server can result in performance improvements during
+very disk intensive operations. The actual setting used for this parameter
+and the resultant performance increase will vary depending on the exact
+hardware and database I/O profile. It should not be set arbitrarily high,
+since inordinate async I/O consumes system resources.
+<P>
+Please see article <B><A href="../win32sdk/q98893.htm">Q98893</A></B> "INF: Limit on the Number of Bytes Written
+Asynchronously" for more information.
+<P>
+It is recommended the optimum value be determined empirically for a given
+situation using either the Microsoft TPC-B Benchmark Kit or a customer-
+specific benchmark. The procedure would be to take a test run with the
+default of 8, then increase the parameter slowly while taking subsequent
+test runs. When no further performance increase is noted, the optimum value
+has been found. In the absence of any empirical testing, it should be left
+at the default.
+<P>
+NOTE: Non-specialized disk subsystems will not benefit from increasing this
+parameter, and the default setting will be adequate.
+<P>
+The reason for the performance increase can be seen by considering three
+different types of disk subsystems. The first is a non-intelligent
+controller attached to four disk drives. The second is four non-intelligent
+controllers, each attached to a single disk drive. The third is a single
+intelligent controller attached to four disk drives.
+<P>
+First, consider how a data transfer occurs with a single controller and
+four drives. In the outbound transfer sequence, the device driver transfers
+a buffer of data to the controller's on-board buffer. This takes place very
+rapidly via DMA, shared memory, or programmed I/O, typically in a few
+hundred microseconds at typical bus rates. Then the controller (under
+varying amounts of device driver assistance) must command the necessary
+seek operations from the drive that can take up to 50 milliseconds, which
+is hundreds of times longer than the bus-to-controller transfer. Following
+this, the actual data is transferred from the controller buffer to the disk
+drive at the transfer rate determined by the drive type. There may also be
+rotational latency involved prior to starting the transfer. During this
+interval, in many systems the device driver and the task which called it
+must simply wait for the hard drive. Operations cannot be performed on the
+second and subsequent drives until the first drive finishes, because the
+controller does not have the necessary logic to keep track of multiple
+pending operations.
+<P>
+In the case of four controllers (each attached to its own drive) if Windows
+NT or Windows NT Server striping is used, a transfer sequence can
+immediately begin on the second or subsequent controller/drive. In this
+case the four drives can independently be in different phases of the
+transfer since each has its own controller to keep track of this. Using
+WinNT async I/O in this hardware configuration can be beneficial since a
+pool of outstanding I/Os can be built up, which the drive subsystem can
+process in parallel four at a time. Since the rate at which the drive
+subsystem processes the requests can vary, it may be useful to build up a
+pool of outstanding requests from SQL NT in order to ensure the subsystem
+is used to capacity. Depending on many system-specific factors, it may be
+useful to increase the SQL NT Max Async IO parameter from 8 to a higher
+number to take advantage of this.
+<P>
+The expansion capacity of most systems precludes using a controller per
+drive. However, technology advances now make it possible to effectively
+include the capability of multiple non-intelligent controllers in a single
+intelligent controller. In this case, the single controller may connect to
+2 to 16 drives. It can rapidly accept multiple I/O requests from the device
+driver, maintaining effectively simultaneous transfer operations to the
+attached drives, which are usually striped in a RAID array. In this
+situation, depending on the capability and configuration of the controller,
+increasing the SQL NT Max Async IO parameter could increase performance.
+The actual value used will vary depending on the server and controller and
+within a given server/controller by disk subsystem configuration and within
+a certain disk subsystem configuration by I/O characteristics of the
+application. For this reason using the Microsoft TPC-B Benchmark Kit is
+recommended, which can provide an objective number for improvements to be
+measured. This benchmark can also be customized to more closely represent
+the intended application.
+<P>
+The threads which comprise SQL NT use async disk I/O for both normal
+transfers as well as batch and lazywriter transfers. Lazywriter is a SQL NT
+thread that exists beginning on version 4.21. Its purpose is to flush dirty
+cache pages in the background and maintain a list of readily-available
+free cache pages. (See the 4.21 Release Notes for more information.)
+<P>
+The Max Async IO parameter does not limit the number of outstanding async
+I/Os from non-batch and non-lazywriter transfers, because these rarely
+accumulate an excessive number of I/Os. This contrasts with the
+checkpoint/lazywriter threads, which more typically need to process larger
+amounts of data when flushing dirty cache pages. The parameter prevents the
+I/O subsystem from being flooded with an excessive number of outstanding
+requests when the checkpoint/lazywriter threads become active. You can
+monitor the number of outstanding SQL Server read and write requests using
+performance monitor.
+<P>
+The term "batch I/O" refers to a group of async I/Os the checkpoint or
+lazywriter threads attempt to process at a time. For example, if the Max
+Async IO parameter is set to 8, then the maximum number of IOs in a single
+batch these threads attempt will be 8. A batch, in this case, does not
+consist of a single 8 page I/O, but rather 8 asynchronous single-page I/Os.
+<P>
+When considering such matters, do not overemphasize the importance of
+physical and system-layer performance tuning. In most cases the performance
+increases available from other areas such as index, query, and database
+design will be much greater, and less expensive to achieve. We encourage
+prioritizing examination of these areas above that of the system area.
+<P>
+The allowed upper limit for the Max Async IO parameter varies depending on
+the version of SQL Server for Windows NT. Version 4.20 and 4.21 allowed an
+essentially unlimited value, which was reduced to 50 for version 4.21A.
+This was done to prevent accidental mis-configuration to an unreasonable
+value. The value 50 is higher than most current high-performance disk
+subsytems can benefit from. However, if unforeseen technical advances
+develop that would necessitate increasing this limit beyond 50, it can be
+done using the following technique.
+<P>
+NOTE: This should not be done unless you have an expert level of system and
+SQL knowledge.
+
+<OL><P><LI>sp_configure "allow", 1
+
+<P><LI>reconfigure with override
+
+<P><LI>update spt_values set high=255 where name='max async IO'
+
+<P><LI>sp_configure "max async io", 70 (where 70 is for example the new value)
+
+<P><LI>reconfigure with override
+
+<P><LI>restart SQL Server
+<P>
+</OL>Please see article <B><A href="../sqlserver/q110352.htm">Q110352</A></B> "INF: Optimizing SQL Server Performance" for
+more information.
+<P>
+Also, see the Windows NT Resource Kit, volume 3 for more general NT
+performance information. This volume is titled "Optimizing Windows NT", by
+Russ Blake, ISBN 1-55615-619-7, and contains nearly 600 pages of
+recommendations concerning tuning Windows NT and Win32 applications.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Windows NT<BR>
+Keywords            : kbother SSrvWinNT<BR>
+Version             : 4.21<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 29, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

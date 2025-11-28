@@ -1,0 +1,383 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Recovering from Media Failure in SQL Server </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q46479 ">
+<META NAME="KBModify" CONTENT="1997/03/12">
+<META NAME="KBCreate" CONTENT="1989/07/03">
+<META NAME="Keywords" CONTENT="SSrvAdmin SSrvServer">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article provides guidance on how to recover as much data as possible when the disk media is physically damaged or becomes unreadable. These procedures are sometimes called  disaster recovery  or  media failure  procedures.  MORE INFORMATION  T...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAZV,QAB5,QA3W,QAY2,QABM,QAOE,QAMA,QAB9,QBV8,QBVV,QAW5,QAUR,QDIU,QAL3,QDMH V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Recovering from Media Failure in SQL Server</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 12, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q46479 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article provides guidance on how to recover as much data as
+possible when the disk media is physically damaged or becomes
+unreadable. These procedures are sometimes called "disaster recovery"
+or "media failure" procedures.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To recover user databases from media failure, re-create the lost
+device(s), then restore the affected database(s) from backups.
+Anything done after the backups were made must be done again.
+<P>
+To restore a backup, the target database must already exist. The
+target database does not have to occupy the same device(s), it only
+needs to have enough space allocated to hold what was in that database
+at the time it was dumped.
+<P>
+The steps necessary to restore a backup are as follows:
+
+<OL><P><LI>Re-create the lost device(s) as follows:
+<P>
+   a. Bring up SQL Server in single-user mode.
+<P>
+   b. Drop each database that has space allocated on a lost device
+<P><PRE>      using the DBCC DBREPAIR (dbname,DROPDB) command.
+</PRE><P>
+<P><PRE>      The following SQL command will list the affected databases:
+</PRE><P>
+<PRE>         SELECT DISTINCT DB_NAME(DBID) FROM SYSUSAGES,SYSDEVICES WHERE
+           VSTART&gt;=LOW AND VSTART&lt;=HIGH AND
+           NAME IN ('devname1','devname2',...)
+
+   c. Drop lost device(s) with the sp_dropdevice() function.
+
+   d. Use the CHECKPOINT command and shut down SQL Server, then
+      bring up SQL Server in normal mode.
+
+   e. Re-create lost device(s) with the DISK INIT command using the
+      VDEVNO and SIZE of the original device(s).
+
+</PRE><P><LI>Re-create and reload the affected database(s) as follows:
+<P>
+   a. Re-create the affected database(s) using the same size and device
+<P><PRE>      assignment as the original database(s).
+</PRE><P>
+   b. Assign LOG device(s) if necessary with the sp_logdevice()
+<P><PRE>      function.
+</PRE><P>
+   c. LOAD the affected database(s) and transaction log(s) from the
+<P><PRE>      latest backups.
+</PRE><P>
+</OL><h3>Notes</h3>
+ 
+<P>
+SQL Server version 4.2 allows for the dumping of the transaction log
+if the device containing the data portion of a database has been
+damaged and the device containing the log portion is still intact. The
+transaction log can be dumped using "DUMP TRAN WITH NO_TRUNCATE" and
+can then be reapplied to a prior database dump (after all previous
+transaction log dumps have been applied) to bring the database back to
+the state it was in immediately prior to the media failure.
+<P>
+DBCC will produce error messages about not being able to access the
+lost database devices; however, it will still drop the rows from
+SYSDATABASES and SYSUSAGES.
+<P>
+If the information required in steps 1e and 2a is not known, it can be
+derived from the SYSDEVICES, SYSDATABASES, and SYSUSAGES tables in the
+master database.
+<P>
+VDEVNO and device SIZE can be derived from LOW and HIGH in SYSDEVICES
+as follows:
+<P>
+<PRE>   VDEVNO is LOW divided by 16777216 (0x01000000)
+     SIZE is HIGH - LOW (2K blocks)
+
+</PRE></OL>SIZE and device assignment of databases can be derived from
+SYSDEVICES, SYSUSAGES, and SYSDATABASES.
+<P>
+Each chunk of disk space assigned to a database is represented by a
+row in SYSUSAGES. The SIZE of each chunk is in the row. The dbid of
+the database to which the chunk is assigned is also in the row and the
+corresponding database name can be obtained from SYSDATABASES. The
+device containing the chunk of disk space can be deduced by noticing
+which low/high range in SYSDEVICES contains the VSTART specified in
+SYSUSAGES.
+<P>
+Whether or not a device is a log device can be determined from the
+value of SEGMAP in SYSUSAGES. A 7 indicates LOG and data, 4 indicates
+LOG only, and 3 indicates data only.
+<P>
+<P><h3>Example 1</h3>
+ 
+<P>
+Assume two user databases in addition to the master database and two
+database devices in addition to the master device. Device 1 is 4 MB
+and was created first (VDEVNO 1), while device 2 is 6 MB and was
+created after device 1 (VDEVNO 2). User database 1 was allocated with
+2 MB on device 1, 2 MB on MASTER.DAT, and a 1 MB log on device 2. User
+database 2 was allocated with 2 MB on device 2 and 2 MB on device 1.
+<P>
+For the first disaster scenario, assume that user database device 1
+has been lost and the other devices are intact. According to the
+procedure described above, the following should be performed:
+
+<OL><P><LI>Re-create the lost device(s) as follows:
+<P>
+   a. Bring up SQL Server in single-user mode (-m option).
+<P>
+   b. Determine which databases are affected as follows:
+<P>
+<PRE>         SELECT DISTINCT DB_NAME(DBID) FROM SYSUSAGES,SYSDEVICES WHERE
+           VSTART&gt;=LOW AND VSTART&lt;=HIGH AND
+           NAME IN ('device1')
+
+      Drop the affected databases:
+
+         DBCC DBREPAIR(database1,DROPDB)
+         DBCC DBREPAIR(database2,DROPDB)
+
+   c. Drop device 1 with the sp_dropdevice() function.
+
+   d. CHECKPOINT and shut down the server, then bring it back up
+      normally.
+
+   e. Re-create device 1 with DISK INIT with a SIZE = 4 MB and
+      VDEVNO = 1.
+
+</PRE><P><LI>Re-create and reload the affected database(s) as follows:
+<P>
+   a. Re-create user database 1 with 2 MB on device 1, 2 MB on
+<P><PRE>      MASTER.DAT, and 1 MB on device 2.
+</PRE><P>
+<P><PRE>      Re-create user database 2 with 2 MB on device 2 and 2 MB on
+      device 1.
+</PRE><P>
+   b. Use the sp_logdevice() function to designate the log for
+<P><PRE>      database 1.
+</PRE><P>
+   c. Load database 1 and its transaction log from backup. Load
+<P><PRE>      database 2 from backup.
+</PRE><P>
+</OL><h3>Example 2</h3>
+ 
+<P>
+For the second disaster scenario, assume that both user database
+devices have been lost and MASTER.DAT is intact. The same procedure
+applies:
+
+<OL><P><LI>Re-create the lost device(s) as follows:
+<P>
+   a. Bring up SQL Server in single-user mode (-m option).
+<P>
+   b. Determine which databases are affected:
+<P>
+<PRE>         SELECT DISTINCT DB_NAME(DBID) FROM SYSUSAGES,SYSDEVICES WHERE
+           VSTART&gt;=LOW AND VSTART&lt;=HIGH AND
+           NAME IN ('device1','device2')
+
+      Drop the affected databases:
+
+         DBCC DBREPAIR(database1,DROPDB)
+         DBCC DBREPAIR(database2,DROPDB)
+
+   c. Drop devices 1 and 2 with the sp_dropdevice() function.
+
+   d. CHECKPOINT and shut down the server, then bring it back up
+      normally.
+
+   e. Re-create device 1 with DISK INIT with SIZE = 4 MB and
+      VDEVNO = 1.
+
+      Re-create device 2 with DISK INIT with SIZE = 6 MB and
+      VDEVNO = 2.
+
+</PRE><P><LI>Re-create and reload the affected database(s) as follows:
+<P>
+   a. Re-create user database 1 with 2 MB on device 1, 2 MB on
+<P><PRE>      MASTER.DAT, and 1 MB on device 2.
+</PRE><P>
+<P><PRE>      Re-create user database 2 with 2 MB on device 2 and 2 MB on
+      device 1.
+</PRE><P>
+   b. Use the sp_logdevice() function to designate the log for
+<P><PRE>      database 1.
+</PRE><P>
+   c. Load database 1 and its transaction log from backup.
+<P>
+<P><PRE>      Load database 2 from backup.
+</PRE><P>
+</OL><h3>Example 3</h3>
+ 
+<P>
+For the third disaster scenario, assume that all three database
+devices have been lost. In this case, MASTER.DAT must be restored
+first.
+<P>
+Run BLDMASTR to re-create MASTER.DAT using the original size and
+case-sensitivity option.
+<P>
+Bring up SQL Server in single-user mode and restore the latest backup
+of the master database. If the dump of the master was made with a
+user-supplied dump device, that dump device must be re-added to
+SYSDEVICES before the restore can take place.
+<P>
+The quickest way to do this is to INSERT a row into SYSDEVICES. It can
+also be done with the sp_addumpdevice() function; however, that
+approach requires the INSTMSTR.SQL script to be run first to re-add
+the stored procedures.
+<P>
+The server will shut itself down when the restore is complete.
+<P>
+The remainder of the procedure is identical to the second example.
+<P>
+<P><h3>Example 4</h3>
+ 
+<P>
+For the fourth disaster scenario, assume that only MASTER.DAT has been
+lost.
+
+<OL><P><LI>Run BLDMASTR to re-create MASTER.DAT using the original size and
+   case-sensitivity option.
+
+<P><LI>Bring up SQL Server in single-user mode and restore the latest
+   backup of the master database. The same considerations apply as in
+   the third disaster scenario. The server will shut itself down when
+   the restore is complete.
+<P>
+</OL>If no changes were made to the master database after the most recent
+dump was taken, then recovery is complete. Restart the server
+normally. This is why it is a good idea to dump the master after such
+changes.
+<P>
+If not, then SYSDATABASES, SYSDEVICES, and SYSUSAGES must be brought
+up to date. If this must be done, bring the server up in single-user
+mode again.
+<P>
+Use the DISK REINIT command to re-create rows in SYSDEVICES for all
+database devices added after the most recent dump was taken. The DISK
+REINIT command is used because it updates SYSDEVICES just as the DISK
+INIT command does; however, it does not format the physical disk file,
+therefore the existing data is preserved.
+<P>
+Use the DISK REFIT command to re-create rows in SYSUSAGES and
+SYSDATABASES for all CREATE and ALTER DATABASE commands that were
+performed after the most recent dump was taken. The DISK REFIT command
+scans the physical file associated with each database device listed in
+SYSDEVICES. It adds entries in SYSUSAGES to define the space that is
+allocated to databases. It also adds the corresponding SYSDATABASES
+entries. Some of the information is not reconstructed perfectly. For
+example, the original VDEVNO is not assigned because it is not known.
+Instead, VDEVNOs are assigned sequentially. The database owner is not
+extracted while scanning the physical files; it is just set to "sa".
+It is not possible to determine how many SYSUSAGES entries originally
+existed. The DISK REFIT command inserts a separate entry for each
+different segment type.
+<P>
+When this is done, correct the entries made by DISK REFIT to
+SYSDATABASES and SYSUSAGES (if desired) and also add to SYSLOGINS any
+login-ids that were not captured by the most recent dump. Then, shut
+down the server and bring it back up normally.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 4.20<BR>
+Keywords            : SSrvAdmin SSrvServer<BR>
+Version             : 4.20<BR>
+Platform            : OS/2<BR>
+Issue type          : kbtshoot<BR>
+Resolution Type     : Info_Provided<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 12, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

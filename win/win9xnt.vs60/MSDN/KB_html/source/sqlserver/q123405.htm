@@ -1,0 +1,646 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Troubleshoot SQL Server Tape Read/Write Errors </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q123405">
+<META NAME="KBModify" CONTENT="1997/04/30">
+<META NAME="KBCreate" CONTENT="1994/12/01">
+<META NAME="Keywords" CONTENT="kbusage SSrvAdmin">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The purpose of this article is to explore various hardware problems related to Microsoft SQL Server's use of attached tape devices. A basic review of the database dump and load process will provide a general frame of reference to the actual operati...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAB4,QAAP,QAB5,QABM,QDIR,QAKP,QBVV,QAZV,QAY5,QAHT,QAY2,QAPF,QBWP,QDIU,QA3W V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Troubleshoot SQL Server Tape Read/Write Errors</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 30, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q123405</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server, version 4.21a
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The purpose of this article is to explore various hardware problems related
+to Microsoft SQL Server's use of attached tape devices. A basic review of
+the database dump and load process will provide a general frame of
+reference to the actual operation that reads or writes from/to the tape
+device. The review of these operations is not intended to explain the
+entire process, only to provide a common framework for exploring the
+subsequent SQL Server tape issues.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+SQL Server provides the ability to write database pages to a database dump
+device defined in master..sysdevices. The process that manages the load or
+dump of database pages is shielded from the actual definition and operation
+of the defined dump/load device. All that is required by either a dump or
+load process is that the device be valid and accessible via the WIN32 API.
+The WIN32 API call that exposes all hardware devices to SQL Server for the
+purpose of dump/load is CreateFile() (see the WIN32 API Reference for
+details). A successful return from this function call is a 'handle' to the
+device, that can be referenced by SQL Server. This handle can be to a
+floppy disk, a file on a hard disk, or a tape drive.
+<P>
+The actual activity of writing to the 'dump' device is commonly referred to
+as a 'database dump' or backup. The term 'dump' is probably more meaningful
+and not as easily confused with 'backup.' The term 'backup' can just as
+easily refer to the writing of files to tape by NTBACKUP.EXE as well as
+pages written from a database to tape; both operations perform a backup of
+sorts. For the sake of consistency, database dump/load or dump/load will be
+used for the remainder of this document when referencing the act of
+reading/writing database pages from/to a dump device.
+<P>
+The database dump procedure is fairly straight forward. The database to be
+dumped is opened. A header is generated for the database dump and written
+to the selected device. All pages not actually in buffer cache are written
+to the defined device. These cached pages are skipped and tracked by SQL
+Server in the form of an 'Out of Sequence' queue. Pages that have not been
+allocated to an object in the database are skipped completely. After the
+allocated pages are written, the 'Out of Sequence' queue is traversed and
+referenced pages are written out to the dump device. A trailer is
+generated for the dump itself, and is written to the device, and the device
+is then closed.
+<P>
+The load process is initially very similar to the dump process. A valid
+<PRE>'handle' must be obtained and the device opened. Once opened, the
+</PRE>information contained on the physical medium is transferred to SQL Server.
+SQL Server then writes the information page by page into the target
+database. After all the pages from the dump device have been transferred,
+the remaining 'missing' pages in the database are created and initialized.
+The final step taken by SQL Server is to recover the database. This is the
+same process that SQL Server uses when it recovers a database on startup.
+It is possible that uncommitted transactions are rolled back and committed
+transactions rolled forward.
+<P>
+This is the basic process at the server, however, a interface must be
+exposed so that information can be exchanged between the client and the
+server. This interface is not required for database dumps/loads to/from
+hard disk devices, but is very important for removable media such as tape
+and floppy disks. The comments in the following paragraphs are directed
+towards these removable media operations.
+<P>
+There are several methods that SQL Server uses to communicate with the
+spid (server process id) that initiated the dump/load process. The oldest
+method of communicating with SQL Server for floppy disk and tape
+dumps/loads, and one that this common to both SQL Server for OS/2 and SQL
+Server, is by using the CONSOLE.EXE. Running CONSOLE.EXE provides a link to
+SQL Server by allowing communication with a special 'console' thread which
+is spawned as SQL Server starts up. This interface allows information to
+pass between the client and SQL Server during database loads or dumps, via
+tape or floppy disk (See the "Transact-SQL Reference Guide," Utilities
+chapter for details). However, the most flexible and user friendly tool for
+the dump/load process is provided through SQL Administrator.
+<P>
+SQL Administrator is a WIN32 or WIN16 graphical user interface (GUI)
+application, which provides a Windows environment facilitating
+communication to SQL Server for all types of database dumps/loads. Tape and
+floppy disk dumps are handled somewhat differently, because there is an
+interface between SQL Administrator and SQL Server provided by SQL Monitor.
+Any time dumps/loads are initiated by SQL Administrator, a connection to
+SQL Monitor is made, which subsequently connects to the console thread
+(this is the same thread that is exposed by CONSOLE.EXE). All prompts and
+errors are passed from the Server, via the console thread, to SQL Monitor
+which then passes them back to SQL Administrator or display/response.
+<P>
+The batch mode database dump is performed when SQL Server determines that
+there is no interface to the console thread and the operation is a tape
+dump or load (floppy disk dumps/loads require the console program or SQL
+Administrator). This mode of operation will provide prompts back to the
+client process that initiated the dump or load operation. Most of this type
+of processing is facilitated by ISQL.EXE, and there is no capability for
+the user/client process to respond to messages from the server. This method
+depends heavily on Registry entries for handling the tape drive, which are
+visible in SQL Setup by clicking the Options, Set Server Options, Tape
+Support button. This entry will determine how long SQL Server will wait
+and how often SQL Server will poll for a tape while in batch mode. (See the
+SQL Server "Configuration Guide" for more information.)
+<P>
+As stated initially, the purpose of this article is to attempt to shed some
+light on the common hardware errors seen in the SQL Server Errorlog and in
+the Windows NT Event Viewer's Application Log (NOTE: this article will use
+the SQL Server Errorlog rather than the Event Viewer's Application Log for
+consistency) that involve the actual process of interfacing with the tape
+drive. There are four main activities related to the use of the tape device
+and SQL Server: opening the device, reading or writing from/to the device,
+and closing the device. It is possible to receive errors from any one of
+these operations.
+<P>
+A general synopsis of the typical database dump/write to tape from SQL
+Server would be as follows:
+<P>
+<PRE>   Open the tape device
+   Write the Volume Label
+   Write the first Header
+   Write the second Header
+   Write a supported tape mark
+   Write the pages from the database
+   Write a supported tape mark
+   Write the first End of File Trailer
+   Write the second End of File Trailer
+   Write the final supported tape mark
+   Close the tape device
+
+</PRE>A load/read operation would proceed as follows:
+<P>
+<PRE>   Open the tape device
+   Read the Volume header
+   Read the first Header
+   Read the second Header
+   Position the tape at the next supported tape mark
+   Read the database pages from the tape
+   Stop when the next supported tape mark is encountered
+   Read the first End of File trailer
+   Read the second End of File trailer
+   Close the tape device
+
+</PRE>It is possible to receive errors from any of the above steps. There are two
+types of errors that are generated. The first is the error that is sent to
+the client generating the operation. The second error is what is typically
+seen in the SQL Server Errorlog and the Application Log in the Windows NT
+Event Viewer. The client errors will be examined first.
+<P>
+The typical error that may be seen by the client will be one or more of the
+following:
+<P>
+<PRE>   Msg    Severity    Text
+   ----   --------    ------
+   4027   16          Mount first tape for %s of database %s
+
+</PRE>This is essentially a prompt for a new tape; typically, this error is not
+seen when a database was dumped via the batch mode operation that was
+available in SQL Server 4.21.
+<P>
+<PRE>   4028   10         End of tape has been reached, remove tape %s and mount
+                     next tape for %s of database %s
+
+</PRE>This is essentially a prompt for a new tape, typically this error is not
+seen when a database was dumped via the batch mode operation that was
+available in SQL Server 4.21.
+<P>
+<PRE>   4029   10         Database %s%s(%d pages) dumped to file &lt;%d&gt; on tape
+                     %s.
+
+</PRE>This message is sent to the client on successful completion of a
+database dump.
+<P>
+<PRE>   4030   16         Tape %s expires on day %s year %s and cannot be
+                     overwritten
+
+</PRE>This message is sent to the client when the tape volume information
+indicates that the volume has not expired. This message is typically seen
+when an operation to initialize a tape prior to a log or database dump is
+issued.
+<P>
+<PRE>   4031   16        Creation date on tape %s(%s) does not match that of
+                    first volume(%s)
+
+</PRE>This message is seen when the second tape of a multi-volume tape set has a
+creation date different from the initial tape. This is typically seen when
+the tapes are mislabeled and an incorrect tape is inserted after a prompt.
+<P>
+<PRE>   4032   16        Cannot find file %d on tape %s
+
+</PRE>This error is generally seen when on a load operation a file number is
+specified and was not found with a scan of the tape. The error can also
+occur with multi-volume operations.
+<P>
+<PRE>   4033   16      File &lt;%d&gt; on tape %s is not a SQL Server %s dump
+
+</PRE>This message is typically seen on a tape where the volume header cannot be
+read.
+<P>
+<PRE>   4034   16      Warning, file &lt;%d&gt; on tape %s was dumped from database %s
+
+</PRE>This message is a caution, to warn the user that the database name listed
+in the header is not the same as the database that will be loaded into.
+<P>
+Other client related errors that will not be covered here are in the range
+of SQL Server Messages between message numbers 3201 and 3209. These
+particular errors are frequently seen by the client and are generated by
+the next level up in the process for Database/Log dumps and loads.
+<P>
+The second class of errors, are those that are generally seen in the SQL
+Server Errorlog and in the Application Log of the Windows NT Event Viewer.
+These errors report problems that occur between the Operating System and
+SQL Server. This interface also dictates the type of information that is
+presented in the Errorlog; the messages generally consist of an error
+source, (for example, tbsopen, tbswritecheck,... and so forth), the error
+message, and the operating system error if appropriate.
+<P>
+What follows is a short description of the tape class of error and what
+operation was probably occurring at the time that the error was generated.
+The follow is a list of errors by category and examples from reported
+problems. Additionally, other errors that may be seen are listed as well.
+<P>
+TBSOPEN
+Example:
+<PRE>   No errors seen
+
+</PRE>Additional Information or Resolution:
+<PRE>   None
+
+</PRE>Possible Errors:
+a)  Backup device id is out of range.
+b) Backup device is not active.
+c) It is possible to see other errors associated with TBSCHGTAPES.
+<P>
+TBSCLOSE
+Example:
+<PRE>   No errors seen
+
+</PRE>Additional Information or Resolution:
+<PRE>   None
+
+</PRE>Possible Errors:
+a) Backup device failed to close, operating system error.
+b) It is possible to see other errors associated with TBSCHGTAPES,
+TPWTRLS, and TBSWRITEFLUSH.
+<P>
+TBSWRITE
+Example:
+<PRE>   No errors seen
+
+</PRE>Additional Information or Resolution:
+<PRE>   None
+
+</PRE>Possible Errors:
+a) It is possible to see errors associated with TBSCHGTAPES and
+TBSWRITEFLUSH.
+<P>
+TBSWRITEFLUSH
+Example:
+<P>
+kernel  tbswriteflush: Write failure on backup device \\.\tape0,
+<PRE>   returned operating system error 6(the handle is invalid)
+
+</PRE>Additional Information or Resolution:
+- The above error was generated due to a time-out issue where a tape
+inserted
+<P>
+into the tape drive on a multi-volume database dump failed.
+<P>
+Possible Errors:
+a) Warning: the tape used is not a recommended computer grade tape and
+cannot
+<P>
+be used for multivolume dumps.  Also, Not enough space is left in the
+device to
+initiate this dump.
+b) Failure on backup device returned operating system error.
+c) Number of bytes written did not match request.
+d) Other errors may be present from TBSCHGTAPES
+<P>
+TBSREAD
+Example:
+<PRE>   No errors seen
+
+</PRE>Additional Information or Resolution:
+<PRE>   None
+
+</PRE>Possible Errors:
+a) May see associated errors from TBSCHGTAPES and TBSREADFLUSH.
+<P>
+TBSREADFLUSH
+Example:
+<P>
+<PRE>kernel    tbsreadflush: Read failure on backup device '\\.\TAPE0',
+   returned operating system error 1117(The request
+   could not be performed because of an I/O device error).
+
+</PRE>Additional Information or Resolution:
+An event id number 11 was found in the Event Viewer, System Log with
+the above error, providing the additional description "Driver detected
+a controller error." The problem was resolved by correcting the underlying
+problem related to the cabling, terminator and SCSI controller.
+<P>
+- This error may also be associated with a tbsreadcheck error, stating
+that the device could not be accessed because it was being used by
+another process.  If this occurs, terminate the other process.
+<P>
+Possible Errors:
+a) Failed to seek Tape Mark, operating system error.
+b) Block count during dump does not match block count during load.
+c) Failure on backup device returned operating system error.
+d) May be associated with errors from TPRTRLS and TBSCHGTAPES.
+<P>
+TBSCHGTAPES
+Example:
+<PRE>   No errors seen
+
+</PRE>Additional Information or Resolution:
+<PRE>   None
+
+</PRE>Possible Errors:
+a) May be associated with errors from TBSWRITECHECK or TBSREADCHECK.
+<P>
+TBSREADCHECK
+Example:
+<P>
+<PRE>kernel   tprhdrs: failed to seek Tape Mark, operating system error :
+   1(Incorrect function.)
+kernel   tbsreadcheck: Tape rejected
+
+kernel   tprvol: Read returned 87, the parameter is invalid reading
+   volume header
+kernel   tbsreadcheck: tape rejected.
+
+</PRE>Additional Information or Resolution:
+- The first example above has been associated with a tape drive supporting
+setmarks, which has been disabled by another tape related application.
+The particular function disabled is reportsetmarks.  If the tape drive
+is external, it is possible to reset it by a power off/on cycle.  If it
+is internal a power off/on of the server will reset the device so that
+the reportsetmarks are enabled (this generally is the default for most
+devices).  Contact your support vendor for assistance with the problem.
+<P>
+- The second example occurred on a MIPS system and was resolved by
+upgrading to 4.21a.
+<P>
+Possible Errors:
+a) Backup device failed to open, operating system error.
+b) Tape rejected.
+c) Incorrect file indicator specified for tape device, Cannot find
+file on tape.
+d) Volume 'X' has been loaded instead of Volume 'Y' for the current file.
+e) Not a valid tape and Header labels of rejected tape.
+f) Bad block length.
+g) Cannot allocate byte I/O buffer.
+h) May be associated with errors from CHECKTAPEINFO, TPRVOL and TPRHDRS.
+<P>
+TBSWRITECHECK
+Example:
+<P>
+<PRE>kernel    tbswritecheck: Backup device '\\.\Tape0' failed to open.
+   Operating system error = 2 (The system can not
+   find the file specified.)
+
+</PRE>kernel  tbswritecheck: Backup device '\\.\TAPE0' failed to open,
+<PRE>   operating system error = 32(The process cannot
+   access the file because it is being used by
+   another process.)
+
+kernel   tbswritecheck: Seek operation in backup device '(null)'
+        returned operating system error =
+
+kernel   tbswritecheck: not enough space is left in the device to
+        initiate this dump.
+
+</PRE>Additional Information or Resolution:
+- The tape device was not created correctly and when SQL Server attempted
+to
+<P>
+open the device the error was returned.  Problem was resolved by correcting
+the setup for the tape device.
+<P>
+- The second example occurred due to a previous call to open the specified
+tape device.  Tape devices cannot be shared between processes.
+<P>
+- The third example was resolved by cleaning the tape drive and using a
+different brand of tape.
+<P>
+- The fourth example was an error generated by a tape device that was
+not on the Windows NT Hardware compatibility list.
+<P>
+Possible Errors:
+a) Cannot find date using null dates in tape labels.
+b) Backup device failed to open operating system error.
+c) Not enough space is left in the device to initiate this dump.
+d) Seek operation in backup device returned operating system error.
+e) Incorrect file indicator specified for tape device, cannot find
+file on tape.
+f) Tape rejected.
+g) May be associated with errors from CHECKTAPEINFO, TPRTRLS, TPRHDRS
+and TPWVOL.
+<P>
+CHECKTAPEINFO
+Example:
+<PRE>kernel   checktapeinfo: error getting media information for device
+   '\\.\Tape0', OS error:(null)
+
+kernel    checktapeinfo: Unable to load tape into the tape drive,
+   OS Error 121 (the semaphore time-out period has expired)
+
+</PRE>kernel  checktapeinfo: Unable to load tape into the tape drive: OS
+<PRE>   Error : 1112(No media in drive.)
+
+</PRE>kernel  checktapeinfo: cannot write on a write protected tape
+<P>
+Additional Information or Resolution:
+- This error was generated by a device that was not on the Windows NT
+Hardwar
+e
+compatibility list.  The problem is that when the tape drive was
+interrogated
+<P>
+for it's firmware capabilities it did not response appropriately.
+<P>
+- The second error was due to a faulty tape drive, the drive was replaced
+wit
+h
+an identical make/model and the error did not reoccur.
+<P>
+- The third error is as simple as it seems, a pending tape operation and
+when interrogated, the device responds that there is indeed no tape in the
+drive.
+<P>
+<P>
+- This fourth error is also as obvious as the previous error.  The tape
+was ejected and replaced.
+<P>
+Possible Errors:
+a) Unable to load tape into the tape drive, OS Error.
+b) Error getting media Information for device, OS Error.
+c) Device or Media does not support '_'.
+d) Cannot write on a write protected tape.
+<P>
+TPRHDRS
+Example:
+<P>
+<PRE>kernel   tprhdrs: failed to seek Tape Mark, operating system error :
+     (Incorrect function.)
+kernel   tbsreadcheck: Tape rejected
+
+</PRE>Additional Information or Resolution:
+- The error list above has been reported on two different occasions, the
+first was generated on a MIPS server, the original problem has been
+corrected with version 4.21a SQL Server.
+<P>
+- The second problem is related to the problem noted under tbsreadcheck,
+same issue an attempt to find a supported tape mark, but was unable to
+due to the disabling of the tape drive reportsetmarks.
+<P>
+Possible Errors:
+a) Read returned 'X' reading first file header.
+b) Label not found.
+c) Read returned 'X' reading second file header.
+d) Failed to seek Tape mark, operating system error.
+<P>
+TPRTLS
+Example:
+<PRE>   No errors seen
+
+</PRE>Additional Information or Resolution:
+<PRE>   None
+
+</PRE>Possible Errors:
+a) Failed to seek Tape mark, operating system error.
+b) Read of first trailer failed.
+b) Read of second trailer failed.
+<P>
+TPWHDRS
+Example:
+<PRE>   No errors seen
+
+</PRE>Additional Information or Resolution:
+<PRE>   None
+
+</PRE>Possible Errors:
+a) Warning: the tape used is not a recommended computer grade tape and
+cannot be used for multi-volume dumps.
+b) Not enough space is left in the device to initiate this dump.
+<P>
+TPWTRLS
+Example:
+<PRE>   No errors seen
+
+</PRE>Additional Information or Resolution:
+<PRE>   None
+
+</PRE>Possible Errors:
+a) Warning: the tape used is not a recommended computer grade tape and
+cannot be used for multi-volume dumps.
+<P>
+TPRVOL
+Example:
+<PRE>   No errors seen
+
+</PRE>Additional Information or Resolution:
+<PRE>   None
+
+</PRE>Possible Errors:
+a) Seek operation in backup device returned operating system error.
+b) Read returned 'X' reading volume header
+c) VOL1 Label not found.
+<P>
+TPWVOL
+Example:
+<PRE>kernel   tpwvol: Seek operation in backup device failed returned OS
+   Error 1117 (The request could not be performed because of an
+   I/O device error.)
+
+</PRE>Additional Information or Resolution:
+- The above problem occurred due to a device/controller problem.  The tape
+device was replaced.
+<P>
+Possible Problems:
+a) Seek operation in backup device returned operating system error.
+<P>
+The information listed above is certainly not an exhaustive list of tape
+related problems, but it does serve to illustrate the variety of problems
+that may be encountered with tape devices. The best method to protect
+corporate resources is to verify that the device chosen is on the Windows
+NT Hardware Compatibility List for the version of Windows NT that is being
+used. Review the documentation that is included with the tape device and
+the SCSI controller to ensure that it is set up properly. Test the device
+with the application software that will be used routinely, and if there is
+more than one application, verify that they can successfully coexist.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: SQL Server WINNT Tape<BR>
+Keywords            : kbusage SSrvAdmin<BR>
+Version             : 4.21a<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbtshoot<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 30, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

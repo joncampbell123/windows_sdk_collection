@@ -1,0 +1,209 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Understanding Disk Volume Tracking in Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q150582">
+<META NAME="KBModify" CONTENT="1996/05/16">
+<META NAME="KBCreate" CONTENT="1996/05/03">
+<META NAME="Keywords" CONTENT="kbprg kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  When users insert a disk in a floppy disk drive, Windows 95 tracks the disk to prevent the user from opening a file, removing the disk, and inadvertently inserting a different disk. Through this behavior, Windows 95 helps users guard against corrup...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA7T,QAC9,QDL9,QBWO,QBWN,QAU9,QAKC,QBWQ,QDMH,QA4H,QAMB,QAC2,QDJS,QBVV,QA7O V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Understanding Disk Volume Tracking in Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 16, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q150582</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface included with:
+   Microsoft Windows 95 version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When users insert a disk in a floppy disk drive, Windows 95 tracks the
+disk to prevent the user from opening a file, removing the disk,
+and inadvertently inserting a different disk. Through this behavior,
+Windows 95 helps users guard against corrupting the data on their
+disks. This article explains how Windows 95 tracks disks and
+discusses instances where software developers can consider overriding the
+default mechanism Windows 95 uses to perform this task.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Volume Tracking Overview</h3>
+ 
+<P>
+One part of the Windows 95 disk system is a driver called the Volume
+Tracking Driver. Its purpose is to uniquely identify disks and ensure that
+the correct disk is in the floppy disk drive when data is written to a
+file. The Volume Tracking Driver intercepts all writes to the floppy disk
+drive and, when it detects an invalid write operation, displays a text-
+mode blue screen prompting users to either insert the original disk or
+cancel the invalid write operation. There is no way to prevent Windows 95
+from displaying this blue screen because it serves as a warning to users
+that an error has been made that could result in data loss.
+<P>
+The Volume Tracking Driver uniquely identifies disks by writing a
+volume tracking serial number in the OEM ID field (offsets 0x3-0xB) of the
+boot record, which is stored in the boot sector of the disk. This
+serial number is different than the volume serial number created when the
+disk is formatted and is used solely by the Volume Tracking Driver. The
+Volume Tracking Driver assigns a volume tracking serial number the first
+time a disk is inserted since Windows was last started. That number
+identifies that particular disk until Windows 95 is restarted.
+<P>
+<P><h3>How to Override the Default Volume Tracking Method</h3>
+ 
+<P>
+There are times when the Volume Tracking Driver cannot or should not be
+allowed to overwrite the OEM ID field of the boot record of a disk. For
+example, write-protected disks physically prevent the Volume Tracking
+Driver from overwriting the OEM ID field. Also, some software programs,
+such as backups, rely on the OEM ID field to determine whether the disk
+contains valid data. For instance, if a utility program stores a name in
+the OEM ID field and the Volume Tracking Driver overwrites this
+information, the disk becomes useless if the backup software checks for
+the name.
+<P>
+When the Volume Tracking Drive is prevented from overwriting the OEM ID
+field on a disk, it stores the disk's volume serial number and
+label in memory and uses the combination of these to identify the disk.
+Although this method does not modify the disk, it is slower than
+storing a unique ID on the disk itself.
+<P>
+Although the Volume Tracking Driver cannot be disabled, it can be prevented
+from modifying the OEM ID field of specific types of disks if the
+following value is created for the registry key:
+<P>
+<PRE>   HKEY_LOCAL_MACHINE\System\CurrentControlSet\control\
+      FileSystem\NoVolTrack
+
+</PRE>The values in this key form a table of patterns and offsets that the Volume
+Tracking Driver uses to determine which disks should not be modified.
+When a new disk is inserted, the Volume Tracking Driver scans this
+table looking for each pattern at its corresponding offset in the
+disk's boot sector. If it finds a pattern, it does not update the OEM
+ID field in the disk's boot record, but rather identifies the disk
+by its volume serial number and label.
+<P>
+Each value of the NoVolTrack key is binary data formatted as a two-byte
+offset in little-endian order followed by an arbitrarily long sequence of
+bytes that make up a pattern. The Volume Tracking Driver ignores the label
+of each value, but the labels are used to aid human readers in
+understanding the type of disk to which the value refers. An example
+table of values looks like the following:
+<P>
+<PRE>   NoVolTrack
+      Label    Offset   Pattern
+      -------  ------   --------------------
+      MyDisk   0050h    MyDisk
+      COOL     0100h    COOL
+
+</PRE>In the Registry Editor, this table looks like the following:
+<P>
+<PRE>      MyDisk   50 00 4D 79 44 69 73 6B
+      COOL     00 01 43 4F 4F 4C
+
+</PRE>If your software relies on the OEM ID in the boot record of disks it
+uses, you need to register your "disk type" by adding it to the table
+of values in the NoVolTrack registry key.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00 floppy disk boot sector diskette<BR>
+KBCategory: kbprg kbhowto<BR>
+KBSubcategory: BseFileio
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 16, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

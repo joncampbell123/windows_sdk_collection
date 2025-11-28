@@ -1,0 +1,249 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>DOC: Changes to m_strFilter/m_strSort Don't Affect Requery() </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q111816">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1994/02/20">
+<META NAME="Keywords" CONTENT="kb16bitonly MfcDatabase kbdocerr">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The online Help for the CRecordset::Requery() function incorrectly states the following:      For either a dynaset or a snapshot, call Requery any time you want to    rebuild the recordset using a new filter or sort, or new parameter    values. Set...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA9E,QAGI,QAPN,QAY5,QAB9,QA2Q,QAHE,QAUJ,QABM,QAG2,QAZV,QBWS,QAH4,QACF,QAYZ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>DOC: Changes to m_strFilter/m_strSort Don't Affect Requery()</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q111816</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.5
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The online Help for the CRecordset::Requery() function incorrectly states
+the following:
+<P>
+<PRE>   "For either a dynaset or a snapshot, call Requery any time you want to
+   rebuild the recordset using a new filter or sort, or new parameter
+   values. Set the new filter or sort property by assigning new values to
+   m_strFilter and m_strSort before calling Requery. Set new parameters by
+   assigning new values to parameter data members before calling Requery.
+   If the filter and sort strings are unchanged, you can reuse the query,
+   which improves performance."
+
+</PRE>This is a documentation error. The Requery() function isn't affected by
+changes in the sort (m_strSort) or filter (m_strFilter) variable of
+CRecordset. The Requery() function is affected by parameterized filters.
+The use of parameters is demonstrated in Chapter 4 of the Enroll database
+tutorial (see "Database Classes," "Part 1: Database Tutorial" in the Visual
+C++ version 1.5 Books Online).
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+Below is the code for the CRecordset::Requery() function:
+<P>
+<PRE>   BOOL CRecordset::Requery()
+   {
+       RETCODE nRetCode;
+
+       ASSERT_VALID(this);
+       ASSERT(IsOpen());
+       // Can't requery until all pending Async operations have
+       // completed.
+       ASSERT(!m_pDatabase-&gt;InWaitForDataSource());
+
+       TRY
+       {
+           // Shut down current query.
+           AFX_SQL_SYNC(::SQLFreeStmt(m_hstmt, SQL_CLOSE));
+
+           // Now try to reexecute the SQL query.
+           AFX_SQL_ASYNC(this, ::SQLExecute(m_hstmt));
+           if (!Check(nRetCode))
+               ThrowDBException(nRetCode);
+
+           m_nFieldsBound = 0;
+           InitRecord();
+       }
+       CATCH_ALL(e)
+       {
+           Close();
+           THROW_LAST();
+       }
+       END_CATCH_ALL
+
+       return TRUE;    // all set
+   }
+
+</PRE>Note that the function merely does a SQLExecute() call; it relies on the
+Open Database Connectivity (ODBC) application programming interface (API)
+function SQLPrepare() to initialize the query earlier in the program in the
+CRecordset::Open() function. SQLPrepare() helps improve query speed by
+telling the ODBC driver that the query will always be of the same form; the
+structure of the SQL statement won't change. This is where SQL statement
+parameters are beneficial.
+<P>
+For example, suppose that you have the following SQL statement, which is
+used for an SQLPrepare() call:
+<P>
+<PRE>   SELECT name, phonenum from customertable where name = ?
+
+</PRE>The question mark (?) is an ODBC defined placement holder. It permits the
+program to specify a new filter using the ODBC API SQLSetParam() without
+changing or specifying a new SELECT statement later in the program. There
+is only one filter and the SELECT statement won't change. ODBC drivers can
+optimize performance because no re-parsing needs to be done when
+SQLExecute() is called. The parsing of the SELECT statement is done once in
+the SQLPrepare() call.
+<P>
+In the SELECT line above, the parameterized filter would be handled by
+assigning m_strFilter = "name=?", and then using a variable to store the
+data for the parameter. For more information, see the section titled
+"Filtering and Parameterizing the Recordset" in "Database Classes," "Part
+1: Database Tutorial," Chapter 4 "Step 2: Using a Second Recordset" of the
+Visual C++ version 1.5 Books Online.
+<P>
+See "Part 1: Database Tutorial" in the "Database Classes" reference and the
+"ODBC API Programmer's Reference" in the Visual C++ version 1.5 Books
+Online for more information about ODBC SQL statement parameters,
+SQLPrepare() and SQLExecute().
+<P>
+Because SQL parameters (for example, ? markers) are not permitted in SORT
+clauses, you cannot use the Requery() function if you need to change the
+sorting order.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+If the structure of the SQL statement isn't going to change, use ODBC SQL
+parameters, which are described in the section titled "Filtering and
+Parameterizing the Recordset" in Chapter 4 of the database tutorial
+included with Visual C++ version 1.5. If the structure of the SELECT
+statement is changed in the program, you must requery by calling Close()
+and then Open() for the CRecordset.
+<P>
+Here is an example of a SELECT statement that changes structure during a
+program. Suppose the original query for the CRecordset is:
+<P>
+<PRE>   Select name, phonenum from customertable where name = 'Dan'
+
+</PRE>This is accomplished by setting m_strFilter to "name='Dan'". Now, later in
+the application, you want to change the query so that it shows all "Dan"'s
+in a certain zip code. You might have:
+<P>
+<PRE>   Select name, phonenum from customertable where name = 'Dan' and
+       zipcode=97439
+
+</PRE>The structure of the query has changed because the WHERE clause now
+contains two conditions. In other words, the m_strFilter string would be
+"name = 'Dan' and zipcode=97439". To query, you would need to call
+CRecordset::Close() and then CRecordset::Open(), rather than Requery().
+ODBC SQL parameters wouldn't work because the SELECT statement can't be
+written to accept one filter and then two filters.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+The CRecordset::Requery() behavior is by design. The Requery() function is
+being reviewed and may be modified in future versions to reflect changes to
+m_strFilter and m_strSort.
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : kb16bitonly MfcDatabase kbdocerr<BR>
+Technology          : kbmfc<BR>
+Version             : 1.5 2.5<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

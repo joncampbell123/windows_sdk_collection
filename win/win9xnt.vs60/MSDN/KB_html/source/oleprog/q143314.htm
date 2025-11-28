@@ -1,0 +1,227 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: EKOALA5 Custom Marshaling Sample Error </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q143314">
+<META NAME="KBModify" CONTENT="1996/01/31">
+<META NAME="KBCreate" CONTENT="1996/01/31">
+<META NAME="Keywords" CONTENT="kbole kbprg kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  It is only possible to instantiate the Koala object implemented by the EKOALA5 sample if the client initially asks for the IUnknown interface. In this case, subsequent calls to QueryInterface to retrieve pointers to the custom interfaces IKoala or ...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBBS,QAGI,QAPN,QAB5,QAUD,QAW6,QARL,QDKF,QBVW,QAPP,QAPF,QAIF,QBVV,QARW,QALW V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: EKOALA5 Custom Marshaling Sample Error</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 31, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q143314</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>EKOALA5, KOALAPRX and OBJUSER3 samples included with Chapter 6 of
+   "Inside OLE" 2nd ed. by Kraig Brockschmidt, and any custom marshaling
+   code based on these samples.
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+It is only possible to instantiate the Koala object implemented by the
+EKOALA5 sample if the client initially asks for the IUnknown interface. In
+this case, subsequent calls to QueryInterface to retrieve pointers to the
+custom interfaces IKoala or IAnimal will also succeed. This can be observed
+by using the OBJUSER3 client sample included with Chapter 6.
+<P>
+However, if the client initially asks for IKoala or IAnimal, then
+IClassFactory::CreateInstance and CoCreateInstance will fail with
+E_NOINTERFACE. This can be observed by modifying OBJUSER3 to ask for one of
+these interfaces when calling CoCreateInstance.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+EKOALA5 does not actually implement IKoala or IAnimal as interfaces, and
+returns E_NOINTERFACE when queried for those interfaces. This causes
+EKOALA5's IClassFactory::CreateInstance and CoCreateInstance to fail.
+<P>
+Note that when an object is custom marshaled, its interfaces need only
+exist in the client's process. Thus, the proxy must implement the object's
+interfaces, but it is optional for the server (implementation dependent).
+<P>
+The error in this case is that the server claims the object does not
+support IKoala and IAnimal when in fact it does (through the proxy).
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+One solution would be to add interface implementations for IKoala and
+IAnimal to EKOALA5 and modify CKoala::HandleCall to simply call the
+appropriate interface method for each request.
+<P>
+However, an easier solution is to modify CKoala::QueryInterface to return
+IUnknown when queried for IKoala or IAnimal, even though the CKoala does
+not implement these interfaces.
+<P>
+CAUTION: This solution is specific to the peculiar architecture of the
+EKOALA5 sample. Returning IUnknown in place of unimplemented interfaces can
+easily cause a crash in other situations.
+<P>
+In KOALA.CPP:
+<P>
+STDMETHODIMP CKoala::QueryInterface(REFIID riid, PPVOID ppv)
+<PRE>    {
+    *ppv=NULL;
+
+    if (IID_IUnknown==riid || IID_IMarshal==riid)
+        *ppv=this;
+
+    // Add these 2 lines
+    else if (IID_IKoala==riid ||  IID_IAnimal==riid)
+        *ppv=this;
+
+    if (NULL!=*ppv)
+        {
+        ((LPUNKNOWN)*ppv)-&gt;AddRef();
+        return NOERROR;
+        }
+
+    return ResultFromScode(E_NOINTERFACE);
+    }
+
+</PRE>Note that the OLE stub in the server process will never directly call
+interface methods on an object that is custom marshaled, except for
+IUnknown and IMarshal methods. Other interface method calls are handled in
+the client process by the proxy (perhaps using private communication with
+the server). Thus even if the server does not implement certain interfaces
+supported by the object, as is the case with EKOALA5, it is safe to return
+IUnknown when queried for those interfaces.
+<P>
+In general, it is incorrect for a server to disallow a request for an
+interface from CoCreateInstance but allow it from the proxy.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The EKOALA5 server and corresponding proxy KOALAPRX implement custom
+marshaling for the Koala object, which provides the IKoala and IAnimal
+custom interfaces. These components are designed so that the proxy
+implements the custom interfaces in the client's process, but delegates to
+the server to do the actual work involved for some, but not all, of the
+interface methods. The server does not implement the interfaces themselves,
+but merely responds to specific requests from the proxy.
+<P>
+When creating the object, the requested interface is passed as a parameter
+to the server's IClassFactory::CreateInstance method. In EKOALA5, this
+method creates the object and then calls QueryInterface. If the requested
+interface is IKoala or IAnimal, QueryInterface fails causing
+IClassFactory::CreateInstance and CoCreateInstance to fail.
+<P>
+If the initially requested interface is IUnknown, QueryInterface and
+CreateInstance succeed. The IUnknown interface is returned first to the OLE
+stub, which then queries for IMarshal and proceeds to custom marshal the
+object back to the client by calling the IMarshal methods. On the client
+side, the proxy (KOALAPRX) is loaded and the object is unmarshaled. Any
+subsequent calls to QueryInterface are handled by the proxy, which
+implements IKoala and IAnimal so everything works normally from that point.
+<P>
+With the modifications noted in the "Resolution" section of this article,
+the creation process works the same when the client asks for IKoala or
+IAnimal using CoCreateInstance as it does when the client asks for
+IUnknown.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.00 2.0<BR>
+KBCategory: kbole kbprg kbprb<BR>
+KBSubcategory: LeTwoCom<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 31, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

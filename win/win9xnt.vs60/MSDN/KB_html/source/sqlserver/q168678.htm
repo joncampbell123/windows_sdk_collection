@@ -1,0 +1,246 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Understanding Worktables Used by Server Side Cursors </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q168678">
+<META NAME="KBModify" CONTENT="1997/05/28">
+<META NAME="KBCreate" CONTENT="1997/05/19">
+<META NAME="Keywords" CONTENT="SSrvGen kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  SQL Server implementation of server side cursor uses worktables to maintain keyset and optimistic concurrency values. This article describes the format and contents of these worktables in SQL Server version 6.5. You can find additional information ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAO2,QA5V,QARR,QABM,QAY5,QAKD,QA28,QAU3,QATJ,QAMR,QAEF,QAKH,QAC6,QBWS,QBXN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Understanding Worktables Used by Server Side Cursors</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 28, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q168678</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+<P>
+SUMMARY
+ 
+<P>
+SQL Server implementation of server side cursor uses worktables to maintain
+keyset and optimistic concurrency values. This article describes the format
+and contents of these worktables in SQL Server version 6.5. You can find
+additional information on server side cursors in the SQL Server
+documentation and the following articles in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q156489.htm">Q156489</A></B>
+   TITLE     : INF: Overview of SQL Server, ODBC, and DB-Library Cursors
+
+   ARTICLE-ID: <B><A href="../sqlserver/q132037.htm">Q132037</A></B>
+   TITLE     : INF: Locking Behavior of Cursors on SQL Server Version 6.0
+
+</PRE>A good understanding of the use of these worktables can hopefully help in
+troubleshooting server side cursor performance and tempdb space allocation
+problems.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+For each table involved in each type of cursor, one or two worktables are
+created in tempdb at cursor declaration/open time. One is the keyset table
+that stores the row identifier (RID) and the key values (and also possibly
+the timestamp). The other is the OPTCCVAL table, which stores the complete
+rows that are currently in the fetch buffer.
+<P>
+The following section describes these worktables in more detail, based on
+the type of cursor is used.
+<P>
+<P><h3>KEYSET-DRIVEN</h3>
+ 
+<P>
+When the cursor is opened, the query defining the cursor is run and the RID
+and unique key values of the qualifying rows are saved in a keyset table in
+tempdb. There is one such keyset table for every table involved in the
+query. If there is a timestamp on the table, it is also saved in the keyset
+table. All further cursor fetch commands are based on these keyset tables.
+To fetch a given row, first a RID lookup is performed on the main table,
+based on the saved RID value in the keyset table. If the row is found, the
+key values (or timestamp if it exists) are compared with those that are
+saved in the keyset table. If these match, the desired columns are fetched
+from this row. Otherwise, an index-based scan is performed on the table,
+searching for the row with the given unique key values found in the keyset
+table. These keyset tables are created during cursor declaration, and
+populated during cursor open. Closing and reopening a cursor causes these
+tables to be truncated and repopulated. For a cursor with a very large
+results set, the task of populating these keyset tables may take up a
+considerable amount of time during cursor open. This problem can be solved
+in two ways: by using dynamic cursors, or by populating keyset tables
+asynchronously.
+<P>
+Format of keyset tables: row# + RID + key values (+ timestamp if it exists)
+<P>
+If the cursor is opened with an optimistic concurrency option of OPTCC or
+OPTCCVAL and there is no scroll locking in effect, for every table that is
+involved in the query with no timestamp, there will also be an OPTCCVAL
+table that stores the complete rows corresponding to the currently fetched
+buffer. When an optimistic lookup is needed later, the values of the
+current row are compared against the values in the OPTCCVAL table row. This
+requires truncation and re-population of the OPTCCVAL table(s) with every
+fetch command, which can introduce negative impact on cursor performance.
+Users and application developers concerned with obtaining maximum
+performance can avoid an OPTCCVAL cursor type by using either timestamp or
+scroll locking instead. Scroll locking can be achieved either by using the
+LOCKCC option on the cursor, or by using the UPDLOCK or HOLDLOCK keywords
+in the original query. Because LOCKCC, UPDLOCK, and HOLDLOCK will likely
+reduce concurrency and possibly introduce more blocking in the system, it
+is recommended that you carefully evaluate performance and concurrency
+requirements, and choose the proper cursor type accordingly.
+<P>
+<P><h3>DYNAMIC</h3>
+ 
+<P>
+The keyset tables are populated only during cursor fetch operations. These
+tables only contain the RIDs and key values of the rows that were in the
+last fetched buffer. Every fetch operation truncates the keyset table and
+refills it with the new qualifying rows. This eliminates the problem of a
+cursor open taking too long for a large results set, while adding extra
+overhead and a performance penalty to fetch operations. In cases when the
+tempdb is too small to accommodate huge keyset tables, this may be the only
+option.
+<P>
+The keyset table may have one of the following forms:
+
+<UL><LI>If the cursor is opened with an optimistic concurrency option of OPTCC
+   or OPTCCVAL:
+<P>
+   1. Table has timestamp and unique index: row#+RID+keys+timestamp
+<P>
+   2. Table has timpstamp but no unique index: row#+RID+timestamp
+<P>
+   3. Table has no timestamp: row#+RID+complete row
+
+<LI>If the cursor is opened with an optimistic concurrency option of
+   Read-Only or LOCKCC:
+<P>
+   1. Table has unique index: row#+RID+keys
+<P>
+   2. Table has no unique index: complete row
+<P>
+</UL>There is no OPTCCVAL table for DYNAMIC cursors.
+<P>
+<P><h3>FORWARD-ONLY</h3>
+ 
+<P>
+In SQL Server 6.5, FORWARD-ONLY cursors are DYNAMIC by default, but if the
+query plan involves interim worktables, the FORWARD-ONLY cursor is opened
+as KEYSET-DRIVEN if there is a unique index on every one of its underlying
+tables, and INSENSITIVE and READ-ONLY otherwise. In addition, if the
+Transact-SQL statement contains one of the keywords UNION, DISTINCT, GROUP
+BY and/or HAVING, or aggregate functions, the cursor is automatically READ-
+ONLY and INSENSITIVE.
+<P>
+As an additional performance improvement, FORWARD-ONLY DYNAMIC ANSI cursors
+have a procedure cache page instead of a temporary table to store the
+keyset because these cursors are DYNAMIC and only have one row in the fetch
+buffer at a time.
+<P>
+<P><h3>INSENSITIVE (STATIC)</h3>
+ 
+<P>
+No keyset or OPTCCVAL table is created; a temporary table is created and
+the complete result set is copied into the temporary table at cursor open
+time.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbusage<BR>
+KBSubcategory: SSrvGen<BR>
+Additional reference words:<BR>
+Keywords          : SSrvGen kbusage<BR>
+Version           : 6.5<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 28, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

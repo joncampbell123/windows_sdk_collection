@@ -1,0 +1,279 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>VB3 How to Fill a List Box from a Snapshot Generically </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q115712">
+<META NAME="KBModify" CONTENT="1997/01/09">
+<META NAME="KBCreate" CONTENT="1994/06/01">
+<META NAME="Keywords" CONTENT="kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  This article shows by example how to fill a list box with a snapshot when the contents of the snapshot are unknown at design time. The example uses TAB characters to create a columnar display, and it adds a horizontal scroll bar so the user can vie...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBVR,QA4Q,QBCF,QBXS,QANF,QBS0,QAE1,QBLD,QABA,QBCE,QA6A,QA5V,QAYV,QAM3,QAH4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>VB3 How to Fill a List Box from a Snapshot Generically</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 9, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q115712</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Professional Edition of Microsoft Visual Basic for Windows,
+   version 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article shows by example how to fill a list box with a snapshot when
+the contents of the snapshot are unknown at design time. The example uses
+TAB characters to create a columnar display, and it adds a horizontal
+scroll bar so the user can view the entire record.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When handling result sets from database queries that produce variable
+result sets, you may find it useful to have a generic function display the
+contents in a list box.
+<P>
+The following example defines a Sub (Fill_List) that accepts a list-box
+control and snapshot as parameters and fills the list box with the contents
+of the snapshot. The function can be easily modified to accept a table or
+dynaset object as well.
+<P>
+For additional information, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID :<B><A href="../vbwin/q71067.htm">Q71067</A></B>
+   TITLE      :How to Set Tab Stops in a List Box in Visual Basic
+
+</PRE><h3>Step-by-Step Instructions for Creating the Program</h3>
+ 
+
+<OL><P><LI>Start a new project in Visual Basic. Form1 is created by default.
+
+<P><LI>Add a command button (Command1) and a list box (List1) to the form. Set
+   the caption property of Command1 to "Fill list".
+
+<P><LI>Add the following code to the form's general declarations section:
+<P>
+   Option Explicit
+<PRE>   Declare Function SendMessage Lib "User" (ByVal hWnd As Integer, ByVal
+   wMsg
+   As
+    Integer, ByVal wParam As Integer, lparam As Any) As Long
+   Const WM_USER = &amp;H400
+   Const LB_SETTABSTOPS = WM_USER + 19
+   Const LB_SETHORIZONTALEXTENT = WM_USER + 21
+
+   Sub Fill_List (lb As ListBox, sn As Snapshot)
+     Const NUMCHARS = 2  ' Amount of white space between columns.
+
+     ' Temporary variables to preserve form font settings:
+     Dim hold_fontname As String, hold_fontsize As Integer
+     Dim hold_fontbold As Integer, hold_fontitalic As Integer
+     Dim hold_fontstrikethru As Integer, hold_fontunderline  As Integer
+
+     Dim whiteSpace As Integer, accumtabstops As Integer, dialogUnits As
+   Integer
+     Dim fieldVal As String, listline As String
+     Dim avgWidth As Single
+
+     Dim retval As Long, i As Integer
+     Dim biggest_value() As Single
+     Dim tabstops() As Integer
+
+     ' Save form's font settings so we can use the form to calculate the
+     ' TextWidth / Height of the strings to go into the list box.
+     hold_fontname = Me.FontName
+     hold_fontsize = Me.FontSize
+     hold_fontbold = Me.FontBold
+     hold_fontitalic = Me.FontItalic
+     hold_fontstrikethru = Me.FontStrikethru
+     hold_fontunderline = Me.FontUnderline
+
+     ' Set form font settings to be identical to list box.
+     Me.FontName = lb.FontName
+     Me.FontSize = lb.FontSize
+     Me.FontBold = lb.FontBold
+     Me.FontItalic = lb.FontItalic
+     Me.FontStrikethru = lb.FontStrikethru
+     Me.FontUnderline = lb.FontUnderline
+
+     ' Get the average character width of the current list box font
+     ' (in pixels) using the form's TextWidth width method.
+     avgWidth =
+   Me.TextWidth("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+     avgWidth = avgWidth / Screen.TwipsPerPixelX / 52
+
+     ' Set the white space you want between columns.
+     whiteSpace = avgWidth * NUMCHARS
+
+     ReDim biggest_value(0 To sn.Fields.Count - 1)
+     ReDim tabstops(1 To sn.Fields.Count)
+
+     lb.Clear
+
+     ' Loop through the field values for each record in the snapshot.
+     ' Calculate the width required for that field value to fit in the list
+     ' box. Also, build each line of the list box and add it to the list as
+     ' you go.
+     While Not sn.EOF
+       For i = 0 To sn.Fields.Count - 1
+         fieldVal = sn(i) &amp; ""       ' Append "" in case of a null field.
+
+         ' The LB_SETTABSTOP message requires coordinates in dialog units
+         ' (roughly 4 *, the average character width in pixels).
+         dialogUnits = ((Me.TextWidth(fieldVal) / Screen.TwipsPerPixelX +
+   whiteSpace) \ avgWidth) * 4
+         If dialogUnits &gt; biggest_value(i) Then
+           biggest_value(i) = dialogUnits
+         End If
+
+         listline = listline &amp; sn(i) &amp; Chr$(9)
+       Next i
+
+       lb.AddItem listline
+       listline = ""
+       sn.MoveNext
+     Wend
+
+     ' Fill the tabstops() array with the position of each tab stop.
+     For i = 0 To sn.Fields.Count - 1
+       accumtabstops = accumtabstops + biggest_value(i)
+       tabstops(i + 1) = accumtabstops
+     Next i
+
+     ' Send LB_SETTABSTOP to the list box to set the position of each
+       column.
+     retval&amp; = SendMessage(lb.hWnd, LB_SETTABSTOPS, i, tabstops(1))
+
+     ' Set the horizontal extent just wider than the first tab stop.
+     ' This will produce a horizontal scroll bar on the list box.
+     ' This message requires coordinates in pixels, so we convert the tab
+     ' stop coordinate back from dialog units to pixels.
+     retval&amp; = SendMessage(lb.hWnd, LB_SETHORIZONTALEXTENT, (tabstops(i) \
+   4)
+   *
+   avgWidth, 0&amp;)
+
+     ' Restore form's original font property settings.
+     Me.FontName = hold_fontname
+     Me.FontSize = hold_fontsize
+     Me.FontBold = hold_fontbold
+     Me.FontItalic = hold_fontitalic
+     Me.FontStrikethru = hold_fontstrikethru
+     Me.FontUnderline = hold_fontunderline
+   End Sub
+
+</PRE><P><LI>Add the following code to the Command1_Click event:
+<P>
+<PRE>   Sub Command1_Click ()
+     Dim db As database
+     Dim sn As Snapshot
+
+     Set db = OpenDatabase("BIBLIO.MDB")
+     Set sn = db.CreateSnapshot("select * from [title author publisher]")
+     Fill_List list1, sn
+
+     Set sn = Nothing
+     db.Close
+   End Sub
+
+</PRE><P><LI>Run the program by pressing the F5 key. Now, the list box contains neat
+   columns displaying the contents of the [Title Author Publisher] query.
+   The scroll bar enables you to see the entire line. Alter the NUMCHARS
+   constant to allow more white space between columns if you want.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: APrgDataOther<BR>
+Additional reference words: 3.00<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 9, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

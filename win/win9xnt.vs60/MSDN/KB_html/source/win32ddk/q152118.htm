@@ -1,0 +1,257 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>DOC: EngPlgBlt for Rotating a Bitmap Surface </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q152118">
+<META NAME="KBModify" CONTENT="1997/01/08">
+<META NAME="KBCreate" CONTENT="1996/06/04">
+<META NAME="Keywords" CONTENT="kbprg kbprint kbdocerr kbdocfix">
+<META NAME="KBArea" CONTENT="Support; KB; win32ddk">
+<META NAME="Description" CONTENT="  There is an error in the online documentation for the EngPlgBlt function, and it is quite un-intuitive. This function is used for both Win32 display drivers and Win32 printer drivers.  MORE INFORMATION  The parameter  pptfxDest  that defines the pa...">
+<META NAME="Product" CONTENT="Win32 DDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH1,QAUD,QAI4,QAR4,QANY,QBE7,QBE6,QAM1,QAY5,QBWP,QBDM,QAK6,QAHE,QBV8,QALW V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>DOC: EngPlgBlt for Rotating a Bitmap Surface</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 8, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q152118</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Device Driver Kit (DDK) for Windows NT,
+   version 3.51
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+There is an error in the online documentation for the EngPlgBlt function,
+and it is quite un-intuitive. This function is used for both Win32 display
+drivers and Win32 printer drivers.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The parameter "pptfxDest" that defines the parallelogram of the destination
+surface is actually a pointer to an array of type POINTFIX (not POINTFX) as
+defined in %DDK%\inc\winddi.h:
+<P>
+<PRE>   typedef LONG FIX;
+   typedef struct  _POINTFIX
+   {
+       FIX   x;
+       FIX   y;
+   } POINTFIX, *PPOINTFIX;
+
+</PRE>The members x and y are of type LONG. It is implied that they must be in
+28.4 fixed notation. Thus, to properly use this function, you need to shift
+the LONG values by 4 bits to the left to comply with the 28.4 notation.
+<P>
+NOTE: If the Destination surface is less than the Source surface, the image
+will shrink and rotate accordingly. If the Destination surface is greater
+than the Source surface, the image will also stretch and rotate
+accordingly. Otherwise, the surface will just rotate accordingly.
+<P>
+SAMPLE
+ 
+<P>
+<PRE>//////////////////////////////////////////////////////////////////////////
+//
+// This routine simply rotates a surface's bitmap 90 degrees to the right.
+// Note: DISPDBG() is from %DDK%\src\video\displays\vga\debug.*
+//
+   BOOL
+   RotateSurface(
+      SURFOBJ *psoSource
+      )
+   {
+       PPDEV       ppdev;
+       HSURF       hSurf;
+       SURFOBJ    *psoDest;
+       SIZEL       sizl;
+       RECTL       rclSrc;
+       POINTFIX    pfxDest[3];
+
+       //
+       // get the pointer to our DEVDATA structure
+       //
+       ppdev = (PPDEV)psoSource-&gt;dhpdev;
+
+       //
+       // create the rotated bitmap
+       //
+       sizl.cx = psoSource-&gt;sizlBitmap.cy;
+       sizl.cy = psoSource-&gt;sizlBitmap.cx;
+
+       if ((hSurf = (HSURF)EngCreateBitmap(
+               sizl,
+               sizl.cx,
+                  psoSource-&gt;iBitmapFormat,
+                  psoSource-&gt;fjBitmap,
+                  NULL)) == NULL )
+      {
+         DISPDBG((0, "EngCreateBitmap FAILED; GetLastError() = %d\n",
+   GetLastError() ));
+            return(FALSE);
+      }
+
+       if (!EngAssociateSurface(
+         hSurf,
+            ppdev-&gt;hdevEng, // Note: we must have stored this earlier
+            0L) )
+      {
+         DISPDBG((0, "EngAssociateSurface FAILED; GetLastError() = %d\n",
+   GetLastError() ));
+         EngDeleteSurface(hSurf);
+            return(FALSE);
+      }
+
+       //
+       // setup the destination pointfx array
+       //
+       pfxDest[0].x = sizl.cx &lt;&lt; 4; // A
+       pfxDest[0].y = 0;
+       pfxDest[1].x = sizl.cx &lt;&lt; 4;    // B
+       pfxDest[1].y = sizl.cy &lt;&lt; 4;
+       pfxDest[2].x = 0;         // C
+       pfxDest[2].y = 0;
+
+       //
+       // setup the source rectangle
+       //
+       rclSrc.top    = 0;
+       rclSrc.left   = 0;
+       rclSrc.bottom = psoSource-&gt;sizlBitmap.cy;
+       rclSrc.right  = psoSource-&gt;sizlBitmap.cx;
+
+       //
+       // rotate the original bitmap 90 degrees to the right onto the new
+   bitmap
+       //
+       if (!EngPlgBlt(
+         psoDest,
+            psoSource,
+            NULL, NULL, NULL, NULL, NULL,
+               &amp;pfxDest[0],
+               &amp;rclSrc,
+               NULL,
+               HALFTONE ))
+       {
+            DISPDBG((0, "EngPlgBlt FAILED; GetLastError() = %d\n",
+   GetLastError() ));
+            EngDeleteSurface(hSurf);
+            return(FALSE);
+       }
+
+       //
+       // you now have your rotated bitmap in psoDest until you delete it.
+       //
+
+       EngDeleteSurface(hSurf);
+
+       return(TRUE);
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For additional information on the iMode parameter, please see the following
+article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32ddk/q140674.htm">Q140674</A></B>
+   TITLE     : DOCERR: Incorrect iModes Parameter to DDI StretchBlt
+               Functions
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.51<BR>
+KBCategory: kbprg kbprint kbdocerr kbdocfix<BR>
+KBSubcategory: NTDDKVIDEO NTDDKPRNT
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 8, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

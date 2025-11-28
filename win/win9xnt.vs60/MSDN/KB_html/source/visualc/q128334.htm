@@ -1,0 +1,251 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Clipping Doesn't Work Correctly in Print Preview </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q128334">
+<META NAME="KBModify" CONTENT="1997/08/07">
+<META NAME="KBCreate" CONTENT="1995/03/29">
+<META NAME="Keywords" CONTENT="MfcUI kbcode kbprb kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Using SelectClipRgn works correctly when viewing on-screen results or when printing but causes problems in print preview mode. Problems include not displaying anything or not clipping anything. This happens even though the return value from SelectC...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBRM,QAOX,QAY5,QABK,QABO,QABH,QBSO,QAH4,QAGI,QA5W,QBV8,QAB9,QBVV,QA5A V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Clipping Doesn't Work Correctly in Print Preview</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 7, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q128334</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50 1.51 1.52 | 1.00 2.00 2.10 4.00
+<PRE>WINDOWS             | WINDOWS NT
+</PRE>kbprg kbprb kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+<P>
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.0, 1.5, 1.51, 1.52
+    - Microsoft Visual C++ 32-bit Edition, versions 1.0, 2.0, 2.1, and 4.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Using SelectClipRgn works correctly when viewing on-screen results or when
+printing but causes problems in print preview mode. Problems include not
+displaying anything or not clipping anything. This happens even though the
+return value from SelectClipRgn appears to be correct; that is, it does not
+return NULLREGION even though all output appears to be getting clipped.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The CDC class encapsulates two HDC handles. One is called m_hAttribDC and
+the other is m_hDC. See the CDC documentation for more information on this
+aspect of the CDC class.
+<P>
+The m_hAttribDC member is the same as the m_hDC member when you are
+printing or just drawing on the screen. However, in Print Preview mode, the
+m_hDC member points to the screen DC for your printed output, and the
+m_hAttribDC member references a printer DC for getting printer attributes
+during the print preview operation.
+<P>
+The print preview output view is mapped using SetViewportExt and
+SetWindowExt, so that you can call the CDC member functions as though you
+were putting your output to the printer and your output will be properly
+scaled to the print preview window. This works fine for any function that
+works with logical coordinates or for which the print preview output can be
+intercepted and modified.
+<P>
+The SelectClipRgn function takes a clipping region that was created using
+device pixels for its area. It then attempts to select it as the clipping
+rectangle for both the m_hDC and the m_hAttribDC. The device coordinates
+specified by your application will correspond to printer coordinates and
+not screen coordinates. Therefore, they won't match up properly when your
+clipping region is selected into the print preview DC.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+During print preview mode MFC actually uses a CDC-derived class to handle
+some of the special print preview operations such as mapping your printer
+coordinates to screen coordinates. This class is called CPreviewDC and is
+declared in &lt;afxpriv.h&gt;. There is no way for MFC to provide special
+handling for a clipping region because the RGN object is created without
+using CPreviewDC, and the CPreviewDC class is simply used for selecting the
+RGN object into the DC.
+<P>
+So you must convert your RGN coordinates before creating the RGN. The
+CPreviewDC class has a function called PrinterDPtoScreenDP that you can use
+to help in this conversion. The function converts a printer device
+coordinate to a screen coordinate. All you need to do is convert all
+coordinates before creating your RGN object.
+<P>
+You will only want to do this when you are in Print Preview mode. As
+mentioned above, MFC uses the CPreviewDC class when you are in print
+preview and you can detect whether this class is being used by using the
+IsKindOf function.
+<P>
+An example of how to do the coordinate conversion before creating your
+clipping region is included in the "Sample Code" section below. Note that
+the code in this example exists in the view's OnDraw function. It could
+also be placed in the OnPrint function but it would not work correctly if
+placed in OnPrepareDC. This is because the viewport setup for Print Preview
+mode takes place after OnPrepareDC and before OnPrint (or OnDraw if you do
+not have an overriden OnPrint) is called.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>// Note that afxpriv.h must be included to get the declaration
+// of the CPreviewDC class. The following line should be included
+// at the very top of your view's .CPP file
+
+#include &lt;afxpriv.h&gt;
+
+// ...
+
+void CMyView::OnDraw(CDC *pDC)
+    {
+    CRgn rgn;
+    CRect rectClip;
+
+    // Function to compute the clipping rectangle regardless of
+    // whether we are in print preview mode. This would be the
+    // function in your code which computes this rectangle and
+    // stores it in rectClip
+
+    ComputeClippingRectangle(pDC,&amp;rectClip);
+
+    // Now if we are in print preview mode then the clipping
+    // rectangle needs to be adjusted before creating the
+    // clipping region
+    if (pDC-&gt;IsKindOf(RUNTIME_CLASS(CPreviewDC)))
+        {
+        CPreviewDC *pPrevDC = (CPreviewDC *)pDC;
+
+        pPrevDC-&gt;PrinterDPtoScreenDP(&amp;rectClip.TopLeft());
+        pPrevDC-&gt;PrinterDPtoScreenDP(&amp;rectClip.BottomRight());
+
+        // Now offset the result by the viewport origin of
+        // the print preview window...
+
+        CPoint ptOrg;
+         ::GetViewportOrgEx(pDC-&gt;m_hDC,&amp;ptOrg);
+        rectClip += ptOrg;
+        }
+
+    // The following two function calls are the ones that
+    // select the clipping region into the DC. These would be
+    // whatever code you already have to create/select the
+    // clipping region
+
+    rgn.CreateRectRgn(rectClip.left,rectClip.top,
+        rectClip.right,rectClip.bottom);
+    pDC-&gt;SelectClipRgn(&amp;rgn);
+
+    // Other OnDraw code goes here
+    }
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00 1.50 2.00 2.10 2.50 2.51 2.52 2.10 3.00<BR>
+3.10 4.00<BR>
+KBCategory: kbprg kbprb kbcode<BR>
+KBSubcategory: MfcUI<BR>
+Keywords          : MfcUI kbcode kbprb kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.00 1.50 1.51 1.52 | 1.00 2.00<BR>
+Platform          : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 7, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,377 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: OnCtlColor Not Called When Using CTL3D.DLL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q109264">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1993/12/30">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The Microsoft Developer Network (MSDN) CD contains a dynamic-link library (DLL) called CTL3D.DLL. This DLL provides functions that allow 3-D painting of Windows controls to give applications a 3-D look. If an application uses the auto-subclassing f...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA01,QAGI,QAUD,QAB9,QAEV,QAH4,QANX,QAIF,QBVV,QAYC,QAK3,QBQU,QAY5,QALW,QBAD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: OnCtlColor Not Called When Using CTL3D.DLL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q109264</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+7.00   | 1.00 1.50
+MS-DOS | WINDOWS
+kbprg kbprb
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P>
+<P><PRE>    - Microsoft C/C++ for MS-DOS, version 7.0
+    - Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The Microsoft Developer Network (MSDN) CD contains a dynamic-link library
+(DLL) called CTL3D.DLL. This DLL provides functions that allow 3-D painting
+of Windows controls to give applications a 3-D look. If an application uses
+the auto-subclassing feature of CTL3D.DLL, the OnCtlColor() handlers for
+CDialogs and CFormViews won't be called.
+<P>
+Failure to handle the WM_CTLCOLOR message can cause problems with controls,
+especially VBX controls.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+When an application uses Ctl3dAutoSubclass(), a Windows hook is created to
+trap the creation process for dialog boxes. This hook will subclass the
+window procedure for the dialog box and call the Ctl3dDlgProc() function.
+The following are a few lines of code from the hook function as shown in
+the CTL3D documentation:
+<P>
+<PRE>   BOOL fSubclass;
+   fSubclass=fTrue;
+   SendMessage((HWND) hwndHookDlg, WM_DLGSUBCLASS,0,
+               (LPARAM)(WORD FAR *) &amp;fSubclass);
+   if (fSubclass)
+     {
+       SubclassWindow((HWND) hwndHookDlg, (FARPROC) Ctl3dDlgProc);
+     }
+
+</PRE>Note that a WM_DLGSUBCLASS message is sent to a dialog box before it is
+subclassed. If the message returns a FALSE value in the address pointed to
+by the LPARAM parameter, the dialog box is not subclassed by CTL3D and thus
+the dialog box doesn't automatically get a 3-D look. If the fSubclass value
+is not changed, the dialog box is automatically subclassed and receives a 3-
+D look.
+<P>
+The new window procedure, Ctl3dDlgProc(), installed by SubclassWindow(),
+does everything that is needed to use CTL3D.DLL. The function is shown in
+the CTL3D documentation. Note that it traps messages such as WM_INITDIALOG,
+WM_NCDESTROY, and WM_CTLCOLOR. Below is a portion of the code for handling
+WM_CTLCOLOR (please see the CTL3D documentation for the full code):
+<P>
+<PRE>   case WM_CTLCOLOR:
+        (FARPROC) lpfnDlgProc = (FARPROC)
+                     GetWindowLong(hwnd, DWL_DLGPROC);
+
+        if (lpfnDlgProc == NULL) {
+           hBrush = Ctl3dCtlColorEx(wm,wParam,lParam);
+           }
+        else {
+           hbrush = (HBRUSH) (*lpfnDlgProc)(hwnd,wm,wParam,lParam);
+           if (hbrush == (HBRUSH) fFalse ||
+               hbrush == (HBRUSH) 1)
+                hbrush = Ctl3dCtlColorEx(wm, wParam, lParam);
+        }
+
+        if (hbrush != (HBRUSH) fFalse)
+            return (LRESULT) hbrush;
+
+</PRE>The code that handles the WM_CTLCOLOR message doesn't call the window
+procedure for the dialog box, but instead calls the dialog box procedure.
+That is, GetWindowLong() is called with DWL_DLGPROC rather than
+GWL_WNDPROC. CDialog and CFormView objects trap most dialog box messages by
+subclassing the window procedure (not dialog box procedure) associated with
+a dialog box. Because CTL3D's window procedure is called before CDialog's
+or CFormView's window procedure, the WM_CTLCOLOR is never sent to the
+CDialog's or CFormView's window procedure because CTL3D's WM_CTLCOLOR
+message handling code calls the dialog box procedure for the dialog box and
+returns without calling the next window procedure in the chain. The next
+window procedure for the dialog box is CDialog's or CFormView's window
+procedure. Thus, CDialog or CFormview doesn't receive the OnCtlColor()
+message.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+There are several techniques that can be used to prevent the problem of not
+receiving the WM_CTLCOLOR message:
+
+<UL><LI>Do not use the auto-subclassing feature of CTL3D; instead, subclass each
+   dialog box using the technique described in the CTL3D documentation. You
+   must use Ctl3dSubclassDlg() rather than Ctl3dSubclassDlgEx(); otherwise,
+   the same problem will occur.
+<P>
+   -or-
+
+<LI>Continue to use the auto-subclassing feature; however, for CDialogs or
+   CFormViews that must receive the WM_CTLCOLOR message, trap the
+   WM_DLGSUBCLASS message and set the value pointed to by lparam to
+   CTL3D_NOSUBCLASS. Then, subclass the dialog box manually [using
+   Ctl3DSubclassDlg()] just as you would if you were not using auto-
+   subclassing but wanted 3-D dialog boxes. See the section below titled
+   "Using Auto-Subclassing and WM_DLGSUBCLASS" for more information about
+   this technique.
+<P>
+   -or-
+
+<LI>Continue to use auto-subclassing but additionally subclass the dialog
+   box procedure in the OnInitDialog() function handler such that the new
+   dialog box procedure that you define is called before the dialog box's
+   regular dialog box procedure. In your new dialog box procedure, check
+   whether WM_CTLCOLOR is sent. If it is, call the OnCtlColor() handler for
+   the dialog box; else, call the regular dialog box procedure for the
+   dialog box. See the section below titled "Trapping WM_CTLCOLOR with
+   Additional Subclassing" for more information about this technique.
+<P>
+</UL><h2>MORE INFORMATION</h2>
+ 
+<P>
+This section describes in more detail the last two techniques in the
+RESOLUTION section.
+<P>
+<P><h3>Using Auto-Subclassing and WM_DLGSUBCLASS</h3>
+ 
+<P>
+There may be times when a programmer wants to use CTL3D's auto-subclassing
+feature [that is, call Ctl3dAutoSubclass() in OnInitInstance()] but has a
+few dialog boxes that need to receive the WM_CTLCOLOR message. For those
+dialog boxes that need to receive the WM_CTLCOLOR message, first write a
+routine that will trap the WM_DLGSUBCLASS message and set the variable,
+pointed to by the LPARAM, to FALSE. Secondly, call Ctl3dSubclassDlg() in
+your OnInitDialog() and add any other code described in the CTL3D
+documentation that is recommended to handle messages. Note, do not use
+Ctl3dSubclassDlgEx(). You must use Ctl3dSubclassDlg().
+<P>
+To give an example of using this technique, the following is sample code
+one might have for the CDialog-derived class that needs to trap
+WM_CTLCOLOR:
+<P>
+<PRE>   LRESULT CAboutDlg::OnDlgSubclass(UINT wParam, LONG lParam)
+   {
+       *((int FAR *)lParam)= CTL3D_NOSUBCLASS;
+       return 0;
+   }
+
+   BOOL CAboutDlg::OnInitDialog()
+   {
+       CDialog::OnInitDialog();
+       Ctl3dSubclassDlg(m_hWnd,CTL3D_ALL);
+       return TRUE;
+   }
+
+   HBRUSH CAboutDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
+   {
+       if( nCtlColor == CTLCOLOR_EDIT)
+       {
+           pDC-&gt;SetBkColor(RGB(127,127,127));
+           return (HBRUSH)::GetStockObject(GRAY_BRUSH);
+       }
+       CDialog::OnCtlColor(pDC, pWnd, nCtlColor);
+
+       const MSG * pMsg=GetCurrentMessage();
+       return Ctl3dCtlColorEx(pMsg-&gt;message,pMsg-&gt;wParam,pMsg-&gt;lParam);
+   }
+
+   void CAboutDlg::OnNcPaint()
+   {
+       const MSG * pMsg=GetCurrentMessage();
+       ::SetWindowLong(pMsg-&gt;hwnd, DWL_MSGRESULT,
+           Ctl3dDlgFramePaint(pMsg-&gt;hwnd,pMsg-&gt;message,
+           pMsg-&gt;wParam, pMsg-&gt;lParam));
+   }
+
+   BOOL CAboutDlg::OnNcActivate(BOOL bActive)
+   {
+       const MSG * pMsg=GetCurrentMessage();
+       ::SetWindowLong(pMsg-&gt;hwnd, DWL_MSGRESULT,
+           Ctl3dDlgFramePaint(pMsg-&gt;hwnd, pMsg-&gt;message,
+           pMsg-&gt;wParam, pMsg-&gt;lParam));
+       return TRUE;
+   }
+
+</PRE><h3>Trapping WM_CTLCOLOR with Additional Subclassing</h3>
+ 
+<P>
+Because the CTL3D window procedure calls the dialog box procedure (not the
+next window procedure) after it processes WM_CTLCOLOR, you can trap the
+WM_CTLCOLOR message by subclassing the dialog box procedure in the
+OnInitDialog() member function for a CDialog-derived class or in the
+OnInitialUpdate() member function for a CFormView-derived class. This
+technique allows CDialogs and CFormViews to use the auto-subclassing
+feature of CTL3D.DLL without adding much code.
+<P>
+The code might resemble the following:
+<P>
+<PRE>// The CDialog's OnCtlColor() function needs to be
+// modified a little. The base class CDialog::OnCtlColor() must not
+// be called (like shown above). CDialog::OnCtlColor() calls
+// Default() which can get the program into a recursive loop.
+// The revised version of OnCtlColor shown below must use afxDlgBrush,
+// which requires the AUXDATA.H file from the \MSVC\MFC\SRC directory.
+
+#include "c:\msvc\mfc\src\auxdata.h"
+
+</PRE>HBRUSH CAboutDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
+<PRE>   {
+    if( nCtlColor == CTLCOLOR_EDIT)
+       {
+       pDC-&gt;SetBkColor(RGB(127,127,127));
+       return (HBRUSH)::GetStockObject(GRAY_BRUSH);
+       }
+
+    LRESULT lResult;
+    if (pWnd-&gt;SendChildNotifyLastMsg(&amp;lResult))
+        return (HBRUSH)lResult;     // eat it
+
+    if (!GrayCtlColor(pDC-&gt;m_hDC, pWnd-&gt;GetSafeHwnd(), nCtlColor,
+      afxDlgBkBrush, afxDlgTextClr))
+        return NULL;  // Don't call Default() because that will
+                      // get us into a recursive loop. The
+                      // dialog window procedure calls the dialog
+                      // procedure.
+    return afxDlgBkBrush;
+   }
+
+// This is the new dialog box procedure that will be used.
+// Call OnCtlColor() for any dialog boxes that need to have it.
+// Be sure to define the OnCtlColor() function as public.
+
+</PRE>LRESULT FAR PASCAL _export MyDlgProc(HWND hWnd, UINT msg,
+<PRE>                            WPARAM wParam,LPARAM lParam)
+{
+   CAboutDlg* pWnd = (CAboutDlg*)CWnd::FromHandlePermanent(hWnd);
+
+   if(msg==WM_CTLCOLOR)
+         return (LRESULT) (UINT) pWnd-&gt;OnCtlColor(
+             CDC::FromHandle((HDC)wParam),
+            CWnd::FromHandle((HWND)LOWORD(lParam)),
+            (UINT)HIWORD(lParam));
+   else
+         return ::CallWindowProc(pWnd-&gt;m_oldDlgProc, hWnd, msg,
+                                 wParam, lParam);
+}
+
+// This is a sample of how to subclass the dialog box procedure for
+// a dialog box so that the dialog box procedure above can be used to
+// forward the WM_CTLCOLOR message to CDialogs or CFormViews.
+// m_oldDlgProc can be defined as a data member of the dialog box or
+// CFormView. It is defined as:
+ //      WNDPROC m_oldDlgProc;
+
+</PRE>BOOL CAboutDlg::OnInitDialog()
+{
+<PRE>    CDialog::OnInitDialog();
+
+    // Subclass the dialog procedure and save original procedure.
+    m_oldDlgProc = (WNDPROC)::SetWindowLong(GetSafeHwnd(),
+                                 DWL_DLGPROC,(LONG)&amp;MyDlgProc);
+
+    return TRUE;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 7.00 1.00 1.50 2.00 2.50 CTRL3D<BR>
+KBCategory: kbprg kbprb<BR>
+KBSubcategory: MfcUI<BR>
+Keywords            : kb16bitonly<BR>
+Technology          : kbMfc<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

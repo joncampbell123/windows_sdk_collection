@@ -1,0 +1,264 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Create Extended Stored Proc for a Pager Notification </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q171366">
+<META NAME="KBModify" CONTENT="1997/09/02">
+<META NAME="KBCreate" CONTENT="1997/07/15">
+<META NAME="Keywords" CONTENT="SSrvInst SSrvProg SSrvWork kbinterop kbnetwork kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article describes some Win32 APIs related to Remote Access Service (RAS). The tasks described in this article are available as commands in Microsoft Visual C++ 4.2 or later versions for Windows. This article describes how to use RAS to page op...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QAA1,QDI2,QAH4,QAB4,QAGI,QAB9,QBFY,QBV8,QA56,QA55,QAO4,QAI4,QBG2,QAPF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Create Extended Stored Proc for a Pager Notification</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 2, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q171366</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes some Win32 APIs related to Remote Access Service
+(RAS). The tasks described in this article are available as commands in
+Microsoft Visual C++ 4.2 or later versions for Windows. This article
+describes how to use RAS to page operators whenever server-down errors
+occur.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Sometimes, it is a good idea to let operators know when Microsoft SQL
+Server has severe errors. You can notify operators of these errors by
+setting the Alert Engines options. However, the pager notification option
+in the Alert Engines options must rely on the mailing system (such as
+Microsoft Mail or Microsoft Exchange Server). Even if you have a mail
+server, you will still need to have third-party vendor software that
+supports the dialing system through a gateway. The extended stored
+procedure below, written in Microsoft Visual C++, will notify the
+designated operator whenever unhandled SQL Server events occur. Please note
+that this code is only temporary solution to the pager notifications for an
+alert fail. If you want to have a robust paging system, you should set up
+the pager mailing address according to the Microsoft SQL Server
+documentation.
+<P>
+By using the extended stored procedure given below, it is possible to dial
+a pager number and leave error messages using RAS. This code also monitors
+the status of the modem connection. This verification can be controlled by
+using a RAS Win32 API call, RasGetConnectStatus. In this article, the
+customized API routines were written using Microsoft Visual C++ 5.0 to
+check the status of RAS connections by using a library-defined callback
+function (RasDialFunc) that the RasDial function calls when a change of
+state occurs during the RAS connection.
+<P>
+The sample program below illustrates the contents of the .dll file written
+in Microsoft Visual C++ 5.0 and shows a way to use the RAS connection
+successfully through the RAS Win32 SDK.
+<P>
+NOTE: This sample program illustrates many Microsoft Visual C++ commands.
+The use of these commands is beyond the scope of Microsoft SQL Server
+Technical Support. Users with substantial experience using API routines
+should be able to write the following sample .dll file. For this sample
+.dll file to work, you need a .def file to export the xp_paging function.
+<P>
+<P><h3>Sample C++ Program (DLL)</h3>
+ 
+<P>
+<PRE>   // THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
+   // ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+   // THE IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
+   // PARTICULAR PURPOSE.
+
+   #include &lt;stdio.h&gt;
+   #include &lt;windows.h&gt;
+   #include &lt;ras.h&gt;
+   #include &lt;srv.h&gt;
+
+   VOID WINAPI RasDialFunc(UINT unMsg, RASCONNSTATE rasconnstate, DWORD
+   dwError);
+   HRASCONN hRasConn;
+
+   // To make the RasDial call:
+
+   int xp_paging(SRV_PROC * srvproc)
+   {
+   LPRASCONN      lpRasConn = NULL;
+         RASDIALPARAMS  rdParams;
+         DWORD       cbBuf = 0;
+         DWORD       cConn = 0;
+         DWORD       dwRet = 0;
+
+   // Set up RAS Dial parameters:
+      rdParams.dwSize = sizeof(RASDIALPARAMS);
+
+      lstrcpyn(rdParams.szEntryName, (const char
+   *)srv_paramdata(srvproc,1),srv_paramlen(srvproc,1)+1);
+   rdParams.szPhoneNumber[0] = '\0';
+      rdParams.szCallbackNumber[0] = '*';
+      rdParams.szCallbackNumber[0] = '\0';
+
+      hRasConn = NULL;
+      dwRet = RasDial( NULL, NULL, &amp;rdParams, 0L,(RASDIALFUNC)RasDialFunc,
+   &amp;hRasConn );
+
+      return dwRet;
+   }
+
+   // Purpose: Called by RasDial
+   // Parameters:
+   // unMsg - Type of RAS event that occurred
+   // rasconnstate - Connection state about to be entered
+   // dwError - Error code that may have occurred
+
+   VOID WINAPI RasDialFunc(UINT unMsg, RASCONNSTATE rasconnstate, DWORD
+   dwError)
+   {
+      if (dwError)
+         RasHangUp(hRasConn);
+   }
+
+</PRE><h3>Sample DEF File</h3>
+ 
+<P>
+<PRE>   LIBRARY   pager
+
+   DESCRIPTION 'SQL Server Extended Stored Procedure - DLL'
+
+   EXPORTS
+          xp_paging
+
+</PRE><h3>Sample Program (Notes)</h3>
+ 
+
+<UL><LI>To create a .dll file in Visual C++, please refer to the Help file in
+   Microsoft Visual C++ 4.0/5.0.
+
+<LI>Note that the Pager.dll should be in the current Mssql\Binn directory.
+
+<LI>In SQL Server, you can add this extended stored procedure by executing
+   the following:
+<P>
+<P><PRE>      sp_addextendedproc 'xp_paging', 'pager.dll'
+</PRE>
+<LI>Set up RAS entry by adding an address entry name and the phone number.
+   NOTE: Everything should be default.
+
+<LI>Type the following command to test the call;
+<P>
+<P><PRE>      xp_paging 'RAS_address_entry_name'
+</PRE>
+<LI>To compile the DLL properly, you need to include Opends60.lib,
+   Ntwdblib.lib, and Rasapi32.lib in the project setting.
+<P>
+</UL>The sample code provided above executes RasDial asynchronously. Hence, the
+RasDial function returns immediately, before the connection is established,
+and communicates its progress by means of a callback function, RasDialFunc.
+If you want to use xp_paging synchronously, you only need to modify the
+following line (remove RasDialFunc as well):
+<P>
+<PRE>   dwRet = RasDial( NULL, NULL, &amp;rdParams, 0L, NULL, &amp;hRasConn );
+
+</PRE>The xp_paging extended stored procedure takes one parameter, RAS address
+entry. This extended stored procedure relies on RAS, and it is necessary to
+set up RAS correctly for it to work properly.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: TAPI call automatic telephony application<BR>
+programming interface<BR>
+Keywords          : SSrvInst SSrvProg SSrvWork kbinterop kbnetwork kbprg<BR>
+Version           : 6.0 6.5<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 2, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

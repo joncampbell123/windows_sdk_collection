@@ -1,0 +1,246 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Use #pragma init_seg to Control Static Construction </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q104248">
+<META NAME="KBModify" CONTENT="1997/10/07">
+<META NAME="KBCreate" CONTENT="1993/09/13">
+<META NAME="Keywords" CONTENT="CPPLngIss kbcode kbfasttip">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  In the Microsoft C++ Compiler, it is possible to control when your static objects, declared at file scope, are constructed and destructed by using the #pragama init_seg preprocessor directive.  MORE INFORMATION  There are four options for the init_...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAW6,QBFY,QABO,QAOT,QAJZ,QAH4,QBXT,QBWM,QAHT,QAGU,QBVV,QBXA,QBV8,QA5V V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Use #pragma init_seg to Control Static Construction</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 7, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q104248</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft C/C++ Compiler (CL.EXE) included with:
+   - Microsoft C/C++ for MS-DOS, version 7.0
+   - Microsoft Visual C++ for Windows, versions 1.0, 1.5
+   - Microsoft Visual C++, 32-bit Edition, versions 1.0, 2.0, 2.1, 4.0, 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In the Microsoft C++ Compiler, it is possible to control when your static
+objects, declared at file scope, are constructed and destructed by using
+the #pragama init_seg preprocessor directive.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+There are four options for the init_seg preprocessor directive: compiler,
+lib, user, and "user_defined_segment_name." In source code, this directive
+would have the form:
+<P>
+<PRE>   #pragma init_seg(compiler)
+   #pragma init_seg(lib)
+   #pragma init_seg(user)
+   #pragma init_seg("user_defined_segment_name")
+
+</PRE>NOTE: Only one init_seg directive can appear in a single source file.
+Otherwise, the compiler generates "error C2356: initialization segment must
+not change during translation unit."
+<P>
+The purpose of this directive is to give the developer the ability to group
+the constructors in an application. This would be useful if some objects
+relied upon the existence of other objects to function correctly. Objects
+that are grouped together using #pragma init_seg(compiler) are constructed
+before all other objects and destroyed after all other objects in the
+application. This is used for objects in the run-time libraries. For
+example, because cin and cout may or may not be constructed yet, using
+these objects in your constructor or destructor that uses the
+init_seg(compiler) #pragma would be unwise.
+<P>
+Objects that are grouped together using #pragma init_seg(lib) are
+constructed after and destructed before objects that are in modules
+compiled with #pragma init_seg(compiler), but before all other objects in
+the application. Objects that are grouped together using #pragma
+init_seg(user) are constructed after and destructed before objects that are
+in modules compiled with #pragma init_seg(compiler) and #pragma
+init_seg(lib). In other words, objects that are grouped together using
+#pragma init_seg(user) are constructed and destructed at the same time as
+all other static objects that were not grouped using #pragma init_seg.
+<P>
+The documentation isn't totally clear on this point. It states that objects
+in the user group are constructed last. This means that these objects are
+constructed after and destructed before the compiler and lib groups. One
+way that you can control the order of construction and destruction within
+each group is to change the order of linking. Modules that appear earlier
+in the link line will be constructed after and destructed before modules
+that appear later in the link line that are in the same init_seg group.
+Constructors are called in reverse order of their appearance in the
+segments.
+<P>
+It is important to note that the C++ language does not guarantee any order
+of construction for nonderived objects; the C++ language guarantees that
+those objects will be constructed, and that base classes will be
+constructed before classes that derive from them.
+<P>
+The #pragma init_seg("user_defined_segment_name") preprocessor directive
+puts the addresses of the constructors into the logical segment
+"user_defined_segment_name". This option is useful only if you modify the
+startup code to call these constructors.
+<P>
+The following code sample (four source files) demonstrates the above ideas.
+After compiling all source files, link them in the two ways shown below and
+run the resultant executables. The output from each will show which
+init_seg options are dependent on link order and which are not.
+<P>
+With Visual C++ 32-bit Edition versions, use:
+<P>
+<PRE>   link file1 file2 file3 file4 /out:demo1.exe
+   link file4 file3 file2 file1 /out:demo2.exe
+
+</PRE>With Visual C++ 16-bit versions, use:
+<P>
+<PRE>   link file1 file2 file3 file4, demo1;
+   link file4 file3 file2 file1, demo2;
+
+</PRE><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   // file1.cpp
+   // command line: cl /c file1.cpp
+   #pragma init_seg(compiler)
+   #include&lt;stdio.h&gt;
+   class MyCompClass
+   {
+   public:
+         MyCompClass(){ printf("In the ctor of MyCompClass\n");}
+         ~MyCompClass(){ printf("In the dtor of MyCompClass\n");}
+   } MyComp;
+
+   // file2.cpp
+   // command line: cl /c file2.cpp
+   #pragma init_seg(lib)
+   #include&lt;iostream.h&gt;
+   class MyLibClass
+   {
+   public:
+         MyLibClass(){cout&lt;&lt;"In the ctor of MyLibClass"&lt;&lt;endl;}
+         ~MyLibClass(){cout&lt;&lt;"In the dtor of MyLibClass"&lt;&lt;endl;}
+   } MyLib;
+
+   // file3.cpp
+   // command line: cl /c file3.cpp
+   #pragma init_seg(user)
+   #include&lt;iostream.h&gt;
+   class MyUserClass
+   {
+   public:
+         MyUserClass(){cout&lt;&lt;"In the ctor of MyUserClass"&lt;&lt;endl;}
+         ~MyUserClass(){cout&lt;&lt;"In the dtor of MyUserClass"&lt;&lt;endl;}
+   } MyUser;
+
+   // file4.cpp
+   // command line: cl /c file4.cpp
+   #include&lt;iostream.h&gt;
+   class MyRegularClass
+   {
+   public:
+         MyRegularClass(){cout&lt;&lt;"In the ctor of MyRegularClass"&lt;&lt;endl;}
+         ~MyRegularClass(){cout&lt;&lt;"In the dtor of MyRegularClass"&lt;&lt;endl;}
+   } MyRegular;
+
+   void main(){}
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 7.00 7.00a 8.00<BR>
+Keywords          : CPPLngIss kbcode kbfasttip<BR>
+Version           : MS-DOS:7.0;WIN3X:1.0,1.5;WINNT:1.0,2.0,2.1,4.0,5.0<BR>
+Platform          : MS-DOS NT WINDOWS<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 7, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

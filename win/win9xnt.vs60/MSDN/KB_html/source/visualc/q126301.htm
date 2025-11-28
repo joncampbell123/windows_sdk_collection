@@ -1,0 +1,231 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: CMDIFrameWnd Caption Not Updated When Child Closed </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q126301">
+<META NAME="KBModify" CONTENT="1997/09/18">
+<META NAME="KBCreate" CONTENT="1995/02/19">
+<META NAME="Keywords" CONTENT="kbbuglist kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Closing a maximized MDI child window will not update the main frame window caption if the frame window is narrower than the menu bar (menu has wrapped to the second line). This causes the main frame window to show a document name even if no documen...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAIB,QAGI,QAIA,QAXB,QAMA,QAGQ,QAC1,QBD2,QAMB,QBWP,QAGB,QAIF,QAR4,QABO,QAIC V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: CMDIFrameWnd Caption Not Updated When Child Closed</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q126301</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.50 1.51 | 1.00 2.00
+<PRE>WINDOWS   | WINDOWS NT
+</PRE>kbprg kbbuglist kbfixlist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Foundation Classes included with:
+<P>
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.0, 1.5, and 1.51
+    - Microsoft Visual C++, 32-bit Edition, version 2.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Closing a maximized MDI child window will not update the main frame window
+caption if the frame window is narrower than the menu bar (menu has wrapped
+to the second line). This causes the main frame window to show a document
+name even if no documents are open.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+If the main frame window is narrower than the menu, CMDIChildWnd::OnSize()
+is called twice, which calls GetMDIFrame()-&gt;OnUpdateFrameTitle(TRUE) to
+update the frame window caption. The last time OnUpdateFrameTitle(TRUE) is
+called, it updates the frame window caption with the previous document
+name, even though the document is closed.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Override CMDIChildWnd::DestroyWindow() to turn off FWS_ADDTOTITLE for the
+main frame window during the destroy window call for maximized child
+windows. Follow these steps:
+
+<OL><P><LI>Derive a new MDI child window class from CMDIChildWnd, perhaps by using
+   Class Wizard.
+
+<P><LI>For the new class, override the DestroyWindow() function by using the
+   following source code:
+<P>
+   BOOL CMyMDIChildWnd::DestroyWindow()
+<P><PRE>    {
+    // Turn off the FWS_ADDTOTITLE style for the main frame window
+    // if it is a maximized main frame window.
+    BOOL bMaximized = (GetStyle() &amp; WS_MAXIMIZE);
+    CMDIFrameWnd* pFrameWnd = GetMDIFrame();
+    DWORD dwStyle;
+    if (bMaximized)
+<PRE></PRE>        {
+        dwStyle = ::SetWindowLong(pFrameWnd-&gt;m_hWnd, GWL_STYLE,
+            pFrameWnd-&gt;GetStyle() &amp; ~FWS_ADDTOTITLE);
+        }
+
+    // Go ahead and destroy and MDI child window.
+    BOOL bResult = CMDIChildWnd::DestroyWindow();
+
+    // Restore the default window style for the main frame window.
+    if (bMaximized)
+        {
+        ::SetWindowLong(pFrameWnd-&gt;m_hWnd, GWL_STYLE, dwStyle);
+        }
+
+    return bResult;
+   }
+
+</PRE><P><LI>In the project .CPP file, be sure to use the newly derived MDI child
+   window class to replace CMDIChildWnd in the CMultiDocTemplate()
+   statement, as in this example:
+<P>
+<PRE>   #include "mdichild.h"          // header file for CMyMDIChildWnd
+
+   BOOL CMyWinApp::InitInstance()
+    {
+    ...
+    CMultiDocTemplate* pDocTemplate;
+    pDocTemplate = new CMultiDocTemplate(
+        IDR_PROJECTTYPE,
+        RUNTIME_CLASS(CMyDocument),
+        RUNTIME_CLASS(CMyMDIChildWnd),     // use it here!!!
+        RUNTIME_CLASS(CMyView));
+
+    AddDocTemplate(pDocTemplate);
+    ...
+   }
+
+</PRE></OL>Here PROJECT is the project name, CMyDocument is the CDocument class,
+CMyMDIChildWnd is the CMDIChildWnd class, and CMyView is the CView class.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This problem was corrected in Visual C++
+version 2.10 for Windows NT.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When the child window is maximized and the main frame window is wider than
+the menu, the CMDIChildWnd::OnSize() function does not get called when the
+child window is closed. However, when the frame window is narrower than the
+menu, CMDIChildWnd::OnSize() gets called twice when the child window is
+closed, first with SIZE_MAXIMIZED and then with SIZE_RESTORED.
+<P>
+CMDIChildWnd::OnSize() calls GetMDIFrame()-&gt;OnUpdateFrameTitle(TRUE). The
+first time CMDIChildWnd::OnSize() is called (with SIZE_MAXIMIZED),
+OnUpdateFrameTitle() updates the frame window's caption correctly, but
+redundantly. The second time MDIChildWnd::OnSize() is called (with
+SIZE_RESTORED), OnUpdateFrameTitle() decides there is a current document
+because its call to GetActiveDocument() returned a valid pointer and it
+updates the frame window's caption with the document name.
+<P>
+This bug can be seen in the MFC sample "MULTIPAD" included with Visual C++.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.50 1.51 1.00 2.00 2.50 2.51 2.10 3.00<BR>
+KBCategory: kbprg kbbuglist kbfixlist<BR>
+KBSubCategory: MfcUI<BR>
+Keywords          : kbbuglist kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.50 1.51 | 1.00 2.00<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

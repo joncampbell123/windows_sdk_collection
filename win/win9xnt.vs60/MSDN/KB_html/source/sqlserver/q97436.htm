@@ -1,0 +1,281 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: SQL Server Fixlist 4.20aK8 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q97436 ">
+<META NAME="KBModify" CONTENT="1997/04/28">
+<META NAME="KBCreate" CONTENT="1993/04/11">
+<META NAME="Keywords" CONTENT="SSrvGen kbfixlist">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT=" PROBLEM ID: BUG# 1426     SQL Server GP faults when inserting into a table using a select    statement from a view defined as a two-table join, whose columns    contain the aggregate function AVG(). A sample query follows:        create table t1(c i...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBKN,QABM,QAY2,QAR4,QACI,QA9N,QAKP,QADK,QBFY,QA4H,QA2Q,QAPN,QAY4,QAKD,QAAP V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: SQL Server Fixlist 4.20aK8</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 28, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q97436 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The following is a list of bugs that were discovered during internal
+testing of SQL Server and fixed in SQL Server version 4.2a server
+patch K8. For more information, please contact your primary support
+provider.
+<P>
+Please note that workarounds are provided for your information only.
+It is not necessary to implement these workarounds if you have the
+updated software.
+<P>
+<PRE>TITLE     FIX: Table Insert from View Might GP Fault Server
+</PRE> 
+<P>
+PROBLEM ID: BUG# 1426
+<P>
+SYMPTOMS
+<PRE>   SQL Server GP faults when inserting into a table using a select
+   statement from a view defined as a two-table join, whose columns
+   contain the aggregate function AVG(). A sample query follows:
+
+      create table t1(c int)
+      create table t2(c int)
+      insert t1 values(1)
+      insert t2 values(1)
+      go
+      create view v (c, av) as
+      select t1.c, avg(t1.c)
+      from t1,t2
+      where t1.c=t2.c
+      group by t1.c
+      go
+      create table t3(c1 int, c2 int)    /* Note c2 is int */
+      insert t3 select * from v          /* Insert avg() result */
+      go                                 /* into int column */
+
+</PRE>CAUSE
+<PRE>   SQL Server incorrectly handles the automatic type conversions when
+   using a view to insert into a table. Note that column c2 in table
+   t3 is defined as int, but the result of avg() should be float. The
+   problem occurs when trying to insert the result of avg() into the
+   int column.
+
+</PRE>WORKAROUND
+<PRE>   The workaround is to declare the column that receives the avg()
+   result as a float. In the sample query, if you declare column c2 in
+   table t3 as a float, the problem goes away.
+
+</PRE>STATUS
+<PRE>   Microsoft has confirmed this to be a problem in SQL Server version
+   4.2. This problem was corrected in SQL Server version 4.2ak8, which
+   is available from Microsoft Support Services. For more information,
+   please contact your primary support provider.
+
+
+TITLE     FIX: Insert with LIKE and ORDER BY from System Tables
+</PRE> 
+<P>
+PROBLEM ID:  Bug # 1451 1452
+<P>
+SYMPTOMS
+<PRE>   SQL Server may cause a general protection fault (GP fault) to occur when
+   a SELECT statement concatenates text characters onto a column value
+   from a certain system table (sysobjects, sysdatabases, or
+   sysdevices) in the master database and assigns the result to a
+   local variable. The GP fault occurs when that SELECT statement
+   contains a LIKE operator and an ORDER BY clause.
+
+   For example, the following SELECT statement causes a GP fault:
+
+      DECLARE @t varchar(255)
+      SELECT @t="AAA"+name
+         FROM master..sysobjects
+         WHERE name LIKE "syso%"
+         ORDER BY name
+      GO
+
+</PRE>CAUSE
+<PRE>   SQL Server handles the insertion incorrectly when it inserts a
+   value coming from a column value into a local variable while it is
+   using the LIKE operator and the ORDER BY clause to obtain the value
+   from certain system tables in the master database.
+
+</PRE>WORKAROUND
+<PRE>   Break the single SELECT statement into two parts. For example, if
+   you want to insert the last row of the qualified data rows into the
+   local variable, break the query into these two parts:
+
+   1. Insert the qualified rows into a temporary table without using
+      the ORDER BY clause.
+
+   2. Insert the rows into the local variable from the temporary table
+      using the ORDER BY clause.
+
+</PRE>STATUS
+<PRE>   Microsoft has confirmed this to be a problem in SQL Server versions
+   1.11 and 4.2. This problem was corrected in SQL Server version 4.2ak8,
+   which is available from Microsoft Support Services. For more
+   information, please contact your primary support provider.
+
+
+TITLE     FIX: Select from a View with Recreated Tables May GP Fault
+</PRE> 
+<P>
+PROBLEM ID: Bug# 1529
+<P>
+SYMPTOMS
+<PRE>   When selecting from a view that is defined as a three table join, and if
+   one of these tables has been recreated since the view is defined, SQL
+   Server may GP fault.
+
+   For example, assume the view is defined as:
+
+      create table A (id char(5))
+      create table B (id char(5))
+      create table C (id char(5))
+      go
+      create view V as
+      select A.id from A,B,C
+      where A.id=B.id and A.id=C.id
+      go
+
+   If table C is dropped and recreated again after the view is defined
+   (which is allowed), the query
+
+      select * from V
+
+   will cause SQL Server to GP fault.
+
+</PRE>CAUSE
+<PRE>   SQL Server incorrectly handles the queries on views that are defined
+   with a three or more object join, if some of the objects are recreated
+   after the views are defined.
+
+</PRE>WORKAROUND
+<PRE>   The workaround is to drop and recreate the view.
+
+</PRE>STATUS
+<PRE>   Microsoft has confirmed this to be a problem in SQL Server version
+   4.2a. This problem was corrected in SQL Server version 4.2ak8,
+   which is available from Microsoft Support Services. For more
+   information, please contact your primary support provider.
+
+
+TITLE     FIX: Dividing by Negative Money Value Causes Timeslice Error
+</PRE> 
+<P>
+PROBLEM ID: BUG# 1574
+<P>
+SYMPTOMS
+<PRE>   When dividing by certain negative money values, the operation may
+   cause SQL Server to generate a timeslice error:
+
+      timeslice -1501, current process infected.
+
+   SQL Server will temporarily lock up until the timeslice is
+   detected. At that time, the process is terminated and SQL Server
+   resumes as normal. Note: Timeslice errors may cause SQL Server
+   version 1.11 to GP fault (bug# 1574/1575).
+
+</PRE>CAUSE
+<PRE>   SQL Server does not correctly handle division of certain negative
+   money values. Values that are know to cause problems are -$6.53,
+   -$6.54, and -$6.55.
+
+</PRE>STATUS
+<PRE>   Microsoft has confirmed this to be a problem in SQL Server versions
+   1.11 and 4.2. This problem was corrected in SQL Server version
+   4.2ak8, which is available from Microsoft Product Support Services.
+   For more information, please contact your primary support provider.
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:<BR>
+Keywords            : SSrvGen kbfixlist<BR>
+Version             : 4.2a<BR>
+Platform            : OS/2<BR>
+Issue type          : kbref<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 28, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

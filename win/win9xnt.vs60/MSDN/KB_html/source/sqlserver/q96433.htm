@@ -1,0 +1,378 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Using DB-Library with C++ </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q96433 ">
+<META NAME="KBModify" CONTENT="1997/04/28">
+<META NAME="KBCreate" CONTENT="1993/03/17">
+<META NAME="Keywords" CONTENT="kbprg SSrvDB_Lib">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article contains an overview of issues concerning the encapsulation of DB-Library (DB-Lib) calls within a C++ class. Information is also presented on general issues you may encounter when you implement DB-Lib within a C++ program.  MORE INFORM...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAY5,QAYL,QAPN,QAEV,QAW6,QAAP,QBFY,QAIF,QAH4,QBV8,QAB9,QAB4,QABA,QA2O V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Using DB-Library with C++</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 28, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q96433 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server Programmer's Toolkit, version 4.2
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article contains an overview of issues concerning the encapsulation of
+DB-Library (DB-Lib) calls within a C++ class. Information is also presented
+on general issues you may encounter when you implement DB-Lib within a C++
+program.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Encapsulation of DB-Library Within a C++ Class</h3>
+ 
+<P>
+Encapsulation of DB-Library functionality within a C++ class hierarchy can
+yield significant benefits for a software developer. Robust, extensible
+code for accessing SQL Server can be created using C++'s features of
+inheritance, access control, type checking and polymorphism. However,
+several pitfalls exist when building C++ code around DB-Library calls. This
+article will attempt to outline and address several potential hurdles that
+may be encountered when attempting to implement DB-Library within a C++
+program.
+<P>
+DB-Library functions are fully compatible with Microsoft C++ and the MFC
+libraries. Under C++, DB-Library functions can be either called using a C
+style structured approach, or they can be encapsulated within a class
+hierarchy. Microsoft currently does not make available a class library
+specifically designed for DB-Library. It is important to remember that DB-
+Library functions are "C" functions. Thus, DB-Library functions must be
+declared within an extern "C" block as shown below:
+<P>
+extern "C"
+{
+<PRE>#define DBMSWIN
+#include &lt;sqlfront.h&gt;
+#include &lt;sqldb.h&gt;
+</PRE>}
+<P>
+A programmer attempting to make extensive use of the MFC classes may
+encounter difficulties when attempting to use CStrings as parameters to DB-
+Library functions. DB-Library functions are not currently "const correct",
+thus the CString::operator LPCSTR() function cannot be used to pass
+CStrings to DB-Library functions . For example, the dbcmd() function (
+declared as RETCODE dbcmd( DBPROCESS *, LPSTR ) under Windows ) does not
+modify the contents of the string pointed to by the 2nd parameter, but the
+2nd parameter is not declared const. In order to use a CString as the 2nd
+parameter, it is necessary to either make use of the CString::GetBuffer() /
+CString::ReleaseBuffer() functions or the double cast:
+(LPSTR)(LPCSTR)CString.
+<P>
+Initialization of DB-Library, particularly in the Windows environment,
+requires special handling. Two approaches are available when implementing a
+DB-Library aware class hierarchy. The first, and simplest, is to call
+dbinit() and install DB-Library error and message handler functions within
+the initialization code of the application, before any other DB-Library
+calls are made. If within the Windows environment, dbwinexit() should be
+called at program termination. This approach is similar to traditional "C"
+DB-Library programming techniques and has the advantage of allowing the
+safe calling of DB-Library functions from any point within the main body of
+code.
+<P>
+The second approach is to make all DB-Library calls through a class
+hierarchy based on a DB-Library initialization object class. This base
+class maintains a static member variable which is incremented in the
+constructor and decremented in the destructor. If the object increments the
+use count from 0 to 1, it initializes DB-Library with dbinit() and calls
+dbmsghandle() and dberrhandle() with pointers to exported static member
+functions. If the object decrements the use count from 0 to 1, it calls
+dbwinexit() if under Windows. This approach allows transparent management
+of DB-Library initialization, and offers advantages in implementing object
+oriented message and error handling.
+<P>
+Encapsulation of error and message handling functions within a C++ class
+can also be tricky. Under all platforms, these functions must be declared
+as "static cdecl" member functions. This must be done to prevent the C++
+compiler from generating code to handle the implied "this" pointer argument
+which is passed to non-static member functions. Under Windows, the error
+and message handlers should be declared as "static int FAR cdecl __export".
+The object responsible for DB-Library initialization should then be
+modified to contain two static member variables of type FARPROC.  Upon
+initialization of DB-Library, the object now sets these pointers to the
+error and message handling functions by calls to MakeProcInstance(), and
+frees them using FreeProcInstance() when freeing up DB-Library resources.
+<P>
+To obtain DB-Library version information, the base class responsible for
+calling dbinit() should contain a static member variable to hold the
+version string returned by dbinit(). Since dbinit() cannot safely be called
+twice in succession without freeing DB-Library resources with a call to
+dbwinexit(), it is necessary to obtain this value at DB-Library
+initialization time and to store the value in a static member.
+<P>
+An implementation of DB-Library initialization within a base class is shown
+below:
+<P>
+CString  Cdbproc::m_VersionString;
+<PRE>int      Cdbproc::m_nUseCount = 0;
+</PRE>FARPROC  Cdbproc::lpMsgHandlerSG = NULL;
+FARPROC  Cdbproc::lpErrHandlerSG = NULL;
+<P>
+Cdbproc::Cdbproc( void )
+{
+<PRE>    if( !m_nUseCount )
+    {
+        m_VersionString = (LPSTR) dbinit( );
+
+        lpMsgHandlerSG = MakeProcInstance((FARPROC)Cdbproc::msg_handler,
+                                           AfxGetInstanceHandle() );
+
+        lpErrHandlerSG = MakeProcInstance((FARPROC)Cdbproc::err_handler,
+                                          AfxGetInstanceHandle() );
+        dbmsghandle( lpMsgHandlerSG );
+        dberrhandle( lpErrHandlerSG );
+    }
+    m_nUseCount ++;
+</PRE>}
+<P>
+Cdbproc::~Cdbproc( void )
+{
+<PRE>    m_nUseCount --;
+
+    if( !m_nUseCount )
+    {
+        FreeProcInstance( lpMsgHandlerSG );
+        FreeProcInstance( lpErrHandlerSG );
+        dbwinexit( );
+    }
+</PRE>}
+<P>
+DB-Library error and message handling on an object by object basis (i.e.
+routing messages automatically to the object which caused the message to be
+generated ) can be an extremely useful property for a class hierarchy built
+around DB-Library. Using the dbsetuserdata() and dbgetuserdata() functions
+provided in DB-Library 4.2 and virtual member functions, this can be easily
+accomplished. To implement automatic routing of DB-Library errors and
+messages, the base class should expose a function which must be called to
+obtain a DBPROCESS, one or more virtual functions for use in processing DB-
+Library errors and messages, and a static member variable of type Cdbproc
+*, where Cdbproc is the data type of the base class.  Before calling
+dbopen(), the object sets the static Cdbproc * equal to the "this" pointer.
+The object then obtains a DBPROCESS by calling dbopen() and immediately
+calls dbsetuserdata() for this new DBPROCESS, specifying the "this" pointer
+as the second parameter. This sets the user data in the DBPROCESS obtained
+from the call to dbopen() to the "this" pointer. After dbsetuserdata() is
+called, the DB-Library aware object sets the static Cdbproc * member
+variable to NULL.
+<P>
+The error and message handler static member functions called by DB- Library
+are then written to extract the "this" pointer from the passed DBPROCESS
+and call the virtual message processing functions within the object pointed
+to by the "this" pointer. The error and message handlers must be written to
+use the static member Cdbproc * variable as the target object should
+dbgetuserdata() return NULL. The use of a global Cdbproc * variable is made
+necessary by the fact that we cannot call dbsetuserdata() before obtaining
+a DBPROCESS via a call to dbopen(), yet the call to dbopen() can generate
+messages and errors. This forces us to provide a default object to route
+the error or message to should we not be able to extract a "this" pointer
+from the DBPROCESS within the error or message handling function using
+dbgetuserdata(). The code fragment below shows one way in which this
+process might be implemented.
+<P>
+<PRE>// initialize static member variable
+
+</PRE>DBPROCESS * Cdbproc::m_pNewCdbprocS = NULL;
+<P>
+BOOL Cdbproc::Connect( LOGINREC NEAR * LoginRec, LPSTR lpszServer )
+{
+<PRE>    BOOL fRetval = 1;
+
+        //  NOTE:  In a multithreaded app, we would use
+        //  a semaphore here to allow only one app to obtain
+        //  the "newcdbproc" at a time.  However, for a single
+        //  threaded program this is unnecessary.
+
+        // set static member variable to "this"
+
+        m_pNewCdbprocS = this;
+
+        // logon and obtain DBPROCESS.  Set DBPROCESS * member
+        // variable to new DBPROCESS.
+
+        if( ( m_dbproc = dbopen( LoginRec,  lpszServer ) ) == NULL )
+        {
+            fRetval = 0;
+        }
+        else
+        {
+               // connected.  Set userdata associated with this
+               // dbproc to "this"
+
+               dbsetuserdata( m_dbproc, this );
+        }
+
+        // reset static member variable to NULL
+
+        m_pNewCdbprocS = NULL;
+
+        // again, for a multithreaded app, we would free the
+        // semaphore here
+
+    }
+    return fRetval;
+</PRE>}
+<P>
+<P>
+<PRE>int FAR cdecl __export Cdbproc::err_handler( DBPROCESS NEAR *dbproc,
+                                             int    severity,
+                                             int    dberr,
+                                             int    oserr,
+                                             LPSTR  dberrstr,
+                                             LPSTR  oserrstr)
+{
+    int nRetval = INT_CANCEL;
+    Cdbproc * pCdbproc = NULL;
+
+    if ( dbproc == NULL )
+    {
+        MessageBox( GetActiveWindow(),
+                    "DB-Library Error",
+                    "NULL DBPROCESS encountered",
+                    MB_OK | MB_ICONEXCLAMATION | MB_APPLMODAL );
+
+        nRetval = INT_CANCEL;
+    }
+    else
+    {
+        //attempt to extract "this" pointer from dbproc.
+
+        pCdbproc = ( Cdbproc * ) dbgetuserdata( dbproc );
+
+        // if extracted pointer is NULL, send message to object
+        // specified by the static member variable m_pNewCdbprocS
+
+        pCdbproc = ( pCdbproc == NULL ) ? m_pNewCdbprocS : pCdbproc;
+
+        // if we still don't have an object to send the error to,
+        // don't send it to anyone.
+        // optionally, we could implement some sort of default error
+        // handling code or terminate with an ASSERT
+
+        if( pCdbproc != NULL )
+        {
+            pCdbproc-&gt;m_ErrorStruct.severity = severity;
+            pCdbproc-&gt;m_ErrorStruct.dberr    = dberr;
+            pCdbproc-&gt;m_ErrorStruct.oserr    = oserr;
+            pCdbproc-&gt;m_ErrorStruct.dberrstr = dberrstr;
+            pCdbproc-&gt;m_ErrorStruct.oserrstr = oserrstr;
+
+            // Call virtual message processing function.
+
+            pCdbproc-&gt;ProcessError();
+        }
+        nRetval = INT_CANCEL;
+     }
+    return nRetval;
+</PRE>}
+<P>
+One caveat to this approach is that all objects calling DB-Library must be
+derived from this base class. Otherwise, the message and error handlers
+will not call the correct function when attempting to invoke the message
+processing function in the object referred to by the obtained "this"
+pointer.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: dblib<BR>
+Keywords            : kbprg SSrvDB_Lib<BR>
+Version             : 4.2 | 4.2<BR>
+Platform            : MS-DOS WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 28, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

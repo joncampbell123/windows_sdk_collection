@@ -1,0 +1,325 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Troubleshoot Message 701 and Server Cursors </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q160069">
+<META NAME="KBModify" CONTENT="1997/04/09">
+<META NAME="KBCreate" CONTENT="1996/11/27">
+<META NAME="Keywords" CONTENT="kbprg kbusage SSrvProg SSrvStProc">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  If server cursors are not closed properly, the procedure cache may be consumed. When you attempt to open other cursors or run any Transact-SQL command that requires procedure cache (such as stored procedures, triggers, or views), you may encounter ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAO2,QABM,QAGB,QAB9,QBF0,QAPN,QBS0,QBWS,QBVX,QBXS,QAGI,QBVV,QBBS,QAAW,QA9E V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Troubleshoot Message 701 and Server Cursors</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 9, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q160069</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+If server cursors are not closed properly, the procedure cache may be
+consumed. When you attempt to open other cursors or run any Transact-SQL
+command that requires procedure cache (such as stored procedures, triggers,
+or views), you may encounter the following error:
+<P>
+<PRE>   Msg 701 There is insufficient system memory to run this query.
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+SQL Server 6.0 and 6.5 allocates internal data structures in the server
+procedure cache when a server cursor is declared. Failing to properly close
+server cursors may result in undesirable procedure cache consumption, and
+eventually produce error 701.
+<P>
+One primary consideration to keep in mind when evaluating cursor usage is
+whether your application really needs a server cursor. If you have a small
+result set and do not require the row operations that are provided by
+server cursors, you may want to consider processing your results without
+using a server cursor. For interfaces such as DB-Library, the use of server
+cursors is explicitly based on the API needed (for example, dbcursoropen).
+However, for an ODBC application, a server cursor may be used without your
+knowledge, based on how you have called SQLSetStmtOption(). Check the
+documentation for your programming interface on how to control the use of
+server cursors. The "PROGRAMMING INTERFACES AND SERVER CURSORS" section of
+this article provides a brief description of how server cursors are used
+with many of the popular Microsoft programming interfaces for SQL Server
+results set processing.
+<P>
+If you encounter error 701 in your application, consider tracing server
+cursor usage as a first step. The following section describes methods to
+aid in this process. It is important to understand that error 701 may also
+occur independently of server cursor usage. An application may
+intermittently generate this error as a result of heavy concurrent use of
+stored procedures. Therefore, if you encounter error 701 and you cannot
+trace any server cursor use, it is very possible that procedure cache must
+be increased using the 'procedure cache' or 'memory' configuration options.
+<P>
+<P><h3>Tracing Cursor Operations</h3>
+ 
+<P>
+Regardless of the programming interface that uses sever cursors, developers
+should ensure that cursors are closed properly, to avoid unnecessary
+procedure cache usage. One quick method to determine whether cursors are
+properly closed is to trace the SQL commands run by SQL Server. You can use
+the SQLTrace utility for SQL Server 6.5, or you can use trace flag 4032 for
+SQL Server 6.0 or 6.5.
+<P>
+SQLTrace provides an option to save trace output to a script or log file.
+Use this file after testing the application as a "trace output" for
+analysis. The RPC event must be selected when setting up a filter to
+capture the required information. See the SQL Server 6.5 documentation and
+SQLTrace online Help for more information about setting up filters and
+capturing a script file.
+<P>
+If you are using SQL Server 6.0, set trace flag 4032 to capture incoming
+SQL commands to the server. The following are two basic methods you can use
+to do this:
+
+<UL><LI>Start Sqlservr.exe with the command line parameters -T4032 and -T3605.
+
+<LI>Run dbcc traceon(-1, 3605, 4032) from Isqlw.exe or Isql.exe to set up
+   capturing of SQL commands.
+<P>
+</UL>The SQL errorlog will become the "trace output" for analysis. See the SQL
+Server documentation for more information about using trace flags with SQL
+Server.
+<P>
+If you use a server cursor for any of the programming interfaces (excluding
+ANSI Transact-SQL cursors), search the trace output (with a utility such as
+Windows NT Server Findstr.exe) for the sp_cursoropen and sp_cursorclose
+stored procedures. If the application has run to completion or has
+completed results set processing, every call to sp_cursoropen should have a
+corresponding sp_cursorclose. There is no need to know or understand the
+calling convention of these procedures. They are used "behind-the-scenes"
+to invoke server cursors for SQL Server, if you are not using ANSI Transact-
+SQL cursors. For ANSI Transact-SQL cursors, you should see a match for
+DECLARE and DEALLOCATE statements. For Transact-SQL cursors, it is the
+DEALLOCATE statement, not the CLOSE, that actually frees up cursor
+procedure cache resources.
+<P>
+If the trace output from the application shows 100 calls to sp_cursoropen
+(or Transact-SQL OPEN), but no calls to sp_cursorclose (or Transact-SQL
+DEALLOCATE) or fewer than 100, you may well encounter an error such as
+error 701. In this situation, evaluate the application code to determine
+why the cursor is not being closed.
+<P>
+SQL Server 6.5 also provides new performance monitor counters you can use
+to trace procedure cache usage. If an application encounters error 701, you
+can use these counters to get a quick understanding of procedure cache
+consumption. However, there is no counter or command to tell you the
+difference between procedure cache consumption from a server cursor and
+normal stored procedure plan usage. For more information about potential
+problems using these counters, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q155766.htm">Q155766</A></B>
+   TITLE     : BUG: Perfmon Terminates While Monitoring SQL Procedure Cache
+
+</PRE>The following section on programming interfaces can serve as a starting
+point to evaluate why the application code does not result in a closed
+cursor. Review this section for a discussion of how server cursors are
+opened and closed for some of the more popular Microsoft programming
+interfaces.
+<P>
+<P><h3>PROGRAMMING INTERFACES AND SERVER CURSORS</h3>
+ 
+<P>
+For ANSI Transact-SQL cursors, procedure cache allocation and deallocation
+occurs on the DECLARE and DEALLOCATE commands, respectively. However, if
+the application was developed with other programming interfaces that use
+server cursors, it may not be apparent that a cursor has been left open.
+<P>
+Although closing the connection to the server with any of the interfaces
+listed below will essentially deallocate procedure cache resources for the
+cursor, it is recommended that server cursors be explicitly closed based on
+the suggestions listed below. Always refer to the product documentation
+based on the programming interface of choice for the most current
+information on server cursor usage. For more information, see the following
+article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q156489.htm">Q156489</A></B>
+   TITLE     : INF: Overview of SQL Server, ODBC, and DB_Library Cursors
+
+</PRE><h3>ANSI Transact-SQL Cursors</h3>
+ 
+<P>
+ANSI Transact-SQL Cursors were introduced in SQL Server 6.0. A DECLARE
+statement results in procedure cache allocation for an internal structure
+that describes the cursor definition. The DEALLOCATE statement is necessary
+to free up the procedure cache. Please note that running the CLOSE
+statement does NOT free up the procedure cache for the cursor.
+<P>
+In SQL Server 6.5, a new SET option, CURSOR_CLOSE_ON_COMMIT, is now
+available. This option closes an open cursor if you run a COMMIT. However,
+this option does not deallocate procedure cache resources. A DEALLOCATE
+cursor is still required to free up cursor procedure cache resources.
+<P>
+DB-Library:
+<P>
+A server cursor is used with DB-Library cursor routines (such as
+dbcursoropen or SQLCursorOpen%) if you are connected to a computer running
+SQL Server 6.0 or 6.5 and you do not have the DBCLIENTCURSOR option set.
+The server cursor opened by dbcursoropen (SQLCursorOpen% for DB-Library for
+Visual Basic) must be closed and deallocated by explicitly calling
+dbcursorclose (SQLCursorClose for DB-Library for Visual Basic).
+<P>
+ODBC API:
+<P>
+For ODBC applications that use the ODBC API and the ODBC SQL Server driver,
+server cursors are always used to retrieve result sets, except under the
+following conditions:
+
+<UL><LI>The user sets ODBC_CURSORS to SQL_CUR_USE_ODBC and declares the cursor
+   to be static.
+
+<LI>The user declares the cursor to be forward-only, read-only, rowset = 1.
+<P>
+</UL>Cursors are automatically closed if you commit or roll back the
+transaction. The SQL Server driver provides a driver-specific connection
+option, SQL_PRESERVE_CURSORS, to override this behavior for server cursors.
+If this option is set to SQL_PC_ON, cursors remain open and the cursor
+state is preserved across transaction commits or rollbacks. To explicitly
+close a server cursor, call SQLFreeStmt(). Both the SQL_CLOSE and SQL_DROP
+options close a server cursor (SQL_DROP just results in deallocation of the
+statement handle). Please see the "Programming ODBC for SQL Server" book in
+the SQL Server documentation for complete details on server cursors and
+conditions for closing them. For additional information on this topic, see
+the following articles in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q138280.htm">Q138280</A></B>
+   TITLE     : INF: SQLGetInfo Returned with SQL_PRESERVE_CURSORS
+
+   ARTICLE-ID: <B><A href="../sqlserver/q139655.htm">Q139655</A></B>
+   TITLE     : INF: Tracing SQL Generated by MS SQL Server ODBC Driver
+
+   ARTICLE-ID: <B><A href="../sqlserver/q157802.htm">Q157802</A></B>
+   TITLE     : INF: SQL Server ODBC Driver Performance Analysis Tools
+
+</PRE>Visual Basic Remote Data Objects (RDO):
+<P>
+Server cursors can be used with the ODBC SQL Server driver by setting the
+rdoDefaultCursorDriver or CursorDriver property. Even if the option is set,
+server cursors will not be used if the cursor is read-only and forward-
+only.
+<P>
+Server cursors opened by RDO must be closed using the Close method for the
+object. Otherwise, the server cursor will not be closed until the
+application exits.
+<P>
+For more information about RDO and server cursors, please see Chapter 11,
+"Using Remote Data Objects and the RemoteData Control" in the Visual Basic
+4.0 Enterprise Edition Documentation.
+<P>
+Microsoft Foundation Classes (MFC) Database Classes:
+<P>
+MFC CRecordSet Classes support the use of server cursors using the SQL
+Server ODBC driver if the record set is defined as a dynaset. The keyset
+server cursor is opened when the Open method of the derived class is
+invoked. Explicitly call the Close method of the CRecordSet derived class
+to close the server cursor.
+<P>
+For more information on the CRecordSet class in MFC, please see the MFC
+Class Library Reference in the Visual C++ documentation.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:<BR>
+Keywords            : kbprg kbusage SSrvProg SSrvStProc<BR>
+Version             : 6.0 6.5<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbtshoot<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 9, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

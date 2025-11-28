@@ -1,0 +1,242 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Accessing Binary Data Using dbDao </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q152294">
+<META NAME="KBModify" CONTENT="1997/11/03">
+<META NAME="KBCreate" CONTENT="1996/06/10">
+<META NAME="Keywords" CONTENT="dbDao kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When using the DAO SDK C++ classes to access binary data (such as a bitmap) you will find that the data is returned in a COleVariant. COleVariant is an MFC class that wraps the OLE VARIANT data type. Within the VARIANT, the data is stored as an OLE...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAYY,QAG1,QAH4,QA9Q,QAUD,QALG,QAA1,QAI4,QAY5,QAEF,QDI2,QAP2,QALW,QDMW,QBWP V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Accessing Binary Data Using dbDao</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 3, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q152294</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual C++, 32-bit Edition, versions 4.0, 4.1, 4.2, 4.2b, 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When using the DAO SDK C++ classes to access binary data (such as a bitmap)
+you will find that the data is returned in a COleVariant. COleVariant is an
+MFC class that wraps the OLE VARIANT data type. Within the VARIANT, the
+data is stored as an OLE SAFEARRAY.
+<P>
+Extracting the binary data from the COleVariant requires some knowledge of
+VARIANTs and SAFEARRAYs. The sample code below illustrates how to work with
+these data types by providing a function for extracting binary data from a
+COleVariant and a function for storing binary data in a COleVariant.
+<P>
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   //Extensive error checking is left out to make the code more readable
+
+   BOOL GetBinaryFromVariant(COleVariant &amp; ovData, BYTE ** ppBuf,
+                                unsigned long * pcBufLen)
+   {
+     BOOL fRetVal = FALSE;
+
+   //Binary data is stored in the variant as an array of unsigned char
+     if(ovData.vt == (VT_ARRAY|VT_UI1))  // (OLE SAFEARRAY)
+     {
+       //Retrieve size of array
+       *pcBufLen = ovData.parray-&gt;rgsabound[0].cElements;
+
+       *ppBuf = new BYTE[*pcBufLen]; //Allocate a buffer to store the data
+       if(*ppBuf != NULL)
+       {
+         void * pArrayData;
+
+         //Obtain safe pointer to the array
+         SafeArrayAccessData(ovData.parray,&amp;pArrayData);
+
+         //Copy the bitmap into our buffer
+         memcpy(*ppBuf, pArrayData, *pcBufLen);
+
+         //Unlock the variant data
+         SafeArrayUnaccessData(ovData.parray);
+         fRetVal = TRUE;
+       }
+     }
+     return fRetVal;
+   }
+
+   BOOL PutBinaryIntoVariant(COleVariant * ovData, BYTE * pBuf,
+                                unsigned long cBufLen)
+   {
+     BOOL fRetVal = FALSE;
+
+     VARIANT var;
+     VariantInit(&amp;var);  //Initialize our variant
+
+     //Set the type to an array of unsigned chars (OLE SAFEARRAY)
+     var.vt = VT_ARRAY | VT_UI1;
+
+     //Set up the bounds structure
+     SAFEARRAYBOUND  rgsabound[1];
+
+     rgsabound[0].cElements = cBufLen;
+     rgsabound[0].lLbound = 0;
+
+     //Create an OLE SAFEARRAY
+     var.parray = SafeArrayCreate(VT_UI1,1,rgsabound);
+
+     if(var.parray != NULL)
+     {
+       void * pArrayData = NULL;
+
+       //Get a safe pointer to the array
+       SafeArrayAccessData(var.parray,&amp;pArrayData);
+
+       //Copy bitmap to it
+       memcpy(pArrayData, pBuf, cBufLen);
+
+       //Unlock the variant data
+       SafeArrayUnaccessData(var.parray);
+
+       *ovData = var;  // Create a COleVariant based on our variant
+       VariantClear(&amp;var);
+       fRetVal = TRUE;
+     }
+
+     return fRetVal;
+   }
+
+
+   //How you might call these functions
+
+   CdbRecordset rs;
+
+   //Code for initializing DAO and opening the recordset left out...
+
+   COleVariant ovData = rs.GetField(_T("MyBinaryField"));
+
+   BYTE * pBuf = NULL;
+   unsigned long cBufLen;
+
+   if(GetBinaryFromVariant(ovData,&amp;pBuf,&amp;cBufLen))
+   {
+     //Do something with binary data in pBuf...
+
+     //Write back a new record containing the binary data
+
+     COleVariant ovData2;
+     if(PutBinaryIntoVariant(&amp;ovData2,pBuf,cBufLen))
+     {
+       rs.AddNew();
+       rs.SetField(_T("MyBinaryField"), ovData2); //Write our COleVariant
+   to the table
+       rs.Update();
+     }
+     //Clean up memory allocated by GetBinaryFromVariant
+     if(pBuf)
+       delete pBuf;
+   }
+</PRE> 
+<PRE>Keywords          : dbDao kbprg
+Technology        : kbMfc kbole
+Version           : WINNT: 4.0, 4.1, 4.2, 4.2b, 5.0
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 3, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

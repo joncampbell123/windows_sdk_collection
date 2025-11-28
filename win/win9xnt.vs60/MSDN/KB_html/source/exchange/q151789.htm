@@ -1,0 +1,210 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>XADM: EDB Event ID 23 Error -1018 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q151789">
+<META NAME="KBModify" CONTENT="1997/09/08">
+<META NAME="KBCreate" CONTENT="1996/05/30">
+<META NAME="Keywords" CONTENT="XADM kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; exchange">
+<META NAME="Description" CONTENT="  When you perform an online backup of either the information or directory store, you may see the following entry recorded in the application log:     Event ID: 23    Source: EDB    Type: Error    Category: Database Page Cache    Description:  MSExch...">
+<META NAME="Product" CONTENT="Exchange">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA1S,QAGI,QDKY,QAZV,QALW,QAR4,QAAP,QAB4,QBWA,QDIU,QA3W,QAY2,QAUR,QBWP,QAY5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>XADM: EDB Event ID 23 Error -1018</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 8, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q151789</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Exchange Server, versions 4.0 and 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When you perform an online backup of either the information or directory
+store, you may see the following entry recorded in the application log:
+<P>
+<PRE>   Event ID: 23
+   Source: EDB
+   Type: Error
+   Category: Database Page Cache
+   Description:  MSExchangeIS ((455)) Direct read found corrupted page
+   error -1018 ((1:251563) (0-2295758), 251563 379225672 381322824),
+   Please restore the database from a previous backup.
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+When you perform a transaction with the Jet database, the information store
+or the directory store writes the transaction to a transaction log file
+(Edb*.log in Mdbdata or Dsadata). The transaction is then committed to the
+Jet database from this transaction log. During this process, the Jet engine
+calculates the page's checksum value to be written, records it in the page
+header, and then requests that the file system writes the 4-KB page of data
+to the database on disk. In brief, the file system will take this call and
+use Windows NT system services to forward this request to the corresponding
+hardware device driver to actually perform the write. The hardware device
+driver returns this information to the file system, which then returns it
+to the Jet engine. If the call is successful, Jet continues.
+<P>
+If you have faulty hardware or hardware that caches requests before it
+performs the operation, the hardware may return success to calls made to it
+before it actually performs the physical operation. This is done to improve
+performance (especially in SCSI controllers and hard drives). When the
+actual physical operation takes place, however, an error occurs and the
+data is not written successfully as expected.
+<P>
+When the Microsoft Exchange Server information store or directory store is
+backed up online, before the 4-KB page is written to tape, a checksum
+comparison is done. The backup routine makes a request to read a 4-KB page
+of data from disk. When the request is received, Jet again calculates the
+checksum value. This checksum from the read operation is then compared with
+the checksum recorded during the write operation. If there is a mismatch,
+Jet interprets it as a corrupted page.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To resolve the problem, use one of the following methods.
+<P>
+<P><h3>Restore from a Backup</h3>
+ 
+<P>
+When you encounter the error, the recommended and most reliable way to
+recover the database is to restore from the last known good backup.
+However, if the hardware problem still exists, you will continue to have
+corruption. The Windows NT system log should be reviewed for errors
+reported by the storage device drivers. These errors should be dealt with
+and resolved before the database is restored to this server. Another
+common cause is the use of write-back caching on hard drives. Write-back
+caching should be turned off on hard disk drives when used with Microsoft
+Exchange Server (or any transaction log-based relational database system).
+<P>
+IMPORTANT: Only restore the database to the same hardware after the
+problems have been resolved.
+<P>
+<P><h3>Use Edbutil.exe</h3>
+ 
+<P>
+As an alternate way to repair the bad page of data, use Edbutil.exe.
+<P>
+IMPORTANT: Make a full offline file backup of the database and log files
+before running this process. This includes file-level backups of the
+Exchsrvr\Dsadata and Exchsrvr\Mdbdata folders. This will ensure that
+there is a way to go back should Edbutil fail.
+<P>
+Edbutil.exe is a low-level Jet database utility that defragments and checks
+the consistency of the database. There is also a repair option (Edbutil /d
+/r &lt;dbname&gt;) that attempts to repair bad pages and remove them if the
+repair is unsuccessful. If a page is removed using the repair option, data
+loss will occur. A page in a database can contain messages, folders,
+tables, master indexes, and so forth. There is no way to tell what Edbutil
+has removed because Jet sees it as raw data. After repair has finished on
+the Jet database, run Isinteg.exe in fix mode on the same database that
+Edbutil was run on. Isinteg will clean up any inconsistencies between the
+pointers from the information store to the actual data in the Jet database.
+If Isinteg is not run immediately following repair (Edbutil /d /r),
+corruption may occur in user mailboxes. Users will have messages that
+cannot be opened, incorrect read/unread counts, and so forth.
+<P>
+Refer to the "Microsoft Exchange Server Administrator's Guide" for more
+details on the use of Edbutil.exe and Isinteg.exe.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 1018 page bad corrupt<BR>
+Keywords          : XADM kbusage<BR>
+Version           : winnt:4.0,5.0<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbprb<BR>
+Solution Type     : Info_Provided<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 8, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,364 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Loss of Decimal Digits with MFC Database Classes </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q134679">
+<META NAME="KBModify" CONTENT="1997/06/26">
+<META NAME="KBCreate" CONTENT="1995/08/09">
+<META NAME="Keywords" CONTENT="kbcode kbprg MfcDatabase">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When you add or update a record that includes a numeric or decimal field (ODBC SQL data types SQL_DECIMAL and SQL_NUMERIC), all the digits to the right of the decimal point are lost.  CAUSE =====  By default, ClassWizard or AppWizard map the SQL_DE...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAKD,QA4Q,QAGI,QAHE,QAGX,QAY5,QAKC,QA6E,QBV8,QAB9,QAUD,QAIW,QBFY,QBBI,QA56 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Loss of Decimal Digits with MFC Database Classes</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q134679</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++ for Windows, versions 1.50, 1.51, 1.52
+   - Microsoft Visual C++, 32-bit Edition, versions 2.0, 2.1, 2.2,
+<P><PRE>     4.0, 4.1, 4.2, 5.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When you add or update a record that includes a numeric or decimal field
+(ODBC SQL data types SQL_DECIMAL and SQL_NUMERIC), all the digits to the
+right of the decimal point are lost.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+By default, ClassWizard or AppWizard map the SQL_DECIMAL and SQL_NUMERIC
+SQL data types to the C data type SQL_C_CHAR. The MFC RFX_Text() routine
+that is used for this data type (and also for normal character types)
+always specifies 0 for the ibScale parameter when calling the ODBC API
+function SQLSetParam() (as of VC 4.0, SQLBindParameter is the ODBC API that
+is called). The ibScale parameter is used to specify the number
+of digits to the right of the decimal point.
+<P>
+NOTE: As of Visual C++ version 4.2, a sixth parameter (nScale) has been
+added to RFX_Text. This parameter is used to specify the scale for tranfers
+of data that are explicitly marked as parameters by the programmer. For
+outputColumn field types (that is, non-parameters), RFX_Text still
+specifies a scale of 0 so truncation may occur.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+Write a custom RFX function that specifies the correct scale value and use
+it in place of RFX_Text() for those fields that have the problem. See the
+"Building and Using a New RFX Function" section in this article for
+details. One possible implementation based on the MFC 2.52 RFX_Text()
+implementation is shown in the sample code section at the end of this
+article.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this problem and will
+post new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Building and Using a New RFX Function to Work Around Problem</h3>
+ 
+<P>
+The first step is to create a new RFX function. This function should
+delegate to RFX_Text() for everything but the CFieldExchange::NameValue
+case, the CFieldExchange::Value case (for fields that are bound to database
+columns), and the CFieldExchange::BindParam case (for parameter fields --
+not required for Visual C++ version 4.2 or later) of the CFieldExchange
+object's m_nOperation member variable. You will also need to add an extra
+parameter to the RFX function and pass the scale value there. Note that
+this parameter already exists in Visual C++ version 4.2 or later.
+<P>
+NOTE: To be ODBC 2.0 compliant, you can replace calls to SQLSetParam with
+calls to SQLBindParameter. Visual C++ 4.x uses SQLBindParameter.
+<P>
+The RFX_ function should be structured like this:
+<P>
+<PRE>   void AFXAPI RFX_MyText(CFieldExchange* pFX, const char* szName,
+                          CString&amp; value, int nMaxLength,
+                          int nColumnType, int nScale)
+   {
+      if (pFX-&gt;m_nOperation != CFieldExchange::NameValue &amp;&amp;
+          pFX-&gt;m_nOperation != CFieldExchange::Value &amp;&amp;
+          pFX-&gt;m_nOperation != CFieldExchange::BindParam)
+      {
+         RFX_Text(pFX, szName, value, nMaxLength, nColumnType);
+         return;
+      }
+
+      // initialize and check things
+
+      switch (pFX-&gt;m_nOperation)
+      {
+         case NameValue:
+            // handle NameValue case
+
+         case Value:
+            // handle Value case
+
+         // not required for Visual C++ 4.2 or greater
+         case BindParam:
+            // handle BindParam case
+      }
+   }
+
+</PRE>The NameValue case is brought along because it falls into the Value case.
+In the Value case, you need to change the call to SQLSetParam to specify
+the scale. Here is the relevant section of the Value case from the MFC 2.52
+RFX_Text() function (slightly reformatted):
+<P>
+<PRE>   AFX_SQL_SYNC(::SQLSetParam(m_hstmt,
+                (unsigned short int)m_nParamFields,
+                (short int)nCType,
+                // Get actual SQL type -
+                //  may differ from CType (e.g. DECIMAL)
+                (short int)GetColumnType(nField),
+                (unsigned long int)cbPrecision,
+                0,
+                pv,
+                plLength));
+
+</PRE>Note that the sixth parameter is 0. This is what you need to change. Change
+it to what is passed in the nScale parameter added to the RFX function. You
+will also be using the value passed in the nColumnType parameter to specify
+the SQL data type (4th parameter of SQLSetParam()):
+<P>
+<PRE>   AFX_SQL_SYNC(::SQLSetParam(pFX-&gt;m_hstmt,
+                (unsigned short int)pFX-&gt;m_nParamFields,
+                SQL_C_CHAR,
+                (short int)nColumnType,
+                (unsigned long int)value.GetLength(),
+                (short int)nScale,
+                value.GetBuffer(0),
+                plLength));
+   value.ReleaseBuffer();
+
+</PRE>Note that because the SQLSetParam() call is now in the context of an RFX
+function, you must use the CFieldExchange pointer (pFX) to access the
+CFieldExchange members m_hstmt and m_nParamFields. If you borrow the rest
+of the NameValue and Value case code from the CFieldExchange::Default()
+function (which you should), you need to be aware of this throughout the
+code.
+<P>
+For the BindParam case, you can just copy the implementation of this case
+from RFX_Text() and change the sixth parameter of the SQLSetParam() call
+from 0 to the value passed in through the nScale parameter of your custom
+RFX_ function (not required for Visual C++ version 4.2 or later).
+<P>
+To use the new RFX function, change the call to RFX_Text for the fields in
+question in your recordset's DoFieldExchange() function to calls to the new
+RFX function you just wrote. Be aware that you will now be specifying six
+parameters in your RFX function call. This call should be placed outside of
+Class Wizard's AFX_FIELD_MAP comment block.
+<P>
+<P><h3>Sample Code to Implement Workaround</h3>
+ 
+<P>
+<PRE>   /* Compile options needed: None
+   */
+
+   // implementation based on VC++ 1.52 code
+
+   // prototype
+   void AFXAPI RFX_MyText(CFieldExchange* pFX, const char* szName,
+      CString&amp; value, int nMaxLength, int nColumnType, int nScale);
+
+   // implementation
+   void AFXAPI RFX_MyText(CFieldExchange* pFX, const char* szName,
+      CString&amp; value, int nMaxLength, int nColumnType, int nScale)
+   {
+      if (pFX-&gt;m_nOperation != CFieldExchange::NameValue &amp;&amp;
+          pFX-&gt;m_nOperation != CFieldExchange::Value &amp;&amp;
+          pFX-&gt;m_nOperation != CFieldExchange::BindParam)
+      {
+         RFX_Text(pFX, szName, value, nMaxLength, nColumnType);
+         return;
+      }
+
+      ASSERT(AfxIsValidAddress(pFX, sizeof(CFieldExchange)));
+      ASSERT(AfxIsValidString(szName));
+      ASSERT(AfxIsValidAddress(&amp;value, sizeof(CString)));
+
+      RETCODE nRetCode;
+      UINT nField;
+      if (!pFX-&gt;IsFieldType(&amp;nField))
+         return;
+
+      LONG* plLength = pFX-&gt;m_prs-&gt;GetFieldLength(pFX);
+      switch (pFX-&gt;m_nOperation)
+      {
+         case CFieldExchange::NameValue:
+            if (pFX-&gt;m_prs-&gt;IsFieldFlagDirty(nField,pFX-&gt;m_nFieldType))
+            {
+               *pFX-&gt;m_pstr += pFX-&gt;m_prs-&gt;m_pDatabase-&gt;QuoteName(szName);
+               *pFX-&gt;m_pstr += "=";
+            }
+            // Fall through
+
+         case CFieldExchange::Value:
+            if (pFX-&gt;m_prs-&gt;IsFieldFlagDirty(nField, pFX-&gt;m_nFieldType))
+       {
+
+               // If user marked column NULL, reflect this in length
+               if (pFX-&gt;m_prs-&gt;IsFieldFlagNull(nField, pFX-&gt;m_nFieldType))
+                  *plLength = SQL_NULL_DATA;
+               else
+                  *plLength = value.GetLength();
+
+               // If optimizing for bulk add, just set length.
+              if (!(pFX-&gt;m_prs-&gt;m_dwOptions &amp; CRecordset::optimizeBulkAdd))
+
+               {
+                  *pFX-&gt;m_pstr += "?";
+                  *pFX-&gt;m_pstr += pFX-&gt;m_lpszSeparator;
+                  pFX-&gt;m_nParamFields++;
+
+                  AFX_SQL_SYNC(::SQLSetParam(pFX-&gt;m_hstmt,
+                   (unsigned short int)pFX-&gt;m_nParamFields,
+                   SQL_C_CHAR,
+                   (short int)nColumnType,
+                   (unsigned long int)value.GetLength(),
+                   (short int)nScale,
+                   value.GetBuffer(0),
+                   plLength));
+                  value.ReleaseBuffer();
+
+                  if (nRetCode != SQL_SUCCESS)
+                     pFX-&gt;m_prs-&gt;ThrowDBException(nRetCode, pFX-&gt;m_hstmt);
+               }
+            }
+            return;
+
+         case CFieldExchange::BindParam:
+            *plLength = SQL_NTS;
+            // Preallocate to nMaxLength
+            value.GetBufferSetLength(nMaxLength);
+            AFX_SQL_SYNC(::SQLSetParam(pFX-&gt;m_hstmt,
+             (unsigned short int)nField,
+             (short int)SQL_C_CHAR,
+             (short int)nColumnType,
+             (unsigned long int)value.GetLength(),
+             nScale,
+             value.GetBuffer(0),
+             plLength));
+            value.ReleaseBuffer();
+
+            if (nRetCode != SQL_SUCCESS)
+               pFX-&gt;m_prs-&gt;ThrowDBException(nRetCode, pFX-&gt;m_hstmt);
+            return;
+      }
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+ODBC 2.0 Programmer's Reference, Appendix D - Data Types
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 2.50 2.51 2.52 2.52a 2.52b 3.00 3.10 3.20 RFX_Text<BR>
+Oracle<BR>
+Keywords            : kbcode kbprg MfcDatabase<BR>
+Technology          : kbMfc<BR>
+Version             : 1.5 1.51 1.52 1.52a 1.52b 2.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbbug<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

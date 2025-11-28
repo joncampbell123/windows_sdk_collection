@@ -1,0 +1,289 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Print Common Dialog Box Doesn't Display Help Button </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q140271">
+<META NAME="KBModify" CONTENT="1995/12/04">
+<META NAME="KBCreate" CONTENT="1995/11/28">
+<META NAME="Keywords" CONTENT="kbui kbprb kbcode kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  When an application invokes the print common dialog box and specifies the PD_SHOWHELP flag, the help button is not displayed on the dialog box when the application is run in Windows 95.  CAUSE =====  The Windows 95 common dialog code does not creat...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA01,QAOX,QA5D,QAH4,QAJD,QAUD,QAI4,QANX,QAY5,QANS,QDL9,QBWQ,QBWO,QBWN,QAA1 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Print Common Dialog Box Doesn't Display Help Button</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 4, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q140271</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) for Windows 95
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When an application invokes the print common dialog box and specifies the
+PD_SHOWHELP flag, the help button is not displayed on the dialog box when
+the application is run in Windows 95.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The Windows 95 common dialog code does not create the help button even
+though the PD_SHOWHELP is supplied.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To overcome this behavior, an application needs to install a common dialog
+hook function and create the help button itself. The Help button event
+handling code in Windows 95 will function properly. The following code
+fragment demonstrates how to create and position the Help button on
+the Print common dialog.
+<P>
+This behavior also occurs with the Page Setup common dialog box. The
+following code will work on this dialog box also, but the positioning of
+the button will have to be adjusted to place it properly.
+<P>
+<PRE>/***********************************************************************
+   DoPrintDialog()
+</PRE>***********************************************************************/
+<P>
+BOOL DoPrintDialog(HWND hwndParent, BOOL bSetup)
+{
+PRINTDLG pd;
+<PRE>BOOL     bReturn;
+
+/*
+</PRE>initialize PRINTDLG structure
+<PRE>*/
+</PRE>ZeroMemory(&amp;pd, sizeof(pd));
+<P>
+pd.lStructSize = sizeof(PRINTDLG);
+pd.hwndOwner = hwndParent;
+pd.hDevMode = NULL;
+pd.hDevNames = NULL;
+pd.nFromPage = 0;
+pd.nToPage = 0;
+pd.nMinPage = 0;
+pd.nMaxPage = 0;
+pd.nCopies = 0;
+pd.hInstance = g_hInst;
+<P>
+if(bSetup)
+<PRE>   {
+   /*
+   display the print setup dialog box
+   */
+   pd.Flags =  PD_RETURNDC |
+               PD_SHOWHELP |
+               PD_PRINTSETUP |
+               PD_ENABLESETUPHOOK;
+
+   pd.lpfnSetupHook = PrintDlgHookProc;
+   pd.lpSetupTemplateName = NULL;
+   }
+</PRE>else
+<PRE>   {
+   /*
+   display the regular print dialog box
+   */
+   pd.Flags =  PD_RETURNDC |
+               PD_SHOWHELP |
+               PD_ENABLEPRINTHOOK;
+
+   pd.lpfnPrintHook = PrintDlgHookProc;
+   pd.lpPrintTemplateName = NULL;
+   }
+
+</PRE>bReturn = PrintDlg(&amp;pd);
+<P>
+if(bReturn)
+<PRE>   {
+   }
+
+</PRE>return bReturn;
+}
+<P>
+<PRE>/***********************************************************************
+   PrintDlgHookProc()
+</PRE>***********************************************************************/
+<P>
+BOOL CALLBACK PrintDlgHookProc(  HWND hWnd,
+<PRE>                                 UINT uMessage,
+                                 WPARAM wParam,
+                                 LPARAM lParam)
+{
+</PRE>switch (uMessage)
+<PRE>   {
+   case WM_INITDIALOG:
+      {
+      /*
+      lParam is a pointer to the PRINTDLG structure
+      */
+      LPPRINTDLG  lppd = (LPPRINTDLG)lParam;
+
+      /*
+      Only create the help button if it has been specified and it
+      doesn't already exist - pshHelp is defined in Dlgs.h.
+      */
+      if(   (lppd-&gt;Flags &amp; PD_SHOWHELP) &amp;&amp;
+            (NULL == GetDlgItem(hWnd, pshHelp)))
+         {
+         RECT  rc,
+               rcGroup;
+         HWND  hwndHelp;
+         HFONT hFont;
+
+         /*
+         Get the rectangle of the OK button as a template
+         */
+         GetWindowRect(GetDlgItem(hWnd, IDOK), &amp;rc);
+         MapWindowPoints(HWND_DESKTOP, hWnd, (LPPOINT)&amp;rc, 2);
+
+         /*
+         Get the rectangle of the group box
+         */
+         GetWindowRect(GetDlgItem(hWnd, grp4), &amp;rcGroup);
+         MapWindowPoints(HWND_DESKTOP, hWnd, (LPPOINT)&amp;rcGroup, 2);
+
+         /*
+         Put the width in right and the height in left
+         */
+         rc.right = rc.right - rc.left;
+         rc.bottom = rc.bottom - rc.top;
+
+         /*
+         Align the button - this is reliable for the print and setup
+         dialogs
+         */
+         rc.left = rcGroup.left;
+
+         /*
+         Create the help button
+         */
+         hwndHelp = CreateWindow(
+            "button",
+            "&amp;Help Button",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+            rc.left,
+            rc.top,
+            rc.right,
+            rc.bottom,
+            hWnd,
+            (HMENU)pshHelp,
+            (HINSTANCE)GetWindowLong(hWnd, GWL_HINSTANCE),
+            NULL);
+
+         /*
+         Get the font from the OK button and set the font of the help
+         button
+         */
+         hFont = (HFONT)SendDlgItemMessage(hWnd, IDOK, WM_GETFONT, 0, 0);
+         SendMessage(hwndHelp, WM_SETFONT, (WPARAM)hFont, 0);
+         }
+      }
+      return TRUE;
+
+   }
+</PRE>return FALSE;
+}
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.30 4.00<BR>
+KBCategory: kbui kbprb kbcode kbhowto<BR>
+KBSubcategory: UsrCtl W32s<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 4, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

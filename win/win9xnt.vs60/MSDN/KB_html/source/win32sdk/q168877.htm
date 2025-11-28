@@ -1,0 +1,521 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Loading a User's Hive Programmatically </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q168877">
+<META NAME="KBModify" CONTENT="1997/05/22">
+<META NAME="KBCreate" CONTENT="1997/05/21">
+<META NAME="Keywords" CONTENT="BseRegistry kbcode kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  By default, a user's hive is loaded for only the interactive user and services running from a user account (Windows NT 4.0 only). A user's hive contains specific registry information pertaining to the user's application settings, desktop, environme...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAGU,QBWP,QALW,QAKD,QAI4,QAMB,QATX,QABA,QAOZ,QBWG,QBVV,QBWF,QAI5,QBHU V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Loading a User's Hive Programmatically</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q168877</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT versions 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+By default, a user's hive is loaded for only the interactive user and
+services running from a user account (Windows NT 4.0 only). A user's hive
+contains specific registry information pertaining to the user's application
+settings, desktop, environment, network connections, and printers. The hive
+is loaded under the HKEY_USERS key. The name of the hive is based on the
+SECURITY IDENTIFIER (SID) of the user. A process refers to its hive via the
+HKEY_CURRENT_USER key. This key is a mapping to the user's hive under
+HKEY_USERS based upon the user's SID. If the user's hive is not loaded, the
+system will map references pertaining to HKEY_CURRENT_USER to
+HKEY_USER\.default. In addition, a process running in the LocalSystem
+security context references to HKEY_CURRENT_USER will also be mapped to
+HKEY_USER\.default.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+In order for a process that did not originate from either the interactive
+logged-on user or from a service (Windows NT 4.0 only) to have access to
+it's hive, the hive must be loaded programmatically. For example, the
+CreateProcessAsUser API does not automatically load the user's hive so by
+default any references to HKEY_CURRENT_USER from the process would map to
+HKEY_USERS\.default instead of HKEY_USERS\&lt;user's sid&gt; if the hive is not
+already loaded.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following sample code requires a user, password and an executable. This
+sample assumes that the specified user has an existing hive. This means the
+user must have interactively logged on to the machine at least once. Based
+on the above information, the sample code loads the user's hive and then
+launches the .exe given to it by the user. To load a user's hive, the user
+running the sample code needs to be granted the "Restore files and
+directories" (SE_RESTORE_NAME) privilege. Once the executable has exited,
+the sample code unloads the user's hive. You can verify that the user's
+hive is loaded by using Regedt32.exe. Note that the sample code does not
+deal with modifying the security on the interactive Windowstation and
+Desktop. You should specify a user account that belongs to the
+Administrator group to avoid the User32.dll initialization error. For more
+information on granting a user access to the interactive Windowstation and
+Desktop, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q165194.htm">Q165194</A></B>
+   TITLE     : Understanding CreateProcessAsUser, windowstations, and
+               desktops
+
+</PRE>Note that the information contained in the ProfileImagePath registry key
+has changed between Windows NT 3.51 and Windows NT 4.0. On Windows NT 3.51,
+this key value contained both the path and name of the hive for a user. On
+Windows NT 4.0, it only contains the path of the hive. Hives on Windows NT
+4.0 are always named ntuser.dat. These differences are dealt with in the
+sample code.
+<P>
+Libraries required: USER32.LIB
+<PRE>                    ADVAPI32.LIB
+
+   #define RTN_OK     0
+   #define RTN_ERROR 13
+
+   #include &lt;windows.h&gt;
+   #include &lt;stdio.h&gt;
+   #include &lt;tchar.h&gt;
+
+   BOOL ConvertSid(PSID pSid, LPTSTR pszSidText, LPDWORD dwBufferLen)
+   {
+      PSID_IDENTIFIER_AUTHORITY psia;
+      DWORD dwSubAuthorities;
+      DWORD dwSidRev=SID_REVISION;
+      DWORD dwCounter;
+      DWORD dwSidSize;
+
+      //
+      // test if Sid passed in is valid
+      //
+      if(!IsValidSid(pSid)) return FALSE;
+
+      // obtain SidIdentifierAuthority
+      psia=GetSidIdentifierAuthority(pSid);
+
+      // obtain sidsubauthority count
+      dwSubAuthorities=*GetSidSubAuthorityCount(pSid);
+
+      //
+      // compute buffer length
+      // S-SID_REVISION- + identifierauthority- + subauthorities- + NULL
+      //
+      dwSidSize=(15 + 12 + (12 * dwSubAuthorities) + 1) * sizeof(TCHAR);
+
+      //
+      // check provided buffer length.
+      // If not large enough, indicate proper size and setlasterror
+      //
+      if (*dwBufferLen &lt; dwSidSize){
+         *dwBufferLen = dwSidSize;
+         SetLastError(ERROR_INSUFFICIENT_BUFFER);
+         return FALSE;
+      }
+
+      //
+      // prepare S-SID_REVISION-
+      //
+      dwSidSize=wsprintf(pszSidText, TEXT("S-%lu-"), dwSidRev );
+
+      //
+      // prepare SidIdentifierAuthority
+      //
+      if ( (psia-&gt;Value[0] != 0) || (psia-&gt;Value[1] != 0) ){
+         dwSidSize+=wsprintf(pszSidText + lstrlen(pszSidText),
+                             TEXT("0x%02hx%02hx%02hx%02hx%02hx%02hx"),
+                             (USHORT)psia-&gt;Value[0],
+                             (USHORT)psia-&gt;Value[1],
+                             (USHORT)psia-&gt;Value[2],
+                             (USHORT)psia-&gt;Value[3],
+                             (USHORT)psia-&gt;Value[4],
+                             (USHORT)psia-&gt;Value[5]);
+      }
+      else{
+         dwSidSize+=wsprintf(pszSidText + lstrlen(pszSidText),
+                             TEXT("%lu"),
+                             (ULONG)(psia-&gt;Value[5]      )   +
+                             (ULONG)(psia-&gt;Value[4] &lt;&lt;  8)   +
+                             (ULONG)(psia-&gt;Value[3] &lt;&lt; 16)   +
+                             (ULONG)(psia-&gt;Value[2] &lt;&lt; 24)   );
+      }
+
+      //
+      // loop through SidSubAuthorities
+      //
+      for (dwCounter=0 ; dwCounter &lt; dwSubAuthorities ; dwCounter++){
+         dwSidSize+=wsprintf(pszSidText + dwSidSize, TEXT("-%lu"),
+         *GetSidSubAuthority(pSid, dwCounter) );
+      }
+
+      return TRUE;
+   }
+
+   BOOL ObtainProfilePath(LPTSTR pszSid, LPTSTR pszProfilePath,
+                          DWORD dwPathSize)
+   {
+      TCHAR         szRegKey[1024] = TEXT("SOFTWARE\\Microsoft\\");
+      TCHAR         szTemp[256] = TEXT("");
+      DWORD         dwSizeProfilePath = dwPathSize;
+      DWORD         dwType;
+      HKEY          hKey;
+      LONG          lErrorCode;
+
+      //
+      // concat sid
+      //
+      lstrcat(szRegKey, TEXT("Windows NT\\CurrentVersion\\ProfileList\\"));
+      lstrcat(szRegKey, pszSid);
+
+      //
+      // find the hive in the registry
+      //
+      lErrorCode = RegOpenKeyEx(HKEY_LOCAL_MACHINE, szRegKey, 0,
+                                KEY_READ, &amp;hKey);
+      if (lErrorCode != ERROR_SUCCESS)
+         return FALSE;
+
+      //
+      // query the value
+      //
+      lErrorCode = RegQueryValueEx(hKey, TEXT("ProfileImagePath"), NULL,
+                   &amp;dwType, (LPBYTE)pszProfilePath, &amp;dwSizeProfilePath);
+      if (lErrorCode != ERROR_SUCCESS)
+         return FALSE;
+
+      //
+      // fix profile path by replacing "%SystemRoot%" with the actual path
+      //
+      lstrcpy(szTemp, pszProfilePath);
+      ZeroMemory(pszProfilePath, dwPathSize);
+      if (!ExpandEnvironmentStrings(szTemp,
+                                    pszProfilePath,dwSizeProfilePath))
+         return FALSE;
+
+      //
+      // determine if it is a file or directory, WinNT 4.0 it is a
+      // directory
+      // WinNT 3.51 it is a file
+      //
+      if ((GetFileAttributes(pszProfilePath) &amp; FILE_ATTRIBUTE_DIRECTORY) ==
+                             FILE_ATTRIBUTE_DIRECTORY)
+         lstrcat(pszProfilePath, TEXT("\\ntuser.dat"));
+
+      //
+      // close the key
+      //
+      lErrorCode = RegCloseKey(hKey);
+      if (lErrorCode != ERROR_SUCCESS)
+         return FALSE;
+
+      return TRUE;
+   }
+
+   BOOL Privilege(LPTSTR pszPrivilege, BOOL bEnable)
+   {
+      HANDLE           hToken;
+      TOKEN_PRIVILEGES tp;
+
+      //
+      // obtain the processes token
+      //
+      if (!OpenProcessToken(GetCurrentProcess(),
+           TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &amp;hToken))
+         return FALSE;
+
+      //
+      // get the luid
+      //
+      if (!LookupPrivilegeValue(NULL, pszPrivilege,
+                                &amp;tp.Privileges[0].Luid))
+         return FALSE;
+
+      tp.PrivilegeCount = 1;
+
+      if (bEnable)
+         tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+      else
+         tp.Privileges[0].Attributes = 0;
+
+      //
+      // enable or disable the privilege
+      //
+      if (!AdjustTokenPrivileges(hToken, FALSE, &amp;tp, 0,
+                                (PTOKEN_PRIVILEGES)NULL, 0))
+         return FALSE;
+
+      if (!CloseHandle(hToken))
+         return FALSE;
+
+      return TRUE;
+   }
+
+   BOOL Hive(LPTSTR pszSid, LPTSTR pszProfilePath, BOOL bLoad)
+   {
+      LONG lErrorCode;
+
+      if (bLoad){
+         lErrorCode = RegLoadKey(HKEY_USERS, pszSid, pszProfilePath);
+         if (lErrorCode != ERROR_SUCCESS)
+            return FALSE;
+      }
+      else{
+         lErrorCode = RegUnLoadKey(HKEY_USERS, pszSid);
+         if (lErrorCode != ERROR_SUCCESS)
+            return FALSE;
+      }
+      return TRUE;
+   }
+
+   BOOL ObtainSid(HANDLE hToken, LPTSTR pszSid, LPDWORD pdwBufferLen)
+   {
+      DWORD                   dwReturnLength     = 0;
+      DWORD                   dwTokenUserLength  = 0;
+      TOKEN_INFORMATION_CLASS tic                = TokenUser;
+      TOKEN_USER              *ptu               = NULL;
+
+      //
+      // query info in the token
+      //
+      if (!GetTokenInformation(hToken, tic, (LPVOID)ptu, dwTokenUserLength,
+                               &amp;dwReturnLength)){
+         if (GetLastError() == ERROR_INSUFFICIENT_BUFFER){
+            ptu = (TOKEN_USER *)HeapAlloc(GetProcessHeap(),
+                     HEAP_ZERO_MEMORY, dwReturnLength);
+            if (ptu == NULL)
+               return FALSE;
+
+            dwTokenUserLength = dwReturnLength;
+            dwReturnLength    = 0;
+
+            if (!GetTokenInformation(hToken, tic, (LPVOID)ptu,
+                              dwTokenUserLength, &amp;dwReturnLength))
+               return FALSE;
+         }
+         else
+            return FALSE;
+      }
+
+      //
+      // convert the sid to textural form
+      //
+      if (!ConvertSid((ptu-&gt;User).Sid, pszSid, pdwBufferLen))
+         return FALSE;;
+
+      if (!HeapFree(GetProcessHeap(), 0, (LPVOID)ptu))
+         return FALSE;
+
+      return TRUE;
+   }
+
+   int _tmain(int argc, TCHAR *argv[])
+   {
+      TCHAR               szComputerName[256];
+      TCHAR               szProfilePath[256];
+      TCHAR               szSid[256];
+      DWORD               dwBufferLen;
+      DWORD               dwComputerLen;
+      HANDLE              hToken = NULL;
+      int                 iSuccess = RTN_ERROR;
+      PROCESS_INFORMATION pi;
+      STARTUPINFO         si;
+
+      __try
+         {
+         if (argc != 4){
+            _tprintf(TEXT("Usage: [account name] [password] [exe]\n"));
+            return RTN_ERROR;
+         }
+
+         dwComputerLen = sizeof(szComputerName)/sizeof(TCHAR);
+
+         if (!GetComputerName(szComputerName, &amp;dwComputerLen))
+            __leave;
+
+         if (!LogonUser(argv[1], szComputerName, argv[2],
+                         LOGON32_LOGON_INTERACTIVE,
+                         LOGON32_PROVIDER_DEFAULT, &amp;hToken))
+            __leave;
+
+         //
+         // initialize buffers
+         //
+         ZeroMemory(szSid, (sizeof(szSid)/sizeof(TCHAR)));
+         ZeroMemory(szProfilePath, (sizeof(szProfilePath)/sizeof(TCHAR)));
+         dwBufferLen = (sizeof(szSid)/sizeof(TCHAR));
+
+         //
+         // obtain the sid
+         //
+         if (!ObtainSid(hToken, szSid, &amp;dwBufferLen))
+            __leave;
+
+         //
+         // obtain profile path
+         //
+         if (!ObtainProfilePath(szSid, szProfilePath,
+                                 (sizeof(szProfilePath)/sizeof(TCHAR))))
+            __leave;
+
+         //
+         // enable privilege
+         //
+         if (!Privilege(SE_RESTORE_NAME, TRUE))
+            __leave;
+
+         //
+         // load the hive
+         //
+         if (!Hive(szSid, szProfilePath, TRUE))
+            __leave;
+
+         ZeroMemory(&amp;si, sizeof(STARTUPINFO));
+         si.cb        = sizeof(STARTUPINFO);
+         si.lpDesktop = TEXT("winsta0\\default");
+
+         if (!CreateProcessAsUser(hToken, NULL, argv[3], NULL, NULL,
+               FALSE, CREATE_NEW_CONSOLE | NORMAL_PRIORITY_CLASS, NULL,
+               NULL, &amp;si, &amp;pi))
+            __leave;
+
+         if (WaitForSingleObject(pi.hProcess, INFINITE) == WAIT_FAILED)
+            __leave;
+
+         //
+         // unload the hive
+         //
+         if (!Hive(szSid, szProfilePath, FALSE))
+            __leave;
+
+         //
+         // disable the privilege
+         //
+         if (!Privilege(SE_RESTORE_NAME, FALSE))
+            __leave;
+
+         iSuccess = RTN_OK;
+         }
+      __finally
+         {
+         if (hToken != NULL)
+            CloseHandle(hToken);
+
+         if (pi.hProcess != NULL)
+            CloseHandle(hToken);
+
+         if (pi.hThread != NULL)
+            CloseHandle(hToken);
+         }
+
+      return iSuccess;
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For more information on registry hives, please refer to "Microsoft Windows
+NT Resource Kit, Vol 1.".
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : BseRegistry kbcode kbprg<BR>
+Version             : 3.51 4.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

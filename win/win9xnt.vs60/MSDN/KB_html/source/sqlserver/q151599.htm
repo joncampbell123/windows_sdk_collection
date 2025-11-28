@@ -1,0 +1,251 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Process Results in an ESQL Application </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q151599">
+<META NAME="KBModify" CONTENT="1997/03/26">
+<META NAME="KBCreate" CONTENT="1996/05/28">
+<META NAME="Keywords" CONTENT="ssvrprg kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  When you process results from an ESQL application, always take into account that ESQL only processes a single result set. This is most likely to become an issue when you execute a stored procedure via the EXECUTE IMMEDIATE statement or use a CURSOR...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAL3,QAUD,QBXS,QABM,QAY2,QAB9,QA2Q,QAN0,QAGI,QBWS,QALW,QAPN,QAG2,QBVV,QA5V V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Process Results in an ESQL Application</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q151599</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Embedded SQL for C PTK version 6.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When you process results from an ESQL application, always take into
+account that ESQL only processes a single result set. This is most likely
+to become an issue when you execute a stored procedure via the EXECUTE
+IMMEDIATE statement or use a CURSOR implementation.
+<P>
+For example:
+<P>
+Create procedure spTest
+as
+<PRE>   select au_lname from authors
+   select au_fname from authors
+</PRE>go
+<P>
+In a DB-Library application, this stored procedure is treated and retrieved
+as two result sets: au_lname and au_fname. The DB-Library application calls
+dbresults multiple times in conjunction with dbcmdrow to determine the
+result set information.
+<PRE> By design, ESQL is platform independent, allowing you to use the same
+</PRE>source code and another precompiler to access a different DBMS environment.
+To accomplish this, ESQL handles each statement as a single result set.
+<P>
+If you execute the spTest stored procedure, it really produces two result
+sets from SQL Server, but the ESQL application will only see the first
+result set.
+<P>
+The following code sample contains examples of executing a stored
+procedure:
+<P>
+EXEC SQL BEGIN DECLARE SECTION;
+<PRE>   char  strTest[15]    =  "spTest";
+   char  strName[51]    =  "";
+</PRE>EXEC SQL END DECLARE SECTION;
+<P>
+<PRE>//
+// Install the error handlers
+//
+</PRE>EXEC SQL WHENEVER SQLERROR CALL ErrorHandler();
+EXEC SQL WHENEVER SQLWARNING CALL ErrorHandler();
+EXEC SQL WHENEVER NOT FOUND CALL ErrorHandler();
+<P>
+.
+.
+.
+<P>
+<PRE>//
+// Using a cursor
+//
+</PRE>EXEC SQL DECLARE C_2 CURSOR FOR STMT1;
+EXEC SQL PREPARE STMT1 FROM :strTest;
+EXEC SQL OPEN C_2;
+<P>
+while(SQLCODE == 0)
+{
+<PRE>   EXEC SQL FETCH C_2 INTO :strName;
+   .
+   .
+   .
+
+
+//
+// Using EXECUTE IMMEDIATE
+//
+</PRE>EXEC SQL EXECUTE IMMEDIATE :strTest;
+.
+.
+.
+<P>
+Depending on how you attempt to process the results, you may get
+different SQLCODE settings. When you are processing the results as a
+cursor, the OPEN returns (0) and the FETCH will continue to return (0)
+until it reaches the end of the first result set, and then it returns (100)
+as expected.
+<P>
+The EXECUTE IMMEDIATE returns a SQLCODE of (1). As documented, EXECUTE
+IMMEDIATE cannot return result rows.
+<P>
+We can complicate the issue a bit by adding a RAISERROR command to the
+stored procedure.
+<P>
+Create procedure spTest
+as
+<PRE>   RAISERROR(50001, 1, 1)
+   select au_lname from authors
+</PRE>go
+<P>
+The RAISERROR statement will be treated as the result set that does not
+return any result rows. In the case of the OPEN, the SQLCODE is set to
+-50001, and in the EXECUTE IMMEDIATE, the SQLCODE is set to -50001. The
+RAISERROR is considered to be the result set and you cannot access the
+result rows returned from the select.
+<P>
+Reversing the stored procedure changes the behavior:
+<P>
+Create procedure spTest
+as
+<PRE>   select au_lname from authors
+   RAISERROR(50001, 1, 1)
+</PRE>go
+<P>
+You again get the select result set but you do not see the RAISERROR of
+-50001 from the OPEN. However, the EXECUTE IMMEDIATE sets the SQLCODE to 1
+because result rows were returned.
+<P>
+In all of the above examples, you can change the behavior by not returning
+results, meaning that if you take the third variation of the stored
+procedure and add a where clause--such as "where au_lname = '12'"--the
+computer no longer returns result rows but an empty result set.
+<P>
+In this case, the SQLCODE is set to -50001 for both the OPEN and the
+EXECUTE IMMEDIATE statements, because the first result set did not return
+rows.
+<P>
+Finally, if you attempt to ignore the SQLCODE, you get unpredictable
+results. If you do a RAISERROR and then a select, you can modify the cursor
+code.
+<P>
+While((SQLCODE == 0) || (SQLCODE == -50001))
+{
+<PRE>   EXEC SQL FETCH C_2 INTO :strName;
+   .
+   .
+   .
+
+</PRE>This specific case allows you to process the results from the select
+statement.
+<P>
+This is not a recommended or supported method of ESQL result set
+processing. You should always guarantee that only one result set can be
+returned from any given statement.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.22 esqlc 6.00<BR>
+Keywords            : ssvrprg kbprg<BR>
+Version             : 4.22<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+Resolution Type     : Info_Provided<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

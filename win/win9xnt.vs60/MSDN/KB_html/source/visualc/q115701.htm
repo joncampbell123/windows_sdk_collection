@@ -1,0 +1,227 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: /G3 Option Generates Bad Code for sscanf and Structures </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q115701">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1994/06/01">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Compiling code which uses sscanf() to fill fields within a structure using the /G3 compiler option (generate 386 code) will cause the compiler to push incorrect values for the structure variables being passed to sscanf(). This may result in an acce...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QA7R,QAOT,QBII,QA4Q,QAGI,QBFY,QAKP,QBV8,QAH7,QAH6,QAHE,QAD7,QABG,QBE7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: /G3 Option Generates Bad Code for sscanf and Structures</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q115701</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50
+WINDOWS
+kbtool kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft C/C++ Compiler (CL.EXE), included with:
+   Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Compiling code which uses sscanf() to fill fields within a structure using
+the /G3 compiler option (generate 386 code) will cause the compiler to push
+incorrect values for the structure variables being passed to sscanf(). This
+may result in an access violation.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+There are two workarounds to this problem:
+
+<OL><P><LI>Compile with the /G2 instead of /G3 compiler switch.
+<P>
+   -or-
+
+<P><LI>Create temporary pointers to store the addresses of the structure
+   variables and pass those temporary pointers to sscanf().
+<P>
+<P><PRE>      typedef struct tagSIZE {
+<PRE></PRE>         int cx;
+         int cy;
+      } SIZE;
+
+      char  sz[256];
+      SIZE  Size;
+
+      void main( void )
+      {
+         int *x, *y;
+
+         strcpy(sz, "3,4" );
+         x=&amp;Size.cx; y=&amp;Size.cy;
+         sscanf(sz, "%d,%d", x, y);
+      }
+
+</PRE></OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the products listed at the
+beginning of this article. We are researching this problem and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+This problem does not occur in the C/C++ 32-bit compiler, version 8.0.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following is the assembly code generated when the call to sscanf() is
+made from the sample code below. You can generate this output by compiling
+the code below with the /Fc compiler option.
+<P>
+<PRE>;|***    sscanf( sz, "%d,%d", &amp;Size.cx, &amp;Size.cy );
+</PRE>;Line 17
+<PRE>    *** 000011  66 68 00 00        push OFFSET DGROUP:_Size
+    *** 000015  68 00 00           push OFFSET DGROUP:$SG259
+    *** 000018  68 00 00           push OFFSET DGROUP:_sz
+    *** 00001b  e8 00 00           call _sscanf
+    *** 00001e  83 c4 08           add sp,8
+
+</PRE>In the assembly code listed here, the optimizer is trying to push both cx
+and cy as a 32-bit word. This would work, if the function required integer
+variables as the parameters. The problem here is that the two parameters
+are supposed to be pointers. The compiler is trying to push one 32-bit
+offset onto the stack, which is incorrect.
+<P>
+Now, look at the same code fragment compiled with the /G2 option:
+<P>
+<PRE>;|***     sscanf( sz, "%d,%d", &amp;Size.cx, &amp;Size.cy );
+</PRE>; Line 17
+<PRE>    *** 000017  68 02 00           push OFFSET _Size+2
+    *** 00001a  68 00 00           push OFFSET _Size
+    *** 00001d  68 00 00           push OFFSET L00259
+    *** 000020  68 00 00           push OFFSET _sz
+    *** 000023  e8 00 00           call _sscanf
+    *** 000026  83 c4 08           add sp,OFFSET 8
+
+</PRE>In this code, two separate values are correctly pushed as the addresses of
+cx and cy.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed: /G3 /f-
+*/
+
+#include  &lt;stdio.h&gt;
+#include  &lt;string.h&gt;
+
+</PRE>typedef struct tagSIZE {
+<PRE>    int cx;
+    int cy;
+</PRE>} SIZE;
+<P>
+<PRE>char     sz[256];
+SIZE     Size;
+
+void main( void )
+</PRE>{
+<PRE>    strcpy( sz, "3,4" );
+    sscanf( sz, "%d,%d", &amp;Size.cx, &amp;Size.cy );
+    printf( "%d, %d\n", Size.cx, Size.cy );
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 8.00 8.00c 1.00 1.50<BR>
+KBCategory: kbtool kbbuglist<BR>
+KBSubcategory: CodeGen<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

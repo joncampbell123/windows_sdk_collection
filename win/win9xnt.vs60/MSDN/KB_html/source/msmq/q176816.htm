@@ -1,0 +1,322 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Using MSMQ within an MTS Component in Java </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q176816">
+<META NAME="KBModify" CONTENT="1997/11/26">
+<META NAME="KBCreate" CONTENT="1997/11/14">
+<META NAME="Keywords" CONTENT="kbcode MQJava MQProg">
+<META NAME="KBArea" CONTENT="Support; KB; msmq">
+<META NAME="Description" CONTENT="  This article describes how to use Microsoft Message Queue Server (MSMQ) from within Microsoft Transaction Server (MTS) components written in Java using Visual J++. The two MSMQ transactional operations available are the message Send and Receive ope...">
+<META NAME="Product" CONTENT="msmq">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEV,QAJG,QAUD,QAH6,QAYC,QBXJ,QAPN,QAG1,QBVV,QAY5,QAXC,QAA1,QATX,QDI2,QAY2 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Using MSMQ within an MTS Component in Java</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q176816</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Message Queue Server version 1.0
+<LI>Microsoft Transaction Server 1.0
+<LI>Microsoft Visual J++, version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes how to use Microsoft Message Queue Server (MSMQ)
+from within Microsoft Transaction Server (MTS) components written in Java
+using Visual J++. The two MSMQ transactional operations available are the
+message Send and Receive operations.
+<P>
+MSMQ Send operations can be included in MTS transactions. The Send
+operation is either committed or rolled back with the MTS transaction. As a
+result, the message is not sent until the transaction commits. To include
+the Send operation in a transaction, use the MQ_MTS_TRANSACTION constant
+for the Transaction parameter of the MSMQMessage.Send method from within a
+transactional MTS component. MSMQ enlists the Send operation in the MTS
+transaction. The destination queue must be a transactional queue.
+<P>
+Transactional messages can only be sent to a transactional destination
+queue. If the MTS component is not participating in a transaction, the Send
+operation described above fails. This happens because the message would be
+non-transactional, and you cannot send a non-transactional message to a
+transactional queue. You cannot always predict whether a component will
+participate in a transaction. Therefore, it is important to verify that the
+component is participating in the transaction and use MQ_MTS_TRANSACTION in
+the MSMQMessage.Send to a transactional queue only if the component is
+participating. If it is not participating, use the MQ_NO_TRANSACTION to
+send to a non-transactional queue or MQ_SINGLE_MESSAGE constant to send to
+a transactional queue.
+<P>
+The component is participating in the transaction if it is marked as
+"Requires [new] Transactions" or "Supports Transactions" in MTS Explorer.
+The component is not participating in the transaction if it is marked as
+"Does Not Support Transactions."
+<P>
+When the MTS component is marked as "Supports Transaction," it participates
+in a transaction if its caller participates. For sending from such a
+component, you must dynamically check for the current transaction existence
+(use the ObjectContext.IsInTransaction method) and use an appropriate
+Transaction flag and destination queue.
+<P>
+For a local MSMQ transactional queue, the receive operation specifying
+MQ_MTS_TRANSACTION works regardless of whether or not the component is
+transactional. The receive operation is only included in a transaction if
+the component is transactional.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following Java class used in an MTS component contains two methods,
+MQSend and MQReceive.
+<P>
+MQSend demonstrates sending an MSMQ message containing a string from within
+an MTS component. The MTS context object is used to commit or abort the
+transaction. The context objects IsInTransaction() method is used to
+determine whether or not the component is transactional.
+<P>
+MQReceive demonstrates receiving the message. This method also uses MTS
+context object to commit or abort the transaction.
+<P>
+Here is the sample code:
+<P>
+<PRE>   import mqoa.* ;
+   import com.ms.com.*;
+   import com.ms.mtx.*;
+   import javasample1.*;
+
+   class MQSendRcv implements IMQJavaSpl
+   {
+
+   public String MQSend (String strSend)
+   {
+   try
+   {
+   IMSMQQueueInfo qinfoSend = (IMSMQQueueInfo) new
+   MSMQQueueInfo();
+   IMSMQQueue qSend;
+   IMSMQMessage qmsgMessage = (IMSMQMessage) new MSMQMessage();
+   // Add code for database updates if needed.
+   // Open destination queue with MQ_SEND_ACCESS
+   // and MQ_DENY_NONE options.
+   qinfoSend.putPathName ("myMachine\\Localx") ;
+   qSend = qinfoSend.Open(MQACCESS.MQ_SEND_ACCESS,
+   MQSHARE.MQ_DENY_NONE) ;
+   if (qSend != null)
+   {
+   // Set up variant for the Body property.
+   Variant vBody = new Variant();
+   vBody.putString (strSend) ;
+   // Assemble message.
+   qmsgMessage.putBody (vBody) ;
+   qmsgMessage.putLabel ("Java Message") ;
+   // Select the transaction option. If you are in a
+   // transactional component, you need to use
+   // MQ_MTS_TRANSACTION,
+   // otherwise, since you are sending to a transactional
+   // queue,
+   // you need to use MQ_SINGLE_MESSAGE.
+   Variant vTransaction = new Variant();
+   if (MTx.GetObjectContext().IsInTransaction())
+   vTransaction.putInt(MQTRANSACTION.MQ_MTS_TRANSACTION) ;
+   else
+   vTransaction.putInt(MQTRANSACTION.MQ_SINGLE_MESSAGE) ;
+   // Send the message.
+   qmsgMessage.Send (qSend, vTransaction) ;
+   qSend.Close() ;
+   // Commit the transaction.
+   MTx.GetObjectContext().SetComplete();
+   return "Message Sent" ;
+   }
+   else
+   {
+   // Abort the transaction.
+   MTx.GetObjectContext().SetAbort();
+   return "Couldn't open queue" ;
+   }
+   }
+   catch (ComFailException e)
+   {
+   // Abort the transaction.
+   MTx.GetObjectContext().SetAbort();
+   return "An Error Occurred" ;
+   }
+   }
+   public String MQReceive (String[] strRcv)
+   {
+   try
+   {
+   IMSMQQueueInfo qinfoRcv = (IMSMQQueueInfo) new
+   MSMQQueueInfo();
+   IMSMQQueue qRcv;
+   IMSMQMessage qmsgMessage  ;
+   // Add code for database updates if needed.
+   // Open destination queue with MQ_RECEIVE_ACCESS
+   // and MQ_DENY_NONE options.
+   qinfoRcv.putPathName ("myMachine\\Localx") ;
+   qRcv = qinfoRcv.Open(MQACCESS.MQ_RECEIVE_ACCESS,
+   MQSHARE.MQ_DENY_NONE) ;
+   if (qRcv != null)
+   {
+   // Create and set up the Variant parameters
+   // required by the Receive method.
+   Variant vTransaction = new Variant();
+   Variant vWantDestQueue = new Variant();
+   Variant vWantBody = new Variant();
+   Variant vReceiveTimeout = new Variant();
+   vTransaction.putInt (MQTRANSACTION.MQ_MTS_TRANSACTION) ;
+   vWantDestQueue.putBoolean(false) ; // You do not want the
+                                     // destination queue.
+   vWantBody.putBoolean(true) ;  // You want the message body.
+   vReceiveTimeout.putInt(0) ;  // You do not want to wait for
+                               // a message.
+   // Receive the message &amp; close queue.
+   qmsgMessage = qRcv.Receive(vTransaction, vWantDestQueue,
+   vWantBody, vReceiveTimeout) ;
+   qRcv.Close() ;
+
+   // Process message if you received one.
+   if (qmsgMessage != null)
+   {
+   // Get the message body (it's a Variant).
+   Variant vBody;
+   vBody = qmsgMessage.getBody () ;
+   // Get the string (since you know that's what you sent),
+   // and return it.
+   strRcv[0] = vBody.getString ();
+
+   MTx.GetObjectContext().SetComplete();
+   return "Message Received" ;
+   }
+   else
+   {
+   MTx.GetObjectContext().SetComplete();
+   return "No Message Received" ;
+   }
+   }
+   else
+   {
+   MTx.GetObjectContext().SetAbort();
+   return "Couldn't open queue" ;
+   }
+
+   }
+   catch (ComFailException e)
+   {
+   MTx.GetObjectContext().SetAbort();
+   return "An Error Occurred" ;
+   }
+   }
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For more information on creating an MTS COM component from your Java class,
+please see the documentation that comes with Microsoft Visual J++ and
+Microsoft Transaction Server.
+<P>
+For more details on using a single queue for Send/Receive and to avoid
+queue and component type mismatch, see the following Knowledge Base
+article:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../msmq/q174387.htm">Q174387</A></B>
+   TITLE     : INFO: Using a Single MSMQ Queue for an MTS Component
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: viper Falcon<BR>
+Keywords          : kbcode MQJava MQProg<BR>
+Version           : WINDOWS:1.0; WINNT:1.0<BR>
+Platform          : WINDOWS winnt<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

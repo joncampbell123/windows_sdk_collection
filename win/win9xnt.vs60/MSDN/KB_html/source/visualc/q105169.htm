@@ -1,0 +1,195 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Building a Dynamic Menu for TrackPopupMenu </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q105169">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1993/10/12">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  In most cases, a menu to be used in the call to TrackPopupMenu can be created at design time using the App Studio. However, when the menu items are dynamic and not known until run time, it is necessary to build the menu from scratch using the CMenu...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAF0,QDL9,QBWQ,QBWO,QBWN,QBCT,QAH4,QAGC,QAGB,QAEF,QBWR,QAIF,QDKD,QAW6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Building a Dynamic Menu for TrackPopupMenu</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q105169</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50 1.51 1.52
+WINDOWS
+kbprg
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++ for Windows, versions 1.0, 1.5, 1.51, and 1.52
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In most cases, a menu to be used in the call to TrackPopupMenu can be
+created at design time using the App Studio. However, when the menu
+items are dynamic and not known until run time, it is necessary to
+build the menu from scratch using the CMenu member functions.
+<P>
+Due to the way the Microsoft Foundation Classes (MFC) implements the CMenu
+class, combined with the way Windows deletes menu resources, potential
+problems can occur when the CMenu object's destructor is called.
+Specifically, the destructor calls ::DeleteMenu() to delete the Windows
+menu resource. If the pop-up menu contains other pop-up menus (known as
+cascading menus), these menus must be detached using the CMenu::Detach()
+function. These menus should be detached before the top level CMenu object
+is destroyed. Failure to Detach() the cascading pop-up menus causes the
+debugging kernel of Windows to generate the error "Invalid HMENU: FatalExit
+code = 0x6041".
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Suppose the pop-up menu has the following items:
+<P>
+<PRE>   Apples
+   Pears
+   Grapes
+   Other Misc. Fruit &gt;
+                     Mangos
+                     Tomatoes
+
+</PRE>To build this menu at run time, the following code may be used:
+<P>
+<PRE>   CMenu MainTPMMenu;
+   CMenu MiscFruitMenu;
+
+   MainTPMMenu.CreatePopupMenu();
+   MainTPMMenu.AppendMenu(MF_STRING | MF_ENABLED, 42, "Apples");
+   MainTPMMenu.AppendMenu(MF_STRING | MF_ENABLED, 43, "Pears");
+   MainTPMMenu.AppendMenu(MF_STRING | MF_ENABLED, 43, "Grapes");
+   MiscFruitMenu.CreatePopupMenu();
+   MiscFruitMenu.AppendMenu(MF_STRING | MF_ENABLED, 40, "Mangos");
+   MiscFruitMenu.AppendMenu(MF_STRING | MF_ENABLED, 41, "Tomatoes");
+   MainTPMMenu.AppendMenu(MF_STRING | MF_POPUP | MF_ENABLED,
+                          (UINT)MiscFruitMenu.m_hMenu,
+                          "Other Misc. Fruit");
+   MainTPMMenu.TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON, pt.x,
+                              pt.y, this, NULL);
+
+</PRE>On the surface, this code appears fine. However, a FatalExit can occur
+under the debug kernel of Windows.
+<P>
+When an application calls ::DeleteObject() to delete a menu resource,
+Windows looks at the menu and determines whether it contains any
+cascading pop-up menus. If so, Windows deletes the menu resource
+associated with the cascading pop-up menu.
+<P>
+Now consider the following: when a CMenu object's destructor is
+called, the menu handle associated with the CMenu is deleted from the
+GDI heap using ::DeleteObject(). This leads to the problem. In the
+above example, if MainTPMMenu is destroyed first, Windows will look at
+the hMenu and determine that it has an associated cascading pop-up
+menu. Windows then deletes the hMenu for this cascading pop-up menu.
+Now, the MiscFruitMenu object is destroyed and ::DeleteObject() is
+called to delete the hMenu; however, the hMenu has already been
+deleted by Windows. This, of course, leads to the FatalExit.
+<P>
+The solution to this problem is to use CMenu::Detach() to detach any
+cascading pop-up menus. You should place the call to Detach()
+somewhere in your code such that it is executed BEFORE any of the
+CMenu objects are destroyed. In the above example, you could simply
+call MiscFruitMenu.Detach() after the call to TrackPopupMenu().
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.00 1.50 2.00 2.50 popup pop up<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: MfcUI<BR>
+Keywords            : kb16bitonly<BR>
+Technology          : kbMfc<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

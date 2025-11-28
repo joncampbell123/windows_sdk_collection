@@ -1,0 +1,219 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: CRecordset Does Not Set HSTMT Attributes for Updates </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q178967">
+<META NAME="KBModify" CONTENT="1998/01/08">
+<META NAME="KBCreate" CONTENT="1998/01/07">
+<META NAME="Keywords" CONTENT="MfcDatabase">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When updating using the cursor library or when using a cursor that causes MFC to use SQL statements to update, CRecordset errors can occur when using strings containing ODBC escape sequences. For example, the string “{d2fcfefb-6126-11d1-84c1-0020af...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAXB,QAC1,QBD2,QDIX,QA9E,QAAP,QAB4,QAA5,QBXS,QBVV,QAPN,QABI,QAKP,QAB9,QBHQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: CRecordset Does Not Set HSTMT Attributes for Updates</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 8, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q178967</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC)
+<LI>Microsoft Visual C++, 32-bit Enterprise Edition, versions 5.0, 5.0sp1,
+   5.0sp2, 5.0sp3
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When updating using the cursor library or when using a cursor that causes
+MFC to use SQL statements to update, CRecordset errors can occur when using
+strings containing ODBC escape sequences. For example, the string
+“{d2fcfefb-6126-11d1-84c1-0020afd6c52f}” may cause a data conversion error
+because “{d” is the ODBC escape sequence for a date. The error occurs
+whether the SQLSetStmtOption() attribute SQL_NOSCAN is set to SQL_NOSCAN_ON
+or SQL_NOSCAN_OFF.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+In the CRecordset::PrepareUpdateHstmt() function, CRecordset allocates a
+handle to use to update m_hstmtUpdate. However, CRecordset does not apply
+the HSTMT attributes on its default HSTMT, m_hstmt, to m_hstmtUpdate.
+Therefore any statement attributes set by the user will not be seen in an
+update.
+<P>
+For example, given the code:
+<P>
+<PRE>   void CSampleSet::OnSetOptions(HSTMT hstmt)
+   {
+      CRecordset::OnSetOptions(hstmt);
+
+      SQLSetStmtOption(hstmt, SQL_NOSCAN, SQL_NOSCAN_ON);
+   }
+
+</PRE>updates may fail for fields that contain ODBC escape because m_hstmtUpdate
+will have the SQL_NOSCAN option turned off. For example you might get a
+data conversion error from the ODBC driver.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+It is possible to work around this bug by taking the following steps:
+<P>
+For dynamically linking the MFC library:
+
+<OL><P><LI>Copy the implementations of CRecordset::UpdateInsertDelete() and
+   CRecordset::PrepareUpdateHstmt() to your CRecordset derived class.
+
+<P><LI>If you haven't already implemented the virtual CRecordset::Update()
+   function, copy the MFC implementation of that method.
+
+<P><LI>In the copied CRecordset::PrepareUpdateHstmt(), change the block of code
+   that reads
+<P>
+<P><PRE>      if (m_hstmtUpdate == SQL_NULL_HSTMT)
+      {
+<PRE></PRE>         AFX_SQL_SYNC(::SQLAllocStmt(m_pDatabase-&gt;m_hdbc, &amp;m_hstmtUpdate));
+         if (!Check(nRetCode))
+         {
+            TRACE0("Error: failure to allocate update statement.\n");
+            AfxThrowDBException(nRetCode, m_pDatabase, m_hstmtUpdate);
+         }
+      }
+
+   to the following:
+
+      if (m_hstmtUpdate == SQL_NULL_HSTMT)
+      {
+         AFX_SQL_SYNC(::SQLAllocStmt(m_pDatabase-&gt;m_hdbc, &amp;m_hstmtUpdate));
+         if (!Check(nRetCode))
+         {
+            TRACE0("Error: failure to allocate update statement.\n");
+            AfxThrowDBException(nRetCode, m_pDatabase, m_hstmtUpdate);
+         }
+
+         OnSetOptions(m_hstmtUpdate);
+      }
+
+</PRE></OL>This will ensure that the options set in the virtual function
+OnSetOptions() are applied to the member m_hstmtUpdate.
+<P>
+For statically linking the MFC library, you can either follow the steps
+above or you can modify your version of MFC sources directly by following
+step 3 above in the CRecordset class and rebuilding.
+<P>
+It is highly recommended that developers do not directly modify the MFC
+source. For more information on rebuilding the MFC static library, see the
+README.TXT file in the MFC\SRC directory.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For more information on ODBC escape sequences, see Chapter 8 and Appendix
+C, ODBC Programmers Reference.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: scalar functions<BR>
+Keywords          : MfcDatabase<BR>
+Technology        : odbc<BR>
+Version           : WINDOWS:5.0,5.0sp1,5.0sp2,5.0sp3; WINNT:5.0,5.0sp1,5.0sp2,5.0sp3<BR>
+Platform          : WINDOWS winnt<BR>
+Issue type        : kbbug<BR>
+Solution Type     : kbpending<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 8, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

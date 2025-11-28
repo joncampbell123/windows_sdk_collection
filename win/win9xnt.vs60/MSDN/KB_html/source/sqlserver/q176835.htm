@@ -1,0 +1,532 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Fallback to Primary Server May Not Move All Databases Back </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q176835">
+<META NAME="KBModify" CONTENT="1997/11/17">
+<META NAME="KBCreate" CONTENT="1997/11/17">
+<META NAME="Keywords" CONTENT="kbbug6.50 SSrvAdmin kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="BUG #: 17403 (6.5)   Running the sp_fallback_deactivate_svr_db stored procedure, which attempts to move the databases back to the primary server, may fail to move all databases back if the dbid from the primary server and fallback server do not match...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAMA,QBVV,QAOE,QA2Q,QAY2,QAG2,QBWS,QAUJ,QAEF,QAI4,QBXS,QA9N,QACI,QAGB,QA4Q V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Fallback to Primary Server May Not Move All Databases Back</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q176835</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server version 6.5
+</UL> 
+BUG #: 17403 (6.5)
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Running the sp_fallback_deactivate_svr_db stored procedure, which attempts
+to move the databases back to the primary server, may fail to move all
+databases back if the dbid from the primary server and fallback server do
+not match.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+To work around this problem, re-create the sp_fallback_deactivate_svr_db
+stored procedure with the code provided in the MORE INFORMATION section of
+this article.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in SQL Server version 6.5. We
+are researching this problem and will post new information here in the
+Microsoft Knowledge Base as it becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The script to re-create the sp_fallback_deactivate_svr_db stored procedure
+is provided below. Note that you must be in the master database when
+running this script.
+<P>
+<PRE>   if exists (select * from sysobjects where id =
+   object_id('dbo.sp_fallback_deactivate_svr_db') and sysstat &amp; 0xf = 4)
+      drop procedure dbo.sp_fallback_deactivate_svr_db
+   GO
+
+   create procedure sp_fallback_deactivate_svr_db  --1996/02/29 11:06
+       @pPrimarySvrName    character varying(30)   = null
+      ,@pDbNamePattern    character varying(44)   = '%'
+   as
+   /********1*********2*********3*********4*********5*********6*********7**
+         This sproc should be executed on the fallback server
+   (no RPC).
+         This sproc will delete rows from system tables, and make
+   a will update the spt_fallback_% tables.
+         As far as possible, this sproc is designed to overcome
+   small activation discrepancies and achieve the intended result.
+   *********1*********2*********3*********4*********5*********6*********7*/
+
+   Declare
+          @RetCode                  integer
+
+   IF (@@trancount &gt; 0)
+      begin
+      RaisError(15002,-1,-1,'sp_fallback_deactivate_svr_db')
+      Select @RetCode = @@error
+      GOTO LABEL_86_RETURN
+      end
+
+   Set implicit_transactions     off
+
+   IF (@@trancount &gt; 0)
+      begin
+      COMMIT TRANSACTION   -- Decrements @@trancount by 1.
+      end
+
+   Set nocount                   on
+   Set ansi_nulls                on
+   Set cursor_close_on_commit    off
+   Set xact_abort                off
+
+   Declare
+          @ExecRC                   integer
+         ,@_error                   integer
+         ,@ProcStartDtTm            datetime
+         ,@Int1                     integer
+         ,@BitDbOffline            integer
+
+   Declare
+          @xfallback_dbid           smallint
+
+         ,@db_name                 character varying(30)
+         ,@db_dbid                 smallint
+
+   -----------------------------------
+
+   Select
+          @RetCode                  = 0
+         ,@ProcStartDtTm            = getdate()
+         ,@BitDbOffline            = 512
+
+
+   ----------------------  only SA  --------------------------------
+
+
+   IF (suser_id() &lt;&gt; 1)  -- must be SA
+      begin
+      RaisError(15003,-1,-1)
+      Select @RetCode = @@error
+      GOTO LABEL_86_RETURN
+      end
+
+   ----------------------  Need to lookup one primary svr?  --------------
+
+
+   IF (@pPrimarySvrName is null)
+      begin
+
+      SELECT    @Int1   = count(distinct db.xserver_name)
+         from   master..spt_fallback_db  db
+         where  db.xfallback_dbid        is not null
+
+      IF (@Int1 &lt;&gt; 1)
+         begin
+         RaisError(15344,-1,-1,@Int1)
+         Select @RetCode = @@error
+         GOTO LABEL_86_RETURN
+         end
+
+      SELECT    @pPrimarySvrName = min(db.xserver_name)
+         from   master..spt_fallback_db  db
+         where  db.xfallback_dbid        is not null
+
+      end
+
+   ------------------  Handle db parm  ------------------------
+
+   IF (@pDbNamePattern is null)
+      Select @pDbNamePattern = '%'
+
+
+   ------  Fallback already currently deactivated for the primary server?
+
+   IF not exists (SELECT * from  master..spt_fallback_db db
+                       where db.xfallback_dbid is not null
+                       and   db.xserver_name = @pPrimarySvrName
+                       and   db.name      like @pDbNamePattern
+                 )
+      begin
+      RaisError(15353,-1,-1,@@servername,@pPrimarySvrName)
+      Select @RetCode = @@error
+      GOTO LABEL_86_RETURN
+      end
+
+
+   -----------  Calculate a list of possible sysdev's to delete  ----------
+
+
+   ---- Capture devs containing to-be-deact dbs.
+   Create table #1dev_deact
+      (low             integer     not null
+      ,xfallback_low   integer     not null
+      ,name            varchar(30) not null
+      )
+
+   INSERT into #1dev_deact
+                  (low ,xfallback_low ,name)
+      SELECT
+            distinct
+                   dev.low ,dev.xfallback_low ,dev.name
+            from   master..spt_fallback_dev  dev
+                  ,master..spt_fallback_usg  usg
+                  ,master..spt_fallback_db  db
+            where  db.dbid           = usg.dbid
+            and    usg.vstart between dev.low and dev.high
+            and    db.xserver_name = usg.xserver_name
+            and    db.xserver_name = dev.xserver_name
+            and
+                   db.xserver_name = @pPrimarySvrName
+            and    db.name      like @pDbNamePattern
+            and    db.xfallback_dbid   is not null
+            and    usg.xfallback_vstart is not null
+            and    dev.xfallback_low    is not null
+
+
+   ---- Capture devs containing dbs other than dbs to-be-deact.
+   Create table #2sysdev_othersuse
+      (low        integer     not null
+      ,name       varchar(30) not null
+      )
+
+   INSERT into #2sysdev_othersuse
+                  (low ,name)
+      SELECT
+            distinct
+                   sysdev.low ,sysdev.name
+            from   master..sysdevices        sysdev
+                  ,master..sysusages         sysusg
+                  ,master..sysdatabases      sysdb
+            where  sysdb.dbid      = sysusg.dbid
+            and    sysusg.vstart between sysdev.low and sysdev.high
+            and    not exists
+                     (SELECT      *
+                        from      master..spt_fallback_db  db
+                        where     db.xserver_name    = @pPrimarySvrName
+                        and       db.name      like    @pDbNamePattern
+                        and       db.xfallback_dbid  is not null
+                        and       db.xfallback_dbid  = sysdb.dbid
+                     )
+
+
+   ---- Remove some devs from the list of devs to-be-deact.
+   DELETE          #1dev_deact
+         where     xfallback_low in
+                     (SELECT low from #2sysdev_othersuse
+                     )
+
+   ---------------------------  Establish cursors  -----------------------
+
+
+   -------- csr sysdb
+
+   DECLARE
+                   csr_11_db
+                   insensitive
+               cursor for
+      SELECT
+                   db.xfallback_dbid
+                  ,db.dbid
+                  ,db.name
+         from
+                   master..spt_fallback_db     db
+         where
+                   db.xserver_name    = @pPrimarySvrName
+         and       db.name         like @pDbNamePattern
+         and       db.xfallback_dbid  is not null
+      FOR read only
+
+
+   ---------------------  Take each relevant db offline  ------------------
+
+
+   OPEN csr_11_db
+
+
+   WHILE ('11a'='11a')
+      begin
+
+
+      FETCH
+                   next
+         from
+                   csr_11_db
+         into
+                   @xfallback_dbid
+                  ,@db_dbid
+                  ,@db_name
+
+      IF (@@fetch_status &lt;&gt; 0)
+         begin
+         Close csr_11_db  -- Will use this again.
+         BREAK
+         end
+
+   ----------
+
+      IF not exists   (
+            SELECT       *
+               from      master..sysdatabases   sysdb
+               where     sysdb.dbid = @xfallback_dbid
+               and       sysdb.status &amp; @BitDbOffline = 0  --currently is
+                         online
+                     )
+         begin
+
+         CONTINUE
+
+         end
+
+      Execute @ExecRC = sp_dboption @db_name ,'offline' ,'true' --Also
+      defers unshared sysdev.
+
+      IF (@ExecRC &lt;&gt; 0)
+         begin
+         RaisError(15355,-1,-1,@db_name)
+         Select @RetCode = @@error
+         GOTO LABEL_86_RETURN
+         end
+
+      end -- loop 11a db
+
+   ---------------------------------------------- txn
+
+   BEGIN TRANSACTION  -- @@trancount++;
+
+
+   ---------------------  Delete sys% tables rows  ---------------
+
+
+   OPEN csr_11_db
+
+
+   WHILE ('11b'='11b')
+      begin
+
+
+      FETCH
+                   next
+         from
+                   csr_11_db
+         into
+                   @xfallback_dbid
+                  ,@db_dbid
+                  ,@db_name
+
+      IF (@@fetch_status &lt;&gt; 0)
+         begin
+         Close csr_11_db
+         BREAK
+         end
+
+
+   -------- Handle usg.
+
+      DELETE       master..sysusages
+            where
+                   dbid    = @xfallback_dbid
+
+
+      UPDATE       master..spt_fallback_usg
+            set
+                   xdttm_last_ins_upd  = @ProcStartDtTm
+                  ,xfallback_vstart    = null
+            where
+                   xserver_name        = @pPrimarySvrName
+            and    dbid                = @db_dbid
+
+
+   -------- Handle db.
+
+      DELETE       master..sysdatabases
+            where
+                   dbid    = @xfallback_dbid
+
+
+      UPDATE       master..spt_fallback_db
+            set
+                   xdttm_last_ins_upd  = @ProcStartDtTm
+                  ,xfallback_dbid      = null
+            where
+                   xfallback_dbid      = @xfallback_dbid
+
+      end -- loop 11b db
+
+
+   --------------------  Del all corresponding dev  ---------------------
+
+
+   ---- Del sysdevs whose children were all just deactivated.
+
+   DELETE       master..sysdevices
+         where
+                name in
+                  (SELECT name from #1dev_deact)
+         and    low  in
+                  (SELECT xfallback_low from #1dev_deact)
+         and    not exists
+                  (SELECT      *
+                     from      master..sysusages   sysusg
+                     where     sysusg.vstart between
+                                 master..sysdevices.low  and
+                                 master..sysdevices.high
+                  )
+
+   UPDATE       master..spt_fallback_dev
+         set
+                xdttm_last_ins_upd  = @ProcStartDtTm
+               ,xfallback_low       = null
+         where
+                xserver_name        = @pPrimarySvrName
+         and    xfallback_low  is not null
+         and
+                low in (SELECT low from #1dev_deact)
+
+
+   ------------------------  Finalization  -------------------------
+
+
+   ----------  Re-Verify integrity, before commit
+
+   Execute @ExecRC = sp_fallback_MS_verify_ri
+
+   IF (@ExecRC &lt;&gt; 0)
+      begin
+      RaisError(15352,-1,-1,'deactivate s d 2')  -- Do NOT internationalize
+      these.
+      Select @RetCode = @ExecRC
+      Execute sp_fallback_help
+      Rollback Transaction
+      GOTO LABEL_86_RETURN
+      end
+
+
+   COMMIT TRANSACTION
+
+
+   Raiserror(15356,-1,-1,@pPrimarySvrName)
+
+
+   LABEL_86_RETURN:
+
+   Deallocate csr_11_db
+
+   IF (object_id('tempdb..#1dev_deact') is not null)
+               drop table #1dev_deact
+   IF (object_id('tempdb..#2sysdev_othersuse') is not null)
+               drop table #2sysdev_othersuse
+
+   Return @RetCode
+
+   GO
+
+   GRANT  EXECUTE  ON dbo.sp_fallback_deactivate_svr_db  TO public
+   GO
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: failover failback stproc st_proc st proc<BR>
+Keywords          : kbbug6.50 SSrvAdmin kbcode<BR>
+Version           : WINNT:6.5<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbbug<BR>
+Solution Type     : kbworkaround<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

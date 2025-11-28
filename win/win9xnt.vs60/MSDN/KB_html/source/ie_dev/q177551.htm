@@ -1,0 +1,368 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Cannot Navigate Away from MFC Active Document in IE4 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q177551">
+<META NAME="KBModify" CONTENT="1997/12/10">
+<META NAME="KBCreate" CONTENT="1997/12/03">
+<META NAME="Keywords" CONTENT="AXSDKDocObjects">
+<META NAME="KBArea" CONTENT="Support; KB; ie_dev">
+<META NAME="Description" CONTENT="  When you load a file into Internet Explorer 4.0 (IE4) that is associated with an Active Document server that is written in MFC, you cannot navigate away from the currently loaded page. IE4 will appear to start loading the next page, the progress ba...">
+<META NAME="Product" CONTENT="Internet Explorer (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAY2,QBV9,QAUD,QDKW,QAH4,QAEF,QABO,QAB9,QAYY,QDIX,QBRJ,QAR4,QAPN,QA62,QBFY V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Cannot Navigate Away from MFC Active Document in IE4</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q177551</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Internet Explorer (Programming), version 4.0
+<LI>The Microsoft Foundation Classes (MFC) included with:
+<P><PRE>    - Microsoft Visual C++, 32-bit Editions, versions 4.2, 4.2b, 5.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When you load a file into Internet Explorer 4.0 (IE4) that is associated
+with an Active Document server that is written in MFC, you cannot navigate
+away from the currently loaded page. IE4 will appear to start loading the
+next page, the progress bar indicator will fill part way, and the IE logo
+will begin spinning. However, IE4 will remain in this state indefinitely,
+until shut down.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This is caused by a fault in MFC's implementation of
+IOleCommandTarget::QueryStatus. MFC's QueryStatus implementation
+incorrectly specifies that unknown command IDs are currently supported but
+disabled. IE4 uses an undocumented command-group command to determine
+whether the Active Document (formerly called "ActiveX Document") server can
+be deactivated. Since MFC responds incorrectly that the command-group
+command is supported and disabled, the Active Document server is never
+unloaded.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+As a workaround, you must override CDocObjectServer and COleCmdUI to
+provide the correct functionality. (See the MORE INFORMATION section for
+instructions on how to do this.)
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following information describes the steps to work around the bug that
+is stated above. The AxDocFix sample referenced below demonstrates this
+workaround.
+<P>
+To work around this bug, follow these steps for a basic AppWizard-created
+Active Document server:
+
+<OL><P><LI>Override CDocObjectServer: create a new class CMyDocObjectServer and
+   derive it publicly from CDocObjectServer. Provide a constructor as
+   follows:
+<P>
+<P><PRE>      class CMyDocObjectServer : public CDocObjectServer
+      {
+      public:
+<PRE></PRE>         CMyDocObjectServer(COleServerDoc* pOwner,
+                            LPOLEDOCUMENTSITE pDocSite = NULL)
+            : CDocObjectServer(pOwner, pDocSite) {}
+      }
+
+</PRE><P><LI>Include the needed interface macros in the class definition for
+   CMyDocObjectServer.
+<P>
+<P><PRE>      DECLARE_INTERFACE_MAP()
+      BEGIN_INTERFACE_PART(MyOleCommandTarget, IOleCommandTarget)
+<PRE></PRE>         STDMETHOD(QueryStatus)(const GUID*, ULONG, OLECMD[], OLECMDTEXT*);
+         STDMETHOD(Exec)(const GUID*, DWORD, DWORD, VARIANTARG*,
+                         VARIANTARG*);
+      END_INTERFACE_PART(MyOleCommandTarget)
+
+</PRE><P><LI>Implement the interface map in implementation file for
+   CMyDocObjectServer.
+<P>
+<P><PRE>      BEGIN_INTERFACE_MAP(CMyDocObjectServer, CDocObjectServer)
+<PRE></PRE>         INTERFACE_PART(CMyDocObjectServer, IID_IOleCommandTarget,
+                        MyOleCommandTarget)
+      END_INTERFACE_MAP()
+
+</PRE><P><LI>Provide the following implementations for AddRef(), Release(),
+   QueryInterface(), and Exec().
+<P>
+<P><PRE>      STDMETHODIMP_(ULONG)
+<PRE></PRE>           CMyDocObjectServer::XMyOleCommandTarget::AddRef()
+      {
+         METHOD_PROLOGUE_EX(CMyDocObjectServer, MyOleCommandTarget)
+         ASSERT_VALID(pThis);
+
+         return pThis-&gt;m_xOleCommandTarget.AddRef();
+      }
+
+      STDMETHODIMP_(ULONG)
+                    CMyDocObjectServer::XMyOleCommandTarget::Release()
+      {
+         METHOD_PROLOGUE_EX(CMyDocObjectServer, MyOleCommandTarget)
+         ASSERT_VALID(pThis);
+
+         return pThis-&gt;m_xOleCommandTarget.Release();
+      }
+
+      STDMETHODIMP CMyDocObjectServer::XMyOleCommandTarget::QueryInterface(
+            REFIID iid, LPVOID* ppvObj)
+      {
+         METHOD_PROLOGUE_EX(CMyDocObjectServer, MyOleCommandTarget)
+         ASSERT_VALID(pThis);
+
+         return pThis-&gt;m_pOwner-&gt;ExternalQueryInterface(&amp;iid, ppvObj);
+      }
+
+      STDMETHODIMP CMyDocObjectServer::XMyOleCommandTarget::Exec(
+            const GUID* pguidCmdGroup, DWORD nCmdID, DWORD nCmdExecOpt,
+            VARIANTARG* pvarargIn, VARIANTARG* pvarargOut)
+      {
+         METHOD_PROLOGUE_EX(CMyDocObjectServer, MyOleCommandTarget)
+         ASSERT_VALID(pThis);
+
+         return pThis-&gt;m_xOleCommandTarget.Exec(pguidCmdGroup, nCmdID,
+                                                nCmdExecOpt, pvarargIn,
+                                                pvarargOut);
+      }
+
+</PRE><P><LI>Copy the code for QueryStatus() from mfc\src\oledoctg.cpp. Change the
+   signature for this method in MyDocObjectServer.cpp to the following:
+<P>
+<P><PRE>      STDMETHODIMP CMyDocObjectServer::XMyOleCommandTarget::QueryStatus(
+<PRE></PRE>         const GUID* pguidCmdGroup, ULONG cCmds, OLECMD rgCmds[],
+         OLECMDTEXT* pcmdtext)
+      {
+      ...
+      }
+
+   This changes the nested class name from XOleCommandTarget to
+   XMyOleCommandTarget.
+
+</PRE><P><LI>Change the call to METHOD_PROLOGUE_EX from this:
+<P>
+<P><PRE>      METHOD_PROLOGUE_EX(CMyDocObjectServer, OleCommandTarget)
+</PRE><P>
+   to this:
+<P>
+<P><PRE>      METHOD_PROLOGUE_EX(CMyDocObjectServer, MyOleCommandTarget)
+</PRE><P>
+
+<P><LI>Change the 18th line in CDocObjectServer::XOleCommandTarget::QueryStatus
+</OL>(first line after the second else statement) from this
+<P>
+<PRE>      COleCmdUI state(rgCmds, cCmds, pguidCmdGroup);
+
+   to this
+
+      CMyOleCmdUI state(rgCmds, cCmds, pguidCmdGroup);
+
+   CMyOleCmdUI is the COleCmdUI-derived class that you will create in step
+   10.
+
+</PRE><P><LI>Add this include to the header file for your COleServerDoc-derived
+   class:
+<P>
+<P><PRE>      #include "MyDocObjectServer.h"
+</PRE>
+<P><LI>Change the default implementation of GetDocObjectServer() in your
+   CDocument-derived class to the following:
+<P>
+<P><PRE>      return new CMyDocObjectServer(this, pDocSite);
+</PRE>
+<P><LI>Override COleCmdUI: create a new class CMyOleCmdUI and derive it
+   publicly from COleCmdUI. Override the virtual function DoUpdate().
+<P>
+<P><PRE>      class CMyOleCmdUI : public COleCmdUI
+      {
+       public:
+<PRE></PRE>         CMyOleCmdUI(OLECMD* rgCmds, ULONG cCmds, const GUID* pGroup)
+            : COleCmdUI(rgCmds, cCmds, pGroup)
+         {
+         }
+
+         virtual BOOL DoUpdate(CCmdTarget* pTarget, BOOL
+                               bDisableIfNoHandler);
+      };
+
+</PRE><P><LI>Add this include statement to MyDocObjectServer.cpp:
+<P>
+<P><PRE>      #include "MyOleCmdUI.h"
+</PRE>
+<P><LI>Cut and paste the implementation for DoUpdate() from
+   Mfc\Src\Oledoctg.cpp (line# 64 in Visual C++ 5.0.) Change this code in
+   your CMyOleCmdUI::DoUpdate:
+<P>
+<P><PRE>      if (bDisableIfNoHandler &amp;&amp; !m_bEnableChanged)
+      {
+<PRE></PRE>         AFX_CMDHANDLERINFO info;
+         info.pTarget = NULL;
+         bResult = pTarget-&gt;OnCmdMsg(m_nID, CN_COMMAND, this, &amp;info);
+
+         Enable(bResult);
+         if (bResult || m_bEnableChanged)
+            m_rgCmds[m_nIndex].cmdf |= OLECMDF_SUPPORTED;
+         else
+            m_rgCmds[m_nIndex].cmdf &amp;= ~OLECMDF_SUPPORTED;
+      }
+
+   to this:
+
+      if (bDisableIfNoHandler &amp;&amp; !m_bEnableChanged)
+      {
+         AFX_CMDHANDLERINFO info;
+         info.pTarget = NULL;
+         bResult = pTarget-&gt;OnCmdMsg(m_nID, CN_COMMAND, this, &amp;info);
+
+         if (bResult || m_bEnableChanged)
+            m_rgCmds[m_nIndex].cmdf |= OLECMDF_SUPPORTED;
+         else
+            m_rgCmds[m_nIndex].cmdf &amp;= ~OLECMDF_SUPPORTED;
+         Enable(bResult);
+      }
+
+   This changes the order in which Enable is called.
+
+</PRE><P><LI>Add this include statement to the CMyDocObjectServer implementation
+   file:
+<P>
+<P><PRE>      #include "afxconv.h"
+</PRE><P>
+   and add this include statement to the CMyOleCmdUI implementation file:
+<P>
+<P><PRE>      #include &lt;afxpriv.h&gt;
+</PRE><P>
+</OL>Afxpriv.h is needed for the proper implementation of CMyOleCmdUI's command
+routing mechanism in DoUpdate(). NOTE: Code that requires Afxpriv.h is
+not guaranteed to work correctly in future versions of Visual C++ and with
+future versions of the MFC DLL. However, because this is the only
+workaround to the bug described in this article, use of Afxpriv.h cannot
+be avoided. Once a future version of MFC has fixed this bug, this
+workaround should be removed from your code.
+<P>
+A default MFC Active Document server that has these fixes applied is
+available for download from the Microsoft Software Library:
+<P>
+<PRE> ~ <A href="http://support.microsoft.com/download/support/mslfiles/axdocfix.exe">AxDocFix.exe</A> <I>(size: 50500 bytes)</I> 
+
+</PRE></OL>For more information about downloading files from the Microsoft Software
+Library, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../zmiscellaneous/q119591.htm">Q119591</A></B>
+   TITLE     : How to Obtain Microsoft Support Files from Online Services
+
+</PRE>(c) Microsoft Corporation 1997, All Rights Reserved. Contributions by Scott
+Roberts, Microsoft Corporation
+<P>
+ 
+<PRE>Keywords          : AXSDKDocObjects
+Technology        : kbInetDev kbole
+Version           : WINDOWS:4.0; WINNT:4.2,4.2b,5.0
+Platform          : WINDOWS winnt
+Issue type        : kbbug kbfile</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,238 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Use WNetGetUser() in Windows for Workgroups from VB 3.0 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q113688">
+<META NAME="KBModify" CONTENT="1995/06/21">
+<META NAME="KBCreate" CONTENT="1994/04/11">
+<META NAME="Keywords" CONTENT="kbnetwork kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  The information from this article is taken from the following Microsoft Knowledge Base article:  ARTICLE-ID: Q96772 TITLE     : INF: How to Use WNetGetUser() in Windows for Workgroups  The information is duplicated here to include sample code that ...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWO,QAVZ,QAY5,QA4Q,QAUD,QBS0,QDL9,QBWN,QAB9,QAGU,QAGI,QBV8,QBWF,QBWQ,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Use WNetGetUser() in Windows for Workgroups from VB 3.0</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 21, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q113688</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+<P>
+- Standard and Professional Editions of Microsoft Visual Basic for
+<PRE>  Windows, versions 2.0 and 3.0
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The information from this article is taken from the following Microsoft
+Knowledge Base article:
+<P>
+ARTICLE-ID: <B><A href="../win16sdk/q96772.htm">Q96772</A></B>
+<PRE>TITLE     : INF: How to Use WNetGetUser() in Windows for Workgroups
+
+</PRE>The information is duplicated here to include sample code that is converted
+for use in Visual Basic.
+<P>
+WNetGetUser() is documented on page 194 in the Microsoft Windows Device
+Driver Kit (DDK) "Device Driver Adaptation Guide" for version 3.1. This
+function can be used to retrieve the current user name of the user logged
+on to the network underlying Windows. However, when using this function in
+Microsoft Windows for Workgroups, WNetGetUser() returns WN_SUCCESS but the
+user name string is empty. Because WFWNET.DRV is a multinet driver, the
+network that supports WNetGetUser() must be activated before using this
+function.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Until the release of the Windows for Workgroups Software Development Kit
+(SDK), the WNetGetUser() function was used internally by Windows. It is
+documented in the Windows version 3.1 "Device Driver Adaptation Guide" for
+network device driver developers.
+<P>
+Now the Windows for Workgroups SDK allows you to call WNetGetUser() from an
+application. However, when using this function on a system with a multinet
+driver, you must activate the supporting network by first using
+MNetSetNextTarget(). If the target network has not been set, the function
+returns WN_SUCCESS but the returned string for the user name is empty. This
+is documented in the description of MNetSetNextTarget() in the Windows for
+Workgroups SDK.
+<P>
+It is not sufficient to just call MNetSetNextTarget() before WNetGetUser().
+The current target network may not support WNetGetUser(). To set the target
+network to use WNetGetUser() correctly, you must number the networks and
+call WNetGetUser() for each network. If WNetGetUser() does not return
+WN_SUCCESS, then increment the network number for the next target network
+and iterate the loop. If the loop iterates through all of the networks but
+WNetGetUser() never returns WN_SUCCESS, then none of the target networks
+support WNetGetUser(). The following sample code demonstrates how to do
+this.
+<P>
+<P><h3>Step-by-Step Example</h3>
+ 
+
+<OL><P><LI>Start a new project in Visual Basic. Form1 is created by default.
+
+<P><LI>Add the following code to the General Declarations section of Form1:
+<P>
+<PRE>   ' Enter each of the following Declare statements on one, single line:
+   Declare Function WNetGetUser Lib "wfwnet.drv" (ByVal szUser As String,
+      nBufferSize As Integer) As Integer
+   Declare Function MNetNetworkEnum Lib "wfwnet.drv"
+     (lphNetwork As Integer) As Integer
+   Declare Function MNetSetNextTarget Lib "wfwnet.drv"
+      (ByVal hNetwork As Integer) As Integer
+
+   ' The following function determines the logged-in user in Windows for
+   ' Workgroups:
+   Function MultiNetGetUser (UserName$) As Integer
+
+      Dim hNetDrv As Integer
+      Dim wRetEnum As Integer, ret As Integer
+      Dim wRetGetUser As Integer
+      Dim cb As Integer
+      Dim Found As Integer
+
+      Found = False
+      ' Grab the 1st network:
+      hNetDrv = 0
+      wRetEnum = MNetNetworkEnum(hNetDrv)
+
+      ' Loop while there are installed networks:
+      While (wRetEnum = 0) And Not Found
+         user$ = Space$(255)
+         cb = Len(user$)
+
+         ' Make sure correct network is accessed in next WNetGetUser call:
+         ret = MNetSetNextTarget(hNetDrv)
+
+         ' Get the user:
+         wRetGetUser = WNetGetUser(user$, cb)
+
+         ' Check for success:
+         If wRetGetUser = 0 Then
+            ' Just grab the relevant characters:
+            UserName$ = Left$(user$, cb - 1)
+            MsgBox UserName$, , "WNetGetUser"
+            Found = True
+         End If
+
+         ' Get the next network:
+         wRetEnum = MNetNetworkEnum(hNetDrv)
+      Wend
+      If Not Found Then
+         MsgBox "WNetGetUser not supported on any of the Multinet subnets"
+      End If
+
+      MultiNetGetUser = Found
+
+   End Function
+
+</PRE><P><LI>Put a command button (Command1) on the form.
+
+<P><LI>Add the following code to the Command1 Click event:
+<P>
+<PRE>   Sub Command1_Click()
+      r = MultiNetGetUser(UserName$)
+   End Sub
+
+</PRE><P><LI>Save the project.
+
+<P><LI>Run the program.  A message box should pop up displaying the user name.
+<P>
+</OL>NOTE: To determine whether a system supports multinet operations,
+MNetGetCaps() can be used with WNNC_NET_TYPE. The return value has the
+WNNC_NET_MultiNet (0x8000) set if the system supports multinet operations.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.00 3.00 3.10 3.11 username multi-net<BR>
+KBCategory: kbnetwork kbprg kbcode<BR>
+KBSubcategory: APrgNet<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 21, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

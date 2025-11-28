@@ -1,0 +1,273 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: IObjectSafety Marks ATL Controls Safe for Initializing </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q168371">
+<META NAME="KBModify" CONTENT="1998/02/17">
+<META NAME="KBCreate" CONTENT="1997/05/09">
+<META NAME="Keywords" CONTENT="AtlControl AtlIss AXSDKControls MfcOLE kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  You can use the default implementation of IObjectSafetyImpl to mark a control as safe for scripting. In many cases, you will also want to mark the control as safe for initialization.  NOTE: Only mark your control as safe for scripting or initializa...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAB5,QAOE,QA7O,QAMN,QBBS,QAHV,QDNQ,QALW,QAHI,QAHT,QALQ,QAH8,QAVS,QA6A V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: IObjectSafety Marks ATL Controls Safe for Initializing</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 17, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q168371</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Active Template Library (ATL), versions 2.0, 2.1
+<LI>Microsoft Active Template Library (ATL), included with:
+<P><PRE>    - Microsoft Visual C++, 32-bit Editions, version 5.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+You can use the default implementation of IObjectSafetyImpl to mark a
+control as safe for scripting. In many cases, you will also want to mark
+the control as safe for initialization.
+<P>
+NOTE: Only mark your control as safe for scripting or initialization if it
+really is safe. If the control is potentially unsafe and it is marked as
+safe, you may be held liable for damages. See the REFERENCES section below
+for more information.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The steps you need to take to get the desired functionality involve using
+IObjectSafetyImpl as one of the classes that your control derives from and
+overriding GetInterfaceSafetyOptions and SetInterfaceSafetyOptions. This
+allows you to implement the desired functionality, which in this case means
+marking the control as safe for scripting and initialization.
+<P>
+To use IObjectSafetyImpl, you need to add it to the list of classes your
+control is derived from. For example, in the Polygon tutorial you see the
+following:
+<P>
+<PRE>   class ATL_NO_VTABLE CPolyCtl :
+   ...
+      public IObjectSafetyImpl&lt;CPolyCtl&gt; // ATL's version of
+                                        // IObjectSafety
+   {
+   public:
+      BEGIN_COM_MAP(CPolyCtl)
+   ...
+         COM_INTERFACE_ENTRY_IMPL(IObjectSafety) // Tie IObjectSafety
+                                                 // to this COM map
+      END_COM_MAP()
+
+   STDMETHOD(GetInterfaceSafetyOptions)(REFIID riid,
+                                     DWORD *pdwSupportedOptions,
+                                     DWORD *pdwEnabledOptions)
+   {
+   ATLTRACE(_T("CObjectSafetyImpl::GetInterfaceSafetyOptions\n"));
+   if (!pdwSupportedOptions || !pdwEnabledOptions)
+      return E_FAIL;
+   LPUNKNOWN pUnk;
+   if (_InternalQueryInterface (riid, (void**)&amp;pUnk) == E_NOINTERFACE) {
+      // Our object doesn't even support this interface.
+      return E_NOINTERFACE;
+   }else{
+      // Cleanup after ourselves.
+      pUnk-&gt;Release();
+      pUnk = NULL;
+   }
+   if (riid == IID_IDispatch) {
+      // IDispatch is an interface used for scripting. If your
+      // control supports other IDispatch or Dual interfaces, you
+      // may decide to add them here as well. Client wants to know
+      // if object is safe for scripting. Only indicate safe for
+      // scripting when the interface is safe.
+      *pdwSupportedOptions = INTERFACESAFE_FOR_UNTRUSTED_CALLER;
+      *pdwEnabledOptions = m_dwSafety &amp;
+                           INTERFACESAFE_FOR_UNTRUSTED_CALLER;
+      return S_OK;
+   }else if ((riid == IID_IPersistStreamInit) ||
+             (riid == IID_IPersistStorage)) {
+      // IID_IPersistStreamInit and IID_IPersistStorage are
+      // interfaces used for Initialization. If your control
+      // supports other Persistence interfaces, you may decide to
+      // add them here as well. Client wants to know if object is
+      // safe for initializing. Only indicate safe for initializing
+      // when the interface is safe.
+      *pdwSupportedOptions = INTERFACESAFE_FOR_UNTRUSTED_DATA;
+      *pdwEnabledOptions = m_dwSafety &amp;
+                           INTERFACESAFE_FOR_UNTRUSTED_DATA;
+      return S_OK;
+   }else{
+      // We are saying that no other interfaces in this control are
+      // safe for initializing or scripting.
+      *pdwSupportedOptions = 0;
+      *pdwEnabledOptions = 0;
+      return E_FAIL;
+   }
+   }
+
+   STDMETHOD(SetInterfaceSafetyOptions)(REFIID riid,
+                                     DWORD dwOptionSetMask,
+                                     DWORD dwEnabledOptions)
+   {
+   ATLTRACE(_T("CObjectSafetyImpl::SetInterfaceSafetyOptions\n"));
+   if (!dwOptionSetMask &amp;&amp; !dwEnabledOptions) return E_FAIL;
+   LPUNKNOWN pUnk;
+   if (_InternalQueryInterface (riid, (void**)&amp;pUnk) == E_NOINTERFACE) {
+      // Our object doesn't even support this interface.
+      return E_NOINTERFACE;
+   }else{
+      // Cleanup after ourselves.
+      pUnk-&gt;Release();
+      pUnk = NULL;
+   }
+   // Store our current safety level to return in
+   // GetInterfaceSafetyOptions
+   m_dwSafety |= dwEnabledOptions &amp; dwOptionSetMask;
+   if ((riid == IID_IDispatch) &amp;&amp;
+       (m_dwSafety &amp; INTERFACESAFE_FOR_UNTRUSTED_CALLER)) {
+      // Client wants us to disable any functionality that would
+      // make the control unsafe for scripting. The same applies to
+      // any other IDispatch or Dual interfaces your control may
+      // support. Because our control is safe for scripting by
+      // default we just return S_OK.
+      return S_OK;
+   }else if (((riid == IID_IPersistStreamInit) ||
+              (riid == IID_IPersistStorage)) &amp;&amp;
+             (m_dwSafety &amp; INTERFACESAFE_FOR_UNTRUSTED_DATA)) {
+      // Client wants us to make the control safe for initializing
+      // from persistent data. For these interfaces, this control
+      // is safe so we return S_OK. For Any interfaces that are not
+      // safe, we would return E_FAIL.
+      return S_OK;
+   }else{
+      // This control doesn't allow Initialization or Scripting
+      // from any other interfaces so return E_FAIL.
+      return E_FAIL;
+   }
+   }
+   ...
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For additional information about marking ActiveX controls as safe for
+scripting and initialization, please see the following articles in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q161873.htm">Q161873</A></B>
+   TITLE     : HOWTO: Mark MFC Controls Safe for Scripting/Initialization
+
+   ARTICLE-ID: <B><A href="../axsdk/q164119.htm">Q164119</A></B>
+   TITLE     : SAMPLE: Implementing IObjectSafety in an ActiveX control
+
+</PRE>For in-depth coverage on developing an ActiveX control and deploying it on
+the Web, see Paul Johns' article "The ABCs of MFC ActiveX Controls" at:
+<P>
+<PRE>   <B><A href="http://microsoft.com/intdev/controls/stoplite/">http://microsoft.com/intdev/controls/stoplite/</A></B>
+
+</PRE>For topics relevant to this discussion see his companion article "Signing
+and Marking ActiveX Controls" at:
+<P>
+<PRE>   <B><A href="http://microsoft.com/intdev/controls/signmark-f.htm">http://microsoft.com/intdev/controls/signmark-f.htm</A></B>
+
+</PRE>(c) Microsoft Corporation 1997, All Rights Reserved.
+Contributions by Shawn W. Karr, Microsoft Corporation
+ 
+<PRE>Keywords          : AtlControl AtlIss AXSDKControls MfcOLE kbprg
+Technology        : kbAtl kbole kbInetDev kbMfc
+Version           : 2.0,2.1,5.0
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 17, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

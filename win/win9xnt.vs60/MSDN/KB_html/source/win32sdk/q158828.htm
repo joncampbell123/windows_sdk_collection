@@ -1,0 +1,197 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How To Call Win32 Spooler Enumeration APIs Properly </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q158828">
+<META NAME="KBModify" CONTENT="1996/11/18">
+<META NAME="KBCreate" CONTENT="1996/11/06">
+<META NAME="Keywords" CONTENT="kbprint kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Proper use of the Win32 Spooler Enumeration APIs requires two calls to the desired function. These APIs generally fill out an array of structures. However, the structures usually include pointers to strings or to other data. This extraneous data mu...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAUD,QBCF,QAIF,QAHT,QALW,QBHE,QA6Z,QAI4,QDIT,QBW6,QBWP,QAYY,QALM,QAIC V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How To Call Win32 Spooler Enumeration APIs Properly</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 18, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q158828</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) for
+   Windows NT and Win95, version 4.00
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Proper use of the Win32 Spooler Enumeration APIs requires two calls to the
+desired function. These APIs generally fill out an array of structures.
+However, the structures usually include pointers to strings or to other
+data. This extraneous data must also be stored in the return memory, so the
+strings and other data are appended to the array. Therefore, simply
+declaring an array of such structures on the stack would not set aside
+enough memory to hold all of the information the API returns.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The Enumeration APIs that behave this way include: EnumForms(), EnumJobs(),
+EnumMonitors(), EnumPorts(), EnumPrinterDrivers(), EnumPrinters(), and
+EnumPrintProcessors(). Also, GetJob(), GetPrinter(), and
+DocumentProperties() require the same treatment. In each case, proper usage
+requires an initial call to the function to determine the necessary buffer
+size, and a subsequent call that passes in a pointer to a dynamically-
+allocated buffer of sufficient size. The code below, from a console
+application, demonstrates this approach using the EnumJobs() API:
+<P>
+<PRE>   BOOL ListJobsForPrinter( LPTSTR szPrinterName )
+   {
+     HANDLE         hPrinter;
+     DWORD          dwNeeded, dwReturned, i;
+     JOB_INFO_1     *pJobInfo;
+
+     // You need a printer handle, open the printer
+     if( ! OpenPrinter( szPrinterName, &amp;hPrinter, NULL ) )
+       return FALSE;
+
+     // First you call EnumJobs() to find out how much memory you need
+     if( ! EnumJobs( hPrinter, 0, 0xFFFFFFFF, 1, NULL, 0, &amp;dwNeeded,
+                     &amp;dwReturned ) )
+     {
+       // It should have failed, but if it failed for any reason other
+       // than "not enough memory", you should bail out
+       if( GetLastError() != ERROR_INSUFFICIENT_BUFFER )
+       {
+         ClosePrinter( hPrinter );
+         return FALSE;
+       }
+     }
+     // Allocate enough memory for the JOB_INFO_1 structures plus
+     // the extra data - dwNeeded from the previous call tells you
+     // the total size needed
+     if( (pJobInfo = (JOB_INFO_1 *)malloc( dwNeeded )) == NULL )
+     {
+       ClosePrinter( hPrinter );
+       return FALSE;
+     }
+     // Call EnumJobs() again and let it fill out our structures
+     if( ! EnumJobs( hPrinter, 0, 0xFFFFFFFF, 1, (LPBYTE)pJobInfo,
+                     dwNeeded, &amp;dwNeeded, &amp;dwReturned ) )
+     {
+       ClosePrinter( hPrinter );
+       free( pJobInfo );
+       return FALSE;
+     }
+     // You're done with the printer handle, close it
+     ClosePrinter( hPrinter );
+
+     // dwReturned tells how many jobs there are
+     // Here, you'll simply display the number of jobs found
+     printf( "%d jobs\n", dwReturned );
+     // It's easy to loop through the jobs and access each one
+     for(i=0;i&lt;dwReturned;i++)
+     {
+       // pJobInfo[i] is a JOB_INFO_1 struct for that job
+       // so here you could do whatever you want for each job
+       printf( "[%d] [%s]\n", pJobInfo[i].JobId, pJobInfo[i].pDocument );
+     }
+
+     // Clean up
+     free( pJobInfo );
+     return TRUE;
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprint kbhowto<BR>
+KBSubcategory: GdiPrn<BR>
+Additional reference words: 4.00 kbdsd
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 18, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

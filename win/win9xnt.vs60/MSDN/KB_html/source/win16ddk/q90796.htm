@@ -1,0 +1,193 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Instanced Data Management in Enhanced Mode Windows </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q90796 ">
+<META NAME="KBModify" CONTENT="1995/04/12">
+<META NAME="KBCreate" CONTENT="1992/10/22">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win16ddk">
+<META NAME="Description" CONTENT="  In the enhanced mode Windows environment, both TSRs (terminate-and-stay- resident programs) and VxDs (virtual device drivers) can ask the operating system for areas of instanced data in the V86-mode addressable virtual memory range. This article de...">
+<META NAME="Product" CONTENT="Win16 DDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWN,QDL9,QBWO,QBWQ,QBWA,QAH4,QAYY,QDJD,QA7H,QA6A,QA5W,QANG,QDIR,QDIV,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Instanced Data Management in Enhanced Mode Windows</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 12, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q90796 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Device Driver Kit (DDK) for Windows version 3.1
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In the enhanced mode Windows environment, both TSRs (terminate-and-stay-
+resident programs) and VxDs (virtual device drivers) can ask the operating
+system for areas of instanced data in the V86-mode addressable virtual
+memory range. This article describes the algorithm that the VMM (virtual
+memory manager) employs to determine the memory layout as well as some
+implications arising from that approach.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Because the smallest unit of memory for which the Intel i386+ processor
+provides support to the operating system is 4K and the total addressable
+range in V86 mode is 0 - FFFF:F (including the virtual high memory area),
+the memory range of each virtual machine is associated with 0x10F pages
+that the VMM can maintain. Each of these pages is associated with a number
+of flags; the following are relevant for this discussion:
+
+<UL><LI>global (PG_SYS); meaning that this page is being mapped onto the same
+   physical page in every virtual machine; thus, changing the contents of
+   that page in one VM will affect the corresponding page in all VMs. By
+   default, all TSRs that were active before enhanced mode Windows started
+   up are considered global, as well as the images of the BIOS and MS-DOS
+   system code.
+
+<LI>local (PG_VM); meaning that that page is maintained in the context of
+   that VM only. Changes in these pages in one VM do not affect other VMs
+   unless the mapping has been changed by a VxD.
+
+<LI>instanced (PG_INSTANCE); meaning data that is generally being operated
+   on by code in global pages but needs to have local instances in each VM.
+   For example, MS-DOS keeps a variable in which it stores the current
+   working directory. Although the code that works on this variable is
+   global, the data itself is local so that each VM can operate in the
+   context of a different current working directory.
+<P>
+</UL>Because TSR code is not generally designed to be aligned on 4K boundaries,
+each page labeled PG_INSTANCE typically contains a mixture of instanced and
+global data. Windows requires that all instanced data be identified at
+system initialization time; once this task is completed, Windows sets up a
+data structure that contains the locations of instance data areas
+PG_INSTANCE marked pages. The contents of the instanced data structures
+present at Windows startup time will be saved into a snapshot buffer and
+restored from that buffer at Windows termination time.
+<P>
+Each VM will then be associated with an instance buffer that will initially
+contain a copy of the data in the snapshot buffer. Using a copy-on-write
+scheme that is supported by the faulting mechanism provided by the
+hardware, Windows updates a VM's instance buffer once write access has been
+detected to a PG_INSTANCE page (note that this is absolutely unrelated to
+the paging mechanism, although page faults are involved to implement this
+technique). Because only parts of an instance page are being updated,
+fragmented and large instance areas decrease the performance of the
+swapping mechanism. Note that VMs' instance buffers are not accessible to
+VxDs or TSRs; they are local data structures to be accessed by the VMM
+only.
+<P>
+One consequence of this approach is that changes that are made to instanced
+data while in Windows are lost after Windows terminates because the startup
+snapshot is restored then. For example, if files opened with handles are
+open before Windows enhanced mode starts up, these files should not be
+touched while Windows is running, because the internal structures that
+represent the files in MS-DOS are instanced.
+<P>
+Using the Windows termination notification broadcasts Interrupt 2fh,
+ax=1606h, and 1609h, respectively, a TSR could override the snapshot taking
+by providing a snapshot buffer of its own. That buffer would have to reside
+in global memory, that is, in the TSR itself, and would be allocated and
+filled while the TSR processes the 1609h broadcast; at 1606h time, the TSR
+could "undo" the restoration Windows did from its snapshot buffer. However,
+this technique requires knowledge of the internal structures of MS-DOS that
+are to be manipulated and is therefore not recommended.
+<P>
+When running the debug version of WIN386.EXE under control of the WDEB386
+debugger, the .mi command allows you to examine the currently active
+instanced areas.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 plus<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: DthreeMiscTsrintr<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 12, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

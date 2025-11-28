@@ -1,0 +1,241 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC: How to Send Information to the Clipboard </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q96900 ">
+<META NAME="KBModify" CONTENT="1997/06/08">
+<META NAME="KBCreate" CONTENT="1993/03/30">
+<META NAME="Keywords" CONTENT="kbprg PgmApi">
+<META NAME="KBArea" CONTENT="Support; KB; access, convert, crossnet, dbweb, odbc, winprint, setup, vbapp, office, officevba">
+<META NAME="Description" CONTENT="  Advanced: Requires expert coding, interoperability, and multiuser skills.  There is no Microsoft Access command to send information to the Clipboard. To post information to the Clipboard, you need to define an Access Basic function that calls sever...">
+<META NAME="Product" CONTENT="Access">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA1S,QAY5,QDN9,QANH,QBV8,QAB9,QA5F,QAMA,QA9N,QARM,QA2P,QASB,QAEF,QAH4,QACJ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC: How to Send Information to the Clipboard</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 8, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q96900 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access versions 1.0, 1.1, 2.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Advanced: Requires expert coding, interoperability, and multiuser skills.
+<P>
+There is no Microsoft Access command to send information to the
+Clipboard. To post information to the Clipboard, you need to define an
+Access Basic function that calls several Windows API functions. This
+article defines a function that copies text to the Clipboard.
+<P>
+This article assumes that you are familiar with Access Basic and with
+creating Microsoft Access applications using the programming tools provided
+with Microsoft Access. For more information on Access Basic, please refer
+to the "Introduction to Programming" manual in Microsoft Access version
+1.x, or the "Building Applications" manual, Chapter 3, "Introducing Access
+Basic" in version 2.0.
+<P>
+NOTE: In version 2.0, you can use the OLE_COPY action to copy an OLE field
+to the clipboard. This article does not address this case.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Notes</h3>
+ 
+
+<UL><LI>In the following sample code, an underscore (_) is used as a line
+   continuation character. Remove the underscore when re-creating this code
+   in Access Basic.
+
+<LI>You may have some Windows API functions defined in an existing
+   Microsoft Access library; therefore, your declarations may be
+   duplicates. If you receive the duplicate procedure name error, remove
+   or comment the Declare statement from your code.
+<P>
+</UL>To call the function, you can make a string assignment to the returned
+value, such as:
+<P>
+<PRE>   X = ClipBoard_SetData("This string will go to the Clipboard!")
+
+   '=================================================================
+   ' General Declarations
+   '=================================================================
+
+   Option Compare Database   'Use database order for string comparisons
+   Option Explicit
+
+   Declare Function kb_OpenClipBoard% Lib "User"_
+                    Alias "OpenClipBoard" (_
+                    ByVal hwnd%)
+   Declare Function kb_GlobalAlloc% Lib "Kernel" _
+                    Alias "GlobalAlloc" (ByVal wFlags%, ByVal wBytes&amp;)
+   Declare Function kb_GlobalLock&amp; Lib "Kernel" _
+                    Alias "GlobalLock" (ByVal hMem%)
+   Declare Function kb_lstrcpy&amp; Lib "Kernel" _
+                    Alias "lstrcpy" (ByVal lpString1 As Any, _
+                    ByVal lpString2 As Any)
+   Declare Function kb_GlobalUnLock% Lib "Kernel" _
+                    Alias "GlobalUnLock" (ByVal hMem%)
+   Declare Function kb_CloseClipBoard% Lib "User" Alias"CloseClipBoard"()
+   Declare Function kb_EmptyClipBoard% Lib "USER" _
+                    Alias "EmptyClipBoard" ()
+   Declare Function kb_SetClipboardData% Lib "User" _
+                    Alias "SetClipboardData" (ByVal wFormat%, _
+                    ByVal hMem%)
+
+   Global Const GHND = &amp;H42
+   Global Const CF_TEXT = 1
+   Global Const MAXSIZE = 4096
+
+   Function ClipBoard_SetData (MyString$)
+      Dim hGlobalMemory%, lpGlobalMemory&amp;, hClipMemory%, X%
+
+   '-------------------------------------------
+   ' Allocate moveable global memory.
+   '-------------------------------------------
+   hGlobalMemory% = kb_GlobalAlloc(GHND, Len(MyString$) + 1)
+
+   '-------------------------------------------
+   ' Lock the block to get a far pointer
+   ' to this memory.
+   '-------------------------------------------
+   lpGlobalMemory&amp; = kb_GlobalLock(hGlobalMemory%)
+
+   '-------------------------------------------
+   ' Copy the string to this global memory.
+   '-------------------------------------------
+   lpGlobalMemory&amp; = kb_lstrcpy(lpGlobalMemory&amp;, MyString$)
+
+   '-------------------------------------------
+   ' Unlock the memory.
+   '-------------------------------------------
+   If kb_GlobalUnLock(hGlobalMemory%) &lt;&gt; 0 Then
+      MsgBox "Could not unlock memory location. Copy aborted."
+      GoTo OutOfHere2
+   End If
+
+   '-------------------------------------------
+   ' Open the Clipboard to copy data to.
+   '-------------------------------------------
+   If kb_OpenClipBoard(0&amp;) = 0 Then
+      MsgBox "Could not open the Clipboard. Copy aborted."
+      Exit Function
+   End If
+
+   '-------------------------------------------
+   ' Clear the Clipboard.
+   '-------------------------------------------
+   X% = kb_EmptyClipBoard()
+
+   '-------------------------------------------
+   ' Copy the data to the Clipboard.
+   '-------------------------------------------
+   hClipMemory% = kb_SetClipboardData(CF_TEXT, hGlobalMemory%)
+
+   OutOfHere2:
+
+   If kb_CloseClipBoard() = 0 Then
+      MsgBox "Could not close Clipboard."
+   End If
+
+   End Function
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: api<BR>
+Keywords            : kbprg PgmApi<BR>
+Version             : 1.0 1.1 2.0<BR>
+Platform            : WINDOWS<BR>
+Hardware            : X86<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 8, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

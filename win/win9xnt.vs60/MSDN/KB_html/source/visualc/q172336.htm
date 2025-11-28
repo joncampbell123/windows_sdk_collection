@@ -1,0 +1,210 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Assertion Launching Program with Tip of Day &amp; Splash Screen </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q172336">
+<META NAME="KBModify" CONTENT="1997/09/05">
+<META NAME="KBCreate" CONTENT="1997/08/01">
+<META NAME="Keywords" CONTENT="MfcUI WizardIss kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When launching an MFC MDI application through a document from Explorer, an assertion is hit in the Afxwin2.inl file. This assertion only occurs if the application contains the Tip of the Day and Splash Screen components from the Component Gallery. ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAV6,QAF4,QA01,QAY2,QAMA V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Assertion Launching Program with Tip of Day &amp; Splash Screen</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 5, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q172336</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Component Gallery included with:
+<P><PRE>    - Microsoft Visual C++, 32-bit Editions, versions 4.0, 4.1, 4.2, 5.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When launching an MFC MDI application through a document from Explorer, an
+assertion is hit in the Afxwin2.inl file. This assertion only occurs if the
+application contains the Tip of the Day and Splash Screen components from
+the Component Gallery.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+When an application is launched by opening its document, MFC delays showing
+the main frame window. This delay is enough to cause the Tip of the Day
+modal dialog box to be parented off the modeless Splash Screen dialog box
+instead of the main frame. When the timer expires for the Splash Screen, it
+destroys itself and its children including the Tip of the Day dialog box.
+MFC still tries to process messages for that dialog box, thereby causing
+the assertion.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Delay showing the Tip of the Day dialog until after the Splash Screen
+destroys itself.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When an MFC application is normally launched (from the .exe file), the
+default behavior is to create the MDI Main frame window and to show it at
+the end of InitInstance(). When a splash screen is inserted from the
+component gallery, the Splash Screen modeless dialog box is displayed
+during CMDIFrameWnd::LoadFrame() which is called before the main window is
+shown. When the Tip of the Day component is inserted, its modal dialog box
+is shown after the main window is shown. A modal dialog box by default uses
+the last activated popup window as returned from ::GetLastActivePopup() as
+its parent. The code in CWnd::GetSafeOwner() which is called by
+CDialog::PreModal() uses the main window as the parameter to
+GetLastActivePopup() thereby returning the main window because it was the
+most recently active. As a result, the Tip of the Day dialog box is
+parented off the main window. For example:
+<P>
+<PRE>   BOOL CTipApp::InitInstance()
+   {
+      ...
+      if (!pMainFrame-&gt;LoadFrame(IDR_MAINFRAME)) // Display splash screen.
+         return FALSE;
+      m_pMainWnd = pMainFrame;
+      ...
+      if (!ProcessShellCommand(cmdInfo))  // Handle FileDDE or FileOpen
+         return FALSE;
+      ...
+      pMainFrame-&gt;ShowWindow(m_nCmdShow);
+      ...
+      ShowTipAtStartup();  // Display Tip of the Day dialog box.
+      ...
+   }
+
+</PRE>When an MFC application is launched from opening a document from the
+Explorer, the shell sends a DDE message to the MFC application and the
+shell command line information contains a DDE flag. This flag sets
+m_nCmdShow to FALSE so that the window can be shown later when the DDE
+message is processed by CDocManager::OnDDECommand(). This allows the Splash
+Screen to be the last activated window, so the Tip of the Day dialog box is
+parented off of it.
+<P>
+Because the Splash Screen kills itself by using a timer, it takes the tip
+of the day dialog box with it. This causes an assertion in line 35 (or line
+39 in Visual C version 5.0) in the CWnd::SendMessage() inline function in
+the Afxwin2.inl file. This is because MFC is still running its
+RunModalLoop() and is trying to send a message to an invalid hWnd.
+<P>
+One workaround is to remove the call to ShowTipAtStartup() from
+InitInstance() and to simply display the Tip of the Day dialog box after
+the Splash Screen is destroyed. For example:
+<P>
+<PRE>   void CSplashWnd::HideSplashScreen()
+   {
+      // Destroy the window, and update the mainframe.
+      DestroyWindow();
+      AfxGetMainWnd()-&gt;UpdateWindow();
+      AfxGetMainWnd()-&gt;PostMessage(WM_COMMAND, CG_IDS_TIPOFTHEDAY);
+   }
+</PRE>(c) Microsoft Corporation 1997, All Rights Reserved.
+Contributions by Adam Kim, Microsoft Corporation
+ 
+<PRE>Keywords          : MfcUI WizardIss kbprb
+Version           : WINDOWS NT:4.0,4.1,4.2,5.0
+Platform          : NT WINDOWS
+Issue type        : kbprb
+Solution Type     : kbworkaround</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 5, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

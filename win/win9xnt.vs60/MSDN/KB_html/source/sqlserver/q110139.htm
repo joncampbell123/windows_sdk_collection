@@ -1,0 +1,379 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Causes of SQL Transaction Log Filling Up </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q110139">
+<META NAME="KBModify" CONTENT="1997/08/29">
+<META NAME="KBCreate" CONTENT="1994/01/13">
+<META NAME="Keywords" CONTENT="SQLFAQ SSrvAdmin SSrvLock SSrvWinNT kbother kbfaq kbother kbtshoot">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The SQL Server transaction log can become full, which prevents further UPDATE, DELETE, or INSERT activity in the database, including CHECKPOINT. This is usually seen as error 1105:     Can't allocate space for object syslogs in database dbname beca...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDMH,QABM,QBVV,QAU5,QAHI,QAZV,QBXJ,QBCF,QAI5,QBW5,QA5V,QAGB,QAXB,QA5E,QAVX V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Causes of SQL Transaction Log Filling Up</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 29, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q110139</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server, version 4.2 for OS/2
+  - Microsoft SQL Server, versions 4.2 and 6.0
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The SQL Server transaction log can become full, which prevents further
+UPDATE, DELETE, or INSERT activity in the database, including CHECKPOINT.
+This is usually seen as error 1105:
+<P>
+<PRE>   Can't allocate space for object syslogs in database dbname because the
+   logsegment is full. If you ran out of space in syslogs, dump the
+   transaction log. Otherwise use ALTER DATABASE or sp_extendsegment to
+   increase the size of the segment.
+
+</PRE>This can happen on any database, including master or tempdb. This article
+discusses possible causes and solutions.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+A fundamental characteristic of true relational databases, such as
+Microsoft SQL Server, is that of transactional integrity. Any transaction
+must be completely atomic (that is, functionally indivisible) in that all
+changes must be either applied or not applied, even in the event of a
+system failure. In a user-defined transaction, all statements bracketed by
+the BEGIN TRANSACTION and COMMIT TRANSACTION statements are either applied
+or not applied. In an implicit transaction, each single SQL statement is
+considered an atomic unit.
+<P>
+This capability enables SQL Server to experience a power failure, operating
+system crash, and so forth when in production and after restarting, thus
+automatically recovering the database to a consistent state, with no human
+interaction required. This contrasts with non-relational systems which
+often require lengthy manual procedures to inspect the database for
+consistency problems following a system failure.
+<P>
+The transaction log mechanism is what provides this capability. Since
+transactional integrity is considered a fundamental, intrinsic
+characteristic of SQL Server, logging cannot be disabled. Certain utility
+or maintenance operations, such as fast BCP and SELECT INTO, do minimal
+logging, but even these log extent allocations so that rollback is
+possible.
+<P>
+The space requirements for logging can be considerable. For example, in
+most cases the before and after image of each updated data row must be
+recorded, plus that of any affected index rows. Since a certain fixed
+amount of transaction record overhead must be recorded for each logged row,
+the ratio of updated data to log space consumption will vary depending on
+the row width. For a narrow row, the amount of log space consumed for a
+particular UPDATE, DELETE or INSERT could be ten times the data space
+consumed. For wider rows, the amount of log space consumed will be
+proportionately less. Log space consumption is an unavoidable consequence
+of providing transactional integrity. The Database Administrator must
+provide sufficient log space for his or her particular installation.
+<P>
+The amount of log space required can vary depending on many factors and is
+very difficult to predict accurately beforehand. While general rule-of-
+thumb figures, such as 15 to 30 percent of the database size, are sometimes
+mentioned as a starting point for sizing the log, in actuality this varies
+widely. Successful SQL Server installations often do some simple empirical
+tests to roughly assess the log space requirements for their particular
+data and applications, and then size their log based on this. Attempting to
+size the log based solely on calculations and without tests is difficult
+and often inaccurate.
+<P>
+Several difficult-to-predict factors can account for variation in log space
+consumption. One factor is the query optimizer. For a given SQL data
+modification statement, the access plan can vary over time depending on
+statistical distribution of the data. Different access plans can consume
+different amounts of log space. Another factor is inevitable internal
+database fragmentation, which can affect the number of page splits
+performed. There is nothing that can be done or should be done to examine
+or affect this process, as SQL Server automatically manages data for the
+user.
+<P>
+An example of a simple test would be to run DBCC CHECKTABLE(syslogs), which
+returns the number of 2048-byte data pages in the log, both before and
+after executing a representative sample of your data modification queries.
+This can give an approximate idea of the log space requirement for these
+types of queries. It is usually best to err on the side of excess when
+providing either log or data disk space for relational databases such as
+SQL Server.
+<P>
+Sometimes the database administrator will enable the "truncate log on
+checkpoint" option of a database in an effort to avoid log space
+exhaustion. The intent of this option is to provide an automatic method of
+truncating the log, mainly for development or test databases which do not
+rely on log dumps for backup. This option does not disable logging or
+transactional integrity. It merely causes the checkpoint handler to attempt
+a log truncation approximately every 60 seconds. Note that the log will not
+be truncated when issuing a manual checkpoint command in a database with
+"truncate log on checkpoint" on. This option is always on for the tempdb
+database, even though this is not indicated in the status column of the
+sp_help stored procedure output.
+<P>
+Even with the "truncate log on checkpoint" option enabled, a number
+of factors can cause log space exhaustion. These are listed below:
+
+<OL><P><LI>A large atomic transaction, especially a bulk UPDATE, INSERT, or
+   DELETE: Each single SQL statement is considered an atomic unit that
+   must be applied or not applied in its entirety. For this reason, all
+   row alterations must be logged, and the transaction cannot be
+   truncated over its duration. For example, if a large bulk INSERT was
+   issued that had a running time of five minutes, the log consumed by
+   this transaction cannot be truncated for this period. The database
+   administrator must provide sufficient log space for the largest bulk
+   operation expected or must perform the bulk operation in smaller
+   groups.
+
+<P><LI>An uncommitted transaction: The log can only be truncated prior
+   to the oldest uncommitted transaction. There are several possible
+   causes of an uncommitted transaction, most of which are application
+   errors. These include:
+<P>
+   a. A bulk transaction: As considered above, for the duration of a
+<P><PRE>      large bulk transaction the log records generated by it cannot be
+      truncated. However, such a transaction also precludes log truncation
+      of other shorter transactions which do commit over the same period.
+      For example, say the database administrator has sized the log such
+      that it is sufficient for the largest envisioned bulk transaction.
+      Yet while this transaction runs, other shorter data modification
+      statements may also be consuming log space. This log space cannot be
+      truncated since the large bulk transaction started first and hence
+      becomes the oldest uncommitted transaction. The administrator must
+      be aware of the concurrency and log impact of a large bulk
+      transaction, and size the log appropriately.
+</PRE><P>
+   b. A poorly-designed application which allows for user input or
+<P><PRE>      other lengthy activity within a user-defined transaction: For
+      example, after issuing a BEGIN TRANSACTION, an application might
+      prompt the user for input which could take a long time, depending on
+      user behavior. Until the user responds and the application issues a
+      COMMIT, log truncation will not be possible.
+</PRE><P>
+   c. An application error in which a transaction is not committed: A
+<P><PRE>      common cause of this is incorrect handling of the DB-Library call
+      dbcancel() within a user-defined transaction. When a query is
+      canceled with dbcancel(), the currently executing SQL statement is
+      aborted and rolled back, but the outer transaction is not. The
+      application must be aware of this and issue the necessary ROLLBACK
+      TRANSACTION or COMMIT TRANSACTION statement to close the transaction.
+      Failure to do so can often result in error 3902:
+</PRE><P>
+<PRE>         The commit transaction has no corresponding BEGIN TRANSACTION.
+
+      It may be useful for the application to send a SELECT @@TRANCOUNT to
+      determine what transaction nesting level exists. However, the
+      application should not blindly do this and then issue COMMIT/ROLLBACK
+      to achieve @@TRANCOUNT=0. This is because if @@TRANCOUNT is ever
+      different from what the application expects, this indicates the
+      application has lost track of the transaction nesting level, which
+      is an application design error. Issuing COMMIT/ROLLBACK at this point
+      could result in applying or aborting unintended transactions, since
+      the application does not know which transactions resulted in the
+      unintended transaction level. Instead, the programmer should debug
+      the application and any stored procedures involved to determine the
+      cause of the unintended transaction level.
+
+   d. A network error which does not inform SQL Server of a broken network
+      connection: If the client workstation hangs, reboots, or shuts down
+      within a user-defined transaction, the network layer should inform
+      SQL Server of this. If the network does not properly do this, from
+      the perspective of SQL Server the client will appear to be present,
+      and the open transaction from that client will be maintained. This is
+      a network problem and must be pursued as such. As a workaround, the
+      administrator may be able to determine though using sp_who, sp_lock,
+      or a network utility which client session still exists and manually
+      kill it.
+
+   e. Transaction not committed due to blocking: In a multi-user
+      environment it is possible for an open transaction to become blocked
+      on locks held by another process. In this case, the transaction will
+      nevertheless remain open, preventing log truncation. To detect this,
+      the programmer or database administrator will need to use sp_who,
+      sp_lock, or other tools to analyze the concurrency environment. In
+      most cases blocking problems can be reduced or eliminated through
+      proper query, index, and database design.
+
+   f. Failed attempt to cancel a data modification query: If the
+      application issues a dbcancel() and the query is not canceled due to
+      either a network or SQL problem, the query will continue to run and
+      the transaction will remain open. If you suspect a problem here, use
+      sp_who to see if the query is cancelled. If attempting to cancel from
+      a TCP/IP sockets client, try the test from a named pipes client, or
+      run the client application on the server machine using local pipes.
+      This will help discern whether a network or SQL problem is preventing
+      the cancel.
+
+</PRE><P><LI>Checkpoint handler truncation bandwidth exceeded: Although the
+   log is truncated every 60 seconds, the rate at which this truncation
+   takes place is finite. This scenario is uncommon and the other
+   possible causes of log overflow should be considered and ruled
+   out first before inspecting this possibility. However, it is
+   possible to exceed the maximum truncation rate if many clients are
+   simultaneously issuing large updates. This is similar to a funnel
+   which can only drain fluid at a certain rate, and can be overfilled
+   even while draining. In this scenario the application can be
+   restructured to reduce the number of rows being updated, which should
+   always be a primary design goal for any relational database anyway.
+   If this is not feasible, the system can be reconfigured for increased
+   disk I/O bandwidth though striping, additional controllers, and so
+   forth. It is common in this case to see the checkpoint handler process
+   spend increasing amounts of time in the DUMP TRANSACTION state, as it
+   attempts to keep up with log truncation. Once the truncation
+   threshold is exceeded (see below) you may not see the checkpoint handler
+   ever attempt truncation in that database until the log is cleared.
+
+<P><LI>Truncation threshold exceeded: The checkpoint handler
+   essentially does a DUMP TRANSACTION WITH TRUNCATE_ONLY. Just as if
+   this was issued manually, it will not always succeed if the log is
+   already full to a certain point. For example, a burst of update
+   activity could fill the log to 95% between visits by the
+   checkpoint handler. When the checkpoint handler attempts truncation,
+   while the log is not completely full, it may be too full to allow
+   truncation. This is because the truncation of the log must itself be
+   logged. The only solution in this case is to use DUMP TRANSACTION
+   WITH NO_LOG to manually truncate the log. Using the NO_LOG option
+   is not recommended except when absolutely necessary, as it is a
+   non-logged operation during which system failure could introduce
+   database errors.
+
+<P><LI>Interactions between any of the above: For example, under
+   normal conditions in an update-intensive environment, the checkpoint
+   handler truncation rate may keep the log from filling up. If a
+   temporarily open transaction caused by any of the above conditions
+   (such as lock contention) causes the log to fill to say, 50%, there
+   will be much less headroom for handling other update situations,
+   making it much more likely to reach the truncation threshold, at
+   which point automatic truncation will not be possible.
+<P>
+   Transactions in tempdb are logged like any other database. Since
+   TRUNCATE LOG ON CHECKPOINT is on in tempdb, in most cases the log
+   will be truncated and not overflow. However, any of the above
+   circumstances can cause the tempdb log to fill up. Tempdb is
+   usually configured for mixed log and data (sysusages.segmap=7) so
+   data and log operations will contend for the same available space.
+   Certain Transact-SQL constructs such as GROUP BY, ORDER BY DESC, etc.,
+   will automatically require tempdb for work space. This will also
+   cause an implicit BEGIN TRANSACTION record in tempdb for the work
+   space. This tempdb transaction will continue for the duration of the
+   transaction in the user db, which can defer tempdb log truncation for
+   this period. If the transaction in the user db is halted for any
+   reason, including a blocking lock, or the application not processing
+   dbnextrow() to completion, the transaction in tempdb will likewise be
+   left open, preventing tempdb log truncation. The programmer must
+   debug the application and/or resolve the concurrency issues which
+   cause this.
+<P>
+</OL>The following discusses log truncation behavior at SQL startup based
+on whether TRUNCATE LOG ON CHECKPOINT is set.
+<P>
+- If TRUNCATE LOG ON CHECKPOINT is set and the log is found to be full
+<PRE>  at startup time, it will be automatically dumped with no_log.
+
+</PRE></OL>- TRUNCATE LOG ON CHECKPOINT is now the default in master because its
+<PRE>  log cannot be put on a separate device, so it can never be loaded.
+  The only viable option is to discard the log when it gets full.
+
+</PRE>- If TRUNCATE LOG ON CHECKPOINT is not set, and the log is found to be
+<PRE>  full at startup time, recovery completes, but the final checkpoint is
+  not written. An administrator can get into the database and dump the
+  log with no_truncate to save the data, then dump with no_log to purge
+  it (or just purge it).
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 4.20 6.00 sql6 transaction log 1105 Windows NT<BR>
+Keywords          : SQLFAQ SSrvAdmin SSrvLock SSrvWinNT kbother kbfaq kbother kbtshoot<BR>
+Version           : 4.2 6.0<BR>
+Platform          : OS/2 WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 29, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,248 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Inserts May Fail and Updates May Not Be Seen </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q111888">
+<META NAME="KBModify" CONTENT="1996/09/09">
+<META NAME="KBCreate" CONTENT="1994/02/22">
+<META NAME="Keywords" CONTENT="kbusage kbbug1.01.1928 kbbug1.01.2115 kbfix1.02.1403">
+<META NAME="KBArea" CONTENT="Support; KB; odbc">
+<META NAME="Description" CONTENT=" BUG# ODBCDBASE: 1915 (1.01.1928)   Under certain multi-user situations, applications using the Microsoft ODBC Access driver versions 1.01.1928 and 1.01.2115 may encounter the following two problems:  1. Read locks are retained longer than necessary....">
+<META NAME="Product" CONTENT="ODBC">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA1S,QAXB,QDN9,QAC1,QBD2,QAJH,QA9E,QA5V,QAU9,QAJQ,QDKY,QBVV,QAA5,QALH,QDIX V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Inserts May Fail and Updates May Not Be Seen</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 9, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q111888</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Open Database Connectivity, version 1.0
+</UL> 
+<P>
+BUG# ODBCDBASE: 1915 (1.01.1928)
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Under certain multi-user situations, applications using the Microsoft
+ODBC Access driver versions 1.01.1928 and 1.01.2115 may encounter the
+following two problems:
+
+<OL><P><LI>Read locks are retained longer than necessary. As a result of this,
+   when an application that executes a SELECT statement on a table such
+   that the WHERE clause contains a column with a unique index on it, other
+   applications will not be able to insert, delete, or update that table.
+   Attempts to do so will cause the following error:
+<P>
+<P><PRE>      Commit Lock failed due to outstanding read lock
+</PRE><P>
+   Locks will not be released until the application that did the SELECT
+   calls SQLDisconnect.
+
+<P><LI>Applications may be unable to "see" updates (row insertions,
+   deletions, and updates) made by other applications. This occurs under
+   the following circumstances:
+<P>
+   Application A executes a SELECT statement on a table and fetches all
+   the rows; then, application B updates (insert, delete or update) the
+   same table. Now if A re-executes the same SELECT statement and fetches
+   all the rows, it will see the exact same rows that it saw before; it
+   does not see the updates made by B. For A to be able to see the
+   updates, it needs to call SQLDisconnect on the hdbc on which the
+   original SELECT was performed.
+<P>
+   The ODBC Access driver is based on a sub component of the Access
+   database engine. This Access database engine implements a performance
+   enhancing caching scheme, as rows are retrieved from the database or
+   updated by an application they are cached. In most cases, this permits
+   rows to be re-retrieved without having to re-read from the actual
+   database file, thereby, enhancing performance.
+<P>
+   Locks held on the actual rows of the database from which they were
+   retrieved are not released until the corresponding cached rows are
+   flushed from the cache. Since locked rows are not updated due to reasons
+   of integrity, it follows that updates are not initiated until the
+   cache is flushed. The database engine caching scheme relies on the
+   application that is using the engine to initiate the process of flushing
+   the cache. This permits the application to "time" the flushing of the
+   cache to correspond with the operations the application is performing at
+   the time.
+<P>
+   For example, the Access product initiates the flushing process during
+   user "think time" to maximize the responsiveness of the user
+   interface. In the Access ODBC driver, the driver itself initiates the
+   flushing process, since relying on the application to do this would
+   reduce the interoperability of applications. If the driver relied on the
+   application to initiate this process, it would require applications to
+   write special code to use the Access ODBC driver. This is contrary to
+   the goal of ODBC.
+<P>
+</OL>In Access ODBC driver versions 1.01.1928 and 1.01.2115, this flushing
+process was initiated when SQLDisconnect was called by the application.
+This proved to be inadequate for some multi-user scenarios and caused the
+problems described above. A recent "hotfix" version of the driver
+(version 1.02.1403) initiates the flushing process at the following
+times:
+
+<OL><P><LI>SQLFreeStmt with the SQL_DROP option
+
+<P><LI>SQLFreeStmt with the SQL_CLOSE option
+
+<P><LI>SQLDisconnect
+<P>
+</OL>This causes cached rows to be flushed more often. It also means that the
+database file will be read more frequently, with the possibility of some
+performance degradation. However, it solves the problem of locks being
+held for longer than is necessary. It also solves the problem of
+visibility of updates in many multi-user scenarios.
+<P>
+In a few scenarios, it is possible that locking conflicts will still be
+encountered and updates will not be visible across applications, unless
+it is dropped and re-establish the connection. In particular, an
+application that executes a SELECT statement on a table such that the
+WHERE clause contains a column with a unique index on it, will not be
+able to see updates made to the table by other applications, until it
+drops and re-establishes the connection.
+<P>
+For the hotfix to work properly, the following entries should be
+inserted in the [Red ISAM] section of ODBCISAM.INI file:
+<P>
+IdleFrequency=1
+PageTimeout=1
+LockedPageTimeout=1
+<P>
+This minimizes the chance of encountering the "updates-not-visible"
+problem. The ODBCISAM.INI file is usually located in the \WINDOWS
+directory.
+<P>
+You will also note that the Access product does not, in general, exhibit
+this same behavior. The reason is the mechanism used to flush cached
+rows is somewhat different in the Access product which includes the
+complete Access database engine, than in the Access ODBC driver which
+uses a sub component of that engine. The complete Access database engine,
+enables an application to detect when it has successfully flushed all
+rows from the cache. Therefore, to ensure concurrency and the visibility
+of updates, Access flushes the cache until all rows have been forced
+out. The Access ODBC driver, using the sub component of the Access
+engine, can flush rows from the cache, but is unable to tell when all
+rows have been forced out. Therefore, it cannot guarantee that locking
+conflicts and the visibility of updates is resolved for every scenario.
+<P>
+Version 2.0 of the ODBC Driver Pack will be based on the complete
+Access database engine and will exhibit the same capability in this
+area as the Access product. Driver Pack version 2.0 is currently
+scheduled for release 2H 1994.
+<P>
+It should also be noted that even in the Access product, applications
+written in Access BASIC, can encounter substantially the same lock
+conflict scenario as outlined above. The way that locking conflicts are
+dealt with in this case, for example in Access BASIC applications, is for
+the application to retry the retrieval when such a conflict is encountered.
+Applications written to the ODBC Access driver can employ the same strategy
+to resolve such conflicts.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the Access Driver versions
+1.01.1928 and 1.01.2115. This problem has been fixed in Access driver
+version 1.02.1403. For more information, please contact your primary
+support provider.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbusage<BR>
+KBSubcategory:
+<P>
+
+Additional reference words: 1.01.1928 DDD VISUAL C++ 1.5 Word Excel
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 9, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

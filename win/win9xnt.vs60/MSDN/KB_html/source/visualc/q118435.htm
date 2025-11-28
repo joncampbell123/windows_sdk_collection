@@ -1,0 +1,245 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Sharing Menus Between MDI Child Windows </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q118435">
+<META NAME="KBModify" CONTENT="1997/10/10">
+<META NAME="KBCreate" CONTENT="1994/07/18">
+<META NAME="Keywords" CONTENT="MfcMisc kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The document-template model used in the MFC assumes that each template will have its own set of distinct resources that are all identified by the same resource ID. However, when dealing with similar MDI child windows, you may want to conserve resou...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAYL,QAIM,QAF0,QDL9,QBWQ,QBWO,QBWN,QAW6,QAPN,QABI,QAJQ,QBXS,QA0K,QABO,QA3A V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Sharing Menus Between MDI Child Windows</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q118435</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50 | 1.00 2.00 4.00
+<PRE>WINDOWS   | WINDOWS NT
+</PRE>kbprg
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P>
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+    - Microsoft Visual C++ 32-bit Edition, versions 1.0, 2.0, and 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The document-template model used in the MFC assumes that each template will
+have its own set of distinct resources that are all identified by the same
+resource ID. However, when dealing with similar MDI child windows, you may
+want to conserve resource space and have MDI child windows share the same
+menu resource.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Each CMultiDocTemplate object has a member variable, "m_hMenuShared", that
+stores the handle of the menu to be used for that child window. However,
+because the default CMultiDocTemplate object assumes that it is the only
+user of this member variable, a new class (for example, CSharedDocTemplate)
+must be derived to avoid having the CMultiDocTemplate destructor call
+DestroyMenu on the shared menu handle:
+<P>
+<PRE>   class CSharedDocTemplate : public CMultiDocTemplate
+   {
+     public:
+       CSharedDocTemplate(UINT nIDResource, CRuntimeClass* pDocClass,
+           CRuntimeClass* pFrameClass, CRuntimeClass* pViewClass);
+
+       virtual ~CSharedDocTemplate();
+   };
+
+   CSharedDocTemplate::CSharedDocTemplate(UINT nIDResource,
+     CRuntimeClass* pDocClass, CRuntimeClass* pFrameClass,
+     CRuntimeClass* pViewClass) : CMultiDocTemplate(nIDResource, pDocClass,
+                                    pFrameClass, pViewClass)
+   {
+   }
+
+   CSharedDocTemplate::~CSharedDocTemplate()
+   {
+     // This prevents the base class virtual destructor from
+     // destroying the menu resource (i.e. its checks to make
+     // sure the handle isn't NULL)
+
+     m_hMenuShared = NULL;
+   }
+
+</PRE>At this point, declare a public member variable to hold the common menu for
+the application; the CWinApp-derived object will take the responsibility of
+loading and destroying the common menu.
+<P>
+<PRE>   class CMyApp : public CWinApp
+   {
+   public:
+      HMENU m_ghMenuShared;
+
+      //...
+   };
+
+</PRE>Now, after the CSharedDocTemplate object has been created, you need to set
+its public member variable to the common menu resouce for the application.
+The following code fragments demonstrate how to set the handle for a single
+template or traverse the template list and set the common handle for all
+CSharedDocTemplate objects. Either of these code fragments could be used in
+the InitInstance of the CWinApp-derived object:
+<P>
+<PRE>   BOOL CMyApp::InitInstance()
+   {
+      ...
+
+      // New member of CWinApp derived class to store menu handle
+      m_ghMenuShared = ::LoadMenu(m_hInstance,
+         MAKEINTRESOURCE(IDR_SHAREDMENU));
+
+      CSharedDocTemplate* pDocTemplate;
+      pDocTemplate = new CSharedDocTemplate(
+                         IDR_MYTYPE,  // No menu resource should exist for
+                                      // this ID, the menu is set manually
+                         RUNTIME_CLASS(CMDIMyDoc),
+                         RUNTIME_CLASS(CMDIChildWnd),
+                         RUNTIME_CLASS(CMDIMyView));
+      pDocTemplate-&gt;m_hMenuShared = m_ghMenuShared;
+      AddDocTemplate(pDocTemplate);
+
+      ...
+   }
+
+   -or-
+
+   BOOL CMyApp::InitInstance()
+   {
+      ...
+
+      m_ghMenuShared = ::LoadMenu(m_hInstance,
+         MAKEINTRESOURCE(IDR_SHAREDMENU));
+
+      if (!m_templateList.IsEmpty())
+      {
+         CDocTemplate *pDocTemplate;
+
+         for (POSITION rPos = m_templateList.GetHeadPosition();
+            rPos != NULL;)
+         {
+            pDocTemplate = m_templateList.GetNext(rPos);
+            if (pDocTemplate-&gt;IsKindOf(RUNTIME_CLASS(CSharedDocTemplate)))
+               ((CSharedDocTemplate *)pDocTemplate)-&gt;m_hMenuShared =
+                                                     m_ghMenuShared;
+         }
+      }
+
+      ...
+   }
+
+</PRE>Lastly, you need to destroy the menu resource loaded in InitInstance. This
+can easily be accomplished by overriding the ExitInstance member of the
+CWinApp-derived class:
+<P>
+<PRE>   int CMyApp::ExitInstance()
+   {
+      ::DestroyMenu(m_ghMenuShared);
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.00 1.50 2.00 2.10 2.50 3.00 4.00<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: MfcMisc<BR>
+Keywords          : MfcMisc kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.00 1.50 | 1.00 2.00 4.00<BR>
+Platform          : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

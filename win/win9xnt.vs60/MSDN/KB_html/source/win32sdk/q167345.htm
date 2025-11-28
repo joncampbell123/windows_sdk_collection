@@ -1,0 +1,328 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Modify Printer Settings with DocumentProperties() </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q167345">
+<META NAME="KBModify" CONTENT="1997/07/03">
+<META NAME="KBCreate" CONTENT="1997/04/23">
+<META NAME="Keywords" CONTENT="GdiPrn kbcode kbprint">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Using a DEVMODE structure to modify printer settings is more complicated than simply changing the fields of the structure. Specifically, a valid DEVMODE structure for a device contains private data that can only be modified by the DocumentPropertie...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAY5,QABA,QAUD,QAOX,QACJ,QAB9,QBV8,QACT,QBAO,QAH6,QAHE,QAH7,QAD7,QA6A,QASR V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Modify Printer Settings with DocumentProperties()</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 3, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q167345</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK)
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Using a DEVMODE structure to modify printer settings is more complicated
+than simply changing the fields of the structure. Specifically, a valid
+DEVMODE structure for a device contains private data that can only be
+modified by the DocumentProperties() function. This article discusses the
+necessary steps to properly modify the contents of a DEVMODE structure with
+the DocumentProperties() function.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+A DEVMODE structure, as documented by the Win32 SDK, contains public or
+"Device Independent data" and private or "Device Dependent data." The
+private part of a DEVMODE exists immediately following the public part,
+which is defined by the DEVMODE structure, in a contiguous buffer of
+memory.
+<P>
+An application cannot predict the size of this buffer because it is
+different from printer to printer and version to version of printer driver.
+Further, a DEVMODE structure that is simply declared by an application does
+not contain sufficient space for private device data. If a DEVMODE buffer
+that lacks private data is passed to functions such as CreateDC(),
+ResetDC(), and DocumentProperties(), the function may fail.
+<P>
+To reliably use a DEVMODE with a device driver it should be properly
+created and modified using the following procedure:
+
+<OL><P><LI>Determine the required size of the buffer from the device and allocate
+   sufficient memory for it.
+<P>
+   The DocumentProperties() function returns the number of bytes required
+   for a DEVMODE buffer when the last parameter is set to 0. The sample
+   code in this article (see below) uses this technique to determine
+   the correct size of the buffer. Then it uses the C run-time memory
+   allocation function of malloc() to allocate a buffer of sufficient
+   size. Since DocumentProperties() and functions like ResetDC() and
+   CreateDC() take pointers to a DEVMODE as a parameter, it is sufficient
+   for most applications to allocate memory that is addressed by a
+   pointer.
+<P>
+   However, functions such as the common dialog PrintDlg() take parameters
+   that are required to be handles to global memory. If an application
+   uses the final DEVMODE buffer as a parameter to one of these functions,
+   it should allocate memory using the GlobalAlloc() function and obtain a
+   pointer to the buffer using the GlobalLock() function.
+
+<P><LI>Ask the device driver to initialize the DEVMODE buffer with the default
+   settings.
+<P>
+   The sample code calls DocumentProperties() a second time to initialize
+   the allocated buffer with the current default settings.
+   DocumentProperties() fills the buffer referred to as the pDevModeOutput
+   parameter with the printer's current settings when the DM_OUT_BUFFER
+   command is passed in the fMode parameter.
+<P>
+
+<P><LI>Make changes to the public portion of the DEVMODE and ask the device
+   driver to merge the changes into the private portion of the DEVMODE
+   by calling the DocumentProperties() function.
+<P>
+   After initializing the buffer with current settings in step 2, the
+   sample code makes changes to the public part of the DEVMODE. Refer to
+   the Win32 SDK documentation for descriptions of the DEVMODE members.
+   This sample code checks to see if the printer can use orientation and
+   duplex(double sided) settings and changes them appropriately.
+<P>
+   Note that a flag in a DEVMODE's dmFields member is only an indication
+   that a printer uses the associated structure member. Printers have a
+   variety of different physical characteristics and, therefore, may only
+   support a subset of a DEVMODE's documented capabilities. To determine
+   the supported settings of a DEVMODE's field, applications should use
+   the DeviceCapabilities() function.
+<P>
+   Then the sample code makes a third call to DocumentProperties() and
+   passes the DEVMODE buffer in both the pDevModeInput and pDevModeOutput
+   parameters. It also passes the combined commands of DM_IN_BUFFER and
+   DM_OUT_BUFFER in the fMode parameter by using the OR("|") operator.
+   These commands tell the function to take whatever settings are contained
+   in the input buffer and merge them with the current settings for
+   the device. Then it writes the result to the buffer specified in the
+   out parameter.
+<P>
+</OL>NOTE: The DocumentProperties() function refers to a specific printer by a
+handle to a printer: hPrinter. This handle is obtained from the
+OpenPrinter() function, which the sample code also illustrates. The
+OpenPrinter() function requires the name of a printer that is usually the
+friendly name of the printer as it appears in the Operating System's shell.
+This name can be obtained from the EnumPrinters() function, from the
+DEVNAMES structure returned by the PrintDlg() function, or from the Default
+Printer. For additional information about the Default Printer, please see
+the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q135387.htm">Q135387</A></B>
+   TITLE     : HOWTO: Get and Set the Default Printer in Windows
+
+</PRE></OL>NOTE: In this article the first two steps of allocating the correct size of
+buffer and initializing that buffer are performed with the
+DocumentProperties() function. The GetPrinter() function can also be used
+to perform these steps. For an example of this use, please see the
+following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q140285.htm">Q140285</A></B>
+   TITLE     : HOWTO: Modify Printer Settings by Using SetPrinter
+
+</PRE><h3>Sample Code</h3>
+ 
+<P>
+The sample function included in this article follows these three steps for
+obtaining and changing the DEVMODE buffer. The function takes a named
+printer and configures a DEVMODE to print landscape and double sided if it
+supports these features. The resulting DEVMODE that is returned to the
+caller is suitable for other API calls that use DEVMODE buffers such a
+CreateDC(), SetPrinter(), PrintDlg(), or ResetDC(). When the caller is done
+with the DEVMODE buffer it is responsible for freeing the memory.
+<P>
+<PRE>   LPDEVMODE GetLandscapeDevMode(HWND hWnd, char *pDevice)
+   {
+       HANDLE      hPrinter;
+       LPDEVMODE   pDevMode;
+       DWORD       dwNeeded, dwRet;
+
+       /* Start by opening the printer */
+       if (!OpenPrinter(pDevice, &amp;hPrinter, NULL))
+           return NULL;
+
+       /*
+        * Step 1:
+        * Allocate a buffer of the correct size.
+        */
+       dwNeeded = DocumentProperties(hWnd,
+           hPrinter,       /* handle to our printer */
+           pDevice,        /* Name of the printer */
+           NULL,           /* Asking for size so */
+           NULL,           /* these are not used. */
+           0);             /* Zero returns buffer size. */
+       pDevMode = (LPDEVMODE)malloc(dwNeeded);
+
+       /*
+        * Step 2:
+        * Get the default DevMode for the printer and
+        * modify it for our needs.
+        */
+       dwRet = DocumentProperties(hWnd,
+           hPrinter,
+           pDevice,
+           pDevMode,       /* The address of the buffer to fill. */
+           NULL,           /* Not using the input buffer. */
+           DM_OUT_BUFFER); /* Have the output buffer filled. */
+       if (dwRet != IDOK)
+       {
+           /* if failure, cleanup and return failure */
+           free(pDevMode);
+           ClosePrinter(hPrinter);
+           return NULL;
+       }
+
+       /*
+        * Make changes to the DevMode which are supported.
+        */
+       if (pDevMode-&gt;dmFields &amp; DM_ORIENTATION)
+       {
+           /* if the printer supports paper orientation, set it*/
+           pDevMode-&gt;dmOrientation = DMORIENT_LANDSCAPE;
+       }
+
+       if (pDevMode-&gt;dmFields &amp; DM_DUPLEX)
+       {
+           /* if it supports duplex printing, use it */
+
+           pDevMode-&gt;dmDuplex = DMDUP_HORIZONTAL;
+       }
+
+       /*
+        * Step 3:
+        * Merge the new settings with the old.
+        * This gives the driver a chance to update any private
+        * portions of the DevMode structure.
+        */
+       dwRet = DocumentProperties(hWnd,
+           hPrinter,
+           pDevice,
+           pDevMode,       /* Reuse our buffer for output. */
+           pDevMode,       /* Pass the driver our changes. */
+           DM_IN_BUFFER |  /* Commands to Merge our changes and */
+           DM_OUT_BUFFER); /* write the result. */
+
+       /* Done with the printer */
+       ClosePrinter(hPrinter);
+
+       if (dwRet != IDOK)
+       {
+           /* if failure, cleanup and return failure */
+           free(pDevMode);
+           return NULL;
+       }
+
+       /* return the modified DevMode structure */
+       return pDevMode;
+
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For additional information, please see the following article(s) in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q132239.htm">Q132239</A></B>
+   TITLE     : SAMPLE: Calling ExtDeviceMode/DeviceCapabilities in Win32s
+               App
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : GdiPrn kbcode kbprint<BR>
+Platform            : NT Win95 WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 3, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,298 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Trap Integer Divide-By-Zero Exceptions in C </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q73153 ">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1991/06/17">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  In Microsoft C versions 5.1 and later, when performing integer math it is possible to generate an exception by attempting to divide an integer by zero. Since the result of a division by zero operation is undefined, Intel sets aside an interrupt (In...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QADN,QAHC,QAH4,QAY5,QAGB,QAHB,QAAP,QAA1,QBFY,QA4Q,QAB4,QBV8,QAB9,QDI2,QBWD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Trap Integer Divide-By-Zero Exceptions in C</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q73153 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+6.00 6.00a 6.00ax 7.00  | 6.00 6.00a | 1.00 1.50
+<PRE>MS-DOS                  | OS/2       | WINDOWS
+</PRE>kbprg
+<P>
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft C for MS-DOS, versions 6.0, 6.0a, and 6.0ax
+<LI>Microsoft C for OS/2, versions 6.0 and 6.0a
+<LI>Microsoft C/C++ for MS-DOS, version 7.0
+<LI>Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In Microsoft C versions 5.1 and later, when performing integer math it
+is possible to generate an exception by attempting to divide an
+integer by zero. Since the result of a division by zero operation is
+undefined, Intel sets aside an interrupt (Interrupt 0) for the purpose
+of indicating that a divide-by-zero exception has occurred. In the
+default configuration, the run-time library shipped with Microsoft
+language products will issue the following error and terminate the
+program:
+<P>
+<PRE>   run-time error R6003
+   - integer divide by 0
+
+</PRE>Depending on your program's requirements, this may be undesirable
+behavior. If you want to trap this error and handle it in a more
+appropriate manner, you need to set up an exception handler for
+Interrupt 0. This can be done using the _dos_setvect() run-time
+function for MS-DOS, or the DosSetVec() API function for OS/2.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The code example below demonstrates how this is done in Microsoft C or
+Microsoft QuickC. The run time will install a default Interrupt 0
+handler during execution of the startup code (see CRT0DAT.ASM for
+specifics). If you want to install a different handler, you should
+save the original interrupt vector so that you can restore it as part
+of the cleanup procedure. With the run-time library in MS-DOS, this is
+done using the _dos_getvect() function. Using the OS/2 API function
+DosSetVec(), one of the arguments you pass is the address of where you
+want the original function pointer stored.
+<P>
+The actual function that handles the error must be declared with the
+_interrupt keyword. Doing so causes the compiler to save all the
+registers on function entry, restore them when the function
+terminates, and issue an "iret" instruction to return to the calling
+procedure. For more information on the _interrupt keyword, see the
+online help.
+<P>
+Inside the exception handler, you have a couple of choices on how to
+handle the error: you can either terminate the process or ignore the
+error and continue. If you decide to terminate the process, remember
+to call one of the run-time exit routines to shut down the run time
+[exit(), _exit(), _cexit(), or _c_exit()]. If you decide to ignore the
+error and continue, you must increment CS:IP to skip over the
+instruction that caused the error. This is also illustrated below in
+the sample program.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed for DOS : /G2 /DDOS
+   Compile options needed for OS/2: /G2 /DOS2
+*/
+
+</PRE>#ifdef OS2
+<PRE>#define INCL_DOSMISC
+#include &lt;os2.h&gt;
+</PRE>#endif
+<P>
+#pragma check_stack( off )
+#pragma check_pointer( off )
+<P>
+<PRE>#include &lt;dos.h&gt;
+#include &lt;stdio.h&gt;
+
+void main(void);
+void _far _cdecl _interrupt ZeroDivTrap(unsigned, unsigned, unsigned,
+                                        unsigned, unsigned, unsigned,
+                                        unsigned, unsigned, unsigned,
+                                        unsigned, unsigned, unsigned,
+                                        unsigned);
+int arg1 = 10;
+int arg2 = 0;
+int arg3;
+int rc;        // return codes...
+
+void main(void)
+</PRE>{
+#ifdef DOS
+<P>
+<PRE>   // For MS-DOS, first retrieve the old handler,
+   // then set up the new one.
+
+   void (_interrupt _far *OldZeroDiv)();
+
+   OldZeroDiv = _dos_getvect((unsigned)0x00);
+
+   _dos_setvect(0x00, ZeroDivTrap);
+
+</PRE>#endif
+<P>
+#ifdef OS2
+<PRE>   // For OS/2, the API will take care of both for us.
+
+   PFN OldZeroDiv;
+   PFN NewZeroDiv;
+   rc = DosSetVec(VECTOR_DIVIDE_BY_ZERO,
+                  (PFN)ZeroDivTrap, &amp;OldZeroDiv);
+
+   if (rc != 0)
+      printf("rc: %d - DosSetvec() Failed...\n", rc);
+
+</PRE>#endif
+<P>
+<PRE>   // Now let's try to generate an error. This should do it:
+   arg3 = arg1 / arg2;
+
+   // Just to make sure we are back where we started, print a message.
+
+   printf("Back in the main code...\n");
+
+   // Clean up after ourselves.
+
+</PRE>#ifdef DOS
+<PRE>   _dos_setvect(0x00, OldZeroDiv);
+</PRE>#endif
+<P>
+#ifdef OS2
+<PRE>   rc = DosSetVec(VECTOR_DIVIDE_BY_ZERO, OldZeroDiv, &amp;NewZeroDiv);
+
+   if (rc != 0)
+      printf("rc: %d - DosSetvec() Failed...\n", rc);
+</PRE>#endif
+<P>
+<PRE>   // All done!
+</PRE>}
+<P>
+<PRE>void _far _cdecl _interrupt ZeroDivTrap(unsigned _es,
+          unsigned _ds, unsigned _di, unsigned _si,
+          unsigned _bp, unsigned _sp, unsigned _bx,
+          unsigned _dx, unsigned _cx, unsigned _ax,
+          unsigned _ip, unsigned _cs, unsigned _flags)
+{
+   char chAddrByte;
+
+   printf("This is from inside the Exception Handler...\n");
+
+   // If we want to terminate the program, do it now. Remember to
+   // call one of the exit routines to shut down the run time
+   // [for example, exit(), _exit(), _cexit(), or _c_exit()].
+
+   // On the other hand, if you want to continue (knowing of course
+   // that the results are incorrect for the divide operation), you
+   // have to determine the size of the instruction that caused the
+   // exception and jump past it. This is done by examining the mod
+   // and r/m bits in the second byte of the op code and incrementing
+   // the IP register by the required amount. See the MASM or Intel
+   // docs for more information.
+
+   chAddrByte = *(char far *)(((unsigned long)_cs &lt;&lt; 16) + _ip + 1);
+
+   chAddrByte &amp;= 0xC7;           // Mask off unneeded bits.
+
+   if (chAddrByte == 6)          // If mod = 0 and r/m = 6, then
+      _ip += 4;                  //      opcode is 4 bytes.
+   else
+      switch (chAddrByte &gt;&gt; 6)   // Else, we look at mod only.
+      {
+      case 0:
+      case 3:
+         _ip += 2;
+         break;
+      case 1:
+         _ip += 3;
+         break;
+      case 2:
+         _ip += 4;
+         break;
+      }
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.00 1.50 6.00 6.00a 6.00ax 7.00<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: CLngIss<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

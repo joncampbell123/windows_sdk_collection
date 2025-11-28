@@ -1,0 +1,226 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Queued Console Control Signals May be Missed Under Win95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q134284">
+<META NAME="KBModify" CONTENT="1997/03/04">
+<META NAME="KBCreate" CONTENT="1995/08/03">
+<META NAME="Keywords" CONTENT="BseCon kbprg kbbuglist">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Console applications call SetConsoleCtrlHandler() to install or remove application-defined callback functions to handle console control signals. Typically a console window with keyboard focus receives the CTRL_C_EVENT and CTRL_BREAK_EVENT signals w...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAO4,QAPN,QANE,QDL9,QBWO,QBWN,QBWQ,QA7O,QAOE,QAA1,QAMN,QAGX,QAB5,QAOX,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Queued Console Control Signals May be Missed Under Win95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 4, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q134284</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Console applications call SetConsoleCtrlHandler() to install or remove
+application-defined callback functions to handle console control signals.
+Typically a console window with keyboard focus receives the CTRL_C_EVENT
+and CTRL_BREAK_EVENT signals when the CTRL+C and CTRL+BREAK keys are
+pressed or if they are generated using the GenerateConsoleCtrlEvent()
+function. But the system generates CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT,
+and CTRL_SHUTDOWN_EVENT signals when the user closes the console, logs
+off, or shuts down the system so that the console process has an
+opportunity to clean up before termination.
+<P>
+In Windows 95, console applications that install console control handler
+functions by using SetConsoleCtrlHandler() do not always get all console
+signals when two or more signals occur at almost the same time.
+<P>
+Note that this problem does not occur under Windows NT versions 3.51
+and 4.0.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The Windows 95 console system does not queue up console control signals or
+events. If multiple events occur rapidly in succession, events received
+later overwrite those received earlier, resulting in the earlier events
+being lost. The number of events that the console application receives
+depends on when the events actually arrive; the shorter the interval
+between the events, the more likely that one or more will be lost.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this problem and will
+post new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following code demonstrates the problem. It should receive five
+CTRL_C_EVENT and five CTRL_BREAK_EVENT events, and print a line for
+each. However, because events are not queued, it will print less than
+five of each event type, and may print only the last CTRL_BREAK_EVENT.
+<P>
+<P><h3>Sample Code to Demonstrate Problem</h3>
+ 
+<P>
+<PRE> // Console Application
+ #include &lt;windows.h&gt;
+ #include &lt;stdio.h&gt;
+
+ BOOL WINAPI CtrlHandler (DWORD dwEvent);
+
+ void main (void)
+ {
+    printf ("Installing handler\n");
+    SetConsoleCtrlHandler (CtrlHandler, TRUE);
+
+    GenerateConsoleCtrlEvent (CTRL_C_EVENT, 0);
+    GenerateConsoleCtrlEvent (CTRL_C_EVENT, 0);
+    GenerateConsoleCtrlEvent (CTRL_C_EVENT, 0);
+    GenerateConsoleCtrlEvent (CTRL_C_EVENT, 0);
+    GenerateConsoleCtrlEvent (CTRL_C_EVENT, 0);
+
+    GenerateConsoleCtrlEvent (CTRL_BREAK_EVENT, 0);
+    GenerateConsoleCtrlEvent (CTRL_BREAK_EVENT, 0);
+    GenerateConsoleCtrlEvent (CTRL_BREAK_EVENT, 0);
+    GenerateConsoleCtrlEvent (CTRL_BREAK_EVENT, 0);
+    GenerateConsoleCtrlEvent (CTRL_BREAK_EVENT, 0);
+
+    printf ("Removing handler\n");
+    SetConsoleCtrlHandler (CtrlHandler, FALSE);
+ }
+
+ BOOL WINAPI CtrlHandler (DWORD dwEvent)
+ {
+    switch (dwEvent)
+       {
+       case CTRL_C_EVENT:
+          printf("Got CTRL_C_EVENT\n");
+          break;
+
+       case CTRL_BREAK_EVENT:
+          printf("Got CTRL_BREAK_EVENT\n");
+          break;
+
+       case CTRL_LOGOFF_EVENT:
+          printf("Got CTRL_LOGOFF_EVENT\n");
+          break;
+
+       case CTRL_SHUTDOWN_EVENT:
+          printf("Got CTRL_SHUTDOWN_EVENT\n");
+          break;
+
+       case CTRL_CLOSE_EVENT:
+          printf("Got CTRL_CLOSE_EVENT\n");
+          break;
+
+       default:
+          // unknown type--better pass it on.
+          return (FALSE);
+       }
+    // Handled all known events
+    return (TRUE);
+ }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Windows 95 win95
+<P>
+
+Keywords            : BseCon kbprg kbbuglist<BR>
+Issue type          : kbbug<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 4, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

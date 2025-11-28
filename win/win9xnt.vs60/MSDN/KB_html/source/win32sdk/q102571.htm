@@ -1,0 +1,196 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Calling DdePostAdvise() from XTYP_ADVREQ </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q102571">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1993/08/04">
+<META NAME="Keywords" CONTENT="kbui">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The documentation for DdePostAdvise() in the Windows 3.1 Software Development Kit  Programmer's Reference, Volume 2: Functions  states the following in the Comments section:     If a server calls DdePostAdvise() with a topic/item/format name set   ...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QDL9,QBWO,QBWN,QAY2,QAJQ,QAUD,QAL3,QAH4,QAGX,QBWQ,QA19,QAIF,QAYY,QBXS V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Calling DdePostAdvise() from XTYP_ADVREQ</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q102571</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) versions 3.1
+
+<LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.5 and 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The documentation for DdePostAdvise() in the Windows 3.1 Software
+Development Kit "Programmer's Reference, Volume 2: Functions" states
+the following in the Comments section:
+<P>
+<PRE>   If a server calls DdePostAdvise() with a topic/item/format name set
+   that includes the set currently being handled in an XTYP_ADVREQ
+   callback, a stack overflow may result.
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+This is merely a warning against calling DdePostAdvise() from within a
+DDE callback function's XTYP_ADVREQ transaction, because it may result
+in a stack overflow.
+<P>
+Like window procedures, DDE callbacks must be coded with care to avoid
+infinite recursion (eventually resulting in a stack overflow). Because
+DdePostAdvise() causes DDEML to send an XTYP_ADVREQ transaction to the
+calling application's DDE callback function, calling DdePostAdvise()
+on the same topic/item/format name set as the one currently being
+handled results in an infinite loop.
+<P>
+An analogous piece of code that has become a classic problem in
+Windows programming involves calling UpdateWindow() in a WM_PAINT
+case:
+<P>
+<PRE>   case WM_PAINT:
+       InvalidateRect (hWnd, NULL, TRUE);
+       UpdateWindow (hWnd);
+
+</PRE>Calling UpdateWindow() as in the code above causes a WM_PAINT message
+to be sent to a window procedure, and thus results in the same type of
+infinite recursion that occurs when calling DdePostAdvise() from an
+XTYP_ADVREQ transaction.
+<P>
+An example of a situation that would lend itself to this scenario
+would be one where data needs to be updated as a result of a previous
+data change. There are two ways to work around the stack overflow
+problem in this case:
+
+<UL><LI>Post a user-defined message and handle the data change
+   asynchronously. For example,
+<P>
+<P><PRE>      // in DdeCallback:
+      case XTYP_ADVREQ:
+<PRE></PRE>                if ((!DdeCmpStringHandles (hsz1, ghszTopic)) &amp;&amp;
+                    (!DdeCmpStringHandles (hsz2, ghszItem)) &amp;&amp;
+                    (fmt == CF_SOMEFORMAT))
+                  {
+                        HDDEDATA  hData;
+
+                        hData = DdeCreateDataHandle ();
+                        PostMessage (hWnd, WM_DATACHANGED,hData,);
+                        return (hData);
+                  }
+                  break;
+
+       // in MainWndProc():
+       case WM_DATACHANGED:
+               DdePostAdvise (idInst, ghszTopic, ghszItem);
+                 :
+
+</PRE><LI>Return CBR_BLOCK from the XTYP_ADVREQ and let DDEML suspend further
+   transactions on that conversation, while the server prepares data
+   asynchronously.
+<P>
+</UL>More information on how returning CBR_BLOCK allows an application to
+process data "asynchronously" may be derived from Section 5.8.6 of the
+Windows 3.1 Software Development Kit (SDK) "Programmer's Reference,
+Volume 1: Overview," or by querying on the following words in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   DDEML and CBR_BLOCK
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 3.50 3.51 4.00 95<BR>
+KBCategory: kbui<BR>
+KBSubcategory: UsrDde<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

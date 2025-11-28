@@ -1,0 +1,202 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: CTimeSpan::GetDays() Reports 29 Days in April </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q109790">
+<META NAME="KBModify" CONTENT="1997/05/28">
+<META NAME="KBCreate" CONTENT="1994/01/09">
+<META NAME="Keywords" CONTENT="MfcMisc kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The CTimeSpan::GetDays function seems to incorrectly report that the number of days between April 1 and May 1 is 29, instead of 30.  CAUSE =====  This behavior of the CTimeSpan::GetDays function is by design. One day in April is the start of Daylig...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QACE,QAYL,QAGJ,QAU3,QAMR,QBXS,QAFH,QBFY,QAY5,QAX1,QAKC,QBVV,QAL3,QALQ,QADX V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: CTimeSpan::GetDays() Reports 29 Days in April</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 28, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q109790</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P><PRE>    - Microsoft C/C++ version 7.0
+    - Microsoft Visual C++ for Windows, versions 1.0, 1.5, 1.51, 1.52
+    - Microsoft Visual C++ 32-bit Edition, versions 1.0, 2.0, 2.1, 4.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The CTimeSpan::GetDays function seems to incorrectly report that the number
+of days between April 1 and May 1 is 29, instead of 30.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This behavior of the CTimeSpan::GetDays function is by design. One day in
+April is the start of Daylight Savings Time. On that day, there are only 23
+hours, instead of the normal 24. Because of the way the CTimeSpan::GetDays
+member function is implemented, a day with less than 24 hours is not a
+complete day.
+<P>
+Because the time span is figured in seconds, the time span for a month is
+the sum of all the seconds in a month. The definition of
+CTimeSpan::GetDays() in AFX.INL (located in the MFC\INCLUDE sub-directory
+of the Visual C++ installation directory)calculates the number of days by
+dividing the value of the m_timeSpan member variable by the number of
+seconds in a day. Thus, if one day in a 30-day month has 23 hours (which is
+the case here), m_timeSpan will be short by 3600 seconds, and the result of
+the division will be 29 (days), rather than 30. This is a characteristic of
+integer division in C/C++ where the remainder is truncated.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+There are two workarounds:
+
+<UL><LI>If you are interested only in the precision of the number of days, add
+   3600 seconds to the instance of CTimeSpan. This ensures that the April
+   case is handled appropriately, and that other calculations will not be
+   affected, as a characteristic of integer division. Adding 3600 seconds
+   (one hour) to a CTimeSpan instance will not affect measurement in days
+   even in the worst case of a time span being some multiple of 86400
+   seconds (one day), because a day with one hour is not a full day.
+<P>
+   -or-
+
+<LI>Use the TZ environment variable to control how time calculations are
+   handled by MFC. The TZ environment variable can be set from the command
+   line (such as in AUTOEXEC.BAT), or it can be set with the _putenv()
+   function. The documentation for the TZ environment variable [in the
+   online help or the "Run-Time Library Reference," under _tzset()], states
+   that the default value of TZ is PST8PDT, which corresponds to the
+   Pacific time zone.
+<P>
+   To work around the problem at hand, just set ONLY the tzn (three letter
+   time zone) and hh (difference in hours between Universal Coordinated
+   Time/Greenwich Mean Time) fields of the TZ variable. For example, if
+   you are in the Eastern Time Zone, and set the TZ variable to EST5, then
+   Daylight Savings Time would not be taken into account when doing CTime
+   and CTimeSpan calculations.
+<P>
+   NOTE: You MUST set the TZ variable before doing ANY time calculations,
+   including initialization of CTime objects. Try moving the _putenv() call
+   in the following code to demonstrate this. A good place to set the TZ
+   environment variable is in the application's InitInstance() function.
+<P>
+</UL><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   void CDialogsApp::OnTimeDaysInApril()
+   {
+       // Set TZ environment variable.
+       if (_putenv("TZ=PST8")==-1)
+        // Can't set variable.
+        AfxMessageBox("Unable to set TZ environment variable",MB_OK);
+       else {
+        // Variable set, show its effect!
+        CTime t1(1993,4,1,0,0,0);   // April 1, 1993, 12:00:00 am
+        CTime t2(1993,5,1,0,0,0);   // May 1, 1993, 12:00:00 am
+        // Calculate time span.
+        CTimeSpan ts = t2 - t1;
+        LONG lNumDays=ts.GetDays();
+        // Output message.
+        char buffer[40];
+        wsprintf(buffer,"Days in April: %ld",lNumDays);
+        AfxMessageBox(buffer,MB_OK);
+       }
+   }
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : MfcMisc kbprb<BR>
+Technology          : kbmfc<BR>
+Version             : 1.0 1.5 1.51 1.52 2.0 2.1 4.0 7.<BR>
+Platform            : MS-DOS NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 28, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

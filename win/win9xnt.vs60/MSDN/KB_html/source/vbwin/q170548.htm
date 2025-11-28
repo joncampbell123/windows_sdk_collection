@@ -1,0 +1,252 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: DAO Transactions to ODBC Database Can Hang Application </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q170548">
+<META NAME="KBModify" CONTENT="1997/11/20">
+<META NAME="KBCreate" CONTENT="1997/06/24">
+<META NAME="Keywords" CONTENT="VB4ALL VB4WIN vb5all">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  When using transactions to an ODBC database, it is possible to cause a Visual Basic application to appear to hang until the ODBC query time-out interval is reached and error 3146  ODBC Call Failed  is raised. The DBEngine errors collection will sho...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBS0,QAI5,QBG2,QA9E,QAPN,QAH4,QAMA,QBXJ,QBWS,QAZV,QAJ6,QDJO,QA5F,QA5V,QALH V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: DAO Transactions to ODBC Database Can Hang Application</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 20, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q170548</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual Basic Professional and Enterprise Editions for
+   Windows, version 5.0
+<LI>Microsoft Visual Basic Professional and Enterprise Editions, 16-bit and
+   32-bit, for Windows, version 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When using transactions to an ODBC database, it is possible to cause a
+Visual Basic application to appear to hang until the ODBC query time-out
+interval is reached and error 3146 "ODBC Call Failed" is raised. The
+DBEngine errors collection will show an ODBC "Time-out Expired" error.
+<P>
+The Visual Basic application appears to hang and will eventually display
+and error with an ODBC Time-out message after the interval specified in the
+QueryTimeout property of the database object (default = 60 seconds). If the
+error is trapped and handled, the application can resume normally although
+the data may have been rolled back or partially committed.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+When the Microsoft Jet Engine, used by Visual Basic, performs transactions
+on an ODBC database, it issues ODBC transactions down each connection that
+it opens between the BeginTrans and the CommitTrans/Rollback. It then
+commits or rolls back all of the transactions on all of the connections
+when a CommitTrans or Rollback is issued.
+<P>
+It must do this because the Jet engine offers global and nested
+transactions while the current ODBC specification does not; it only allows
+for a single transaction on a per connection basis.
+<P>
+If needed, the Jet engine will open multiple connections in order to
+perform the transactions. The server sees each connection as a separate
+process. It has no way of knowing that it is from the same application or
+that you may want the connections to get along with each other in terms of
+locking or available data. It simply treats each connection as a completely
+independent and distinct entity.
+<P>
+This raises a problem. If the Jet engine opens a connection, begins a
+transaction that affects a given page of data on a given table, then opens
+another connection and begins another transaction that affects the same
+page of data, the server will block (serialize) the second connection until
+the first one releases the locks (completes). This causes the Visual Basic
+application to hang on the line of code that is running the statement on
+the second connection until the transaction that it sent on the first
+connection completes. This can never happen because the transaction on the
+first connection is open until a CommitTrans or Rollback is encountered in
+the Visual Basic code, but that code is hung waiting for the transaction to
+complete. It is hung indefinitely unless a time-out occurs on one of the
+connections, which is what eventually happens.
+<P>
+The following example demonstrates the problem with most ODBC servers:
+
+<OL><P><LI>Create a datasource for your server named DSN_BLK_TEST using the ODBC
+   Administrator applet.
+
+<P><LI>Open Visual Basic 4.0 (16- or 32-bit) and start a new project.
+
+<P><LI>Reference the appropriate DAO reference in the References dialog.
+
+<P><LI>Add a CommandButton to the form.
+
+<P><LI>Add the following code to the click event of the CommandButton:
+<P>
+<P><PRE>      Private Sub Command1_Click()
+</PRE><P>
+<PRE>         Dim db As Database
+         Dim rs As Recordset
+         Dim strSQL As String
+         Dim intLoop As Integer
+
+         'Open up the ODBC datasource
+         Set db = DBEngine.Workspaces(0).OpenDatabase("", _
+         False, False, "ODBC;DSN=HOOHAA;DATABASE=TestDB;UID=sa;PWD=;")
+         'Create a table with two fields one a primary key
+         strSQL = "IF EXISTS(SELECT * FROM sysobjects WHERE id = "
+         strSQL = strSQL &amp; "object_id('t_blocking')) DROP TABLE t_blocking"
+         db.Execute strSQL, dbSQLPassThrough
+         strSQL = "CREATE TABLE t_blocking (f_pkey int " &amp; _
+                  "NOT NULL PRIMARY KEY,"
+         strSQL = strSQL &amp; " f_dummy varchar(10) NULL)"
+         db.Execute strSQL, dbSQLPassThrough
+         Set rs = db.OpenRecordset("SELECT * FROM t_blocking")
+         'Demonstrate Blocking
+         BeginTrans
+         'Add some records
+         For intLoop = 1 To 25
+            rs.AddNew
+            rs.Fields("f_pkey") = intLoop
+            rs.Fields("f_dummy") = "test" &amp; Str$(intLoop)
+            rs.Update
+         Next intLoop
+         'Try to update a few records. This should cause a second
+         'connection' to be created by the JET engine
+         'causing a blocking condition.
+         strSQL = "UPDATE t_blocking SET f_dummy = 'updated' " &amp; _
+                  "WHERE f_pkey &gt; 20"
+         db.Execute strSQL
+         CommitTrans
+
+      End Sub
+
+</PRE></OL>The code should appear to hang on the last db.Execute statement. Using the
+server administrative tools for the server that you are using, check the
+locking status on the t_blocking table. It should show the first connection
+blocking the second.
+<P>
+NOTE: Depending on the locking mechanisms of the server, this test may
+not cause a locking problem.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To work around the problem:
+
+<OL><P><LI>Keep transactions as small as possible. If this condition is
+   encountered, check the locking on the server and limit the transaction
+   to the point where blocking occurs.
+
+<P><LI>Use the ODBC API. If you are using Visual Basic 4.0 32-bit Enterprise
+   Edition, use the Remote Data Objects (RDO) or Remote Data Control (RDC).
+   Because you have complete control over connections and transactions on
+   the connections, you can avoid this problem.
+
+<P><LI>Use SQLPassthrough queries that combine the blocking statements into
+   one statement that does transactions within the SQL statement. This
+   could be ad hoc SQL or precompiled into a stored procedure.
+<P>
+</OL><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+(c) Microsoft Corporation 1997, All Rights Reserved. Contributions by
+Troy Cambra, Microsoft Corporation
+ 
+<PRE>Keywords          : VB4ALL VB4WIN vb5all
+Version           : 4.0 5.0
+Platform          : WINDOWS
+Issue type        : kbbug</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 20, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

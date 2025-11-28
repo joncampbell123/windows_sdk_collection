@@ -1,0 +1,239 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Using InternetReadFile To Get File </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q149413">
+<META NAME="KBModify" CONTENT="1997/10/31">
+<META NAME="KBCreate" CONTENT="1996/04/02">
+<META NAME="Keywords" CONTENT="AXSDKWinInet kbnetwork kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; axsdk">
+<META NAME="Description" CONTENT="  Using a WinInet API, the InternetReadFile returns the following buffer:            HTTP/1.0 406 No acceptable objects were found               MORE INFORMATION  This is an HTTP server specific error. Microsoft IIS may return this error when there i...">
+<META NAME="Product" CONTENT="ActiveX SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ActiveX ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAAP,QAB4,QALW,QAD7,QDL9,QBWO,QBWN,QAJQ,QA3N,QAGK,QAZM,QAZL,QAGB,QAXC V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Using InternetReadFile To Get File</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 31, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q149413</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft ActiveX SDK, version 1.0
+<LI>Microsoft Internet Information Server 3.0
+<LI>Microsoft Windows NT 4.0
+<LI>Microsoft Windows NT 3.51 with Service Pack 4 (SP4)
+<LI>Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Using a WinInet API, the InternetReadFile returns the following buffer:
+"&lt;body&gt;&lt;h1&gt;HTTP/1.0 406 No acceptable objects were found&lt;/h1&gt;&lt;/body&gt;"
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+This is an HTTP server specific error. Microsoft IIS may return this error
+when there is no proper Accept header ("Accept: */*") in the HTTP request.
+Such a header can be added with following APIs:
+<P>
+<PRE>   InternetOpenUrl(),
+   HttpSendRequest(),
+   HttpAddRequestHeaders()
+
+</PRE>Note that other HTTP servers may or may not behave in the same fashion.
+The following code demonstrates how to transfer any type of file with
+WinInet APIs:
+<P>
+<PRE>   BOOL GetFile (HINTERNET IN hOpen, // Handle from InternetOpen()
+                 CHAR *szUrl,        // Full URL
+                 CHAR *szFileName)   // Local file name
+   {
+       DWORD dwSize;
+       CHAR   szHead[] = "Accept: */*\r\n\r\n";
+       VOID * szTemp[25];
+       HINTERNET  hConnect;
+      FILE * pFile;
+
+       if ( !(hConnect = InternetOpenUrl ( hOpen, szUrl, szHead,
+             lstrlen (szHead), INTERNET_FLAG_DONT_CACHE, 0)))
+       {
+         cerr &lt;&lt; "Error !" &lt;&lt; endl;
+           return 0;
+       }
+
+       if  ( !(pFile = fopen (szFileName, "wb" ) ) )
+      {
+           cerr &lt;&lt; "Error !" &lt;&lt; endl;
+          return FALSE;
+      }
+       do
+       {
+          // Keep coping in 25 bytes chunks, while file has any data left.
+          // Note: bigger buffer will greatly improve performance.
+          if (!InternetReadFile (hConnect, szTemp, 50,  &amp;dwSize) )
+          {
+              fclose (pFile);
+             cerr &lt;&lt; "Error !" &lt;&lt; endl;
+            return FALSE;
+          }
+          if (!dwSize)
+              break;  // Condition of dwSize=0 indicate EOF. Stop.
+          else
+             fwrite(szTemp, sizeof (char), dwSize , pFile);
+       }   // do
+      while (TRUE);
+      fflush (pFile);
+      fclose (pFile);
+      return TRUE;
+   }
+
+</PRE>The same task can be accomplished with WinInet MFC classes in following
+manner:
+<P>
+<PRE>   #include &lt;afx.h&gt;
+   #include &lt;afxinet.h&gt;
+
+   BOOL  GetFile (CHAR *szUrl, CHAR *szFileName)
+   {
+   TCHAR sz[1024];
+   CInternetSession session (_T("MyTest agent"), 1,
+     INTERNET_OPEN_TYPE_DIRECT);
+   CStdioFile* pFile = NULL;
+   CHAR   szHead[] = "Accept: */*\r\n\r\n";
+       DWORD nRead;
+   CFile myFile;
+   CFileException fileException;
+
+   if ( !myFile.Open (szFileName, CFile::modeCreate | CFile::modeReadWrite,
+      &amp;fileException ) )
+   {
+   cerr &lt;&lt; "Can't open file: " &lt;&lt; szFileName
+    &lt;&lt; " error = " &lt;&lt; fileException.m_cause  &lt;&lt;"\n";
+   return FALSE;
+   }
+
+   try
+   {
+   pFile = session.OpenURL (szUrl, 1, INTERNET_FLAG_RELOAD
+   |INTERNET_FLAG_TRANSFER_BINARY,
+    szHead, -1L);
+
+   }
+   catch (CInternetException *pEx)
+   {
+   cerr &lt;&lt;"OpenUrl failed: "&lt;&lt; pEx-&gt; m_dwError &lt;&lt; endl;
+   return FALSE;
+   }
+
+       do
+   {
+   nRead = pFile-&gt;Read(sz, 1023);
+   if (nRead != 0)
+   myFile.Write (sz, nRead);
+   }
+   while (nRead != 0);
+   myFile.Close();
+   pFile-&gt;Close();
+   if (pFile != NULL)
+   delete pFile;
+   session.Close();
+   return TRUE;
+   }
+</PRE> 
+<PRE>Keywords          : AXSDKWinInet kbnetwork kbprg
+Technology        : kbInetDev
+Version           : 1.0 3.5 4.0 95
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 31, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

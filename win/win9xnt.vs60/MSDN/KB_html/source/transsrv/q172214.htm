@@ -1,0 +1,255 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: How to Invoke MTS Components from Active Server Pages </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q172214">
+<META NAME="KBModify" CONTENT="1997/10/10">
+<META NAME="KBCreate" CONTENT="1997/07/31">
+<META NAME="Keywords" CONTENT="kbinterop kbusage TSrvExplorer TSrvGen">
+<META NAME="KBArea" CONTENT="Support; KB; transsrv">
+<META NAME="Description" CONTENT="  To invoke Microsoft Transaction Server (MTS) components from Active Server Pages, (ASP) perform the following three steps, which are described in more detail in the MORE INFORMATION section of this article:  1. Configure the registry to allow ASP t...">
+<META NAME="Product" CONTENT="transsrv">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDNQ,QABI,QAGI,QAPN,QAH6,QAJG,QAP2,QBXJ,QALZ,QAH7,QAD7,QBWA,QAKD,QBG2,QAUJ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: How to Invoke MTS Components from Active Server Pages</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q172214</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Transaction Server, version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+To invoke Microsoft Transaction Server (MTS) components from Active Server
+Pages, (ASP) perform the following three steps, which are described in more
+detail in the MORE INFORMATION section of this article:
+
+<OL><P><LI>Configure the registry to allow ASP to create out-of-process components.
+   For security reasons, ASP by default cannot create out-of-process
+   components. Thus, all attempts to create Transaction Server objects with
+   Server.CreateObject will fail, unless the MTS object is configured to
+   run "In the creator's process" using MTS Explorer. The ASP page will
+   return the following error message to the HTML client:
+<P>
+<P><PRE>      Server object error'ASP 0177:80040154'
+      Server.CreateObject Failed
+</PRE>
+<P><LI>VBScript 2.0 requires that non-Variant data types be passed by value.
+   Therefore, make sure that all non-Variant data types passed by your MTS
+   component are passed by value, not by reference. If you break this rule,
+   the ASP script will return the following error:
+<P>
+<P><PRE>      Microsoft VBScript runtime error '800a000d'
+      Type mismatch: 'Accountobj.Post'
+</PRE>
+<P><LI>Write an ASP page that uses Server.CreateObject to create your MTS
+   component.
+<P>
+</OL><h2>MORE INFORMATION</h2>
+ 
+
+<OL><P><LI>If the MTS object is configured to run in an Transaction Server process,
+   the registry must be configured to allow ASP to create out-of-process
+   components. Before changing this registry setting, make sure you have a
+   thorough understanding of how to secure out-of-process components. For
+   example, you should set a specific user identity for the component;
+   otherwise, the MTS component will run under the identity of the first
+   user to access it.
+<P>
+   To allow out-of-process components, use Regedit to select the following
+   key:
+<P>
+<P><PRE>      HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\W3SVC\ASP
+      \Parameters
+</PRE><P>
+   The Parameters key has several subvalues that control ASP. Make sure it
+   has a subvalue named AllowOutOfProcCmpnts, and that this subvalue is set
+   to 1.
+
+<P><LI>The MTS component may pass only variants by reference; all other data
+   types must be passed by value. The Bank sample supplied with MTS breaks
+   this rule with its Account.Post method, which passes two longs and a
+   string by reference.
+<P>
+   The following steps are instructions for modifying the Bank sample,
+   adding a PostVariant method that has Variant arguments.
+<P>
+   A. Make sure that the Bank package is installed in MTS, and that the
+<P><PRE>      Bank Client provided with MTS is able to credit and debit money.
+</PRE><P>
+   B. In Visual Basic, open the Account.VB project in the MTX\Samples
+<P><PRE>      directory.
+</PRE><P>
+   C. Add the code below to the Account class. The new PostVariant method
+<P><PRE>      simply wraps the existing Post method.
+</PRE><P>
+<PRE>         Public Function PostVariant(varAccountNo As Variant, _
+            varAmount As Variant, ByRef varResult As Variant) As Variant
+            Dim lngAccountNo As Long
+            Dim lngAmount As Long
+            Dim strResult As String
+            lngAccountNo = varAccountNo
+            lngAmount = varAmount
+            strResult = varResult
+            PostVariant = Post(lngAccountNo, lngAmount, strResult)
+            varAccountNo = lngAccountNo
+            varAmount = lngAmount
+            varResult = strResult
+         End Function
+
+   D. Compile the Bank project. Make sure that the new Vbacct.dll file
+      replaces the copy in the MTX\Packages directory.
+
+   E. In MTS Explorer, select My Computer. On the Tools menu, click Refresh
+      All Components. MTS Explorer should now show that the Bank.Account
+      component has a PostVariant method.
+
+</PRE><P><LI>Construct an ASP page that calls the MTS component. Perform the
+   following steps to create an ASP page that manages a bank account by
+   calling the Account.PostVariant method created in step 2 above.
+<P>
+   A. In Visual Interdev, use the Web Project Wizard to construct a new Web
+<P><PRE>      project called MTSWeb. In step two of the wizard, choose to create a
+      new web.
+</PRE><P>
+   B. In Visual Interdev, create a new Active Server Page file named
+<P><PRE>      MTSBank in the MTSWeb project.
+</PRE><P>
+   C. The new ASP file has a line reading "Insert HTML here." At that
+<P><PRE>      point, insert the following HTML:
+</PRE><P>
+<PRE>         &lt;%
+         Dim Accountobj, Msg
+         If (Not IsNumeric(Request("Amount")) _
+            or IsEmpty(Request("Amount"))) Then
+            Msg = "Please enter the amount of the transaction."
+         Else
+            set Accountobj = server.createobject("Bank.Account")
+            Accountobj.PostVariant Request("AccountID"), _
+          Request("Type") * Request("Amount"), Msg
+         End If%&gt;
+         &lt;%=Msg%&gt;
+         &lt;BR&gt;
+         &lt;FORM METHOD="POST" ACTION="MTSBank.asp"&gt;
+         Transaction Type:
+         &lt;INPUT TYPE="RADIO" NAME="Type" VALUE="1" CHECKED&gt;Credit
+         &lt;INPUT TYPE="RADIO" NAME="Type" VALUE="-1" &gt;Debit
+         &lt;BR&gt;
+         Account ID: &lt;INPUT TYPE="TEXT" NAME="AccountID" SIZE=30 VALUE="1"&gt;
+         &lt;BR&gt;
+         Amount    : &lt;INPUT TYPE="TEXT" NAME="Amount" SIZE=30&gt;
+         &lt;BR&gt;
+         &lt;INPUT TYPE="SUBMIT" VALUE="Submit"&gt;
+         &lt;/FORM&gt;
+
+   D. Save the new ASP file. If you now use a Web browser to access
+      <B>http://YourWebServer/MTSWeb/MTSBank.asp,</B> you will be able to credit
+      or debit money using ASP and the MTS Bank.Account component.
+
+</PRE></OL><h2>REFERENCES</h2>
+ 
+<P>
+For more information, visit the Web sites at:
+
+<UL><LI><B><A href="http://support.microsoft.com/support/default.asp">http://support.microsoft.com/support/default.asp</A></B> 
+
+<LI><B><A href="http://www.microsoft.com/transaction">http://www.microsoft.com/transaction</A></B> 
+</UL> 
+<PRE>Keywords          : kbinterop kbusage TSrvExplorer TSrvGen
+Version           : WINDOWS NT:1.0
+Platform          : winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

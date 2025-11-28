@@ -1,0 +1,283 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Optimistic Concurrency Check Fails with SQL Text Field </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q179022">
+<META NAME="KBModify" CONTENT="1998/01/08">
+<META NAME="KBCreate" CONTENT="1998/01/07">
+<META NAME="Keywords" CONTENT="vb5all">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  Attempting to update the same record at the same time by two different clients produces an error for one of the clients, and the record is not updated. The following should occur:      Runtime-error 40002 01503:[Microsoft][ODBC SQL Server Driver][S...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAXB,QAB4,QA7O,QA7N,QBD2,QA5V,QAFF,QAC1,QBWS,QAF3,QAAP,QAA5,QBXS,QATX,QAMB V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Optimistic Concurrency Check Fails with SQL Text Field</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 8, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q179022</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual Basic Enterprise Edition for Windows, version 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Attempting to update the same record at the same time by two different
+clients produces an error for one of the clients, and the record is not
+updated. The following should occur:
+<P>
+<PRE>   "Runtime-error 40002 01503:[Microsoft][ODBC SQL Server Driver][SQL
+   Server]Optimistic concurrency check failed, the row was modified outside
+   of this cursor"
+
+</PRE>However, if a SQL server text field is part of the update, the update will
+not occur in one of the clients, but no error will be returned to let the
+user know that the update did not occur.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Place a timestamp field in the table and use a SQL Server stored procedure
+that compares the timestamp field to the one returned by the result set. An
+error will be returned by the stored procedure if an attempt is made to
+update the same record with a different timestamp.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft is researching this problem and will post new information here in
+the Microsoft Knowledge Base as it becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The steps below illustrate the problem and the solution. You will need to
+run two instances of the project. To see the problem, click Command1,
+Command2, and Command3 in one instance of the project, and click Command1,
+Command2 and Command4 in the second instance of the project. Then click
+Command4 to update the record in the first instance.
+<P>
+To work around this problem, use the stored procedure by clicking Command1
+in the first instance and then Command1 and Command5 in the second
+instance, followed by Command5 in the first instance. The stored procedure
+compares the original timestamp and refuses to update the field.
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+
+<OL><P><LI>Modify the pub_info table in the pubs database so that it contains a
+   timestamp field. Edit the first record. Use the following code in
+   ISQL-W to accomplish this:
+<P>
+<P><PRE>      Alter table pubs.dbo.pub_info add pub_name char(10) null,
+<PRE></PRE>           whattime timestamp null
+
+   After you have run the above successfully in ISQL-W, run the following
+   by itself in ISQL-W:
+
+      Update pub_info set pub_name= "MSPress" where pub_id= "0736"
+
+   The code above will insert a timestamp field in the table and a value
+   in that field for the first record where the pub_id is 0736. If the
+   first record has a different pub_id value, use that value instead. This
+   will also place a value in the timestamp field.
+
+</PRE><P><LI>Create the following stored procedure using ISQL-W:
+<P>
+<P><PRE>      CREATE PROCEDURE updat_pub_info  @id char(4), @mytext text,
+<PRE></PRE>          @pname char(10), @thyme timestamp
+      AS
+      update pub_info
+         set  pr_info= @mytext,
+             pub_name= @pname
+         where pub_id= @id and tsequal(@thyme,whattime)
+
+</PRE><P><LI>Create a new project and, under References, check Microsoft Remote Data
+   Objects 2.0.
+
+<P><LI>Add six command buttons to the form and paste the following code in the
+   General Declarations section of the form:
+<P>
+<P><PRE>       Option Explicit
+       Dim en As rdoEnvironment
+       Dim rs As rdoResultset
+       Dim cn As rdoConnection
+       Dim qr As rdoQuery
+       Dim sqlstr As String
+       Dim mytime As Variant
+       Private Sub Command1_Click()
+<PRE></PRE>        sqlstr = "select pub_id, pub_name, pr_info, whattime from pub_info"
+        Set rs = cn.OpenResultset(sqlstr, rdOpenKeyset, _
+           rdConcurRowVer, rdExecDirect)
+        mytime = rs(3)  'needed to send the timestamp back to the procedure
+       End Sub
+      Private Sub Command2_Click()
+        rs.Edit
+        rs(1) = "testing"   'update the char field, change in 2nd instance
+      End Sub
+      Private Sub Command3_Click()
+         rs(2) = "mmmmmmmmmm" 'update the text field,change in 2nd instance
+      End Sub
+      Private Sub Command4_Click()
+         rs.Update
+      End Sub
+      Private Sub Command5_Click()
+       'On Error GoTo myerr 'uncomment to trap error
+          Set qr = cn.CreateQuery _
+             ("", "{call updat_pub_info(?,?,?,?)}")
+          qr.rdoParameters(0).Direction = rdParamInput
+          qr.rdoParameters(1).Direction = rdParamInput
+          qr.rdoParameters(2).Direction = rdParamInput
+          qr.rdoParameters(3).Direction = rdParamInput
+          qr(0) = "0736"
+          qr(1) = "QUE"
+          qr(2) = "This is a third text field"
+          qr(3) = mytime  'variant type will compare to timestamp
+          qr.Execute
+          Exit Sub
+          On Error GoTo 0
+      myerr:
+         MsgBox Err.number
+      End Sub
+
+      Private Sub Command6_Click()
+        If Not (rs Is Nothing) Then
+          rs.Close
+        End If
+        cn.Close
+        Unload Me
+      End Sub
+
+      Private Sub Form_Load()
+        Set en = rdoEnvironments(0)
+        'change dsName to the data source name in your odbc administrator
+        Set cn = en.OpenConnection(dsName:="mymachine", _
+            Prompt:=rdDriverNoPrompt, _
+            Connect:="uid=sa;pwd=;database=PUBS;")
+        Command1.Caption = "resultset"
+        Command2.Caption = "edit char field"
+        Command3.Caption = "edit text field"
+        Command4.Caption = "update"
+        Command5.Caption = "update stor proc"
+        Command6.Caption = "quit"
+     End Sub
+
+</PRE><P><LI>Run two instances of this project. You will want to save the project
+   twice with different names or create two different executables to run.
+
+<P><LI>Click Command1 and Command2 in the first instance, and Command1,
+   Command2, and Command4 in the second instance. Click Command4 in
+   the first instance and note that you get the error message indicated
+   above.
+
+<P><LI>Click Command1, Command2, and Command3 in the first instance, and
+   Command1, Command2, and Command4 in the second instance. Click
+   Command4 in the first instance and note that no error message is
+   returned.
+<P>
+   If you change what rs(1) is set equal to in one of the applications,
+   you will see that the second instance has updated pub_info, but the
+   first instance has not, and no error message was returned.
+
+<P><LI>To work around this problem, try clicking Command1 in the first
+   instance. Click Command1 and Command5 in the second instance and
+   then Command5 in the first instance. An error message is returned
+   about the timestamp field if the error is not trapped.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: blob multiuser<BR>
+Keywords          : vb5all<BR>
+Technology        : odbc<BR>
+Version           : WINDOWS:5.0<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 8, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

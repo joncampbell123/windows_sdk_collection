@@ -1,0 +1,441 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Terminate an Application "Cleanly" in Win32 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q178893">
+<META NAME="KBModify" CONTENT="1998/01/07">
+<META NAME="KBCreate" CONTENT="1998/01/06">
+<META NAME="Keywords" CONTENT="BseProcThrd">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  In a perfect world, your process could ask another process, through some form of inter-process communication, to shut down. However, if you do not have source-level control of the application that you wish to shut down, then you may not have this o...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDKA,QAUD,QBWP,QAJH,QDL9,QBWO,QBWN,QA4H,QBWQ,QALZ,QAGB,QAY5,QAHH,QAUQ,QBV8 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Terminate an Application "Cleanly" in Win32</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 7, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q178893</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT version 4.0
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In a perfect world, your process could ask another process, through some
+form of inter-process communication, to shut down. However, if you do not
+have source-level control of the application that you wish to shut down,
+then you may not have this option. Although there is no guaranteed "clean"
+way to shut down an application in Win32, there are steps that you can take
+to ensure that the application uses the best method for cleaning up
+resources.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>32-Bit Processes (and 16-Bit Processes under Windows 95)</h3>
+ 
+<P>
+Under Win32, the operating system promises to clean up resources owned by a
+process when it shuts down. This does not, however, mean that the process
+itself has had the opportunity to do any final flushes of information to
+disk, any final communication over a remote connection, nor does it mean
+that the process' DLL's will have the opportunity to execute their
+PROCESS_DETACH code. This is why it is generally preferable to avoid
+terminating an application under Windows 95 and Windows NT.
+<P>
+If you absolutely must shut down a process, follow these steps:
+
+<OL><P><LI>Post a WM_CLOSE to all Top-Level windows owned by the process that you
+   want to shut down. Many Windows applications respond to this message by
+   shutting down. NOTE: A console application's response to WM_CLOSE
+   depends on whether or not it has installed a control handler. For
+   additional information, please see the following article in the
+   Microsoft Knowledge Base:
+<P>
+<P><PRE>      ARTICLE-ID: <B><A href="../win32sdk/q102429.htm">Q102429</A></B>
+<PRE></PRE>      TITLE     : HOWTO: Detect Closure of Command Window from a Console
+                  App
+
+   Use EnumWindows() to find the handles to your target windows. In your
+   callback function, check to see if the windows' process ID matches
+   the process you want to shut down. You can do this by calling
+   GetWindowThreadProcessId(). Once you have established a match, use
+   PostMessage() or SendMessageTimeout() to post the WM_CLOSE message to
+   the window.
+
+</PRE><P><LI>Use WaitForSingleObject() to wait for the handle of the process. Make
+   sure you wait with a timeout value, because there are many situations
+   in which the WM_CLOSE will not shut down the application. Remember to
+   make the timeout long enough (either with WaitForSingleObject(), or with
+   SendMessageTimeout()) so that a user can respond to any dialog boxes
+   that were created in response to the WM_CLOSE message.
+
+<P><LI>If the return value is WAIT_OBJECT_0, then the application closed itself
+   down cleanly. If the return value is WAIT_TIMEOUT, then you must use
+   TerminateProcess() to shutdown the application. NOTE: If you are getting
+   a return value from WaitForSingleObject() other then WAIT_OBJECT_0 or
+   WAIT_TIMEOUT, use GetLastError() to determine the cause.
+<P>
+</OL>By following these steps, you give the application the best possible chance
+to shutdown cleanly (aside from IPC or user-intervention).
+<P>
+<P><h3>The 16-Bit Issue (under Windows NT)</h3>
+ 
+<P>
+The preceding steps work for 16-bit applications under Windows 95, however,
+Windows NT 16-bit applications work very differently.
+<P>
+Under Windows NT, all 16-bit applications run in a virtual DOS machine
+(VDM). This VDM runs as a Win32 process (NTVDM) under Windows NT. The NTVDM
+process has a process ID. You can obtain a handle to the process through
+OpenProcess(), just like you can with any other Win32 process.
+Nevertheless, none of the 16-bit applications running in the VDM have a
+process ID, and therefore you cannot get a Process Handle from
+OpenProcess(). Each 16-bit application in a VDM has a 16-bit Task Handle
+and a 32-bit thread of execution. The handle and thread ID can be found
+through a call to the function VDMEnumTaskWOWEx(). For additional
+information, please see the following article in the Microsoft Knowledge
+Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q175030.htm">Q175030</A></B>
+   TITLE     : HOWTO: Enumerate Applications in Win32
+
+</PRE></OL>Your first, and most straightforward, option when shutting down a 16-bit
+application under Windows NT is to shut down the entire NTVDM process. You
+can do this by following the steps outlined above. You only need to know
+the process ID of the NTVDM process (see the KB article <B><A href="../win32sdk/q175030.htm">Q175030</A></B> cited above
+to find the process ID of an NTVDM). The downside of this approach is that
+it closes all 16-bit applications that are running in that VDM. If this is
+not your goal, then you need to take another approach.
+<P>
+If you wish to shut down a single 16-bit application within a NTVDM
+process, following are the steps you need to take:
+
+<OL><P><LI>Post a WM_CLOSE to all Top-Level windows that are owned by the process,
+   and that have the same owning thread ID as the 16-bit task you want to
+   shut down. The most effective way to do this is by using EnumWindows().
+   In your callback function, check to see if the window's process ID and
+   thread ID matches the 16-bit task you want to shut down. Remember that
+   the process ID is going to be the process ID of the NTVDM process in
+   which the 16-bit application is running.
+
+<P><LI>Although you have a thread ID, you have no way to wait on the
+   termination of the 16-bit process. As a result, you must wait for an
+   arbitrary length of time (to allow a clean shut down), and then try to
+   shut the application down anyway. If the application has already shut
+   down, then this will do nothing. If it hasn't shut down, then it will
+   terminate the application.
+
+<P><LI>Terminate the application using a function called VDMTerminateTaskWOW(),
+   which can be found in the Vdmdbg.dll. It takes the process ID of the VDM
+   and the task number of the 16-bit task.
+<P>
+</OL>This approach allows you to shut down a single 16-bit application within a
+VDM under Windows NT. However, 16-bit Windows is not very good at cleaning
+up resources of a terminated task, and neither is the WOWExec running in
+the VDM. If you are looking for the cleanest possible approach to
+terminating a 16-bit application under Windows NT, you should consider
+terminating the entire VDM process. NOTE: If you are starting a 16-bit
+application that you may terminate later, then use the
+CREATE_SEPARATE_WOW_VDM with CreateProcess().
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The sample code implements the techniques described above for 16-bit and 32-
+bit applications using the following two functions: TerminateApp() and
+Terminate16App(). TerminateApp() takes a 32-bit process ID and a timeout
+(in miliseconds). Terminate16App(). Both functions use explicit linking to
+DLL functions so that they will be binary compatible across Windows NT and
+Windows 95.
+<P>
+<PRE>   //******************
+   //Header
+   //******************
+
+   #include &lt;windows.h&gt;
+
+   #define TA_FAILED 0
+   #define TA_SUCCESS_CLEAN 1
+   #define TA_SUCCESS_KILL 2
+   #define TA_SUCCESS_16 3
+
+   DWORD WINAPI TerminateApp( DWORD dwPID, DWORD dwTimeout ) ;
+   DWORD WINAPI Terminate16App( DWORD dwPID, DWORD dwThread,
+                        WORD w16Task, DWORD dwTimeout );
+
+   //******************
+   //Source
+   //******************
+
+   #include "TermApp.h"
+   #include &lt;vdmdbg.h&gt;
+
+   typedef struct
+   {
+      DWORD   dwID ;
+      DWORD   dwThread ;
+   } TERMINFO ;
+
+   // Declare Callback Enum Functions.
+   BOOL CALLBACK TerminateAppEnum( HWND hwnd, LPARAM lParam ) ;
+
+   BOOL CALLBACK Terminate16AppEnum( HWND hwnd, LPARAM lParam ) ;
+
+   /*----------------------------------------------------------------
+   DWORD WINAPI TerminateApp( DWORD dwPID, DWORD dwTimeout )
+
+   Purpose:
+      Shut down a 32-Bit Process (or 16-bit process under Windows 95)
+
+   Parameters:
+      dwPID
+         Process ID of the process to shut down.
+
+      dwTimeout
+         Wait time in milliseconds before shutting down the process.
+
+   Return Value:
+      TA_FAILED - If the shutdown failed.
+      TA_SUCCESS_CLEAN - If the process was shutdown using WM_CLOSE.
+      TA_SUCCESS_KILL - if the process was shut down with
+         TerminateProcess().
+      NOTE:  See header for these defines.
+   ----------------------------------------------------------------*/
+   DWORD WINAPI TerminateApp( DWORD dwPID, DWORD dwTimeout )
+   {
+      HANDLE   hProc ;
+      DWORD   dwRet ;
+
+      // If we can't open the process with PROCESS_TERMINATE rights,
+      // then we give up immediately.
+      hProc = OpenProcess(SYNCHRONIZE|PROCESS_TERMINATE, FALSE,
+         dwPID);
+
+      if(hProc == NULL)
+      {
+         return TA_FAILED ;
+      }
+
+      // TerminateAppEnum() posts WM_CLOSE to all windows whose PID
+      // matches your process's.
+      EnumWindows((WNDENUMPROC)TerminateAppEnum, (LPARAM) dwPID) ;
+
+      // Wait on the handle. If it signals, great. If it times out,
+      // then you kill it.
+      if(WaitForSingleObject(hProc, dwTimeout)!=WAIT_OBJECT_0)
+         dwRet=(TerminateProcess(hProc,0)?TA_SUCCESS_KILL:TA_FAILED);
+      else
+         dwRet = TA_SUCCESS_CLEAN ;
+
+      CloseHandle(hProc) ;
+
+      return dwRet ;
+   }
+
+   /*----------------------------------------------------------------
+   DWORD WINAPI Terminate16App( DWORD dwPID, DWORD dwThread,
+                        WORD w16Task, DWORD dwTimeout )
+
+   Purpose:
+      Shut down a Win16 APP.
+
+   Parameters:
+      dwPID
+         Process ID of the NTVDM in which the 16-bit application is
+         running.
+
+      dwThread
+         Thread ID of the thread of execution for the 16-bit
+         application.
+
+      w16Task
+         16-bit task handle for the application.
+
+      dwTimeout
+         Wait time in milliseconds before shutting down the task.
+
+   Return Value:
+      If successful, returns TA_SUCCESS_16
+      If unsuccessful, returns TA_FAILED.
+      NOTE:  These values are defined in the header for this
+      function.
+
+   NOTE:
+      You can get the Win16 task and thread ID through the
+      VDMEnumTaskWOW() or the VDMEnumTaskWOWEx() functions.
+   ----------------------------------------------------------------*/
+   DWORD WINAPI Terminate16App( DWORD dwPID, DWORD dwThread,
+                        WORD w16Task, DWORD dwTimeout )
+   {
+      HINSTANCE      hInstLib ;
+      TERMINFO      info ;
+
+      // You will be calling the functions through explicit linking
+      // so that this code will be binary compatible across
+      // Win32 platforms.
+      BOOL (WINAPI *lpfVDMTerminateTaskWOW)(DWORD dwProcessId,
+         WORD htask) ;
+
+      hInstLib = LoadLibraryA( "VDMDBG.DLL" ) ;
+      if( hInstLib == NULL )
+         return TA_FAILED ;
+
+      // Get procedure addresses.
+      lpfVDMTerminateTaskWOW = (BOOL (WINAPI *)(DWORD, WORD ))
+         GetProcAddress( hInstLib, "VDMTerminateTaskWOW" ) ;
+
+      if( lpfVDMTerminateTaskWOW == NULL )
+      {
+         FreeLibrary( hInstLib ) ;
+         return TA_FAILED ;
+      }
+
+      // Post a WM_CLOSE to all windows that match the ID and the
+      // thread.
+      info.dwID = dwPID ;
+      info.dwThread = dwThread ;
+      EnumWindows((WNDENUMPROC)Terminate16AppEnum, (LPARAM) &amp;info) ;
+
+      // Wait.
+      Sleep( dwTimeout ) ;
+
+      // Then terminate.
+      lpfVDMTerminateTaskWOW(dwPID, w16Task) ;
+
+      FreeLibrary( hInstLib ) ;
+      return TA_SUCCESS_16 ;
+   }
+
+   BOOL CALLBACK TerminateAppEnum( HWND hwnd, LPARAM lParam )
+   {
+      DWORD dwID ;
+
+      GetWindowThreadProcessId(hwnd, &amp;dwID) ;
+
+      if(dwID == (DWORD)lParam)
+      {
+         PostMessage(hwnd, WM_CLOSE, 0, 0) ;
+      }
+
+      return TRUE ;
+   }
+
+   BOOL CALLBACK Terminate16AppEnum( HWND hwnd, LPARAM lParam )
+   {
+      DWORD      dwID ;
+      DWORD      dwThread ;
+      TERMINFO   *termInfo ;
+
+      termInfo = (TERMINFO *)lParam ;
+
+      dwThread = GetWindowThreadProcessId(hwnd, &amp;dwID) ;
+
+      if(dwID == termInfo-&gt;dwID &amp;&amp; termInfo-&gt;dwThread == dwThread )
+      {
+         PostMessage(hwnd, WM_CLOSE, 0, 0) ;
+      }
+
+      return TRUE ;
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Kill Exit Terminate Program Application Process<BR>
+Task<BR>
+Keywords          : BseProcThrd<BR>
+Version           : WINNT:4.0<BR>
+Platform          : Win95 winnt<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 7, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

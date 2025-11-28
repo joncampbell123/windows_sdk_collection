@@ -1,0 +1,219 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Removing Focus from a Control When Mouse Released Outside </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q66947 ">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1990/11/14">
+<META NAME="Keywords" CONTENT="kbui kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Under normal circumstances, when you move the mouse cursor into the client area of a child-window control, click it, and then release the mouse button, the child window sends a WM_COMMAND message to its parent and retains the focus.  If you move th...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAQ7,QADO,QAEF,QA7O,QAOE,QAMN,QAB5,QA9N,QANJ,QAEV,QACI,QAHE,QAYC,QDL9,QBWO V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Removing Focus from a Control When Mouse Released Outside</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q66947 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) versions 3.0 and 3.1
+
+<LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.5 and 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Under normal circumstances, when you move the mouse cursor into the client
+area of a child-window control, click it, and then release the mouse
+button, the child window sends a WM_COMMAND message to its parent and
+retains the focus.
+<P>
+If you move the mouse into the client area of the child-window control,
+press the mouse button, move the mouse cursor out of the client area of the
+control, and then release the mouse button, the control does not send a
+WM_COMMAND message. However, the control retains the focus.
+<P>
+If you do not want the control to retain the focus, you can remove it by
+performing the following steps:
+
+<OL><P><LI>Define a static Boolean flag in the parent window function.
+
+<P><LI>When a WM_PARENTNOTIFY message is received, set the flag to TRUE.
+   This indicates that the mouse button has been pressed while the
+   mouse cursor is in the client area of the control.
+
+<P><LI>If a WM_COMMAND message is received, reset the flag to FALSE and
+   perform normal processing.
+
+<P><LI>Otherwise, if a WM_MOUSEMOVE message is received, the mouse button
+   was released after the mouse cursor was moved outside the control.
+   Reset the flag to FALSE, and use SetFocus() to move the focus to
+   the desired window.
+<P>
+</OL><h2>MORE INFORMATION</h2>
+ 
+<P>
+When the mouse cursor is in the client area of a control and you press the
+mouse button, the parent window will receive a WM_PARENTNOTIFY message and
+a WM_MOUSEACTIVATE message. A Boolean (BOOL) flag should be set when the
+message is processed to indicate that this occurred.
+<P>
+The parent window will receive other messages, including a number of
+WM_CTLCOLOR messages, when the mouse is moved around with the mouse button
+down. When the mouse button is released, the parent window receives only
+one of two messages:
+
+<OL><P><LI>WM_COMMAND: The mouse button was released over the control.
+
+<P><LI>WM_MOUSEMOVE: The mouse button was released outside the control.
+<P>
+</OL>Note that these are not the only messages received when the button is
+released, but these two are mutually exclusive.
+<P>
+In response to either message, the following steps must take place:
+
+<OL><P><LI>Reset the flag indicating a mouse press.
+
+<P><LI>Call SetFocus() or send a WM_KILLFOCUS to the control in question
+   to move the focus as desired.
+<P>
+</OL>If WM_KILLFOCUS is used, the ID of the control or its handle must be known.
+SetFocus(NULL) or SetFocus(hWndParent) removes the focus from the control
+but does not set the focus to any other control in the window.
+<P>
+In a dialog box, SetFocus(NULL) MUST be used. SetFocus(hDlg) does not
+remove the focus from the button.
+<P>
+The following code sample is taken from the dialog box procedure of a
+dialog that has a single OK button. If the mouse button is pressed while
+the mouse cursor is over the button, the mouse is moved outside the button,
+and then the mouse button is released, the focus is removed from the OK
+button.
+<P>
+BOOL FAR PASCAL AboutProc(HWND hDlg, unsigned iMessage,
+<PRE>                          WORD wParam, LONG lParam)
+    {
+    static BOOL fMousePress;
+
+    switch (iMessage)
+        {
+        case WM_INITDIALOG:
+            fMousePress = FALSE;
+            return TRUE;
+
+        case WM_PARENTNOTIFY:  // or WM_MOUSEACTIVATE
+            fMousePress = TRUE;
+            break;
+
+        case WM_MOUSEMOVE:
+            if (fMousePress)
+                SetFocus(NULL);
+            fMousePress = FALSE;
+            break;
+
+        // Only command is the OK button.
+        case WM_COMMAND:
+            if (wParam == IDOK)
+                EndDialog(hDlg, TRUE);
+            break;
+        }
+    return FALSE;
+    }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.10 3.50 3.51 4.00 95<BR>
+KBCategory: kbui kbcode<BR>
+KBSubcategory: UsrCtl<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,313 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Limitations of DAO, DAO SDK in NT Service or with Threads </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q156138">
+<META NAME="KBModify" CONTENT="1998/02/12">
+<META NAME="KBCreate" CONTENT="1996/09/17">
+<META NAME="Keywords" CONTENT="MfcDAO MfcDatabase kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  With the release of MFC ODBC in Visual C++ 4.2, you can use both MFC and the MFC ODBC classes within the multithreaded environment of an NT Service. Neither the MFC DAO classes nor DAO SDK are thread-safe because the underlying Jet engine is not th...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA9E,QACK,QBWP,QAUQ,QAGI,QBVV,QAJQ,QABO,QAX1,QAMA,QAMB,QAGU,QA7O,QAOE,QAMN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Limitations of DAO, DAO SDK in NT Service or with Threads</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 12, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q156138</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   Microsoft Visual C++, 32-bit Edition, versions 4.0, 4.1, and 4.2
+<LI>The DAO SDK, included with:
+   Microsoft Visual C++, 32-bit Edition, versions 4.0, 4.1, and 4.2
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+With the release of MFC ODBC in Visual C++ 4.2, you can use both MFC and
+the MFC ODBC classes within the multithreaded environment of an NT
+Service. Neither the MFC DAO classes nor DAO SDK are thread-safe because
+the underlying Jet engine is not thread-safe and cannot be used in an NT
+Service.
+<P>
+The techniques presented here are valid for any multithreaded environment
+with the MFC ODBC classes, not just an NT Service.
+<P>
+The remainder of this article explores the following three areas relating
+to use of MFC-based Database classes within an NT Service:
+
+<UL><LI>How an NT Service works
+<LI>How to use MFC ODBC in a multithreaded environment
+<LI>Why MFC DAO or DAO SDK cannot be used in a multithreaded environment
+<P>
+</UL><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>How an NT Service Works</h3>
+ 
+<P>
+An NT Service consists of code that is roughly similar to the following:
+<P>
+<PRE>   VOID WINAPI Main( VOID )
+   {
+       ...
+
+       if (!StartServiceCtrlDispatcher(...))
+           AddToMessageLog(TEXT("StartServiceCtrlDispatcher failed."));
+
+       ...
+   }
+
+</PRE>When a service is started, the Service Control Manager waits for the
+primary thread of the service to invoke a call to
+StartServiceCtrlDispatcher(). This call triggers the creation of a named
+pipe whose purpose is to provide a communication channel between the
+service and the Service Control Manager. The primary thread acts as a
+control dispatcher for the service. The service receives control requests
+from the Service Control Manager via the control handler (callback
+function). In addition, the StartServiceCtrlDispatcher() invokes a
+secondary thread that contains the entry point of the service as specified
+by the SERVICE_TABLE_ENTRY structure. If the StartServceCtrlDispatcher()
+call succeeds, the StartServiceCtrlDispatcher() call in the primary thread
+does not return until all running services in the process have terminated.
+<P>
+Any attempt to use database classes within a running service must not only
+be thread-safe, but they must also be able to operate in the secondary
+thread.
+<P>
+<P><h3>How to Use MFC ODBC in a Multithreaded Environment</h3>
+ 
+<P>
+With the release of Visual C++ 4.2, both MFC and the MFC ODBC database code
+is safe to use in a multithreaded environment. However, you should keep
+the following points in mind:
+
+<UL><LI>Use an ODBC Driver That Is Thread-Safe.
+<P>
+   The multithreading support for the ODBC classes has some limitations.
+   Because these classes wrap the ODBC API, they are restricted to the
+   multithreading support of the components on which they are built. For
+   example, there are many ODBC drivers that are not thread-safe;
+   therefore, the MFC ODBC classes are not thread-safe if you use them with
+   one of these drivers. You should verify whether your particular driver
+   is thread-safe, as well as any components it uses.
+
+<LI>Use a Global Instance of CCriticalSection to Provide Synchronization
+   when Using MFC ODBC Classes.
+<P>
+   While the MFC ODBC classes are thread-safe, it is the programmers job to
+   ensure synchronization of the handle state. The safest way to do this is
+   to use a CCriticalSection object, and Lock any methods that manipulate a
+   handle in either CRecordset or CDatabase--in particular any method that
+   modifies the CRecordset::m_hStmt member.
+
+<LI>Avoid Using MFC ODBC Globally or Across Multiple Threads.
+<P>
+   When creating a multithreaded application, you should be very careful
+   in using multiple threads to manipulate the same object. For example,
+   using the same CRecordset object in two threads may cause problems when
+   retrieving data; a fetch operation in one thread may overwrite the data
+   fetched in the other thread.
+<P>
+   A global Database object, even protected by a global instance of
+   CCriticalSection, may not be safe.
+
+<LI>Use a System DSN for Your ODBC DataSource.
+<P>
+   Any ODBC DataSource used by the MFC ODBC classes within an NT Service
+   must be a System DSN. Without a System DSN you see the following error
+   when trying to open the data source:
+<P>
+<P><PRE>      Data source name not found and no default driver specified
+      State:IM002,Native:0,Origin:[Microsoft][ODBC Driver Manager]
+</PRE><P>
+   The process for creating a System DSN is identical to creating a regular
+   data source. Open the 32-bit ODBC Administrator (in the Control Panel)
+   and click the button that says "System DSN" to create or modify your
+   System DataSources.
+<P>
+   See the KB article listed in the REFERENCES section below for details.
+
+<LI>It May Be Necessary to Impersonate a Valid NTUser.
+<P>
+   When using an ISAPI dynamic-link library (DLL) to get to a data source
+   that is not on the same machine as the ISAPI DLL. For example, an ISAPI
+   DLL using MFC ODBC to manipulate data on a SQL Server that is on a
+   different machine requires a valid NT Domain userid and password.
+   Otherwise, the NT machine running SQL Server does not allow the ISAPI
+   DLL to make the connection.
+<P>
+   Win32 provides several functions allowing you to login with a valid
+   userid and password, letting the ISAPI DLL "impersonate" a valid user.
+<P>
+   See the two KB articles listed in the REFERENCES section below for
+   details.
+
+<LI>Using MFC ODBC in a NT Service Is Just Like Using MFC ODBC in a
+   Console Application.
+<P>
+   An NT Service is similar to a console application in that it does not
+   offer the standard windows Message Pump. The MFC ODBC classes, with
+   Visual C++ 4.2, have been written to be more friendly to console
+   applications. But there are some issues you need to be aware of.
+<P>
+   See the KB article listed in the REFERENCES section below for details.
+<P>
+</UL>Why MFC DAO or DAO SDK Cannot Be Used in a Multithreaded Environment
+ 
+<P>
+DAO version 3.x is a single-threaded inproc server and was originally
+written for Access 1.x and 2.0 and Visual Basic 3.0--both of which are
+single-threaded. This means that clients (MFC DAO or DAO SDK) can
+use DAO via custom interfaces only from the first thread in the process
+that initialized COM—that is, 'primary' thread.
+<P>
+If the client has already initialized COM in the primary thread and then
+calls CoCreateInstance in the secondary thread asking for the IDAODBEngine
+interface, CoCreateInstance fails. This fails because COM sees that DAO is
+not marked as apartment or free threaded in the registry, calls
+DllGetClassObject from the primary thread, gets the IDAODBEngine interface,
+tries to marshal it back to the secondary thread, and fails.
+<P>
+See the KB article listed in the REFERENCES section below for details.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For additional information, please see the following articles in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q169395.htm">Q169395</A></B>
+   TITLE     : PRB: Thread Safety for DAO/Jet 3.5
+
+</PRE><h3>System Data Sources</h3>
+ 
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../odbc/q136481.htm">Q136481</A></B>
+   TITLE     : INF: Running ODBC Applications as Windows NT Services
+
+</PRE><h3>Impersonating a Valid NT User</h3>
+ 
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q96005.htm">Q96005</A></B>
+   TITLE     : Validating User Accounts (Impersonation)
+
+</PRE><h3>Using MFC Database Classes in a Console Application</h3>
+ 
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q152696.htm">Q152696</A></B>
+   TITLE     : HOWTO: Using the MFC Database Classes in Console
+               Applications
+
+</PRE>Why DAO Can't Be Used in a Multithreaded Environment
+ 
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q151407.htm">Q151407</A></B>
+   TITLE     : PRB: DAO Must Be Used in Primary Thread
+
+</PRE><h3>Using MFC ODBC with an ISAPI DLL</h3>
+ 
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q160906.htm">Q160906</A></B>
+   TITLE     : HOWTO: Use MFC 4.2 ODBC Classes in an ISAPI DLL
+               Password
+</PRE> 
+<PRE>Keywords          : MfcDAO MfcDatabase kbcode
+Technology        : kbMfc
+Version           : Winnt:4.0,4.1,4.2
+Platform          : winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 12, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

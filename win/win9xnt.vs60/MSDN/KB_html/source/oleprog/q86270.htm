@@ -1,0 +1,213 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Implementing Drag-Drop Insertion of OLE Objects </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q86270 ">
+<META NAME="KBModify" CONTENT="1995/02/17">
+<META NAME="KBCreate" CONTENT="1992/07/01">
+<META NAME="Keywords" CONTENT="kbole kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  An OLE client application can support the drag-drop feature provided by the SHELL.DLL component of Microsoft Windows version 3.1. The drag-drop feature supports dragging a file from the Windows File Manager and dropping it on any registered drag-dr...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAW6,QAGI,QAJH,QA9Q,QAY5,QDL9,QBWO,QBWN,QA9N,QAB9,QAIF,QAGU,QBV8,QACI V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Implementing Drag-Drop Insertion of OLE Objects</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 17, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q86270 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+An OLE client application can support the drag-drop feature provided by the
+SHELL.DLL component of Microsoft Windows version 3.1. The drag-drop feature
+supports dragging a file from the Windows File Manager and dropping it on
+any registered drag-drop recipient. If the user drops a file onto an OLE
+client application and the application manages that file type, the
+application opens the file for editing. If the OLE client application
+does not manage that file type, it can create an embedded object for
+the dropped file.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When an OLE client creates an embedded object from a dropped file, it
+inserts a packaged object that refers to the dropped file. The OLE
+server for a packaged object (an object of the Package class) is the
+Microsoft Windows Object Packager (PACKAGER.EXE) application. Packager
+supports associating a command line, a file, or an object with an
+icon.
+<P>
+A packaged object can contain either embedded or linked objects. When
+the user double-clicks a packaged object, Windows invokes the
+application associated with the packaged object and specifies the
+object on the application's command line. For example, when the user
+double-clicks a package object labeled BOOTLOG.TXT, Packager calls
+the WinExec function to start Notepad and specifies BOOTLOG.TXT as the
+command-line argument.
+<P>
+If an application can accept dropped files, it must call the
+DragAcceptFiles function. Once an application registers itself, the
+user can drag an object from the File Manager onto the application.
+When the user drops a file, the application receives a WM_DROPFILES
+message. When the client calls the DragQueryFile function, Windows
+provides the number and names of the dropped files. The DragQueryPoint
+function provides the location in the application's window where the
+user dropped the files.
+<P>
+The recommended procedure to provide drag-drop support in an OLE
+client application is as follows:
+
+<UL><LI>Call the DragAcceptFiles function during application
+   initialization. Specify the handle of a container document window
+   for the hwnd parameter and specify TRUE for the fAccept parameter
+   to indicate that the window will accept dropped files.
+
+<LI>When the application receives a WM_DROPFILES message, perform the
+   following five steps:
+<P>
+   1. Call the DragQueryFile function to determine how many files are
+<P><PRE>      dropped.
+</PRE><P>
+   2. Call the DragQueryFile function to obtain the names of the
+<P><PRE>      dropped files.
+</PRE><P>
+   3. Call the OleCreateFromFile function once for each dropped file
+<P><PRE>      to create a package for each dropped file. Specify "Package" as
+      the object class for each new object.
+</PRE><P>
+   4. Check the value returned from OleCreateFromFile and act
+<P><PRE>      accordingly.
+</PRE><P>
+   5. Call the DragFinish function to free the memory used to store
+<P><PRE>      the names of the dropped files.
+</PRE><P>
+</UL>The Code to insert a drag-drop object in an application might resemble
+the following:
+<P>
+<PRE>char       szFile[80];      // Used to store name of dropped file
+OLESTATUS  OleStatus;       // Code returned from OLE functions
+WORD       wNumFiles, cb;
+
+</PRE>case WM_DROPFILES:
+<PRE>   // Retrieve number of dropped files
+   wNumFiles = DragQueryFile((HANDLE)wParam, 0xFFFF, NULL, 0);
+
+   // Simple case of one dropped file; more than one can be dropped
+   if (wNumFiles == 1)
+      {
+      cb = DragQueryFile((HANDLE)wParam, 0, szFile, 80);
+
+      // If no characters copied, there were no files
+      if (cb == 0)
+         return(0L);
+
+      // Call OleCreateFromFile to insert a Package object containing
+      // the dropped file as an embedded object or call
+      // OleCreateLinkFromFile to insert a Package object containing a
+      // link to the dropped file.
+      OleStatus = OleCreateFromFile("StdFileEditing", lpOleClient,
+         "Package", (LPSTR)szFile, lhDoc, lpszUniqueName, lplpObject,
+         olerender_draw, 0);
+
+      // Follow the procedure to create an object from the clipboard
+
+      DragFinish((HANDLE)wParam);
+      }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00<BR>
+KBCategory: kbole kbprg<BR>
+KBSubcategory: LeOneCli<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 17, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

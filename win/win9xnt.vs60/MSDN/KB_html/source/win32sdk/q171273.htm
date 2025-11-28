@@ -1,0 +1,387 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Program a Secure Server on Windows NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q171273">
+<META NAME="KBModify" CONTENT="1997/07/11">
+<META NAME="KBCreate" CONTENT="1997/07/10">
+<META NAME="Keywords" CONTENT="BseSecurity kbcode kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  In the Client/Server model, it is often desirable to arbitrate access to the server's functions or data based on a client's privileges.  Given an application-derived Security Descriptor (SD) that specifies a certain set of rights for a particular g...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA1S,QAI5,QBW7,QAAD,QAK7,QARL,QAGI,QDN9,QBWG,QAVY,QBWP,QDIT,QAH4,QAW6,QAPN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Program a Secure Server on Windows NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 11, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q171273</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In the Client/Server model, it is often desirable to arbitrate access to
+the server's functions or data based on a client's privileges.
+<P>
+Given an application-derived Security Descriptor (SD) that specifies a
+certain set of rights for a particular group of users in its Discretionary
+Access Control List (DACL) and a client token representing a user that
+wants access to the protected server, you can call the AccessCheck() API to
+determine if the client should be granted that access.
+<P>
+This process is explained in detail in the section below. Sample code is
+provided at the end of this article.
+<P>
+NOTE: It is assumed that you already have an understanding of Windows NT
+Security in general, and Access Control Security in particular.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To build a simple secure server, you need to follow the following steps:
+
+<OL><P><LI>Build a SD and a DACL for it that defines what users\groups have rights
+   to the secured portion of the server. The DACL should contain, at the
+   minimum, an Access Allowed ACE for every user or group that should be
+   allowed access to the protected portion of the server. Each ACE will
+   specify an Access Privilege level that the server defines.
+<P>
+   The SD will normally be reusable by the server and should be saved
+   so that it can be reused every time the server runs.
+   InitializeSecurityDescriptor returns a SD in absolute format, which is
+   unsuitable for storing in a file or in the registry. Use the
+   MakeSelfRelativeSD() API to convert the absolute SD to a self-relative
+   format.
+<P>
+   NOTE: The Private Object Security functions might be useful if you have
+   a large number of objects to secure that are hierarchical in
+   relationship, for example, a directory tree.
+   CreatePrivateObjectSecurity() allows you to pass creator and parent SDs
+   that give the object security based on inheritable ACEs contained in
+   these SDs.
+
+<P><LI>Get the client's token. For example, if client applications connect to
+   the server by way of Named Pipes, then you can use the
+   ImpersonateNamedPipeClient() API to impersonate the client. Once you are
+   impersonating, you can get the clients token by calling
+   OpenThreadToken(GetCurrentThread()..).
+
+<P><LI>When a client requests access to a protected part of the server, call
+   AccessCheck() using the client token and the SD described above. Access
+   can then be granted or denied based on the results.
+<P>
+</OL>The sample code below shows how to construct an SD, build a simple DACL,
+and how to call the AccessCheck() API.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   /*
+   The following sample code demonstrates how to use the AccessCheck API
+   to determine if a client token has sufficient access to perform some
+   operation against an object protected by a Security Descriptor or
+   to determine what the client's maximum access is on that same object.
+
+   This code sample requires the following import library:
+
+       advapi32.lib
+
+   David Mowers (davemo)   15-May-97
+   */
+
+   #include &lt;windows.h&gt;
+   #include &lt;stdio.h&gt;
+   //
+   // Make up some private access rights.
+   //
+   #define ACCESS_READ  1
+   #define ACCESS_WRITE 2
+
+   void main( int argc, char *argv[] )
+   {
+      PSECURITY_DESCRIPTOR psdSD;
+
+      // User\SID Variables:
+      #define BUF_SIZE 256 // should be dynamic
+      HANDLE               hToken;
+      TOKEN_USER           ptuUser[BUF_SIZE];
+      DWORD                cbBuffer=BUF_SIZE;
+      PSID                 pUserSid;
+
+      // ACE variables:
+      DWORD                dwAccessMask=ACCESS_READ | ACCESS_WRITE;
+      PACL                 pACL;
+      DWORD                dwACLSize;
+
+      // AccessCheck variables:
+      DWORD                dwAccessDesired;
+      PRIVILEGE_SET        PrivilegeSet;
+      DWORD                dwPrivSetSize;
+      DWORD                dwAccessGranted;
+      BOOL                 fAccessGranted=FALSE;
+      GENERIC_MAPPING      GenericMapping;
+
+      //
+      // Get a SID for later use. A real server would use an API
+      // like LookupAccountName() to get SIDs that you will use to
+      // build your access control list.
+      //
+      OpenProcessToken(GetCurrentProcess(),TOKEN_READ,&amp;hToken);
+
+      GetTokenInformation(hToken,
+                          TokenUser,
+                          ptuUser,
+                          cbBuffer,
+                          &amp;cbBuffer);
+
+      pUserSid = ptuUser-&gt;User.Sid;
+
+      CloseHandle(hToken);
+
+      //
+      // Build a Security Descriptor.
+      //
+      psdSD = LocalAlloc(LPTR,SECURITY_DESCRIPTOR_MIN_LENGTH);
+
+      if(!InitializeSecurityDescriptor(psdSD,SECURITY_DESCRIPTOR_REVISION))
+      {
+         printf("Error %d:InitializeSecurityDescriptor\n",GetLastError());
+      }
+
+      //
+      // Compute size needed for the ACL.
+      //
+      dwACLSize = sizeof(ACCESS_ALLOWED_ACE) + 8 +
+                     GetLengthSid(pUserSid) - sizeof(DWORD);
+
+      //
+      // Allocate memory for ACL.
+      //
+      pACL = (PACL)LocalAlloc(LPTR, dwACLSize);
+
+      //
+      // Initialize the new ACL.
+      //
+      if(!InitializeAcl(pACL, dwACLSize, ACL_REVISION2))
+      {
+         printf("Error %d:InitializeAcl\n",GetLastError());
+      }
+
+      //
+      // Add the access-allowed ACE to the DACL.
+      //
+      if(!AddAccessAllowedAce(pACL,ACL_REVISION2,dwAccessMask, pUserSid))
+      {
+         printf("Error %d:AddAccessAllowedAce",GetLastError());
+      }
+
+      //
+      // Set our DACL to the SD.
+      //
+      if (!SetSecurityDescriptorDacl(psdSD,
+                                     TRUE,
+                                     pACL,
+                                     FALSE))
+      {
+         printf("Error %d:SetSecurityDescriptorDacl",GetLastError());
+      }
+
+      //
+      // AccessCheck is picky about what is in the SD. Set
+      // the group and owner using our convenient SID.
+      //
+      SetSecurityDescriptorGroup(psdSD,pUserSid,FALSE);
+      SetSecurityDescriptorOwner(psdSD,pUserSid,FALSE);
+
+      //
+      // AccessCheck requires an impersonation token.
+      // For demonstration purposes, we are going to impersonate
+      // ourselves.
+      // A real server would impersonate the client using
+      // ImpersonateNamedPipeClient(),RPCImpersonateClient(),
+      // ImpersonateLoggedOnUser()with a token obtained through
+      // LogonUser() or the SSPI API ImpersonateSecurityContext().
+      //
+      ImpersonateSelf(SecurityImpersonation);
+
+      OpenThreadToken(GetCurrentThread(),
+                      TOKEN_ALL_ACCESS,
+                      TRUE,
+                      &amp;hToken );
+
+      //
+      // Using AccessCheck, there are two different things we could
+      // do:
+      //
+
+      //
+      // 1. See if we have Read/Write access to the object.
+      //
+      dwAccessDesired = ACCESS_READ;
+
+      //
+      // Initialize GenericMapping structure to map all.
+      //
+      memset(&amp;GenericMapping,0xff,sizeof(GENERIC_MAPPING));
+      GenericMapping.GenericRead = ACCESS_READ;
+      GenericMapping.GenericWrite = ACCESS_WRITE;
+      GenericMapping.GenericExecute = 0;
+      GenericMapping.GenericAll = ACCESS_READ | ACCESS_WRITE;
+
+      //
+      // This only does something if we want to use generic access rights,
+      // like GENERIC_ALL, in our call to AccessCheck. We are not.
+      //
+      MapGenericMask(&amp;dwAccessDesired, &amp;GenericMapping);
+
+      dwPrivSetSize = sizeof(PRIVILEGE_SET);
+
+      //
+      // Make the call.
+      //
+      if( !AccessCheck(psdSD,
+                       hToken,
+                       dwAccessDesired,
+                       &amp;GenericMapping,
+                       &amp;PrivilegeSet,
+                       &amp;dwPrivSetSize,
+                       &amp;dwAccessGranted,
+                       &amp;fAccessGranted ) )
+
+         printf("Error in AccessCheck : %lu\n", GetLastError());
+      else
+      {
+         if(fAccessGranted)
+            printf(" Access Was Granted Using Mask %lx\n",
+                   dwAccessGranted);
+         else
+            printf("Access was NOT granted!\n");
+
+      }
+
+      //
+      // 2. See if what is the maximum access I am allowed.
+      //
+      dwAccessDesired = MAXIMUM_ALLOWED;
+
+      if( !AccessCheck(psdSD,
+                       hToken,
+                       dwAccessDesired,
+                       &amp;GenericMapping,
+                       &amp;PrivilegeSet,
+                       &amp;dwPrivSetSize,
+                       &amp;dwAccessGranted,
+                       &amp;fAccessGranted ) )
+
+         printf("Error in AccessCheck : %lu\n", GetLastError());
+      else
+      {
+         if(fAccessGranted)
+            printf(" Maximum Access Allowed = %lx\n", dwAccessGranted);
+      }
+
+      RevertToSelf();
+
+      LocalFree(pACL);
+      LocalFree(psdSD);
+
+   }
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : BseSecurity kbcode kbprg<BR>
+Version             : 4.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 11, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

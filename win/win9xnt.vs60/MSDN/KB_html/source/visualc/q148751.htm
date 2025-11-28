@@ -1,0 +1,288 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: COleDateTimeSpan Returns Incorrect Value </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q148751">
+<META NAME="KBModify" CONTENT="1998/03/20">
+<META NAME="KBCreate" CONTENT="1996/03/20">
+<META NAME="Keywords" CONTENT="MfcOLE kbbuglist kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  COleDateTimeSpan returns an incorrect number of days when using dates earlier than midnight December 30, 1899. Also, adding or subtracting COleDateTimeSpan objects from COleDateTime objects will produce incorrect results if the resulting date is be...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAHH,QAUD,QACE,QA2O,QAKC,QABA,QAFO,QAR4,QAGJ,QAAP,QBC6,QALW,QAG8,QAY5,QAH4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: COleDateTimeSpan Returns Incorrect Value</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 20, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q148751</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+4.00 4.10
+WINDOWS NT
+kbprg kbbuglist kbfixlist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++, 32-bit Edition, versions 4.0, 4.1
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+COleDateTimeSpan returns an incorrect number of days when using dates
+earlier than midnight December 30, 1899. Also, adding or subtracting
+COleDateTimeSpan objects from COleDateTime objects will produce incorrect
+results if the resulting date is before midnight December 30, 1899.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+COleDateTime stores a double that represents the number of days relative to
+midnight December 30, 1899 (the base date). A date prior to the base date
+is represented by a negative number. A date that falls after the base date
+is represented by a positive double value. For example, if the date is
+December 29, 1899 at midnight, the value of COleDateTime is -1.0.
+<P>
+To calculate the actual number of days between a date prior to the base
+date and the base date, add the fractional part of the COleDateTime's
+double variable instead of subtracting it. For example, December 29, 1899
+at 6:00 a.m. is represented as -1.25. Note, it is .75 days from the base
+date of midnight December 30, 1899.
+<P>
+The DoubleFromDate() and DateFromDouble() in OLEVAR.CPP located in the
+\Msdev\Mfc\Src directory attempt to correct for the difference with
+negative numbers as mentioned above. These functions incorrectly handle
+this.
+<P>
+Here is the code:
+<P>
+double DoubleFromDate(DATE dt)
+{
+<PRE>    // No problem if positive
+    if(dt &gt;= 0)
+        return dt;
+
+    // If negative, must convert because negative dates not continuous
+    // (examples: -1.25 to -.75, -1.50 to -.50, -1.75 to -.25)
+    double dblWhole = modf(dt, &amp;dt);    // dt is now fractional part
+    return dblWhole - dt;
+</PRE>}
+<P>
+DATE DateFromDouble(double dbl)
+{
+<PRE>  // No problem if positive
+  if(dbl &gt;= 0)
+     return dbl;
+
+  // If negative, must convert because negative dates not continuous
+  // (examples: -.75 to -1.25, -.50 to -1.50, -.25 to -1.75)
+  DATE dtWhole = modf(dbl, &amp;dbl); // dbl is now fractional part
+  return dtWhole - dbl;
+</PRE>}
+<P>
+Notice that the modf() function is called incorrectly. The whole number and
+the fractional portion are reversed.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+There are two primary ways to work around these bugs:
+
+<UL><LI>Create your own COleDateTimeSpan object to handle this correctly. Use
+   the COleDateTimeSpan code in Olevar.cpp as a guide. Then you can cut
+   and paste. Unfortunately, no virtual functions exist for
+   COleDateTimeSpan that will allow you to easily correct the bug.
+<P>
+   -or-
+
+<LI>Write functions that will produce the same results as COleTimeSpan.
+   See the sample code in this article for a function that will
+   calculate the number of days between two given dates. The function
+   always returns a positive number of days to avoid any confusion about
+   what negative and positive time spans mean. There is also a function
+   that allows you to add a number of days to an existing COleDateTime
+   object.
+<P>
+</UL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This problem was corrected in Visual C++,
+32-bit Edition, version 4.2.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>#include &lt;afxole.h&gt;
+#include &lt;math.h&gt;
+
+</PRE>double GetDaySpan(COleDateTime dt1, COleDateTime dt2)
+{
+<PRE>    // No problem if positive
+    if(dt1&gt;=0 &amp;&amp; dt2 &gt;= 0)
+           return fabs(dt1-dt2);
+
+    // Days from midnight December 30, 1899
+    double Dt1SpanFromZero, Dt2SpanFromZero;
+
+    if (dt1&lt;0)
+    {
+        double dblDt1Whole, dblDt1Fraction;
+        dblDt1Fraction=modf(dt1,&amp;dblDt1Whole);
+        Dt1SpanFromZero=dblDt1Whole-dblDt1Fraction;
+    }
+    else
+    {
+        Dt1SpanFromZero=dt1;
+    }
+
+    if (dt2&lt;0)
+    {
+        double dblDt2Whole,dblDt2Fraction;
+        dblDt2Fraction = modf(dt2, &amp;dblDt2Whole);
+        Dt2SpanFromZero=dblDt2Whole-dblDt2Fraction;
+    }
+    else
+    {
+        Dt2SpanFromZero=dt2;
+    }
+
+    // return positive # of days
+    return fabs(Dt1SpanFromZero-Dt2SpanFromZero);
+</PRE>}
+<P>
+<PRE>void AddDays(COleDateTime &amp;date, double dblDays)
+</PRE>{
+<PRE>    // First, normalize negative date
+    // Days from midnight December 30, 1899
+    double Dt1SpanFromZero;
+
+    if (date.m_dt&lt;0)
+    {
+        double dblDt1Whole, dblDt1Fraction;
+        dblDt1Fraction=modf(date.m_dt,&amp;dblDt1Whole);
+        Dt1SpanFromZero=dblDt1Whole-dblDt1Fraction;
+    }
+    else
+    {
+        Dt1SpanFromZero = date.m_dt;
+    }
+
+     date.m_dt = Dt1SpanFromZero + dblDays;
+
+     if (date.m_dt&gt;=0)
+              return;
+
+     // Date before midnight December 30, 1899
+     // need to correct date by changing the fractional portion
+
+     double dblWhole, dblFraction;
+     dblFraction=modf(date,&amp;dblWhole);
+     date.m_dt=dblWhole -  ( 2 + dblFraction);
+     // Add 1 to make the fraction positive
+     // Add 1 more to increase the whole part by one
+     // e.g., converts a span of  -1.75 ( which is -1 - .75 )
+     // to -2.25 ( which is -2 + .25 )
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00 4.10 vcbuglist400 vcfixlist420<BR>
+KBCategory: kbprg kbbuglist kbfixlist<BR>
+KBSubcategory: MfcOLE<BR>
+Keywords          : MfcOLE kbbuglist kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 4.00 4.10<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 20, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

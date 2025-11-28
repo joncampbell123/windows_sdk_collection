@@ -1,0 +1,231 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Using RI Builder &amp; Long Table Names Makes Triggers Fail </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q142313">
+<META NAME="KBModify" CONTENT="1997/02/20">
+<META NAME="KBCreate" CONTENT="1996/01/09">
+<META NAME="Keywords" CONTENT="kbtool kbbuglist kbfixlist">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  Using the RI Builder's code along with tables that have long table names and Private datasessions results in triggers constantly failing. The underlying error causing the triggers to fail is Error 1  File             does not exist.   CAUSE =====  ...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAZV,QBXS,QATP,QA9N,QAUJ,QAH4,QAPN,QARR,QACI,QBWS,QAR4,QARM,QDKW,QAKP,QAB9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Using RI Builder &amp; Long Table Names Makes Triggers Fail</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 20, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q142313</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual FoxPro for Windows, versions 3.0 and 3.0b
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Using the RI Builder's code along with tables that have long table names
+and Private datasessions results in triggers constantly failing. The
+underlying error causing the triggers to fail is Error 1 "File &lt;file_name&gt;
+does not exist."
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+There are two causes. First the SET DATABASE command is scoped to Private
+Datasessions. Thus, there is no Database current and the appropriate
+database must be current for Visual FoxPro to be able to resolve long table
+names. Second, the Referential Integrity (RI) Builder does not take this
+previous issue into account.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+Modify the RIOPEN procedure the RI Builder created. The modifications would
+consist of finding the Database the table with the long table name belongs
+to, using CURSORGETPROP(), SET DATABASE to this Database. Let the RIOPEN
+routine open the table. Then use SET DATABASE to set the database back to
+the original database if any.
+<P>
+<P><h3>Example Workaround</h3>
+ 
+<P>
+To work around this problem, make the following modifications to the RIOPEN
+Procedure:
+
+<OL><P><LI>Copy the entire RIOPEN procedure, and paste it below the "__RI_FOOTER"
+
+<P><LI>Add the following variables to the copied RIOPEN's LOCAL declarations:
+<P>
+   __lcCurDBC, __tcOldTable
+
+<P><LI>Insert the following lines immediately after the copied RIOPEN's LOCAL
+   declarations:
+<P>
+   &amp;&amp; Replace any spaces in Long Table name with "_".
+   &amp;&amp; because this is what VFP does in the DE, Aliases
+   &amp;&amp; are not allowed to contain spaces.
+   __tcOldTable=tcTable
+   tcTable=STRTRAN(ALLTRIM(tcTable)," ","_")
+<P>
+   &amp;&amp; Find the DBC name the Table belongs to
+   __lcCurDBC=SET('DATABASE') &amp;&amp;Get any current DBC
+   __lcDBCName=CURSORGETPROP('DATABASE',tcTable) &amp;&amp; Get Database Name
+<P>
+   __lcDBCName=substr(__lcDBCName,rat('\',__lcDBCName)+1) &amp;&amp;Remove path
+   __lcDBCName=substr(__lcDBCName,1,rat('.',__lcDBCName)-1) &amp;&amp;Remove '.DBC'
+<P>
+   SET DATABASE TO (__lcDBCName)
+<P>
+   &amp;&amp; Restore original value, the USE needs the actual Long Table name
+   tcTable=__tcOldTable
+
+<P><LI>Insert the following line immediately after the first ENDIF of the
+   copied RIOPEN procedure:
+<P>
+   &amp;&amp; Set back to original DBC
+   SET DATABASE TO &amp;__lcCurDBC
+<P>
+</OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the Microsoft products
+listed at the beginning of this article. This problem has been fixed in
+Visual FoxPro 5.0 for Windows.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Problem</h3>
+ 
+
+<OL><P><LI>Create a new database with a Parent Child Persistent Relation, and give
+   the parent table a long table name.
+
+<P><LI>Set the RI Builder so that there is RESTRICT on the Child table's
+   Insert.
+
+<P><LI>Create a new form, and add both tables to its Data Environment.
+
+<P><LI>Set the Child Cursors's BuffermodeOverride property to 5.
+
+<P><LI>Set the form's DataSession property to 2-Private Datasession.
+
+<P><LI>Add the child table's Foreign Key to the Form.
+
+<P><LI>Add a Command button to the form. Set its Caption property to Add, and
+   Add the following code to its Click event:
+<P>
+   SELECT &lt;child table&gt;
+   APPEND BLANK
+   THISFORM.REFRESH
+
+<P><LI>Add another Command button to the form. Set its caption property to
+   Save, and add the following code to its Click event:
+<P>
+   SELECT&lt;child table&gt;
+   IF .NOT. TABLEUPDATE(.T.,.T.)
+<P><PRE>      =TABLEREVERT(.T.) &amp;&amp;Revert the change
+      IF TYPE('gaErrors[1,1]') &lt;&gt; 'L'
+<PRE></PRE>         =MESSAGEBOX('Trigger Failed - '+gaErrors[1,2],0,;
+           'Data Entry Error/Trigger Failed')
+      ENDIF
+      GO TOP
+   ENDIF
+   THISFORM.REFRESH
+
+</PRE><P><LI>Run the form. Click the Add button, and type in a value that is not in
+   the Parent's Primary Key. Click the "Save" button.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbtool kbbuglist kbfixlist<BR>
+KBSubcategory: FxtoolBuilder VFoxWin buglist3.00 buglist3.00b fixlist5.00<BR>
+Additional reference words: 3.00 3.00b<BR>
+*<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 20, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

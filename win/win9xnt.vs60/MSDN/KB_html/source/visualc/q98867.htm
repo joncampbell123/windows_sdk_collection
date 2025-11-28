@@ -1,0 +1,219 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Temporary Object Memory Leak in Foundation Classes </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q98867 ">
+<META NAME="KBModify" CONTENT="1997/09/16">
+<META NAME="KBCreate" CONTENT="1993/05/16">
+<META NAME="Keywords" CONTENT="kb16bitonly MfcMisc kbfasttip">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Under some circumstances, an application created with Microsoft Foundation Classes version 2.0 allocates temporary objects on the application heap and does not delete them. While the memory diagnostics in the debugging version of the Foundation Cla...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAW6,QBF0,QAEF,QBHQ,QBVV,QAY2,QAHB,QDL9,QBWO,QBWN,QAEV,QBFY,QAH4,QABO V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Temporary Object Memory Leak in Foundation Classes</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 16, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q98867 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P><PRE>    - Microsoft Visual C++ for Windows, version 1.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Under some circumstances, an application created with Microsoft
+Foundation Classes version 2.0 allocates temporary objects on the
+application heap and does not delete them. While the memory
+diagnostics in the debugging version of the Foundation Classes
+libraries do not detect this memory leak, the error is apparent when
+Heap Walker is used to monitor the heap.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+A HANDLE is attached to both a permanent object and a temporary
+object. When the HANDLE is detached from the permanent object, it is
+also detached from the temporary object. Consequently, the temporary
+object is never destroyed.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Do not remove the HANDLE from the temporary map when it is detached.
+To do so, remove one line of code from the WINHAND.CPP source file. In
+Visual C++, remove line 158 which reads as follows:
+<P>
+<PRE>   m_temporaryMap.RemoveKey((MAPTYPE)h);
+
+</PRE>It is also necessary to change the arguments to some ASSERT macros to
+prevent detaching a temporary object from causing an assertion failure. It
+is not necessary to Detach a temporary object because it generally serves
+no useful purpose. However, because Microsoft Foundation Class Libraries
+version 1.0 support this practice, version 2.0 supports it as well. In
+WINHAND.CPP, change lines 145 and 173 from
+<P>
+<PRE>   ASSERT(ph[0] == h);
+
+</PRE>to:
+<P>
+<PRE>   ASSERT(ph[0] == h || ph[0] == NULL);
+
+</PRE>After making these changes, rebuild the Microsoft Foundation Class
+Libraries using the MAKEFILE in the library source directory (by default,
+C:\MSVC\MFC\SRC). The MAKEFILE supports building all variations of the
+Foundation Class Libraries. For more information on using the MAKEFILE,
+please refer to the comments at the beginning of the MAKEFILE.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the Microsoft
+Foundation Class Libraries version 2.0 for Windows. This problem was
+corrected in the MFC libraries version 2.5, which ships with Microsoft
+VC++ version 1.5.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The Foundation Class Libraries maintain two maps for each HANDLE used
+in the Microsoft Windows environment. The Libraries maintain four map
+pairs, for HDCs, HGDIOBJECTs, HMENUs, and HWNDs. For each handle type,
+the Libraries maintain two separate maps: a temporary map and a
+permanent map. When the Library maps a HANDLE to a C++ object, it
+checks the permanent map first and then checks the temporary map.
+<P>
+Under some circumstances, a HANDLE appears in both maps. A serious
+memory leak occurs when a HANDLE is Detached (or unmapped) from its
+permanent C++ object. This removes the HANDLE from both maps even
+though the temporary object is not destroyed. Because the temporary
+C++ object is not present in the temporary map when the
+CWinApp::OnIdle() function attempts to delete all temporary objects,
+the temporary C++ object remains in memory. For example, the following
+code example causes a memory leak that involves one temporary CDC
+object:
+<P>
+<PRE>   CDC* pDC = CDC::FromHandle(hDC); // creates temporary object
+   CDC dc;
+   dc.Attach(hDC); // now in permanent map as well
+   dc.Detach(hDC); // removed from temp and permanent map
+   // pDC is never deleted
+
+</PRE>Even though the code sequence above is rare, it occurs quite often
+processing objects in the CFrameWnd class. CFrameWnd processes a
+WM_ERASEBKGND message in an OnEraseBkgnd handler. Windows sends
+WM_ERASEBKGND before it sends the WM_PAINT message. The Library
+creates a temporary object in the OnEraseBkgnd handler. When the
+application receives the WM_PAINT message, it creates a permanent
+CPaintDC object on the stack. This creates a situation similar to that
+above except that the temporary and permanent objects result from
+processing different messages.
+<P>
+Because CWinApp::OnIdle() is not called between the WM_ERASEBKGND
+message and WM_PAINT messages, the temporary object created processing
+the WM_ERASEBKGND message is not removed.
+<P>
+This problem does not generally affect applications created in
+AppWizard because CFrameWnd objects in an application that uses CView
+child windows do not receive WM_PAINT messages under normal
+circumstances.
+ 
+<PRE>Keywords          : kb16bitonly MfcMisc kbfasttip
+Technology        : kbmfc
+Version           : 1.0
+Platform          : WINDOWS
+Issue type        : kbbug
+Solution Type     : kbfix</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 16, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

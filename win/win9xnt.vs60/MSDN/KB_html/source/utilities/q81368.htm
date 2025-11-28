@@ -1,0 +1,262 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Building Static Overlays in an MS-DOS Executable File </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q81368 ">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1992/03/04">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; utilities">
+<META NAME="Description" CONTENT="  In the MS-DOS operating system, an executable file can be as large as 1 MB; an executable file that contains overlays can be as large as 16 MB. Microsoft LINK can create overlays by dividing the application into a resident portion that is loaded wh...">
+<META NAME="Product" CONTENT="Programming Utilities">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAW9,QAH4,QAH5,QAGU,QBE7,QBE6,QAHC,QADN,QBW6,QAE2,QAH6,QBVV,QBFY,QAY4,QAY2 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Building Static Overlays in an MS-DOS Executable File</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q81368 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+3.x 4.0x 4.10 5.0x 5.1x 5.20 5.3x 5.50 5.60
+MS-DOS
+kbtool
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft LINK for MS-DOS, versions 3.x, 4.0x, 4.1, 5.0x, 5.1x,
+   5.2, 5.3x, 5.50, and 5.60
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In the MS-DOS operating system, an executable file can be as large as
+1 MB; an executable file that contains overlays can be as large as 16
+MB. Microsoft LINK can create overlays by dividing the application
+into a resident portion that is loaded when the application begins
+execution and overlays that are loaded into memory as needed. This
+method produces one .EXE file. This method reduces the memory required
+to run the program but increases the time required for overhead
+processing. The application also requires more disk space because it
+must contain code for the overlay manager.
+<P>
+For far calls from the resident portion to an overlay or between
+overlays, LINK substitutes the following sequence of code:
+<P>
+<PRE>   int     IntNo         ; IntNo specified with /O, default is 3Fh
+   DB      OverlayNum    ; The overlay number
+   DW      OverlayEntry  ; Offset of the entry point
+
+</PRE>The Interrupt instruction passes control to the static overlay manager
+which determines which overlay is called and if it is already loaded
+in memory. If the overlay is not in memory, the manager loads the
+overlay from the executable file.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To create an overlay using the Static Overlay Manager, surround the names
+of object modules with parentheses. LINK assigns individual segments to an
+overlay, not object modules. For example, consider the following LINK
+command line:
+<P>
+<PRE>   link main.obj (mod1.obj mod2.obj) (mod3.obj);
+
+</PRE>The resident portion consists of the segments declared in MAIN.OBJ and
+any segments that do not have the class 'CODE' in MOD1.OBJ, MOD2.OBJ,
+and MOD3.OBJ. LINK assigns only segments of class 'CODE' to an
+overlay. The overlay to which a code segment is assigned is determined
+by the object module that first defines a segment. For example, of
+both MAIN.OBJ and MOD1.OBJ define a segment called "ASEG," the data in
+ASEG defined in MOD1.OBJ becomes part of the resident portion of the
+application because ASEG was first defined in MAIN.OBJ.
+<P>
+LINK adds three segments to an overlaid program: OVERLAY_AREA,
+OVERLAY_DATA, and OVERLAY_END. The overlay manager loads each overlay
+into OVERLAY_DATA when it is needed. OVERLAY_END immediately follows
+OVERLAY_AREA to facilitate determining the size of the overlay area
+(subtract the segment address of OVERLAY_AREA from OVERLAY_END). LINK
+initializes the OVERLAY_DATA segment with information the overlay
+manager needs. OVERLAY_DATA is part of DGROUP.
+<P>
+The overlay manager code is stored in the OVLM6L module in the
+Microsoft language run-time libraries. LINK places this code into the
+_TEXT segment.
+<P>
+Each overlay in the executable file has an executable file header. The
+structure of the file created by the command line example above is as
+follows:
+<P>
+<PRE>        ----------------------
+       |     .EXE header      |       Overlay 0h
+        ----------------------
+       |                      |
+       |   Resident portion   |
+       |         and          |
+       |   overlay segments   |
+       |                      |
+        ----------------------
+       |     .EXE header      |       Overlay 1h
+        ----------------------
+       |                      |
+       |     Code segments    |
+       |                      |
+        ----------------------
+       |     .EXE header      |       Overlay 2h
+        ----------------------
+       |                      |
+       |     Code segments    |
+       |                      |
+        ----------------------
+
+</PRE>At run time, the resident portion of the application initializes the
+overlay interrupt vector specified by the linker (by default,
+Interrupt 3Fh) with the address of the overlay manager. When the
+interrupt occurs, control transfers to the overlay manager. When the
+overlay manager loads an overlay, it retrieves the file name from
+OVERLAY_DATA, locates the overlay using information in the overlay's
+.EXE header, reads the contents of the overlay into OVERLAY_AREA, and
+transfers control to the overlay.
+<P>
+The memory image of an executable file that contains overlays is as
+follows:
+<P>
+<PRE>        ----------------------+-&gt; high memory address
+       |                      |
+       |     ROOT (data)      |
+       |                      |
+        ----------------------+-&gt; OVERLAY_END
+       |                      |
+       | OVERLAY AREA (code)  |
+       |                      |
+        ----------------------+-&gt; OVERLAY_AREA
+       |                      |
+       |     ROOT (code)      |
+       |                      |
+        ----------------------+-&gt; low memory address
+
+</PRE>Note:
+
+<UL><LI>The names of segments in an overlay must differ from the names of
+   segments in the resident portion. To accomplish this with a
+   Microsoft language product, compile the application for the medium,
+   large, or huge memory model.
+
+<LI>LINK /INCR[EMENTAL] does not support overlays.
+
+<LI>The MS-DOS portion of a bound executable file cannot contain
+   overlays.
+
+<LI>Do not change the name of an executable file that contains overlays
+   if it will run with MS-DOS versions prior to version 3.0.
+<P>
+</UL>The information in this article applies only to static overlays. For more
+information, refer to chapter 15 in the Microsoft C/C++ "Environment and
+Tools" manual for version 7.0. For information on the Microsoft Overlaid
+Virtual Environment (MOVE) that provides dynamic overlays, refer to the
+MOVEAPI.TXT file provided with C/C++ version 7.0.
+<P>
+For Visual C++, refer to either the Comprehensive Index or Books Online for
+detailed information about overlaid programs using either the Static
+Overlay Manager or MOVE.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+"The MS-DOS Encyclopedia" (Microsoft Press, 1988), page 715
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 3.00 3.01 3.02 3.05 3.04 3.06 3.51 3.55<BR>
+gp<BR>
+fault trap 13 lock 3.60 3.61 3.64 3.65 3.69 4.06 4.07 4.10 5.01.20 5.02.21<BR>
+5.02 5.03 5.05 5.10 5.11 5.13 5.15 5.20 5.30 5.31.009 5.50<BR>
+KBCategory: kbtool<BR>
+KBSubcategory: StaticOverlay<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,251 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: MSMQ and MTS Design Programming Considerations </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q176307">
+<META NAME="KBModify" CONTENT="1998/01/28">
+<META NAME="KBCreate" CONTENT="1997/11/05">
+<META NAME="Keywords" CONTENT="MQProg kbfaq">
+<META NAME="KBArea" CONTENT="Support; KB; msmq">
+<META NAME="Description" CONTENT="  This article addresses programming and design considerations for using Microsoft Message Queue Server (MSMQ) with Microsoft Transaction Server (MTS) Transactions.  When you use MSMQ inside an MTS component, decide in advance if you need a single tr...">
+<META NAME="Product" CONTENT="msmq">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH6,QAGI,QAEV,QAPN,QBXJ,QBVV,QBBI,QA4B,QAYC,QAIF,QAHE,QAJG,QBW7,QAI5,QAU3 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: MSMQ and MTS Design Programming Considerations</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 28, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q176307</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Message Queue Server version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article addresses programming and design considerations for using
+Microsoft Message Queue Server (MSMQ) with Microsoft Transaction Server
+(MTS) Transactions.
+<P>
+When you use MSMQ inside an MTS component, decide in advance if you need a
+single transaction for all MSMQ and MTS operations, use explicit flags for
+pTransaction, and use appropriate queue types.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+
+<OL><P><LI>Queues are assigned a transactional property when created. This property
+   is not modifiable later. MQCreateQueue API (or the Create method in
+   ActiveX) does not detect MTS transaction context to set
+   PROPID_Q_TRANSACTION. You need to supply this flag when creating a
+   queue.
+
+<P><LI>Messages sent to a transactional queue can be sent to the Dead Letter
+   Queue if there is no current transaction in the following scenario:
+<P>
+<P><PRE>      If the queue properties can be accessed at Send time, the call to
+      Send rejects this operation due to a queue type mismatch. This is an
+      application error that will not route the message to the
+      corresponding Dead Letter Queue. If the queue properties can not be
+      accessed at Send time, for example, when you are send directly to a
+      remote location, then the Send fails later and will be in the Dead
+      Letter Queue.
+</PRE>
+<P><LI>Messages sent to a non-transactional queue can be sent to the XACT_DEAD
+   LETTER_QUEUE if they are part of a transaction in the following
+   scenario:
+<P>
+<P><PRE>      If the queue properties can be accessed at Send time, the call to
+      Send rejects the operation due to queue type mismatch. This is an
+      application error and the message will not route to the corresponding
+      Dead Letter Queue. If the queue properties cannot be accessed at
+      Send time, for example, when you are sending directly to remote
+      location, then the Send fails later and will be found in
+      XACT_DEAD_LETTER_QUEUE.
+</PRE>
+<P><LI>A single MSMQ component can send both transactional and
+   non-transactional messages.
+
+<P><LI>When run under MTS, MSMQ code can detect and become part of the
+   current MTS transaction. The determining factor is the pTransaction
+   parameter in MSMQ Send/Receive calls.
+<P>
+<P><PRE>      For example, when using ActiveX Send/Receive methods in
+      Visual Basic, it automatically checks if there is an MTS
+      transaction (and will become part of that transaction) when
+      you do not specify any value for pTransaction.
+</PRE><P>
+<P>
+</OL><h3>PTransaction</h3>
+ 
+<P>
+PTransaction is a MSMQTransaction object or one of the following constants:
+<P>
+<PRE>   MQ_NO_TRANSACTION: Specifies that the call is not part of a
+   transaction.
+
+   MQ_MTS_TRANSACTION: Default. Specifies that the call is part of the
+   current MTS transaction.
+
+   MQ_XA_TRANSACTION: Specifies that the call is part of an externally
+   coordinated, XA-compliant transaction.
+
+
+</PRE></OL>Using C API specify the behavior you need:
+ 
+<P>
+pTransaction
+<P>
+<PRE>   Must be a pointer to a transaction object, a constant, or NULL. The
+   Transaction object can be obtained internally from MSMQ (by calling
+   MQBeginTransaction), or externally from Microsoft Distributed
+   Transaction Coordinator (DTC).
+
+   The constants include the following:
+
+   MQ_NO_TRANSACTION
+
+     Specifies that the call is not part of a transaction.
+
+   MQ_MTS_TRANSACTION
+
+     Specifies that the current MTS transaction is used to retrieve the
+     message.
+
+   MQ_XA_TRANSACTION
+
+     Specifies that the call is part of an externally coordinated, XA-
+     compliant transaction.
+
+</PRE>NOTE: NULL indicates the message is not retrieved as part of a transaction.
+
+<OL><P><LI>Using explicit values of pTransaction you can send both transactional
+   and non-transactional messages from a single component.
+<P>
+   If the component is non-transactional before being put into an MTS
+   package, and the component is marked with "Requires a Transaction" or
+   "Requires a New Transaction," then the queue the messages are sent to
+   must be transactional. This requires deletion and re-creation, or you
+   need to adjust the flag passed to pTransaction parameter.
+<P>
+   If you mark an MTS component as "Supports Transactions," it allows
+   sending both types of messages to the same queue. It is necessary to add
+   programming logic to create and use the appropriate queue at the right
+   time.
+<P>
+   You can determine if there is an MTS transaction in process and write
+   conditional code using specific flags.
+<P>
+   Refer to the IObjectContext.IsInTransaction method in MTS help file.
+
+<P><LI>Using DtcGetTransactionManager creates a transaction. This occurs
+   regardless of whether the component is inside or outside MTS. The net
+   effect is that transactional messages create a new DTC transaction
+   even if run under MTS.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+MSMQ SDK Help: Send/Receive calls, pTransaction
+<P>
+MTS Help
+<P>
+(c) Microsoft Corporation 1997, All Rights Reserved. Contributions by Syed
+Yousuf,  Microsoft Corporation
+<P>
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Viper Falcon<BR>
+Keywords          : MQProg kbfaq<BR>
+Version           : WINNT:1.0<BR>
+Platform          : winnt<BR>
+Issue type        : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 28, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

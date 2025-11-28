@@ -1,0 +1,216 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: F1 Help Routed Wrongly for Additional Top-Level Windows </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q167961">
+<META NAME="KBModify" CONTENT="1997/09/19">
+<META NAME="KBCreate" CONTENT="1997/05/02">
+<META NAME="Keywords" CONTENT="MfcDocView kbprg kbbuglist kbfixlist">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When you press the F1 key to display help for a window that is not a descendant of the application's main window, it does not display the proper help text.  CAUSE =====  MFC assumes that the currently active window is a descendant of the main windo...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAR4,QAUD,QDL9,QBWQ,QBWO,QBWN,QADO,QAGQ,QAM5,QAM1,QAMA,QAEV,QA62,QBFY,QA5E V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: F1 Help Routed Wrongly for Additional Top-Level Windows</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 19, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q167961</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++ for Windows, 16-bit edition, version 1.52
+   - Microsoft Visual C++, 32-bit Editions, versions 2.0, 2.1, 2.2
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When you press the F1 key to display help for a window that is not a
+descendant of the application's main window, it does not display the proper
+help text.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+MFC assumes that the currently active window is a descendant of the main
+window. So, for windows that are children of the desktop, MFC routes
+WM_COMMANDHELP to the mainframe instead of the active window.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Add an ID_HELP command handler in the CMainFrame that searches for the
+active window based on the window with the current focus and walks up the
+parent tree sending the WM_COMMANDHELP message. Use the code shown in the
+sample code section.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This problem has been fixed in Visual C++
+version 4.0.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When you press the F1 key, an ID_HELP command message is generated and is
+usually routed and handled in the application's main frame message map
+using CFrameWnd::OnHelp(). Then, the OnHelp functions (CFrameWnd and CWnd)
+finds the active window using ::GetLastActivePopup(hWnd), thereby passing
+the handle to the application's main frame. Unfortunately, this only
+returns windows handles that are a descendant of hWnd. If another top-level
+window was active when you pressed the F1 key, the main frame window is
+still used and the subsequent WM_COMMANDHELP messages is never sent to the
+correct active window.
+<P>
+The sample code below fixes this bug by sending the message to the window
+with the current focus before going through the default MFC logic.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   //////////////////////////////////////
+   // HEADER file
+   class CMainFrame : public CMDIFrameWnd
+   {
+      afx_msg void OnHelp();
+      ...
+
+   //////////////////////////////////////
+   // IMPLEMENTATION file
+   #include "afxpriv.h"
+
+   BEGIN_MESSAGE_MAP(CMainFrame, CMDIFrameWnd)
+   ...
+      ON_COMMAND(ID_HELP, CMainFrame::OnHelp)
+   END_MESSAGE_MAP()
+
+   void CMainFrame::OnHelp()
+   {
+      if (m_dwPromptContext != 0)
+      {
+         if (m_dwPromptContext !=
+            HID_BASE_PROMPT + AFX_IDP_FAILED_TO_LAUNCH_HELP)
+            AfxGetApp()-&gt;WinHelp(m_dwPromptContext);
+         return;
+      }
+
+      // attempt to get help from whoever has the focus
+      HWND hWnd = ::GetFocus();
+      while (hWnd != NULL)
+      {
+         // attempt to process help
+         if (::SendMessage(hWnd, WM_COMMANDHELP, 0, 0))
+            return;
+
+         // check next parent/owner in the parent/owner chain
+         CWnd* pWnd = CWnd::FromHandlePermanent(hWnd);
+         if (pWnd != NULL)
+            hWnd = pWnd-&gt;GetOwner()-&gt;GetSafeHwnd();
+         else
+            // otherwise, return parent in the Windows sense
+            hWnd = ::GetParent(hWnd);
+      }
+      CWnd::OnHelp();
+
+</PRE>(c) Microsoft Corporation 1997, All Rights Reserved.
+Contributions by Adam Kim, Microsoft Corporation
+ 
+<PRE>Keywords          : MfcDocView kbprg kbbuglist kbfixlist
+Technology        : kbMfc
+Version           : 1.52 2.0 2.1 2.2
+Platform          : NT WINDOWS
+Issue type        : kbbug
+Solution Type     : kbfix</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 19, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

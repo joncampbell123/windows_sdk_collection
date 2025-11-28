@@ -1,0 +1,305 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Configure a Time-Out on a CSocket Operation </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q138692">
+<META NAME="KBModify" CONTENT="1997/10/10">
+<META NAME="KBCreate" CONTENT="1995/10/25">
+<META NAME="Keywords" CONTENT="">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  CSocket operations, such as Receive, Send, and Connect, are blocking operations in the sense that a call to these functions will not return until it has successfully completed or an error on the socket has occurred.  Under some circumstances, the o...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAY5,QAGI,QAUD,QATK,QAA1,QBV8,QAB9,QBSO,QAIF,QDL9,QDI2,QBWQ,QBWO,QBWN,QBFY V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Configure a Time-Out on a CSocket Operation</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q138692</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.51 1.52 | 2.10 2.20 4.00
+<PRE>WINDOWS   | WINDOWS NT
+</PRE>kbprg kbcode kbhowto
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes(MFC) included with:
+<P>
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.51, 1.52
+    - Microsoft Visual C++, 32-bit Edition, versions 2.1, 2.2, 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+CSocket operations, such as Receive, Send, and Connect, are blocking
+operations in the sense that a call to these functions will not return
+until it has successfully completed or an error on the socket has occurred.
+<P>
+Under some circumstances, the operation might never complete successfully
+and your program will loop forever while waiting for this completion. It
+might be a good idea to programmatically limit the amount of time allowed
+for the operation to complete. This article discusses one way to do it.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+One approach would be to set a timer that fires when the operation has
+taken too long. The key to this approach is in how the timer is handled.
+Although the operation is "blocking," you still have the ability to handle
+messages that arrive. If you set a timer by using SetTimer, then you can
+look for the WM_TIMER message, and abort the operation when it arrives. The
+primary functions involved in this process are:
+<P>
+The Windows API call:
+<PRE>  ::SetTimer
+</PRE>The MFC functions:
+<PRE>  CSocket::OnMessagePending
+  CSocket::CancelBlockingCall
+
+</PRE>For simplicity, this functionality can be encapsulated in your CSocket-
+derived class.
+<P>
+WARNING: Before reading further, note that there is a bug in some versions
+of MFC that will cause problems if you attempt to use a timer and override
+OnMessagePending. This problem is documented in the following Microsoft
+Knowledge Base article:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q137632.htm">Q137632</A></B>
+   TITLE     : BUG: OnMessagePending Not Called When a Timer Is Active
+
+</PRE>This article applies only to versions 1.52, 1.52b, 2.1, and 2.2 of Visual
+C++. If you are using one of these versions of Visual C++, then you will
+also need to implement the workaround that is supplied.
+<P>
+The sample code for a class that provides this time-out capability is
+included at the end of this article. The functions implemented by the class
+are described in the following sections of this article.
+<P>
+<P><h3>BOOL SetTimeOut(UINT uTimeOut)</h3>
+ 
+<P>
+This would be called immediately before calling the CSocket function (for
+example, Receive, Send, and Accept). The uTimeOut parameter is specified in
+milliseconds. The following implementation simply sets up the timer. This
+function returns FALSE if the attempt to set the timer failed. See the
+Windows API documentation on the SetTimer function for further details.
+<P>
+<P><h3>BOOL KillTimeOut()</h3>
+ 
+<P>
+This function needs to be called after the completion of the operation that
+was blocking. It removes the timer that was set up with SetTimeOut. It
+returns FALSE if the call to KillTimer failed. See the Windows API
+documentation on the KillTimer function for further details.
+<P>
+<P><h3>BOOL OnMessagePending()</h3>
+ 
+<P>
+This is a virtual callback that is called by the CSocket class when it is
+waiting for an operation to complete. It gives you the opportunity to do
+something with incoming messages. This implementation checks for the
+WM_TIMER message for the timer set with the SetTimeOut call. And if it
+arrives then it invokes the CancelBlockingCall function. See the MFC
+documentation on the OnMessagePending and CancelBlockingCall functions for
+details. Please note that by calling CancelBlockingCall, you will cause the
+operation to fail and GetLastError will return WSAEINTR (indicating an
+interrupted operation).
+<P>
+Here is an example use of this class:
+<P>
+...
+CTimeOutSocket sockServer;
+CAcceptedSocket sockAccept;
+<P>
+sockServer.Create(777);
+sockServer.Listen();
+<P>
+<PRE>// Note the following sequence:
+//  SetTimeOut
+//  &lt;operation which might block&gt;
+//  KillTimeOut
+
+</PRE>if(!sockServer.SetTimeOut(10000))
+{
+<PRE>  ASSERT(FALSE);
+  // Error Handling...for some reason, we could not setup
+  // the timer.
+</PRE>}
+<P>
+if(!sockServer.Accept(sockAccept))
+{
+<PRE>  int nError = GetLastError();
+  if(nError==WSAEINTR)
+    AfxMessageBox("No Connections Arrived For 10 Seconds");
+   else
+     ; // Do other error processing
+</PRE>}
+<P>
+if(!sockServer.KillTimeOut())
+{
+<PRE>  ASSERT(FALSE);
+  // Error Handling...for some reason the timer could not
+  // be destroyed...perhaps a memory overwrite has changed
+  // m_nTimerID
+  //
+</PRE>}
+...
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>//
+// HEADER FILE
+//
+</PRE>class CTimeOutSocket : public CSocket
+{
+public:
+<PRE>  BOOL SetTimeOut(UINT uTimeOut);
+  BOOL KillTimeOut();
+</PRE>protected:
+<PRE>  virtual BOOL OnMessagePending();
+</PRE>private:
+<PRE>  int m_nTimerID;
+</PRE>};
+<PRE>//
+// END OF FILE
+//
+
+
+//
+// IMPLEMENTATION FILE
+//
+</PRE>BOOL CTimeOutSocket::OnMessagePending()
+{
+<PRE>  MSG msg;
+  if(::PeekMessage(&amp;msg, NULL, WM_TIMER, WM_TIMER, PM_NOREMOVE))
+  {
+    if (msg.wParam == (UINT) m_nTimerID)
+    {
+      // Remove the message and call CancelBlockingCall
+      ::PeekMessage(&amp;msg, NULL, WM_TIMER, WM_TIMER, PM_REMOVE);
+      CancelBlockingCall();
+      return FALSE;  // No need for idle time processing
+    };
+  };
+
+  return CSocket::OnMessagePending();
+</PRE>}
+<P>
+BOOL CTimeOutSocket::SetTimeOut(UINT uTimeOut)
+{
+<PRE>  m_nTimerID = SetTimer(NULL,0,uTimeOut,NULL);
+  return m_nTimerID;
+</PRE>}
+<P>
+BOOL CTimeOutSocket::KillTimeOut()
+{
+<PRE>  return KillTimer(NULL,m_nTimerID);
+</PRE>}
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For more information on the SetTimer and KillTimer functions, please see
+the Windows API Help file.
+<P>
+For more information on the CSocket class and its member functions, please
+see:
+<P>
+<PRE>  In Visual C++ 2.x  - The MFC Help file.
+  In Visual C++ 1.5x - The Mfcext.hlp help file, which can be found
+                       on the compact disc in the \Msvc15\Help directory.
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf timing 2.51 2.52 2.10 2.20 3.10 3.20 4.00<BR>
+KBCategory: kbprg kbcode kbhowto<BR>
+KBSubcategory: MfcSockets<BR>
+Technology        : kbMfc<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

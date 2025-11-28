@@ -1,0 +1,208 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Determining If Your TSR Has Already Been Installed </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q59884 ">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1990/03/22">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  In Microsoft C, when writing a TSR (terminate-and-stay-resident) program, it is possible to utilize the multiplex interrupt (2fh) to determine whether your TSR has already been loaded into memory. Set up an interrupt service routine (ISR) for this ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QADN,QAHC,QAA1,QDI2,QBFY,QAHB,QA4H,QAGI,QAEF,QABI,QABH,QBXS,QDMW,QAH4,QAI4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Determining If Your TSR Has Already Been Installed</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q59884 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+5.10 6.00 6.00a 6.00ax 7.00 | 1.00 1.50
+<PRE>MS-DOS                      | WINDOWS
+</PRE>kbprg
+<P>
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft C for MS-DOS, versions 5.1, 6.0, 6.0a, and 6.0ax
+<LI>Microsoft C/C++ for MS-DOS, version 7.0
+<LI>Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In Microsoft C, when writing a TSR (terminate-and-stay-resident) program,
+it is possible to utilize the multiplex interrupt (2fh) to determine
+whether your TSR has already been loaded into memory. Set up an interrupt
+service routine (ISR) for this interrupt that will compare the AH register
+with a predefined TSR number (ID#) and change the AL register to a nonzero
+value if the two are equal.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When using the interrupt keyword in Microsoft C, registers are pushed onto
+the stack before each function call. To access these register values from
+within an ISR, define the ISR function as accepting these registers as
+parameters.
+<P>
+Once this is set up, the installation part of the TSR can make a call to
+the multiplex interrupt with the AH register set to the ID# of the TSR, and
+the AL register set to 00h. If the handler is currently installed, it will
+pick up these values in the AX register and then change the AL register to
+01h and return this "installed" signal to the calling program. If the ID#
+in the AL register is not that of the TSR, the TSR can simply chain the
+interrupt back to its original vector.
+<P>
+In summary, to have your TSR check to see if it is already installed, do
+the following:
+
+<OL><P><LI>Make an int86 call with the following:
+<P>
+<P><PRE>      inregs.h.ah=id#(0xc0-0xff)
+      inregs.h.al=0x00
+</PRE>
+<P><LI>If outregs.h.al != 0x00, program is in memory, don't re-install.
+
+<P><LI>Else, revector INT2fh to your own ISR. This ISR should do the
+   following:
+<P>
+   a. Take as parameters the registers pushed on the stack by the
+<P><PRE>      interrupt keyword (see REGPAK below).
+</PRE><P>
+   b. Check the AH register, hibyte of the AX register, with a TSR
+<P><PRE>      ID#(0xc0-0xff).
+</PRE><P>
+   c. If AH=TSR ID#, change al to 0x01.
+<P>
+   d. Else, chain to the old INT2fh vector.
+
+<P><LI>Terminate and stay resident.
+<P>
+</OL>The following is a simple example of an ISR that will accomplish step 3
+(above) nicely with a TSR ID# of 0xc9. For more information about the
+multiplex interrupt and its function, please refer to "The New Peter Norton
+Programmer's Guide to The IBM PC &amp; PS/2," page 303-306. For an example of a
+TSR, see the application note "TSR Example Dirzap.C," which is available
+from Microsoft Product Support Services.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>#include &lt;dos.h&gt;
+
+void (interrupt far *original_int2fh)(); /*set to original*/
+                                         /* int2fh handler*/
+
+#define HIBYTE(x) (((unsigned) (x) &gt;&gt; 8) &amp; 0xff)
+
+#define REGPAK unsigned es, unsigned ds, unsigned di, \
+               unsigned si, unsigned bp, unsigned sp, \
+               unsigned bx, unsigned dx, unsigned cx, \
+               unsigned ax, unsigned ip, unsigned cs, \
+               unsigned flags
+
+void interrupt far new_int2fh(REGPAK)
+</PRE></OL>{
+<PRE>     if (HIBYTE(ax)==0xc9) /* check TSR ID# */
+          ax=0xc901;       /* set AL to 01  */
+     else
+          _chain_intr(original_int2fh);
+}
+
+</PRE>NOTE: The keyword 'interrupt' is '__interupt' in versions 7.0 and 8.0
+of the Microsoft C/C++ compiler.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 5.10 6.00 6.00a 6.00ax 7.00 1.00 1.50<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: PrgTSR<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

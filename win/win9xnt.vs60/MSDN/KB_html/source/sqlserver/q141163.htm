@@ -1,0 +1,203 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Issues With Shrinking SQL Server Databases </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q141163">
+<META NAME="KBModify" CONTENT="1997/05/02">
+<META NAME="KBCreate" CONTENT="1995/12/12">
+<META NAME="Keywords" CONTENT="kbusage SSrvAdmin SSRvBCP SSrvTran">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  SQL Server 6.0 has added the new command DBCC SHRINKDB which allows administrators to truncate some or all of the unused portion of a database at the end of its allocated space thus  shrinking  the allocated database size.  It is important to note ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAZV,QALQ,QABM,QAYY,QDMH,QAGU,QAIJ,QBW5,QBC9,QBC8,QAYZ,QANO,QAL2,QAGX,QAEF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Issues With Shrinking SQL Server Databases</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 2, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q141163</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+SQL Server 6.0 has added the new command DBCC SHRINKDB which allows
+administrators to truncate some or all of the unused portion of a database
+at the end of its allocated space thus "shrinking" the allocated database
+size.  It is important to note that this command does no data compaction
+and does not move data within the database to shrink the database to its
+least possible size.  It simply starts from the end of the database and
+goes backwards until it finds the first place where any data or log
+resides, and determines it can truncate everything after that point.  The
+data object can be a user table or a system table.  If the object is a
+system table (except for SYSLOGS which is the transaction log), there is
+little the user can do to move the object and other options besides DBCC
+SHRINKDB.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+As described in the Administrator's Companion, a SQL Server database
+consists of 1/2 MB allocation units of 256 2KB pages each, and are
+identified by the first page number in their unit; i.e., the first
+allocation unit is 0, the second is 256, the third is 512, etc.  DBCC
+SHRINKDB will only shrink a databases on a 1 MB boundary (i.e., it won't
+<PRE>leave a 1/2 MB.)   The allocation units for a database of 5 MB might be
+</PRE>simply represented like this:
+<P>
+<PRE>0      256    512    768    1024   1280   1536   1792   2048   2304
+</PRE>A......A......A......A......A......A......A......A......A......A......
+<P>
+In the simplest case there is no separate data and log fragments, so table
+data could reside anywhere within the database.  Suppose we have only one
+user table "T" with 2 MB of data in it that takes up space on allocation
+units  256, 768, 1280, 1536, and 1792:
+<P>
+<PRE>0      256    512    768    1024   1280   1536   1792   2048   2304
+</PRE>A......A......A......A......A......A......A......A......A......A......
+<PRE>          ^             ^             ^      ^      ^
+          T             T             T      T      T
+
+</PRE>If there are no system table entries beyond allocation unit 1792, we should
+be able to shrink this database by 1 MB to a total of 4 MB of allocated
+space.  If there are system tables beyond that point, DBCC SHRINKDB should
+report this when run with just the database name as a parameter.
+<P>
+Now suppose we have a 5 MB database with the first 2 MB allocated to data
+and and the last 3 MB allocated to the log.  Again, assume a single user
+table "T" which takes up less than 1 MB of space on allocation units 256
+and 512.  However, because the log fragment (L) starts beyond the end of
+the data fragment, the database can never be shrunk smaller then 3 MB
+because there must always be at least some space allocated to the log
+fragment.
+<P>
+<PRE>0      256    512    768    1024   1280   1536   1792   2048   2304
+</PRE>A......A......A......A......A......A......A......A......A......A......
+<PRE>          ^      ^             ^
+          T      T             L
+
+</PRE>In this case, all the user data resides within the first 2 MB of database
+space.  However, because the log fragment (L) starts beyond the end of the
+data fragment, the database can never be shrunk smaller then 3 MB because
+there must always be at least some space allocated to the log fragment.
+<P>
+<P>
+Now suppose we have a 5 MB database which has been allocated as 2 MB data,
+2 MB log, then another 1 MB of data.  Suppose table "T" currenly only has 1
+row in it, but it just so happens that through a combination of database
+activity over time that the one row resides on a page in allocation unit
+2304.
+<P>
+<PRE>0      256    512    768    1024   1280   1536   1792   2048   2304
+</PRE>A......A......A......A......A......A......A......A......A......A......
+<PRE>                               ^                                   ^
+                               L                                   T
+
+</PRE>In this case, even though there is only a single row of user data in the
+database, DBCC SHRINKDB cannot shink the database at all, even though most
+of the allocation units are completely empty of data.  This is the worst
+case scenario.
+<P>
+For situations where DBCC SHIRNKDB does not effectively shrink the database
+enough, Transfer Manager can be used to copy all the data to a new, smaller
+database.  Or the data can be bulk-copied out, the tables (or just the
+blocking table) dropped, the database shrunk, and the table(s) recreated
+and data bulk-copied back into the database.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: sql6 sizing dbcc shrinkdb<BR>
+Keywords            : kbusage SSrvAdmin SSRvBCP SSrvTran<BR>
+Version             : 6.0<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 2, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

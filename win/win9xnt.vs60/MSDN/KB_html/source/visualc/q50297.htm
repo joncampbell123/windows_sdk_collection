@@ -1,0 +1,242 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Calculating Available Memory in Large Model </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q50297 ">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1989/10/27">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT=" A call to _memavl() returns only the amount of memory in the near heap. Because memory is allocated in the far heap by default in compact, large, and huge memory models, some other method must be used to calculate available memory in these memory mo...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBW6,QA59,QAUD,QAGI,QAWH,QBFY,QBWG,QAPF,QBVV,QAHC,QADP,QAE5,QAY5,QAGF,QAAW V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Calculating Available Memory in Large Model</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q50297 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+5.10 6.00 6.00a 6.00ax 7.00 | 1.00 1.50
+MS-DOS
+kbprg kbcode
+<P>
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The C Run-time (CRT), included with:
+<P>
+<P><PRE>    - Microsoft C for MS-DOS, versions 5.1, 6.0, 6.0a, and 6.0ax
+    - Microsoft C/C++ for MS-DOS, version 7.0
+    - Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL></PRE> 
+<P>
+A call to _memavl() returns only the amount of memory in the near heap.
+Because memory is allocated in the far heap by default in compact, large,
+and huge memory models, some other method must be used to calculate
+available memory in these memory models.
+<P>
+There are two memory-allocation heaps when you're using large model.
+The near heap is the unused portion of the 64K DGROUP segment. The far
+heap is the unused memory above your program. malloc() uses the near
+heap for small and medium models and the far heap for compact, large,
+and huge models. [You can choose which heap to use by using _fmalloc()
+for the far heap and _nmalloc() for the near heap.]
+<P>
+The _memavl() function measures only the amount of memory available on
+the near heap. Because the near heap is not used in far model until
+the far heap is exhausted, _memavl() does not necessarily change after
+memory has been allocated. In Microsoft C 6.0 and later, allocating memory
+in the far heap will not affect the values returned by _memavl(). Microsoft
+C 5.1 can use the near heap if memory is not available in the far heap, and
+could change the values _memavl() returns.
+<P>
+To measure the amount of memory available on the far heap, you can use
+the _dos_allocmem() function. (This function calls the MS-DOS memory-
+allocation function.) Pass the function 0xFFFF for the number of 16-
+byte paragraphs to allocate (which is 1 megabyte more memory than the
+machine has) and the address of an unsigned int. When the function
+returns, the unsigned int whose address you passed will contain the
+paragraph size of the largest contiguous block in the far heap. To
+find the number of bytes, multiply this by the 16L, which is the size
+of a paragraph. (Use 16L rather than 16 so that the multiplication
+will be done using long math, avoiding possible overflow.)
+<P>
+The total memory available is the sum of the amount available on the
+far and near heaps. For best accuracy, you should do this calculation
+immediately after your program begins.
+<P>
+The following are a few traits of the malloc() allocation family of
+which you should be aware:
+
+<OL><P><LI>malloc() does NOT call MS-DOS for each small allocation. Instead,
+   it asks MS-DOS for an 8K block (this size can be set by setting the
+   global variable _amblksiz, as described in the Microsoft C version
+   6.0 online help and on page 33 of the Microsoft C version 5.1
+   "Microsoft C Optimizing Compiler: Run-Time Library Reference"),
+   then allocates from this block. If the requested allocation is more
+   than 8K, malloc allocates enough 8K blocks to fulfill the
+   allocation. Before malloc() asks MS-DOS for memory, it first tries
+   to allocate the request from memory it already has.
+
+<P><LI>free() NEVER returns memory to MS-DOS. So, if you allocated a
+   block, checked the far heap space using _dos_allocmem(), free()'d
+   the block and checked again, the amount of memory available to
+   MS-DOS would NOT increase on the second call. You can get a better
+   idea of how much memory is available by using _heapwalk() to find
+   out how much memory is available to malloc() but not to MS-DOS.
+
+<P><LI>Starting with Microsoft C version 6.0, the function _heapmin can be
+   used to release back to the operating system some of the memory
+   returned to malloc(). See the online help for more information.
+<P>
+</OL>Note: halloc() calls MS-DOS directly and frees directly [using
+hfree()] back to MS-DOS.
+<P>
+The program below calculates an estimate of the total amount of free
+memory:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/*
+ * Compile options needed: /AL
+ */
+
+#include &lt;malloc.h&gt;
+#include &lt;dos.h&gt;
+#include &lt;stdio.h&gt;
+
+void main(void)
+</PRE></OL>{
+<PRE>   long farheap = 0, total_free, available;
+   unsigned farparaavail;
+   struct _heapinfo hinfo;
+   int heapstatus;
+
+   /* Calculates the total memory available in the far heap       */
+
+   hinfo._pentry = NULL;
+   while ((heapstatus = _heapwalk(&amp;hinfo)) == _HEAPOK)
+      if (!hinfo._useflag)
+         farheap += hinfo._size;
+
+   /* _dos_allocmem will return the maximum block size available */
+   /* _memavl() will return the maximum memory in the near heap  */
+
+   _dos_allocmem(0xFFFF, &amp;farparaavail);
+   available = (long)farparaavail * 16L + _memavl();
+
+   /* Total memory available for allocation */
+
+   total_free = farheap + available;
+   printf("Total memory available is about %ld bytes\n", total_free);
+</PRE>}
+<P>
+The total memory calculated in the far heap may not be in a contiguous
+block. To see whether or not memory has been fragmented, add the
+following line to the while loop:
+<P>
+<PRE>   printf ("%6s block at %p of size %4.4X\n,
+   (hinfo._useflag == _USEDENTRY ? "USED" : "FREE"),
+   hinfo._pentry, hinfo._size);
+
+</PRE>To see how fragmented the near heap is, change the _heapwalk() in the
+while statement to _nheapwalk(). This forces the function to do a heap
+walk on the near heap. The _heapwalk() defaults to the following:
+<P>
+<PRE>   _fheapwalk in Compact and Large model
+   _nheapwalk in Medium and Small model
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.00 1.50 5.10 6.00 6.00a 6.00x 7.00<BR>
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: CRTIss<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

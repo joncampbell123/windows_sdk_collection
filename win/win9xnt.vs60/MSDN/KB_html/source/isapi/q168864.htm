@@ -1,0 +1,258 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Implementing Cookies In ISAPI </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q168864">
+<META NAME="KBModify" CONTENT="1997/09/24">
+<META NAME="KBCreate" CONTENT="1997/05/21">
+<META NAME="Keywords" CONTENT="IISAPI">
+<META NAME="KBArea" CONTENT="Support; KB; ISAPI">
+<META NAME="Description" CONTENT="  Cookies are a means by which a server application can cause a client to return information to the server with each HTTP request. This can be used to maintain a state with the client across multiple requests. Cookies are sent as part of the HTTP hea...">
+<META NAME="Product" CONTENT="ISAPI">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QARL,QBVV,QAUD,QA3N,QAY5,QAOG,QALW,QBVX,QBWA,QAVZ,QA6A,QAH6,QBV8,QAB9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Implementing Cookies In ISAPI</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 24, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q168864</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Internet Server Application Programming Interface (API)
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Cookies are a means by which a server application can cause a client to
+return information to the server with each HTTP request. This can be used
+to maintain a state with the client across multiple requests. Cookies are
+sent as part of the HTTP header in a client request or server response, and
+an ISAPI extension or filter DLL can readily send and retrieve them. This
+article is not meant to be a complete reference for cookies; it explains
+the basics of implementing them with the Microsoft Internet Server
+Application Programming Interface (ISAPI). For more information on cookies,
+please see the References section of this article.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+NOTE:  Most of the code below is for an ISAPI DLL that does not use the
+MFC ISAPI classes or ISAPI Extension Wizard. For an ISAPI DLL that uses
+MFC, the functions called will be the MFC-wrapped versions. The syntax
+must be modified accordingly.
+<P>
+<P><h3>Sending Cookies</h3>
+ 
+<P>
+A cookie is sent to the client by the server in an HTTP "Set-Cookie:"
+header. This header can be added in an ISAPI filter with the
+AddResponseHeaders member function in the HTTP_FILTER_CONTEXT structure
+passed to the filter notification:
+<P>
+<PRE>   pFC-&gt;AddResponseHeaders(pFC, "Set-Cookie: Cookie1=Value1; path=/;\r\n",
+     0);
+
+</PRE>In the above example, "Cookie1" is the name of the cookie and "Value1" is
+the value of the cookie. The "path=/" attribute tells the client to return
+the cookie with all requests to that server. If unspecified, the client
+assumes the path to be the same as that of the requested resource.
+<P>
+A cookie can also be added as an additional header in a call to
+ServerSupportFunction from within an ISAPI extension:
+<P>
+<PRE>      char szHeader[]="Set-Cookie: Cookie2=Value2; path=/;\r\nContent-type:
+   text/html\r\n\r\n";
+      DWORD dwSize;
+
+      dwSize = strlen(szHeader);
+      lpECB-&gt;ServerSupportFunction(lpECB, HSE_REQ_SEND_RESPONSE_HEADER,
+        NULL, &amp;dwSize, (unsigned long *)szHeader);
+
+</PRE>In an MFC ISAPI extension, headers should not be sent in this way; instead,
+add the cookie to the output stream with the AddHeader function:
+<P>
+<PRE>   char szHeader[]="Set-Cookie: Cookie2=Value2; path=/;\r\n";
+
+   StartContent(pCtxt);
+   AddHeader(pCtxt, szHeader);
+
+</PRE>Note that the content type does not need to be "text/html"; cookies will
+work for any content type.
+<P>
+<P><h3>Retrieving Cookies</h3>
+ 
+<P>
+A cookie is returned to the server by the client in an HTTP "Cookie:"
+header.  Multiple cookies can appear in this header, separated by
+semicolons.  This header can be retrieved in an ISAPI filter responding to
+the SF_NOTIFY_PREPROC_HEADERS notification using the GetHeader member
+function in the HTTP_FILTER_PREPROC_HEADERS structure:
+<P>
+<PRE>   DWORD WINAPI HttpFilterProc(HTTP_FILTER_CONTEXT *pFC,
+     DWORD notificationType, VOID *pvNotification)
+   {
+     HTTP_FILTER_PREPROC_HEADERS *pPH;
+     char szBuffer[4096];
+     DWORD dwSize=4096;
+
+     pPH = pvNotification;
+
+     pPH-&gt;GetHeader(pFC, "Cookie:", szBuffer, &amp;dwSize);
+
+     return SF_STATUS_REQ_NEXT_NOTIFICATION;
+   }
+
+</PRE>Or, a cookie can be retrieved in either a filter or extension using the
+GetServerVariable member function in the HTTP_FILTER_CONTEXT and
+EXTENSION_CONTROL_BLOCK structures:
+<P>
+<PRE>   char szBuffer[4096];
+   DWORD dwSize=4096;
+
+</PRE>In a filter:
+<P>
+<PRE>   pFC-&gt;GetServerVariable(pFC, "HTTP_COOKIE", szBuffer, &amp;dwSize);
+
+</PRE>Or, in an extension:
+<P>
+<PRE>   pECB-&gt;GetServerVariable(pECB, "HTTP_COOKIE", szBuffer, &amp;dwSize);
+
+</PRE><h3>Cookie Persistence</h3>
+ 
+<P>
+The cookies in the above examples will only be maintained by the client
+until the user exits the browser. The server can cause a cookie to be
+maintained by a browser for a longer period by specifying an "expires"
+attribute.  This will cause the browser to store the cookie and continue
+returning it to the server with each request, until the cookie is expired:
+<P>
+<PRE>   pFC-&gt;AddResponseHeaders(pFC,"Set-Cookie: Cookie1=Value1;
+   expires=Fri 22-May-1998 13:00:00 GMT; path=/;\r\n", 0);
+
+</PRE><h3>Additional Notes</h3>
+ 
+
+<UL><LI>The use of cookies requires support from the client browser. If the
+   browser does not support cookies, or if the user has disabled this
+   support, features of your Web site that depend on cookies may not
+   function properly. It is good practice to degrade gracefully in this
+   situation.
+
+<LI>The number and size of cookies that can be stored on a client is not
+   unlimited. Rather than storing bulk data on the client, it may be better
+   to send a unique identifier that associates the client with data stored
+   on the server.
+
+<LI>Cookies are transmitted in clear text over the Internet, and are fully
+   exposed to tampering when stored on the client system. Therefore,
+   sensitive information such as passwords, credit card numbers, and so
+   forth should not be stored in them.
+<P>
+</UL><h2>REFERENCES</h2>
+ 
+<P>
+For more information, please see the following sites:
+<P>
+The preliminary cookie specification:
+<P>
+<PRE>   <B>http://home.netscape.com/newsref/std/cookie_spec.html</B>
+
+</PRE>RFC 2109 - HTTP State Management Mechanism:
+<P>
+<PRE>   <B><A href="http://www.cis.ohio-state.edu/htbin/rfc/rfc2109.html">http://www.cis.ohio-state.edu/htbin/rfc/rfc2109.html</A></B>
+</PRE> 
+<PRE>Keywords          : IISAPI
+Technology        : kbInetDev
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 24, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

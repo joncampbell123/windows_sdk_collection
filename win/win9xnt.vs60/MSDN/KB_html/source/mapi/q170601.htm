@@ -1,0 +1,252 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Displaying the Compose IPM.Note Form </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q170601">
+<META NAME="KBModify" CONTENT="1997/06/26">
+<META NAME="KBCreate" CONTENT="1997/06/25">
+<META NAME="Keywords" CONTENT="EMAPI MAPIForm">
+<META NAME="KBArea" CONTENT="Support; KB; mapi">
+<META NAME="Description" CONTENT="  This article demonstrates code for creating and sending a message using the default Compose Note form using Extended MAPI.  MORE INFORMATION  A key feature to any messaging client is the ability to send and read a message. It is up to you as the de...">
+<META NAME="Product" CONTENT="mapi">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAI4,QAEV,QAPN,QAYC,QAGI,QAGB,QAUR,QAUD,QAH6,QAH4,QDOL,QBBS,QAV5,QAA5,QAIF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Displaying the Compose IPM.Note Form</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q170601</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Extended Messaging Application Programming Interface (MAPI), version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article demonstrates code for creating and sending a message using the
+default Compose Note form using Extended MAPI.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+A key feature to any messaging client is the ability to send and read a
+message. It is up to you as the developer to decide whether or not your
+user are presented with your own specially designed form for sending and
+reading messages. If you choose to allow the user to use the default form
+of the messaging subsystem for the purpose of either sending or reading
+messages, the following code shows you one possible way of implementing
+this:
+<P>
+<PRE>   HRESULT ShowForm ( LPMAPISESSION m_pSession,
+                      LPMAPIFOLDER pFolder,
+                      HWND m_hWnd )
+   {
+       HRESULT hRes = S_OK;
+
+       enum {MSG_CLASS, MSG_STATUS, MSG_FLAGS, MSG_ACCESS };
+
+       LPSPropValue pProps = NULL;
+       ULONG        cProps,
+                    ulObjType;
+
+       LPMAPIFOLDER       pFolder = NULL;
+       LPMESSAGE          pMsg = NULL;
+       LPMAPIFORMMGR      pFormMgr = NULL;
+       LPMAPIFORMINFO     pFormInfo = NULL;
+       LPPERSISTMESSAGE   pPersistMessage = NULL;
+       ULONG              ulMessageToken = 0L,
+                          cValues = 0L;
+       LPSPropValue       pPropsMsg = NULL;
+
+       //  Message properties tag array
+       SizedSPropTagArray ( 4, sptMsgProps ) = { 4,
+                                                 PR_MESSAGE_CLASS,
+                                                 PR_MSG_STATUS,
+                                                 PR_MESSAGE_FLAGS,
+                                                 PR_ACCESS };
+
+       hRes = pFolder -&gt; CreateMessage ( NULL, 0L, &amp;pMsg );
+
+       if ( SUCCEEDED ( hRes ) )
+           hRes = pMsg -&gt; SaveChanges ( KEEP_OPEN_READWRITE );
+
+       // Need to know certain properties of message for ShowForm.
+       hRes = pMsg -&gt; GetProps ( (LPSPropTagArray)&amp;sptMsgProps,
+                                 0L,
+                                 &amp;cValues,
+                                 &amp;pPropsMsg );
+
+       // Get an IFormManager interface pointer
+       if ( FAILED ( hRes = MAPIOpenFormMgr ( m_pSession, &amp;pFormMgr ) ) )
+           goto Quit;
+
+       // Use the message class of the message to resolve to the correct
+       //  message class.
+       if ( FAILED ( hRes = pFormMgr-&gt;ResolveMessageClass (
+                                    pPropsMsg[0].Value.lpszA,
+                                    MAPIFORM_EXACTMATCH,
+                                    NULL,
+                                    &amp;pFormInfo ) ) )
+           goto Quit;
+
+       // Create an instance of the form and store is in an
+       // IPersistMessage interface pointer.
+       if ( FAILED ( hRes = pFormMgr -&gt; CreateForm ( m_hWnd,
+                                          0L,
+                                          pFormInfo,
+                                          IID_IPersistMessage,
+                                          (LPVOID*) &amp;pPersistMessage ) ) )
+          goto Quit;
+
+       // Call the IPersistMessage::Save method.
+       pPersistMessage -&gt; Save ( pMsg, TRUE );
+
+       // Prepare the form to be loaded by getting its token.
+       if ( FAILED ( hRes = m_pSession -&gt; PrepareForm ( &amp;IID_IMessage,
+                                          pMsg,
+                                          &amp;ulMessageToken ) ) )
+           goto Quit;
+
+       // Call the session object's ShowForm method. Each of the
+       // properties we retreived above will be used in each of the
+       // corresponding parameters in this call.
+       if ( FAILED ( m_pSession -&gt; ShowForm (
+                                   m_hWnd,
+                                   m_pMDB,
+                                   pFolder,
+                                   &amp;IID_IMessage,
+                                   ulMessageToken,
+                                   0L,
+                                   MAPI_NEW_MESSAGE,
+                                   pPropsMsg[MSG_STATUS].Value.l,
+                                   pPropsMsg[MSG_FLAGS].Value.l,
+                                   pPropsMsg[MSG_ACCESS].Value.l,
+                                   pPropsMsg[MSG_CLASS].Value.lpszA)))
+            goto Quit;
+
+       // Clean up and release all objects no longer needed in this
+       // method. Be sure to return the value of hRes to the caller.
+   Quit:
+
+       if ( NULL != pMsg );
+       {
+           pMsg -&gt; Release ( );
+           pMsg = NULL;
+       }
+
+       if ( NULL != pFormMgr )
+       {
+           pFormMgr -&gt; Release ( );
+           pFormMgr = NULL;
+       }
+
+       if ( NULL != pFormInfo )
+       {
+           pFormInfo -&gt; Release ( );
+           pFormInfo = NULL;
+       }
+
+       if ( NULL != pPersistMessage )
+       {
+           pPersistMessage -&gt; Release ( );
+           pPersistMessage = NULL;
+       }
+
+       return hRes;
+   }
+
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : EMAPI MAPIForm<BR>
+Version             : WINDOWS:1.0<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,311 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Only the First 64K Is Read from Binary Field </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q140535">
+<META NAME="KBModify" CONTENT="1997/09/19">
+<META NAME="KBCreate" CONTENT="1995/12/03">
+<META NAME="Keywords" CONTENT="MfcDatabase kbbuglist kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Only the first 64K of data is read from the binary field.  CAUSE =====  A bug in the RFX_LongBinary() function prevents the CLongBinary object from receiving all of the field's data when a field has more than 64K of information.  In Visual C++ 1.5,...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QAKD,QABI,QAGI,QABH,QAYY,QBFY,QA56,QA55,QAUD,QALG,QBJQ,QA7O,QA7N,QAR4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Only the First 64K Is Read from Binary Field</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 19, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q140535</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.50 1.51
+WINDOWS
+kbprg kbbuglist kbfixlist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   Microsoft Visual C++ for Windows, version 1.5, and 1.51
+<P>
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Only the first 64K of data is read from the binary field.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+A bug in the RFX_LongBinary() function prevents the CLongBinary object from
+receiving all of the field's data when a field has more than 64K of
+information.
+<P>
+In Visual C++ 1.5, starting on line 1627 of the Dbrfx.cpp file, you can see
+the following code:
+<P>
+<PRE>   AFX_SQL_ASYNC(pFX-&gt;m_prs, ::SQLGetData(pFX-&gt;m_prs-&gt;m_hstmt,
+       (unsigned short int)nField, SQL_C_BINARY,
+       (UCHAR FAR*)lpLongBinary, *plLength, plLength));
+   ::GlobalUnlock(value.m_hData);
+   if (!pFX-&gt;m_prs-&gt;Check(nRetCode))
+       pFX-&gt;m_prs-&gt;ThrowDBException(nRetCode);
+
+</PRE>The ODBC function SQLGetData() is called only once. This is incorrect
+because SQLGetData() cannot fetch more than 64K of data in a single call.
+<P>
+In Visual C++ 1.51, the equivalent code starts on line 1629 of Dbrfx.cpp:
+<P>
+<PRE>   DWORD dwDataLength = 0;
+   do
+   {
+       DWORD dwChunkSize = value.m_dwDataLength - dwDataLength;
+           if (dwChunkSize &gt; 0x8000)
+               dwChunkSize = 0x8000;
+
+       // Ignore expected data truncated warnings
+       AFX_SQL_ASYNC(pFX-&gt;m_prs, ::SQLGetData(pFX-&gt;m_prs-&gt;m_hstmt,
+           (unsigned short int)nField, SQL_C_BINARY,
+           (UCHAR FAR*)lpLongBinary, dwChunkSize, plLength));
+
+       dwDataLength += *plLength;
+       lpLongBinary += *plLength;
+   } while (nRetCode == SQL_SUCCESS ||
+            nRetCode == SQL_SUCCESS_WITH_INFO);
+
+   ::GlobalUnlock(value.m_hData);
+   if (!pFX-&gt;m_prs-&gt;Check(nRetCode))
+       pFX-&gt;m_prs-&gt;ThrowDBException(nRetCode);
+   }
+   return;
+
+</PRE>In this case, the code has a loop that tries to get the long binary data in
+32K chunks. The problem with this code is that it uses the last argument to
+the ::SQLGetData call as the amount by which to move the data pointer and
+increment the data length. This argument is assumed to be set to the amount
+of data that was actually transferred by the call.
+<P>
+Unfortunately, this parameter can return with the value SQL_NO_TOTAL
+(defined in Sqlext.h as -4), which indicates that the data was truncated or
+its length could not be determined and the amount requested should be used
+as the amount returned. This causes the incoming data to be corrupted when
+it is used to move the data pointer and update the data length.
+<P>
+This problem was corrected in Visual C++ version 1.52, where the version
+1.51 code:
+<P>
+<PRE>   dwDataLength += *plLength;
+   lpLongBinary += *plLength;
+
+</PRE>was replaced with this code:
+<P>
+<PRE>   dwDataLength += dwChunkSize;
+   lpLongBinary += dwChunkSize;
+
+</PRE><h2>RESOLUTION</h2>
+ 
+<P>
+Follow these steps:
+
+<OL><P><LI>Copy the RFX_LongBinary() function to another .cpp file that you will
+   add to your project. Rename the function to something like
+   RFX_NewLongBinary().
+
+<P><LI>In the RFX_LongBinary() routine from Visual C++ 1.5, look for this code:
+<P>
+<P><PRE>      const BYTE FAR* lpLongBinary;
+      lpLongBinary = (const BYTE FAR*)::GlobalLock(value.m_hData);
+      if (lpLongBinary == NULL)
+      {
+<PRE></PRE>          ::GlobalFree(value.m_hData);
+          value.m_hData = NULL;
+          AfxThrowMemoryException();
+      }
+
+      AFX_SQL_ASYNC(pFX-&gt;m_prs, ::SQLGetData(pFX-&gt;m_prs-&gt;m_hstmt,
+          (unsigned short int)nField, SQL_C_BINARY,
+          (UCHAR FAR*)lpLongBinary, *plLength, plLength));
+      ::GlobalUnlock(value.m_hData);
+      if (!pFX-&gt;m_prs-&gt;Check(nRetCode))
+          pFX-&gt;m_prs-&gt;ThrowDBException(nRetCode);
+
+   Or if you are in Visual C++ 1.51, look for this code:
+
+      const BYTE _huge* lpLongBinary;
+      lpLongBinary = (const BYTE _huge*)::GlobalLock(value.m_hData);
+      if (lpLongBinary == NULL)
+      {
+          ::GlobalFree(value.m_hData);
+          value.m_hData = NULL;
+          AfxThrowMemoryException();
+      }
+
+      DWORD dwDataLength = 0;
+      do
+      {
+          DWORD dwChunkSize = value.m_dwDataLength - dwDataLength;
+          if (dwChunkSize &gt; 0x8000)
+          dwChunkSize = 0x8000;
+
+          // Ignore expected data truncated warnings
+          AFX_SQL_ASYNC(pFX-&gt;m_prs, ::SQLGetData(pFX-&gt;m_prs-&gt;m_hstmt,
+              (unsigned short int)nField, SQL_C_BINARY,
+              (UCHAR FAR*)lpLongBinary, dwChunkSize, plLength));
+
+          dwDataLength += *plLength;
+          lpLongBinary += *plLength;
+      } while (nRetCode == SQL_SUCCESS || nRetCode ==
+                                               SQL_SUCCESS_WITH_INFO);
+
+      ::GlobalUnlock(value.m_hData);
+          if (!pFX-&gt;m_prs-&gt;Check(nRetCode))
+              pFX-&gt;m_prs-&gt;ThrowDBException(nRetCode);
+
+</PRE><P><LI>In either version, replace the listed code with this code:
+<P>
+<P><PRE>      const BYTE _huge* lpLongBinary;
+      lpLongBinary = (const BYTE _huge*)::GlobalLock(value.m_hData);
+      if (lpLongBinary == NULL)
+      {
+<PRE></PRE>          ::GlobalFree(value.m_hData);
+          value.m_hData = NULL;
+          AfxThrowMemoryException();
+      }
+
+      DWORD dwDataLength = 0;
+      do
+      {
+          DWORD dwChunkSize = value.m_dwDataLength - dwDataLength;
+          if (dwChunkSize &gt; 0x8000)
+          dwChunkSize = 0x8000;
+
+          // Ignore expected data truncated warnings
+          AFX_SQL_ASYNC(pFX-&gt;m_prs, ::SQLGetData(pFX-&gt;m_prs-&gt;m_hstmt,
+              (unsigned short int)nField, SQL_C_BINARY,
+              (UCHAR FAR*)lpLongBinary, dwChunkSize, plLength));
+
+          dwDataLength += dwChunkSize;
+          lpLongBinary += dwChunkSize;
+      } while (nRetCode == SQL_SUCCESS || nRetCode ==
+                                               SQL_SUCCESS_WITH_INFO);
+
+      ::GlobalUnlock(value.m_hData);
+          if (!pFX-&gt;m_prs-&gt;Check(nRetCode))
+              pFX-&gt;m_prs-&gt;ThrowDBException(nRetCode);
+
+</PRE><P><LI>In the CRecordset's DoFieldExchange() method, move the call to
+   RFX_LongBinary() outside of the ClassWizard-tagged section (the
+   section marked with "//{{AFX_FIELD_MAP()" and "//}}AFX_FIELD_MAP").
+   Rename it RFX_NewLongBinary() -- or whatever you called the function
+   in step 1.
+<P>
+</OL>NOTE: If you are using the SQL Server ODBC Driver, this resolution won't
+work because the SQL Server ODBC Driver returns only a maximum of 4K bytes
+by default. For more information on this issue, please see the following
+article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q126264.htm">Q126264</A></B>
+   TITLE     : PRB: CLongBinary Field Truncated with SQL Server ODBC Driver
+
+</PRE></OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This problem was corrected in Microsoft
+Visual C++ version 1.52 for Windows.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.50 2.51<BR>
+KBCategory: kbprg kbfixlist kbbuglist<BR>
+KBSubcategory: MFCDatabase<BR>
+Keywords          : MfcDatabase kbbuglist kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.50 1.51<BR>
+Platform          : WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 19, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

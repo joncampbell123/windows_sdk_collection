@@ -1,0 +1,236 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Problem Using -1 with Double or Float Field Variable </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q118420">
+<META NAME="KBModify" CONTENT="1997/07/18">
+<META NAME="KBCreate" CONTENT="1994/07/18">
+<META NAME="Keywords" CONTENT="kb16bitonly MfcDatabase kbprb kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  If an edit control is mapped to a double or float field variable using DDX and RFX functions, a value of -1 for the variable is changed to NULL when a CRecordView moves past the record. To see how this works, perform the follow steps:  1. Use the E...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAYL,QAKD,QAH4,QA7O,QAHH,QA7N,QA5V,QAHP,QAEF,QAGI,QAKC,QAFO,QACI,QAI4,QAKJ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Problem Using -1 with Double or Float Field Variable</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q118420</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.50
+WINDOWS
+kbprg kbprb
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   Microsoft Visual C++ for Windows, version 1.5
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+If an edit control is mapped to a double or float field variable using DDX
+and RFX functions, a value of -1 for the variable is changed to NULL when a
+CRecordView moves past the record. To see how this works, perform the
+follow steps:
+
+<OL><P><LI>Use the Enroll sample that ships with Visual C++, version 1.5.
+
+<P><LI>Add a field called "Fee" to the SECTION Table using Access, version 1.1.
+
+<P><LI>Set the field to the Access data type of "Number".
+
+<P><LI>Enter the data "1", "0", and "-1" into some records in the Fee field of
+   the SECTION table.
+
+<P><LI>Map a CRecordset double field variable, "m_Fee", to the column.
+
+<P><LI>Add the label "Fee:" to ENROLL.RC and an edit-control box for "Fee:".
+
+<P><LI>Map the m_Fee variable to the edit control.
+
+<P><LI>Build the project and run it.
+
+<P><LI>Move through the records. When the record with a -1 value for the fee
+   appears, move to the next record and then back again. You will see that
+   the -1 has been replaced with a NULL value. The edit control is empty.
+<P>
+</OL><h2>CAUSE</h2>
+ 
+<P>
+The Microsoft Foundation Classes need some way of determining whether a
+field value is NULL (no value). Because a double variable always has some
+value, MFC has defined what it calls "pseudo-null" values. If a variable
+contains a pseudo-null value, it is basically considered NULL. In the file
+AFXDB.H, you can see what the pseudo-null values are:
+<P>
+<PRE>   #define AFX_RFX_INT_PSEUDO_NULL (0x7EE4)
+   #define AFX_RFX_LONG_PSEUDO_NULL (0x4a4d4120L)
+   #define AFX_RFX_BYTE_PSEUDO_NULL 255
+   #define AFX_RFX_SINGLE_PSEUDO_NULL (-1.0)
+   #define AFX_RFX_DOUBLE_PSEUDO_NULL (-1.0)
+   #define AFX_RFX_BOOL_PSEUDO_NULL 2
+   #define AFX_RFX_DATE_PSEUDO_NULL CTime(0)
+
+</PRE></OL>You can see that a value of -1.0 in a double or float field variable means
+that the field is to have a NULL value. This is not the only item that the
+database code uses for determining whether a field is NULL. A NULL flag is
+also used for each field variable, which indicates whether it contains a
+NULL value.
+<P>
+The fundamental problem is in the code for "RFX_Double()" and "RFX_Float()"
+functions where the MarkForUpdate case is handled. Here is the code for
+RFX_Double():
+<P>
+<PRE>   case CFieldExchange::MarkForUpdate:
+        if (value == AFX_RFX_DOUBLE_PSEUDO_NULL)
+            pFX-&gt;m_prs-&gt;SetFieldFlags(nField,
+                AFX_SQL_FIELD_FLAG_NULL, pFX-&gt;m_nFieldType);
+        else
+            pFX-&gt;m_prs-&gt;ClearFieldFlags(nField,
+                AFX_SQL_FIELD_FLAG_NULL, pFX-&gt;m_nFieldType);
+        goto LDefault;
+
+</PRE>The problem is that the code simply checks the value of the double field
+variable and sets the NULL flag if its value is -1 (the pseudo-null value).
+The MarkForUpdate code is executed every time a CRecordView moves off of a
+record. Here is some of the code in CRecordView::OnMove():
+<P>
+<PRE>   if (pSet-&gt;CanUpdate())
+    {
+        pSet-&gt;Edit();
+        if (!UpdateData())
+            return FALSE;
+
+        pSet-&gt;Update();
+    }
+
+</PRE><h2>RESOLUTION</h2>
+ 
+<P>
+There are two possible workarounds. The value of the pseudo-null value can
+be changed to something that a user of the application is not expected to
+type into the edit control. So, in the case of RFX_Double(),
+"AFX_RFX_DOUBLE_PSEUDO_NULL" can be changed in AFXDB.H to something like
+the following:
+<P>
+<PRE>   #define AFX_RFX_DOUBLE_PSEUDO_NULL (-9.123e19)
+
+</PRE>It would be uncommon for a user to type this. If you decide to fix the
+problem this way, you need to rebuild the MFC library using the information
+in the README.TXT file in the \MSVC\MFC\SRC directory.
+<P>
+Another way to work around this problem is to copy the code for RFX_Double
+into the .CPP file where your CRecordset class implementation code is.
+Change the function name to "RFX_NewDouble()" or whatever you want to call
+it. Then, delete the "MarkForUpdate" case statement shown above. You can
+also remove the "LDefault:" label, which is used by the goto statement at
+the end of the MarkForUpdate case.
+<P>
+Once you have created this new RFX_NewDouble() function, you need to
+replace the call to RFX_Double() in your CRecordset's DoFieldExchange()
+function with RFX_NewDouble().
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Beginning with Visual C++ for Windows version 1.51 and Visual C++ 32-bit
+Edition version 2.0, the definitions of AFX_RFX_SINGLE_PSEUDO_NULL and
+AFX_RFX_DOUBLE_PSEUDO_NULL use a value of -9.123e19 instead of -1.0.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.50 2.50 ODBC no32bit noupdate<BR>
+KBCategory: kbprg kbprb<BR>
+KBSubcategory: MfcDatabase<BR>
+Keywords            : kb16bitonly MfcDatabase kbprb kbprg<BR>
+Technology          : kbMfc<BR>
+Version             : 1.50<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

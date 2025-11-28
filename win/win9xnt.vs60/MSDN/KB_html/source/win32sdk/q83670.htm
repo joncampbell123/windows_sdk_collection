@@ -1,0 +1,284 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: Using Try/Finally Properly </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q83670 ">
+<META NAME="KBModify" CONTENT="1997/04/10">
+<META NAME="KBCreate" CONTENT="1992/04/19">
+<META NAME="Keywords" CONTENT="BseExcept kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  When you use the try/finally exception handling, it helps to provide a robust application. If you use it incorrectly, however, it can cause unnecessary overhead. Any flow of control out of the try/finally block is considered an abnormal termination...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAUD,QAHC,QAB9,QAY5,QA7O,QAOE,QAMN,QAB5,QAO4,QAH4,QAA8,QALW,QAGB,QBV8 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: Using Try/Finally Properly</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q83670 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT versions 3.10, 3.50, 3.51, 4.0
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When you use the try/finally exception handling, it helps to provide a
+robust application. If you use it incorrectly, however, it can cause
+unnecessary overhead. Any flow of control out of the try/finally block is
+considered an abnormal termination that can cause hundreds of instructions
+to be executed on an Intel x86 system, and thousands on RISC machines. This
+occurs even if the control leaves via a control statement on the very last
+statement of the try body or finally clause.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Any flow of control out of the try/finally block using the following
+statements causes abnormal termination: return, goto, continue, or break.
+Notice that these statements only cause abnormal termination if they cause
+control to leave the try block or finally clause. Using a break statement
+in a loop inside the try block or finally clause only causes control to
+exit the loop, not the try/finally block. This is perfectly acceptable. On
+the other hand, use of a break statement that causes control to leave the
+try block or finally block results in abnormal termination and inefficient
+execution.
+<P>
+Abnormal termination also occurs if an exception occurs. This cannot be
+avoided.
+<P>
+To avoid abnormal termination of the try/finally block, control should
+leave the try/finally block by falling through the bottom of the block.
+Control can also leave the try block by executing the __leave statement.
+The __leave statement allows for immediate termination of the try block
+without causing abnormal termination and its performance penalty. Check
+your compiler documentation to determine if the __leave statement is
+supported.
+<P>
+Execution of code inside the try block that causes an exception causes the
+finally clause to be executed. Execution of code inside the try block that
+causes the program to end prevents the finally clause from executing. For
+example, any code that calls the ExitProcess API, the exit() function, the
+abort() function, or any other such function causes immediate termination
+and the finally block is not executed.
+<P>
+The following example demonstrates incorrect flow of control out of the
+try body:
+<P>
+<PRE>   /* Incorrect use of try/finally */
+
+   VOID Foo(...)
+  {
+      __try {
+          if (...) {
+              .
+              .
+              return;  // causes abnormal termination
+          }
+          .
+          .
+      }
+      __finally {
+          if (...) {
+              .
+              .
+              return; // causes abnormal termination
+          }
+          .
+          .
+      }
+
+      return;
+  }
+
+</PRE>In the example above, abnormal termination of the try body occurs when the
+return statement in the middle of the try body is executed. On the other
+hand, if the result of the condition is false, then the return statement is
+avoided and efficient execution of the finally clause occurs because this
+is not an abnormal termination. Abnormal termination also occurs if the
+return statement is executed in the finally clause.
+<P>
+The abnormal termination can be avoided in the above example a couple of
+ways. First, the return statement in the try body can be replaced with a
+__leave statement. Check your compiler documentation to determine if this
+statement is recognized by your compiler. If your compiler doesn't support
+such a statement, then you can use the second method. The second method
+avoids abnormal termination in both the try block and the finally clause by
+note executing a return statement at all. The solution is to move the
+return statement AFTER the end of the finally clause. This causes execution
+to fall through the try body normally.
+<P>
+For example, then following code works properly:
+<P>
+<PRE>   /* Correct use of try/finally */
+
+   VOID Foo(...)
+   {
+       __try {  // only way to exit is to 'fall through'
+           if (...) {
+               .
+               .
+           }
+           else {
+           .
+           .
+           }
+       }
+       __finally {  // only way to exit is to 'fall through'
+           if (...) {
+               .
+               .
+           }
+           else {
+               .
+               .
+           }
+       }
+
+       return;
+   }
+
+</PRE>When abnormal termination occurs, hundreds to thousands of instructions are
+executed. A stack unwind must occur that causes a backward search through
+frames to determine if there are any termination handlers to be called. On
+an Intel x86 system, this executes the C runtime handlers and examines the
+handler list. On a RISC machine, this also causes the function table to be
+searched and the prologue of each intervening function to be executed
+backwards interpretively.
+<P>
+<P><h3>Structured Exception Handling Details</h3>
+ 
+<P>
+Structured exception handling has two stages. First, the system searches
+through the exception stack executing each exception filter. Evaluation of
+the exception filter results in one of the following: the machine state is
+restored and execution continues at the point of the exception, or the
+system continues searching for an exception handler repeating this stage,
+or the system transfers control to the exception handler (stage 2). In
+stage 2, thread execution continues in the stack frame where the exception
+handler is found. If the handler is not in the stack frame where the
+exception occurred, the system unwinds the stack, leaving the current stack
+frame and any other stack frames until it is back to the exception
+handler's stack frame. Before the exception handler's frame is reached
+during this unwind, each finally clause is executed for each try block that
+terminated as a result of the transfer of control to the exception handler.
+<P>
+An abnormal termination in the finally clause aborts this second stage.
+Instead of returning to the system unwinder, the finally block returns to
+the enclosing function's caller (for instance, Foo()'s parent). The filter
+function may have set some status or performed an allocation in
+anticipation of the exception handler being entered. In this case, the
+intervening finally clause with the return stops the unwind, and the
+exception handler is never entered.
+<P>
+This behavior is by design. It makes it possible for a finally clause to
+stop an unwind and return a status. This is what is referred to as a
+"collided unwind."
+<P>
+Normally this behavior is transparent to any higher-level exception
+handling code. However, if a filter function stores information that it
+expects to process in an exception handler (as a side effect), then it may
+or may not be transparent. You should avoid storing such information in a
+filter function because it is always possible that the exception handler
+will not be executed because the unwind is preempted. In the absence of
+storing such information, it is transparent that an exception occurred and
+a collided unwind occurred if one of the descendant functions has a
+try/finally block with a finally clause that preempts the unwind.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 95 SEH scope<BR>
+Keywords            : BseExcept kbprg<BR>
+Version             : 3.1 3.5 3.51 4.0<BR>
+Platform            : NT Win95 WINDOWS<BR>
+Issue type          : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

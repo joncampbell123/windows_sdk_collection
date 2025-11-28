@@ -1,0 +1,388 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Get the Filename Given a Window Handle </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q119163">
+<META NAME="KBModify" CONTENT="1997/06/27">
+<META NAME="KBCreate" CONTENT="1994/08/09">
+<META NAME="Keywords" CONTENT="BseMisc kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  To find the filename of the program that created a given window under Windows, you would use GetWindowLong(hWnd, GWL_HINSTANCE) to find the module handle and then GetModuleFileName() to find the filename. This method cannot be used under Windows NT...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA2S,QALX,QAM9,QAH4,QA28,QATJ,QAXC,QAI4,QAY5,QAJH,QBWP,QA4Q,QAMB,QAH7,QAH6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Get the Filename Given a Window Handle</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 27, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q119163</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT versions 3.1, 3.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+To find the filename of the program that created a given window under
+Windows, you would use GetWindowLong(hWnd, GWL_HINSTANCE) to find the
+module handle and then GetModuleFileName() to find the filename. This
+method cannot be used under Windows NT because instance handles are not
+global, but are unique to the address space in which the application is
+running.
+<P>
+If the application that created the window is a Windows-based application,
+the name returned is "ntvdm". To get the actual filename, you need to spawn
+a Win16 application that will call GetModuleFileName() and pass the
+filename back to your application using some form of interprocess
+communication (IPC).
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To find the filename of an application once you have its window handle,
+first use GetWindowThreadProcessId() to find the process ID (PID) of the
+process that created the window. Using the PID, query the registry for the
+performance data associated with the process. To do this, you have to
+enumerate all processes in the system, comparing each PID to the PID of the
+process that you are looking for, until the data for that process is found.
+(This data includes the name of the process.)
+<P>
+The following sample code demonstrates how to find the filename of the
+Program Manager, PROGMAN.EXE, after obtaining its window handle:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   #include &lt;windows.h&gt;
+   #include &lt;stdio.h&gt;
+   #include &lt;string.h&gt;
+
+   #define Key "SOFTWARE\\Microsoft\\Windows
+   NT\\CurrentVersion\\Perflib\\009"
+
+   void GetIndex( char *, char * );
+   void DisplayFilename( DWORD );
+
+   /********************************************************************\
+   * Function: void main( )                                             *
+   *                                                                    *
+   * Purpose : Application entry point                                  *
+   *                                                                    *
+   \********************************************************************/
+
+   void main( )
+   {
+      HWND                      hWnd;
+      DWORD                     dwActiveProcessId;
+
+      // Get window handle of Program Manager's main window.
+
+      hWnd = FindWindow( "Progman", NULL );
+
+      // Get PID of Program Manager.
+
+      GetWindowThreadProcessId( hWnd, &amp;dwActiveProcessId );
+
+      // Display name of Program Manager's executable file.
+
+      printf( "Searching for filename of Program Manager...\n" );
+      DisplayFilename( dwActiveProcessId );
+   }
+
+   /********************************************************************\
+   * Function: void DisplayFilename( DWORD )                            *
+   *                                                                    *
+   * Purpose : Display executable filename of the process whose PID     *
+   *           is passed in as a parameter.                             *
+   *                                                                    *
+   * Comment : The information is retrieved from the performance        *
+   *           data in the registry.                                    *
+   *                                                                    *
+   \********************************************************************/
+
+   void DisplayFilename( DWORD dwProcessId )
+   {
+      DWORD                     CurrentProcessId;
+      BOOL                      bContinue = TRUE;
+      char                      szIndex[256] = "";
+      DWORD                     dwBytes = 12000;
+      DWORD                     dwProcessIdOffset;
+      int                       i;
+
+      PPERF_DATA_BLOCK          pdb;
+      PPERF_OBJECT_TYPE         pot;
+      PPERF_INSTANCE_DEFINITION pid;
+      PPERF_COUNTER_BLOCK       pcb;
+      PPERF_COUNTER_DEFINITION  pcd;
+
+      // Get the index for the PROCESS object.
+      GetIndex( "Process", szIndex );
+
+      // Get memory for PPERF_DATA_BLOCK.
+      pdb = (PPERF_DATA_BLOCK) HeapAlloc( GetProcessHeap(),
+                                          HEAP_ZERO_MEMORY,
+                                          dwBytes);
+
+      // Get performance data.
+      while( RegQueryValueEx(HKEY_PERFORMANCE_DATA, (LPTSTR)szIndex, NULL,
+                             NULL, (LPBYTE)pdb, &amp;dwBytes) ==
+   ERROR_MORE_DATA )
+      {
+         // Increase memory.
+         dwBytes += 1000;
+
+         // Allocated memory is too small; reallocate new memory.
+         pdb = (PPERF_DATA_BLOCK) HeapReAlloc( GetProcessHeap(),
+                                               HEAP_ZERO_MEMORY,
+                                               (LPVOID)pdb,
+                                               dwBytes);
+      }
+
+      // Get PERF_OBJECT_TYPE.
+      pot = (PPERF_OBJECT_TYPE)((PBYTE)pdb + pdb-&gt;HeaderLength);
+
+      // Get the first counter definition.
+      pcd = (PPERF_COUNTER_DEFINITION)((PBYTE)pot + pot-&gt;HeaderLength);
+
+      // Get index value for ID_PROCESS.
+      szIndex[0] = '\0';
+      GetIndex( "ID Process", szIndex );
+
+      for( i=0; i&lt; (int)pot-&gt;NumCounter; i++ )
+      {
+         if (pcd-&gt;CounterNameTitleIndex == (DWORD)atoi(szIndex))
+         {
+            dwProcessIdOffset = pcd-&gt;CounterOffset;
+            break;
+         }
+
+         pcd = ((PPERF_COUNTER_DEFINITION)((PBYTE)pcd + pcd-&gt;ByteLength));
+      }
+
+      // Get the first instance of the object.
+      pid = (PPERF_INSTANCE_DEFINITION)((PBYTE)pot + pot-
+   &gt;DefinitionLength);
+
+      // Get the name of the first process.
+      pcb = (PPERF_COUNTER_BLOCK) ((PBYTE)pid + pid-&gt;ByteLength );
+      CurrentProcessId = *((DWORD *) ((PBYTE)pcb + dwProcessIdOffset));
+
+      // Find the process object for PID passed in, then print its
+      // filename.
+
+      for( i = 1; i &lt; pot-&gt;NumInstances &amp;&amp; bContinue; i++ )
+      {
+         if( CurrentProcessId == dwProcessId )
+         {
+            printf( "The filename is %ls.exe.\n",
+                    (char *) ((PBYTE)pid + pid-&gt;NameOffset) );
+            bContinue = FALSE;
+         }
+         else
+         {
+            pid = (PPERF_INSTANCE_DEFINITION) ((PBYTE)pcb + pcb-
+   &gt;ByteLength);
+            pcb = (PPERF_COUNTER_BLOCK) ((PBYTE)pid + pid-&gt;ByteLength);
+            CurrentProcessId = *((DWORD *)((PBYTE)pcb +
+   dwProcessIdOffset));
+         }
+      }
+      if( bContinue == TRUE )
+         printf( "Not found.\b" );
+
+      // Free the allocated memory.
+      if( !HeapFree(GetProcessHeap(), 0, (LPVOID)pdb) )
+         printf( "HeapFree failed in main.\n" );
+
+      // Close handle to the key.
+      RegCloseKey( HKEY_PERFORMANCE_DATA );
+   }
+
+   /********************************************************************\
+   * Function: void GetIndex( char *, char * )                          *
+   *                                                                    *
+   * Purpose : Get the index for the given counter                      *
+   *                                                                    *
+   * Comment : The index is returned in the parameter szIndex           *
+   *                                                                    *
+   \********************************************************************/
+
+   void GetIndex( char *pszCounter, char *szIndex )
+   {
+      char*  pszBuffer;
+      char*  pszTemp;
+      char   szObject[256] = "";
+      DWORD  dwBytes;
+      HANDLE hKeyIndex;
+      int    i = 0;
+      int    j = 0;
+
+      // Open the key.
+      RegOpenKeyEx( HKEY_LOCAL_MACHINE,
+                    Key,
+                    0, KEY_READ,
+                    &amp;hKeyIndex );
+
+      // Get the size of the counter.
+      RegQueryValueEx( hKeyIndex,
+                       "Counter",
+                       NULL, NULL, NULL,
+                       &amp;dwBytes );
+
+      // Allocate memory for the buffer.
+      pszBuffer = (char *) HeapAlloc( GetProcessHeap(),
+                                      HEAP_ZERO_MEMORY,
+                                      dwBytes );
+
+      // Get the titles and counters.
+      RegQueryValueEx( hKeyIndex,
+                       "Counter",
+                       NULL, NULL,
+                       (LPBYTE)pszBuffer,
+                       &amp;dwBytes );
+
+      // Find the index value for PROCESS.
+      pszTemp = pszBuffer;
+
+      while( i != (int)dwBytes )
+      {
+         while (*(pszTemp+i) != '\0')
+         {
+            szIndex[j] = *(pszTemp+i);
+            i++;
+            j++;
+         }
+         szIndex[j] = '\0';
+         i++;
+         j = 0;
+         while (*(pszTemp+i) != '\0')
+         {
+            szObject[j] = *(pszTemp+i);
+            i++;
+            j++;
+         }
+         szObject[j] = '\0';
+         i++;
+         j = 0;
+         if( *(pszTemp+i) == '\0' )
+            i++;
+         if( strcmp(szObject, pszCounter) == 0 )
+            break;
+      }
+
+      // Deallocate the memory.
+      HeapFree( GetProcessHeap(), 0, (LPVOID)pszBuffer );
+
+      // Close the key.
+      RegCloseKey( hKeyIndex );
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For more information on working with the performance data, please see one
+or all of the following references:
+
+<UL><LI>The "Win32 Programmer's Reference."
+
+<LI>The "Windows NT Resource Kit," volume 3.
+
+<LI>The source code for PView that is included in the Win32 SDK.
+
+<LI>The "Windows/MS-DOS Developer's Journal," April 1994.
+<P></UL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: file name<BR>
+Keywords          : BseMisc kbprg<BR>
+Version           : 3.1 3.5<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 27, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

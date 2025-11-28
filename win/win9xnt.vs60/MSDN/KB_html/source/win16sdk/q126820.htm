@@ -1,0 +1,200 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: EM_LIMITTEXT Causes GPF in Japanese and Chinese Windows </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q126820">
+<META NAME="KBModify" CONTENT="1998/01/15">
+<META NAME="KBCreate" CONTENT="1995/03/05">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="  Under the Japanese and Traditional Chinese versions of Windows version 3.1, if an edit control has style ES_AUTOHSCROLL, and EM_LIMITTEXT is sent to the edit control to limit the number of bytes the user can input to the edit control, a general pro...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAHP,QAML,QDL9,QBWO,QBWN,QAUD,QAAQ,QALG,QBWQ,QAEV,QAYC,QAO4,QAGU,QAEF,QABN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: EM_LIMITTEXT Causes GPF in Japanese and Chinese Windows</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 15, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q126820</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+3.1
+WINDOWS
+kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   version 3.1 (Japanese and Traditional Chinese)
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Under the Japanese and Traditional Chinese versions of Windows version 3.1,
+if an edit control has style ES_AUTOHSCROLL, and EM_LIMITTEXT is sent to
+the edit control to limit the number of bytes the user can input to the
+edit control, a general protection fault (GPF) will occur when the user is
+entering a double-byte character for the last byte.
+<P>
+For example, if the following function is used to limit the number of bytes
+a user can input to 7:
+<P>
+<PRE>   SendMessage (hWnd, EM_LIMITEXT, 7, NULL);
+
+</PRE>The user enters "ABCDEF"( all single-byte character) to the edit
+control, then try to enter a double-byte 'G' to the edit control, a
+GPF will occur.
+<P>
+Also, a GPF will also occur under the Japanese version of Windows version
+3.1, if EM_LIMITTEXT is used and the edit control has style ES_UPPERCASE
+and the edit control is using the MS MINCHO or MS GOTHIC font.
+<P>
+Hangeul (Korean) Windows version 3.1 does not GPF if EM_LIMITTEXT is used
+along with the ES_UPPERCASE style and the MS MINCHO or MS GOTHIC font.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Subclass the edit control, and check the WM_CHAR message coming in. If the
+WM_CHAR message for the last byte is a DBCS leadbyte, discard the
+WM_CHAR message along with the next WM_CHAR message. The following code
+demonstrates this workaround:
+<P>
+LONG FAR PASCAL SubClassFunc(HWND hWnd,
+<PRE>                             WORD Message,
+                             WORD wParam,
+                             LONG lParam)
+{
+</PRE>static BOOL bInvalidchar=FALSE; // Is this the last byte?
+<PRE>   if ( Message == WM_CHAR )
+   {
+      if (bInvalidchar==TRUE) //The trailing byte of a DBCS character
+      {                       //that comes in for the last byte in edit.
+         bInvalidchar=FALSE;  //Reset the flag. Next char is valid.
+         return 0;            //Throw away the trailing byte.
+      }
+      else
+      {
+         // Is this the last byte?  Is the incoming WM_CHAR a DBCS
+         //   leadbyte?
+         if ( IsDBCSLeadByte(LOBYTE(wParam)) &amp;&amp;
+            (( TEXTLIMIT - SendMessage(hWnd, WM_GETTEXTLENGTH, 0,0)) == 1))
+         {
+            bInvalidchar=TRUE;   //The character is invalid.
+            return 0;               // Throw away this byte.
+         }
+         else return CallWindowProc(lpfnOldWndProc,
+                                     hWnd,
+                                     Message,
+                                     wParam,
+                                     lParam);
+      }
+   }
+   else return CallWindowProc(lpfnOldWndProc,
+                              hWnd,
+                              Message,
+                              wParam,
+                              lParam);
+}
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the product(s) listed at
+the beginning of this article.
+<P>
+This problem does not occur in Chinese or Japenese Windows 95 or Windows
+NT.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: cwin jwin fesdk<BR>
+KBCategory: kbbuglist kbprg<BR>
+KBSubcategory: KBIntlDev<BR>
+Keywords          : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 15, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

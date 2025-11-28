@@ -1,0 +1,384 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Back Up the Windows NT Registry </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q128731">
+<META NAME="KBModify" CONTENT="1996/12/16">
+<META NAME="KBCreate" CONTENT="1995/04/06">
+<META NAME="Keywords" CONTENT="kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article shows by example how to back up portions of the Windows NT registry to be restored later.  MORE INFORMATION  This is normally accomplished by enabling the SeBackupPrivilege and calling RegSaveKey. The operation can fail with ERROR_ACCE...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUR,QAUD,QAU7,QA3W,QBWP,QAI4,QAUJ,QALW,QAH4,QAO3,QAO2,QAML,QAKD,QAY5,QAI5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Back Up the Windows NT Registry</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 16, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q128731</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.5, 3.51, and 4.00
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article shows by example how to back up portions of the Windows NT
+registry to be restored later.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+This is normally accomplished by enabling the SeBackupPrivilege and calling
+RegSaveKey. The operation can fail with ERROR_ACCESS_DENIED if the caller
+does not have access to portions of the key, such as the registry key
+HKEY_LOCAL_MACHINE\SECURITY.
+<P>
+If you do not have access to the key, but have backup privilege, pass the
+REG_OPTION_BACKUP_RESTORE flag to RegCreateKeyEx in the dwOptions
+parameter. This has an effect similar to FILE_FLAG_BACKUP_SEMANTICS with
+CreateFile, allowing you to open the key for backup. The resultant key
+handle can be used in a subsequent call to RegSaveKey.
+<P>
+To back up the registry from the root, it is necessary to enumerate the
+subkeys from the root, opening each subkey with RegCreateKeyEx and saving
+the subkey with RegSaveKey.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following sample source code saves the HKEY_LOCAL_MACHINE registry
+key, with each subkey saved to a filename matching the subkey name.
+<P>
+The following function performs the save operation:
+<P>
+LONG SaveRegistrySubKey(
+<PRE>    HKEY hKey,              // handle of key to save
+    LPTSTR szSubKey,        // pointer to subkey name to save
+    LPTSTR szSaveFileName   // pointer to save path/filename
+    )
+
+</PRE>If the function succeeds, the return value is ERROR_SUCCESS.
+If the function fails, the return value is an error value.
+<P>
+<PRE>/* Save HKEY_LOCAL_MACHINE registry key, each subkey saved to a file of
+ * name subkey
+ *
+ * this allows us to get around security restrictions which prevent
+ * the use of RegSaveKey() on the root key
+ *
+ * the optional target machine name is specified in argv[1]
+ *
+ * v1.21
+ * Scott Field (sfield) 01-Apr-1995
+ */
+
+#define RTN_OK 0
+#define RTN_USAGE 1
+#define RTN_ERROR 13
+
+#include &lt;windows.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+
+</PRE>LONG SaveRegistrySubKey(HKEY hKey, LPTSTR szSubKey, LPTSTR szSaveFileName);
+<PRE>void PERR(LPTSTR szAPI, DWORD dwLastError);
+
+int main(int argc, char *argv[])
+</PRE>{
+<PRE>   TOKEN_PRIVILEGES tp;
+   HANDLE hToken;
+   LUID luid;
+   LONG rc;     // contains error value returned by Regxxx()
+   HKEY hKey;   // handle to key we are interested in
+   LPTSTR MachineName=NULL; // pointer to machine name
+   DWORD dwSubKeyIndex=0;   // index into key
+   char szSubKey[_MAX_FNAME]; // this should be dynamic.
+                            // _MAX_FNAME is good because this
+                            // is what we happen to save the
+                            // subkey as
+   DWORD dwSubKeyLength=_MAX_FNAME; // length of SubKey buffer
+
+/*
+    if (argc != 2) // usage
+    {
+        fprintf(stderr,"Usage: %s [&lt;MachineName&gt;]\n", argv[0]);
+        return RTN_USAGE;
+    }
+ */
+
+    // set MachineName == argv[1], if appropriate
+    if (argc == 2) MachineName=argv[1];
+
+    //
+    // enable backup privilege
+    //
+    if(!OpenProcessToken(GetCurrentProcess(),
+                        TOKEN_ADJUST_PRIVILEGES,
+                        &amp;hToken ))
+    {
+        PERR("OpenProcessToken", GetLastError() );
+        return RTN_ERROR;
+    }
+
+    if(!LookupPrivilegeValue(MachineName, SE_BACKUP_NAME, &amp;luid))
+
+    {
+        PERR("LookupPrivilegeValue", GetLastError() );
+        return RTN_ERROR;
+    }
+
+    tp.PrivilegeCount           = 1;
+    tp.Privileges[0].Luid       = luid;
+    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+    AdjustTokenPrivileges(hToken, FALSE, &amp;tp, sizeof(TOKEN_PRIVILEGES),
+                                NULL, NULL );
+
+    if (GetLastError() != ERROR_SUCCESS)
+    {
+        PERR("AdjustTokenPrivileges", GetLastError() );
+        return RTN_ERROR;
+    }
+
+    // only connect if a machine name specified
+    if (MachineName != NULL)
+    {
+        if((rc=RegConnectRegistry(MachineName,
+                                  HKEY_LOCAL_MACHINE,
+                                  &amp;hKey)) != ERROR_SUCCESS)
+        {
+            PERR("RegConnectRegistry", rc);
+            return RTN_ERROR;
+        }
+    }
+    else hKey=HKEY_LOCAL_MACHINE;
+
+    while((rc=RegEnumKeyEx(
+                        hKey,
+                        dwSubKeyIndex,
+                        szSubKey,
+                        &amp;dwSubKeyLength,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL)
+                        ) != ERROR_NO_MORE_ITEMS) { // are we done?
+
+    if(rc == ERROR_SUCCESS)
+   {
+        LONG lRetVal; // return value from SaveRegistrySubKey
+
+</PRE>#ifdef DEBUG
+<PRE>        fprintf(stdout,"Saving %s\n", szSubKey);
+</PRE>#endif
+<P>
+<PRE>        // save registry subkey szSubKey to filename szSubKey
+        if( (lRetVal=SaveRegistrySubKey(hKey, szSubKey, szSubKey)
+            ) != ERROR_SUCCESS)
+        {
+            PERR("SaveRegistrySubKey", lRetVal);
+        }
+
+        // increment index into the key
+       dwSubKeyIndex++;
+
+       // reset buffer size
+        dwSubKeyLength=_MAX_FNAME;
+
+        // Continue the festivities
+        continue;
+    }
+    else
+   {
+       //
+       // note: we need to watch for ERROR_MORE_DATA
+       // this indicates we need a bigger szSubKey buffer
+       //
+        PERR("RegEnumKeyEx", rc);
+        return RTN_ERROR;
+   }
+
+    } // RegEnumKeyEx
+
+    // close registry key we have been working with
+    RegCloseKey(hKey);
+
+    // Revoke all privileges this process holds (including backup)
+    AdjustTokenPrivileges( hToken, TRUE, NULL, 0, NULL, NULL);
+
+    // close handle to process token
+    CloseHandle(hToken);
+
+    return RTN_OK;
+</PRE>}
+<P>
+LONG SaveRegistrySubKey(
+<PRE>    HKEY hKey,              // handle of key to save
+    LPTSTR szSubKey,        // pointer to subkey name to save
+    LPTSTR szSaveFileName   // pointer to save path/filename
+    )
+</PRE>{
+<PRE>    HKEY hKeyToSave;    // Handle of subkey to save
+    LONG rc;            // result code from RegXxx
+    DWORD dwDisposition;
+
+    if((rc=RegCreateKeyEx(hKey,
+                          szSubKey, // Name of subkey to open
+                          0,
+                          NULL,
+                          REG_OPTION_BACKUP_RESTORE, // in winnt.h
+                          KEY_QUERY_VALUE, // minimal access
+                          NULL,
+                          &amp;hKeyToSave,
+                          &amp;dwDisposition)
+                          ) == ERROR_SUCCESS)
+    {
+        // Save registry subkey.  If the registry is remote, files will
+        // be saved on the remote machine
+        rc=RegSaveKey(hKeyToSave, szSaveFileName, NULL);
+
+        // close registry key we just tried to save
+        RegCloseKey(hKeyToSave);
+    }
+
+    // return the last registry result code
+    return rc;
+</PRE>}
+<P>
+<PRE>void PERR(
+    LPTSTR szAPI,       // pointer to failed API name
+    DWORD dwLastError   // last error value associated with API
+    )
+</PRE>{
+<PRE>    LPTSTR MessageBuffer;
+    DWORD dwBufferLength;
+
+    //
+    // TODO get this fprintf out of here!
+    //
+    fprintf(stderr,"%s error! (rc=%lu)\n", szAPI, dwLastError);
+
+    if(dwBufferLength=FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                                    FORMAT_MESSAGE_FROM_SYSTEM,
+                                    NULL,
+                                    dwLastError,
+                                    LANG_NEUTRAL,
+                                    (LPTSTR) &amp;MessageBuffer,
+                                    0,
+                                    NULL))
+    {
+
+
+        DWORD dwBytesWritten;
+
+        //
+        // Output message string on stderr
+        //
+        WriteFile(GetStdHandle(STD_ERROR_HANDLE),
+                  MessageBuffer,
+                  dwBufferLength,
+                  &amp;dwBytesWritten,
+                  NULL);
+
+        //
+        // free the buffer allocated by the system
+        //
+        LocalFree(MessageBuffer);
+    }
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: BseSecurity CodeSam BseRegistry<BR>
+Additional reference words: 3.50 3.51 4.00<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 16, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

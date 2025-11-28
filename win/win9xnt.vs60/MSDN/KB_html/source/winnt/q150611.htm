@@ -1,0 +1,213 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Qvision 2000 and Matrox Mga Ultima Cause Access Violation </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q150611">
+<META NAME="KBModify" CONTENT="1998/02/02">
+<META NAME="KBCreate" CONTENT="1996/05/03">
+<META NAME="Keywords" CONTENT="ntdriver NTSrvWkst ntstop ntui">
+<META NAME="KBArea" CONTENT="Support; KB; winnt, crossnet, iis">
+<META NAME="Description" CONTENT="  This article outlines a special programming case that causes an access violation when running the Qvision 2000 or Matrox Mga Ultima Video cards. These cards use the Mga.sys video driver.  The problem is caused by making some bad graphics calls. (Th...">
+<META NAME="Product" CONTENT="Windows NT">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAI4,QAGI,QAKP,QAB4,QA1S,QDNL,QBC9,QBC8,QANO,QALK,QAGX,QALW,QAAP,QAU9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Qvision 2000 and Matrox Mga Ultima Cause Access Violation</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 2, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q150611</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+3.50 3.51
+WINDOWS
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows NT Workstation versions 3.5 and 3.51
+<LI>Microsoft Windows NT Server versions 3.5 and 3.51
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article outlines a special programming case that causes an access
+violation when running the Qvision 2000 or Matrox Mga Ultima Video cards.
+These cards use the Mga.sys video driver.
+<P>
+The problem is caused by making some bad graphics calls. (These are shown
+in a program included in the More Information section below.) The problem
+causes the following error message to be returned by NT 3.51:
+<P>
+<PRE>   access violates in ntdll.dll at 0x77fa02ad with exception 0xc0000037.
+
+</PRE>This error is only known to occur using the Mga.sys driver.  There may be
+other drivers that also produce this error.
+<P>
+The programming problem is produced by calling BeginPath and Endpath with
+no points defined (no LineTo definitions) and calling StrokeAndFillPath
+(really the FillPath is the problem).
+<P>
+Once this has been done there is a problem with the hdc. The failure will
+show up when MoveToEx is called (after the previous calls have messed up
+the device context - hdc).
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Here is a simple sample program that produces the error:
+<P>
+<PRE>#include &lt;windows.h&gt;
+
+</PRE>HANDLE mainFrame;
+extern LRESULT WINAPI DrawProc (HWND, UINT, WPARAM, LPARM);
+<P>
+<PRE>int APIENTRY WinMain (HMODULE hModule, HINSTANCE hNULL, PSTR cmdLine,
+     int cmdShow)
+</PRE>{
+MSG msg;
+WNDCLASS wc;
+<P>
+<PRE>        memset (&amp;wc, 0, sizeof (WNDCLASS));
+        wc.lpszClassName = "MAIN";
+        wc.hbrBackground = (void * ) (COLOR_WINDOW +1);
+        wc.style = CS_VREDRAW | CS_HREDRAW;
+        wc.lpfnWndProc = DrawProc;
+        if  (!RegisterClass (&amp;wc)) exit (-1);
+        if  ( (mainFrame = CreateWindow ("MAIN", "Mca Test",
+             WS_OVERLAPPEDWINDOW, 0, 0, 300, 200, NULL,
+              NULL, 0, NULL) ) == NULL)
+           return (FALSE);
+        ShowWindow (mainFrame, SW_SHOW);
+
+        While (GetMessage (&amp;msg, NULL, 0, 0) )
+        {
+            TranslateMessage (&amp;msg);
+            DispatchMessage(&amp;msg);
+        }
+}
+
+</PRE>LRESULT  WINAPI DrawProc (HWND hwnd, UINT msg, WPARM mp1, LPARAM mp2)
+{
+PAINTSTRUCT ps;
+<P>
+<PRE>   switch (msg)
+   {
+   case  WM_CLOSE:
+        DestroyWindow (mainFrame);
+        return (0);
+   case WM_DESTROY:
+        PostQuitMessage (0);
+        return (0);
+   case WM_PAINT:
+        BeginPaint (hwnd, &amp;ps);
+        BeginPath  (ps.hdc);
+        EndPath (ps.hdc);
+        StrokeAndFillPath (ps.hdc); // Fillpath is the problem here
+                                    // since nothing has been drawn
+        BeginPath (ps.hdc);
+        MoveToEx (ps.hdc, 50, 50, NULL); //This is the failure point
+        LineTo (ps.hdc, 100, 100);
+        LineTo (ps.hdc, 150,  150);
+        EndPath (ps.hdc);
+        StrokeAndFillPath (ps.hdc);
+        MoveToEx (ps.hdc, 300, 300, NULL);
+        EndPaint (hwnd, &amp;ps);
+        return (0);
+    }
+    return (DefWindowProc (hwnd, msg, mp1, mp2));
+</PRE>}
+<P>
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory:<BR>
+KBSubcategory: ntstop ntui ntdriver ntsrvwkst<BR>
+Additional reference words:<BR>
+Keywords          : ntdriver NTSrvWkst ntstop ntui<BR>
+Version           : 3.50 3.51<BR>
+Platform          : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 2, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

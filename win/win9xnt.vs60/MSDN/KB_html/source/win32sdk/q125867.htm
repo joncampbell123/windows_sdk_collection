@@ -1,0 +1,212 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Understanding Win16Mutex </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q125867">
+<META NAME="KBModify" CONTENT="1996/02/01">
+<META NAME="KBCreate" CONTENT="1995/02/07">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Windows 95 offers preemptive multithreaded scheduling for Win32 processes, yet also provides the familiar non-preemptive task switching found in Windows 3.x for Win16 applications. Some of the Win32 system DLLs, such as USER32.DLL and GDI32.DLL, th...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWN,QDL9,QBWO,QBWQ,QAGI,QAUQ,QBVV,QAY5,QAUD,QAJQ,QDIT,QADX,QAY2,QAJH,QAIF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Understanding Win16Mutex</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 1, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q125867</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P><PRE>    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Windows 95 offers preemptive multithreaded scheduling for Win32 processes,
+yet also provides the familiar non-preemptive task switching found in
+Windows 3.x for Win16 applications. Some of the Win32 system DLLs, such as
+USER32.DLL and GDI32.DLL, thunk to their 16-bit counterparts for
+compatibility and size. Unlike Windows 3.x, which did not preemptively
+schedule processes, Windows 95 must be able to handle the possibility that
+it might be reentered by two or more processes each calling the same API
+functions. Windows 95 must do so in a way that uses little memory and is
+compatible with all existing 16-bit applications and DLLs.
+<P>
+Win16Mutex is a global semaphore that is used to protect the 16-bit Windows
+95 components from being reentered by preventing Win32 threads from
+thunking to 16-bit components while other 16-bit code is running.
+Win16Mutex is internal to Windows 95 and is not accessible from
+applications or DLLs. This article explains how Win16Mutex works and offers
+design tips for minimizing the effects Win16Mutex may have on Win32
+applications.
+<P>
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Because Windows 3.x is a non-preemptive system, Windows 3.x did not need to
+be designed to prevent the system from being reentered. Only one task
+(application instance) at a time can call system services (API functions)
+because other tasks cannot run until the active task voluntarily yields
+control of the CPU. Since only one task can execute at a time, it is not
+possible to have two different tasks calling the same API function, and
+thus Windows does not need to protect itself from reentrancy.
+<P>
+Windows 95 differs from Windows 3.x because Windows 95 provides support for
+both Win32 and Win16 applications. In Windows 95, every instance of every
+Win16 application is a process with exactly one thread, and every Win32
+process has at least one thread. Win32 threads are preemptively scheduled
+and may even preempt Win16 processes. Because many Win32 API functions are
+thunked to 16-bit Windows API functions, there is now a possibility for the
+16-bit Windows components to be reentered. Since the 16-bit Windows
+components are largely the same as in Windows 3.x, they need to be
+protected from being reentered.
+<P>
+The Win16Mutex provides this protection by allowing only one thread (not
+process) at a time to access the 16-bit APIs. Whenever Win16Mutex is owned
+by a thread, any other thread that tries to claim Win16Mutex will block
+until Win16Mutex is released. Now the question remains: "When does
+Win16Mutex get claimed and released?"
+<P>
+Whenever a Win16 process is running, it owns Win16Mutex. That is, when a
+Win16 process first gets a message via GetMessage or PeekMessage, the Win16
+process claims Win16Mutex. The Win16 process releases Win16Mutex whenever
+the process yields, such as when the process calls GetMessage or
+PeekMessage and doesn't return. The only way a Win16 process can keep
+Win16Mutex indefinitely is to never yield; since the message-processing
+mechanism provides the scheduler in 16-bit Windows, the only way to never
+yield is to stop processing messages (which makes the application
+unresponsive to user input).
+<P>
+The only time a thread in a Win32 process claims Win16Mutex is when the
+thread makes a call to an API function which thunks to one of the 16-bit
+Windows components or when the thread thunks directly to a Win16 DLL.
+Immediately after the call returns, the process releases Win16Mutex. Not
+all API functions thunk to 16-bit components; most 32-bit USER and GDI
+functions thunk to 16-bit USER and GDI, but none of the 32-bit KERNEL
+functions thunk to 16-bit KRNL386. One exception is when a Win32 process
+spawns a Win16 process, KERNEL32 thunks to KRNL386 to call the Win16
+loader.
+<P>
+Putting 16-bit and 32-bit behaviors together, you can see that when a Win16
+process is running, and a thread of a Win32 process preempts the Win16
+process and calls a function which thunks to a 16-bit component, the Win32
+thread is put to sleep until the Win16 process yields, which releases
+Win16Mutex. Likewise, when one Win32 process's thread claims Win16Mutex and
+then loses its timeslice, and another thread from either the same or a
+different process tries to claim Win16Mutex, the second thread blocks until
+Win16Mutex is released.
+<P>
+Win16Mutex is internal to Windows 95 and may not be manipulated or even
+checked by applications and DLLs. Win16Mutex is implemented mainly in the
+thunk layer so that every Win32 API which thunks to a Win16 component will
+automatically claim Win16Mutex before entering 16-bit code. Additionally,
+thunks created by the thunk compiler to allow Win32 applications and DLLs
+to call 16-bit DLLs claim Win16Mutex automatically, so programmers do not
+have to do so explicitly.
+<P>
+One way to lessen the impact that Win16 applications have on the
+responsiveness of Win32 applications is to create multiple threads where
+the primary thread (the initial thread of the process) controls the entire
+user interface for the process and each additional thread performs some
+useful task, such as reading or writing to a data file, but does not make
+user interface or graphics calls. This way, if the Win32 process's primary
+thread blocks waiting for a Win16 process to yield, its other threads are
+still performing useful work.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: BseProcThread
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 1, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

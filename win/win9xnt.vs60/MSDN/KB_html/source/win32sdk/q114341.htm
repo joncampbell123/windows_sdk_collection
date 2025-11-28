@@ -1,0 +1,297 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>SAMPLE: Win16 App (WOW &amp; Win32s) Calling Win32 DLL Code </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q114341">
+<META NAME="KBModify" CONTENT="1997/04/07">
+<META NAME="KBCreate" CONTENT="1994/05/01">
+<META NAME="Keywords" CONTENT="BseThunks SubSys W32sThunk kbprg kbref">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The INTEROP sample demonstrates two general methods for calling routines in a Win32 DLL from a Windows-based application: thunks and SendMessage(). There are two different thunking methods, one for each platform: Generic Thunks on Windows NT and Un...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QBWP,QAH6,QAIF,QDNN,QAH7,QAD7,QAJH,QAPF,QAH4,QBFY,QBC9,QBC8,QA7H,QAPN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>SAMPLE: Win16 App (WOW &amp; Win32s) Calling Win32 DLL Code</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 7, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q114341</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.30 1.30c | 3.51 4.00
+<PRE>WINDOWS    | WINDOWS NT
+</PRE>kbprg kbref
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) for Windows NT,
+   version 3.51, 4.0
+<LI>Microsoft Win32s, version 1.30c
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The INTEROP sample demonstrates two general methods for calling routines in
+a Win32 DLL from a Windows-based application: thunks and SendMessage().
+There are two different thunking methods, one for each platform: Generic
+Thunks on Windows NT and Universal Thunks on Win32s. The message used is
+WM_COPYDATA, a new message introduced by Windows NT and Win32s. All three
+methods provide a way to call functions and pass data across the 16-32
+boundary, translating any pointers in the process. The advantages of
+WM_COPYDATA over thunks are that it is fast and the exact same code runs on
+either platform (the thunk mechanism used will depend on the platform). The
+disadvantage of WM_COPYDATA is that a method must be devised to get a
+function return value (other than true or false) back to the calling
+application.
+<P>
+NOTE: Universal Thunks were designed to work with a Win32-based application
+calling a 16-bit DLL. The method described here has limitations. Because
+the application is 16-bit, no 32-bit context is created, so certain calls
+will not work from the Win32 DLL.
+<P>
+The sample consists of the following source files:
+<P>
+<PRE>   APP16.C    -  Win16 Application
+   DLL16.C    -  16-bit side of Universal Thunk/Generic Thunk
+   STUB32.C   -  32-bit stub that loads the 32-bit DLLs on Win32s
+   UTDLL32.C  -  32-bit side of the Universal Thunk
+   DISP32.C   -  Dispatch calls sent through WM_COPYDATA
+   DLL32.C    -  Win32 DLL
+
+</PRE>This sample is included with the Microsoft Win32 SDK. It is located in the
+\MSTOOLS\SAMPLES\Q_A\INTEROP directory.
+<P>
+<PRE> NOTE: There is also an RPC sample named INTEROP, but it is in a different
+</PRE>directory, (\MSTOOLS\SAMPLES\RPC\INTEROP).
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Generic Thunk</h3>
+ 
+<P>
+Under Windows NT, it is possible to call routines in a Win32 DLL from a
+Windows-based application using an interface called Generic Thunks. The
+Win32 SDK file DOC\SDK\MISC\GENTHUNK.TXT and the Win32 SDK documentation
+(under the section "Programming and Tools Guides, Programming Techniques,
+Generic Thunks") describe the interface.
+<P>
+Here is a picture of the way the pieces fit together in INTEROP:
+<P>
+<PRE>                             dll32
+                           ---------
+                          |  Win32  |
+    32-bit                |   DLL   |
+                           ---------
+                              /|\
+               ----------------|-------
+                               |
+                ---------     ------------
+               | Win 3.1 |&lt;-&gt;| 16-bit DLL |
+    16-bit     |   app.  |   |   (GT)     |
+                ---------     ------------
+                  app16           dll16
+
+</PRE>DLL16 is loaded when APP16 is loaded. If it detects that WOW is present,
+then it loads DLL32.
+<P>
+WOW presents a few new 16-bit application programming interfaces (APIs)
+that allow you to load the Win32 DLL, get the address of the DLL routine,
+call the routine (passing it up to thirty-two 32-bit arguments), convert
+16:16 (WOW) addresses to 0:32 addresses (useful if you need to build up a
+32-bit structure that contains pointers and pass a pointer to it), and free
+the Win32 DLL. These functions are:
+<P>
+<PRE>   DWORD FAR PASCAL LoadLibraryEx32W( LPCSTR, DWORD, DWORD );
+   DWORD FAR PASCAL GetProcAddress32W( DWORD, LPCSTR );
+   DWORD FAR PASCAL CallProc32W( DWORD, ..., LPVOID, DWORD, DWORD );
+   DWORD FAR PASCAL GetVDMPointer32W( LPVOID, UINT );
+   BOOL FAR PASCAL FreeLibrary32W( DWORD );
+
+</PRE>When linking the Win16 application, you need to put the following
+statements in the .DEF file, indicating that the functions will be imported
+from the WOW kernel:
+<P>
+<PRE>   IMPORTS
+      kernel.LoadLibraryEx32W
+      kernel.FreeLibrary32W
+      kernel.GetProcAddress32W
+      kernel.GetVDMPointer32W
+      kernel.CallProc32W
+
+</PRE>Note that although these functions are called in 16-bit code, they need to
+be provided with 32-bit handles, and they return 32-bit handles.
+<P>
+In addition, be sure that your Win32 DLL entry point is declared with the
+_stdcall convention; otherwise, you will get an access violation.
+<P>
+<P><h3>Universal Thunk</h3>
+ 
+<P>
+Under Win32s, it is possible to call routines in a Win32 DLL from a Win16
+application using an interface called Universal Thunks. The interface is
+described in the Win32s Programmer's Reference. The sample UTSAMPLE, shows
+the opposite (and more typical) case, a Win32 application calling 16-bit
+routines.
+<P>
+Here is a picture of the way the pieces fit together in INTEROP:
+<P>
+<PRE>                         stub           utdll32         dll32
+                      -----------     -----------     ---------
+                     |   Win32   |--&gt;| Win32 DLL |&lt;-&gt;|  Win32  |
+    32-bit           |    EXE    |   |    (UT)   |   |   DLL   |
+                      -----------     -----------     ---------
+                              /|\      /|\
+             ------------------|--------|-------------------------
+                               |       \|/
+                ---------     ------------
+               | Win 3.1 |&lt;-&gt;| 16-bit DLL |
+    16-bit     |   app.  |   |   (UT)     |
+                ---------     ------------
+                  app16           dll16
+
+</PRE>The load order is as follows: The Windows 3.1 application loads the 16-bit
+DLL. The 16-bit DLL checks to see whether the 32-bit side has been
+initialized. If it has not been initialized, then the DLL spawns the 32-bit
+.EXE (stub), which then loads the 32-bit DLL that sets up the Universal
+Thunks with the 16-bit DLL. Once all of the components are loaded and
+initialized, when the Windows 3.x application calls an entry point in the
+16-bit DLL, the 16-bit DLL uses the 32-bit Universal Thunk callback to pass
+the data over to the 32-bit side. Once the call has been received on the 32-
+bit side, the proper Win32 DLL entry point can be called.
+<P>
+<P><h3>WM_COPYDATA</h3>
+ 
+<P>
+The wParam and lParam for this message are as follows:
+<P>
+<PRE>   wParam = (WPARAM) (HWND) hwndFrom;   /* handle of sending window */
+   lParam = (LPARAM) (PCOPYDATASTRUCT) pcds;
+
+</PRE>Where hwndFrom is the handle of the sending window and COPYDATASTRUCT is
+defined as follows:
+<P>
+<PRE>   typedef struct tagCOPYDATASTRUCT {
+       DWORD dwData;
+       DWORD cbData;
+       PVOID lpData;
+   } COPYDATASTRUCT;
+
+</PRE>The INTEROP sample uses dwData as a function code, indicating which Win32
+DLL entry point should be calling and lpData to contain a pointer to the
+data structure to be passed to the function.
+<P>
+Here is a picture of the way the pieces fit together in INTEROP:
+<P>
+<PRE>                         disp           dll32
+                      -----------     ---------
+                     |   Win32   |--&gt;|  Win32  |
+    32-bit           |    EXE    |   |   DLL   |
+                      -----------     ---------
+                              /|\
+             ------------------|----------------------------------
+                               |
+                ---------     ------------
+               | Win 3.1 |&lt;-&gt;| 16-bit DLL |
+    16-bit     |   app.  |   |  (THUNK)   |
+                ---------     ------------
+                  app16           dll16
+
+</PRE>DLL16 is loaded when APP16 is loaded. DISP is spawned to handle WM_COPYDATA
+messages, regardless of platform. DISP dispatches the calls to DLL32,
+marshaling the arguments.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.30 1.30c 3.51 4.00<BR>
+KBCategory: kbprg kbref<BR>
+KBSubcategory: SubSys BseThunks<BR>
+Keywords            : BseThunks SubSys W32sThunk kbprg kbref<BR>
+Version             : 1.30 1.30c | 3.51 4.00<BR>
+Platform            : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 7, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

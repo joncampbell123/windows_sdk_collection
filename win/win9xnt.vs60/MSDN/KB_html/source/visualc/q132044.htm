@@ -1,0 +1,361 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: Using _declspec(dllimport) &amp; _declspec(dllexport) In Code </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q132044">
+<META NAME="KBModify" CONTENT="1997/10/03">
+<META NAME="KBCreate" CONTENT="1995/06/27">
+<META NAME="Keywords" CONTENT="CLIss kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  This article supplements the information covered in the following article in the Microsoft Knowledge Base:     ARTICLE-ID: Q107501    TITLE     : __export Replaced By __declspec in Visual C++ 32-bit  This article discusses the advantages and mechan...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QA3P,QAGI,QAKJ,QAC2,QAY5,QAI5,QBW7,QAYY,QALQ,QBV8,QAB9,QAR5,QBVV,QBFY V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: Using _declspec(dllimport) &amp; _declspec(dllexport) In Code</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 3, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q132044</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual C++, 32-bit Edition, versions 1.0, 2.0, 2.1, 4.0, 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article supplements the information covered in the following article
+in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q107501.htm">Q107501</A></B>
+   TITLE     : __export Replaced By __declspec in Visual C++ 32-bit
+
+</PRE>This article discusses the advantages and mechanics of using
+_declspec(dllimport) and _declspec(dllexport) in your application.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The 32-bit edition of Visual C++ uses _declspec(dllimport) and
+_declspec(dllexport) to replace the __export keyword previously used in
+16-bit versions of Visual C++.
+<P>
+You do not need to use _declspec(dllimport) for your code to compile
+correctly, but doing so allows the compiler to generate better code. The
+compiler is able to generate better code because it knows for sure whether
+a function exists in a DLL or not, so the compiler can produce codes that
+skip a level of indirection that would normally be present in a function
+call that crossed a DLL boundary.
+<P>
+With the proper .DEF file EXPORTS section, _declspec(dllexport) is not
+required. _declspec(dllexport) was added to provide an easy way to export
+functions from an .EXE or .DLL without using a .DEF file.
+<P>
+The remainder of this article provides a fairly low-level, thorough
+discussion of these issues.
+<P>
+The Win32 Portable Executable format is designed to minimize the number of
+pages that must be touched to fix imports. To do this, it places all the
+import addresses for any program in one place called the Import Address
+Table. This allows the loader to modify only one or two pages when
+accessing these imports.
+<P>
+<P><h3>Using _declspec(dllimport) for Function Calls</h3>
+ 
+<P>
+In the following code example, assume func1 is a function that resides in a
+DLL separate from the .EXE file that contains the main() function.
+<P>
+Without _declspec(dllimport), given this code:
+<P>
+<PRE>   void main(void) {
+       func1();
+   }
+
+</PRE>the compiler generates code that looks like this:
+<P>
+<PRE>    call func1
+
+</PRE>and the linker translates the call into something like this:
+<P>
+<PRE>    call 0x4000000         ; The address of 'func1'.
+
+</PRE>If 'func1' exists in another DLL, the linker can't resolve this directly
+because it has no way of knowing what the address of 'func1' is. In 16-bit
+environments, the linker adds this code address to a list in the .EXE
+that the loader would patch at run-time with the correct address. In 32-bit
+environments, the linker generates a thunk for which it does know the
+address. The thunk looks like this:
+<P>
+<PRE>   0x40000000:    jmp DWORD PTR __imp_func1
+
+</PRE>Here __imp_func1 is the address for func1's slot in the import address
+table of the .EXE file. All the addresses are thus known to the linker. The
+loader only has to update the .EXE file's import address table at load time
+for everything to work correctly.
+<P>
+Therefore, using _declspec(dllimport) is better because it is better if the
+linker does not generate a thunk if it does not have to. Thunks make the
+code larger (on RISC systems, it can be several instructions) and can
+degrade your cache performance. If you tell the compiler the function is in
+a DLL, it can generate an indirect call for you.
+<P>
+So now this code:
+<P>
+<PRE>   __declspec(dllimport) void func1(void);
+
+   void main(void) {
+       func1();
+   }
+
+</PRE>generates this instruction:
+<P>
+<PRE>   call DWORD PTR __imp_func1
+
+</PRE>There is no thunk and no jmp instruction, so the code is smaller and
+faster.
+<P>
+On the other hand, for function calls inside a DLL, you don't want to have
+to use an indirect call. You already know a function's address. Time and
+space are required to load and store the address of the function before an
+indirect call, so a direct call is always faster and smaller. You only want
+to use __declspec(dllimport) when calling DLL functions from the outside
+the DLL itself. Don't use __declspec(dllimport) on functions inside a DLL
+when building that DLL.
+<P>
+<P><h3>Using _declspec(dllexport)</h3>
+ 
+<P>
+Microsoft introduced __export in the 16-bit compiler version to allow the
+compiler to generate the export names automatically and place them in a
+.LIB file. This .LIB file could then be used just like a static .LIB to
+link with a DLL.
+<P>
+Microsoft added __declspec(dllexport) to continue this convenience. Its
+purpose is to add the export directive to the object file so you don't need
+a .DEF file.
+<P>
+This convenience is most apparent when trying to export decorated C++
+function names. There is no standard specification for name decoration, so
+the name of an exported function may change between compiler versions. If
+you use _declspec(dllexport), recompiling the DLL and dependent .EXE files
+is necessary only to account for any naming convention changes.
+<P>
+Many export directives such as ordinals, NONAME, or PRIVATE, can be made
+only in a .DEF file, and there is no way to specify these attributes
+without a .DEF file. However, using _declspec(dllexport) in addition to
+using a .DEF file does not cause build errors.
+<P>
+As a reference, search through the Win32 WINBASE.H header file. It contains
+examples of preferred __declspec(dllexport) and __declspec(dllimport)
+usage.
+<P>
+<P><h3>Using _declspec(dllexport) and _declspec(dllimport) on Data</h3>
+ 
+<P>
+In the case of data, using _declspec(dllimport) is a convenience item that
+removes a layer of indirection. When you import data from a DLL, you still
+have to go through the import address table. In the Win32 days before
+_declspec(dllimport), this meant you had to remember to do an extra level
+of indirection when accessing data exported from the DLL:
+<P>
+<PRE>   // project.h
+   #ifdef _DLL     // If accessing the data from inside the DLL
+      ULONG ulDataInDll;
+
+   else            // If accessing the data from outside the DLL
+      ULONG *ulDataInDll;
+   #endif
+
+</PRE>You would then export the data in your .DEF file:
+<P>
+<PRE>   // project.def
+   LIBRARY project
+   EXPORTS
+       ulDataInDll   CONSTANT
+
+</PRE>and access it outside the DLL:
+<P>
+<PRE>   if (*ulDataInDll == 0L) {
+      // Do stuff here
+   }
+
+</PRE>When you mark the data as __declspec(dllimport), the compiler automatically
+generates the indirection code for you. You no longer have to worry about
+the steps above. As stated previously, do not use _declspec(dllimport)
+declaration on the data when building the DLL. Functions within the DLL
+will not use the Import Address Table to access the data object. Therefore,
+you will not have the extra level of indirection present.
+<P>
+To export the data automatically from the DLL, use this declaration:
+<P>
+<PRE>   __declspec(dllexport) ULONG ulDataInDLL;
+
+</PRE><h3>Using a .DEF File</h3>
+ 
+<P>
+If you choose to use __declspec(dllimport) along with a .DEF file, you
+should change the .DEF file to use DATA in place of CONSTANT to reduce the
+likelihood that incorrect coding will cause a problem:
+<P>
+<PRE>   // project.def
+   LIBRARY project
+   EXPORTS
+       ulDataInDll   DATA
+
+</PRE>The following chart shows why:
+<P>
+<PRE>Keyword     Emits in the import lib     Exports
+CONSTANT    __imp_ulDataInDll           ulDataInDll
+            __ulDataInDll
+
+DATA        __imp_ulDataInDll           ulDataInDll
+
+</PRE>Using _declspec(dllimport)and CONSTANT lists both the __imp_ version and
+the undecorated name in the .LIB DLL import library that is created to
+allow explicit linking. Using _declspec(dllimport) and DATA lists just the
+__imp_ version of the name.
+<P>
+If you use CONSTANT, either of the following code constructs could be used
+to access the ulDataInDll:
+<P>
+<PRE>   __declspec(dllimport) ULONG ulDataInDll; /*prototype*/
+   if (ulDataInDll == 0L)   /*sample code fragment*/
+
+   -or-
+
+   ULONG *ulDataInDll;      /*prototype*/
+   if (*ulDataInDll == 0L)  /*sample code fragment*/
+
+
+</PRE>However, if you use DATA in your .DEF file, only code compiled with the
+following definition can access the variable ulDataInDll:
+<P>
+<PRE>  __declspec(dllimport) ULONG ulDataInDll;
+  if (ulDataInDll == 0L)   /*sample code fragment*/
+
+</PRE>Using CONSTANT is more risky because if you forget to use the extra level
+of indirection, you could potentially access the Import Address Table's
+pointer to the variable -- not the variable itself. This type of problem
+can often manifest as an Access Violation because the Import Address Table
+is currently made read-only by the Microsoft compiler and linkers.
+<P>
+The Current Visual C++ linker issues a warning if it sees CONSTANT in
+the .DEF file to account for this case. The only real reason to use
+CONSTANT is if you can't recompile some object file where the header file
+didn't list dllimport on the prototype.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+The Visual C++ Books Online provide a substantial amount of documentation
+on the dllexport and dllimport storage-class attributes. This includes
+"The dllexport and dllimport Attributes" and the "Using dllimport and
+dllexport in C++" topics in the "Microsoft-Specific Modifiers" chapter of
+the C++ Language Reference, and the "Exporting Symbols" topics in the
+"Creating DLLs for Win32" chapter of the Programming Techniques reference.
+For a thorough listing related topics, search the Books Online for
+"dllimport" or "dllexport".
+<P>
+For more information, please see the following articles in the Microsoft
+Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q90530.htm">Q90530</A></B>
+   TITLE     : Exporting Data from a DLL or an Application
+
+   ARTICLE-ID: <B><A href="../visualc/q107501.htm">Q107501</A></B>
+   TITLE     : __export Replaced By __declspec in Visual C++ 32-bit
+</PRE> 
+<PRE>Keywords          : CLIss kbcode
+Platform          : NT WINDOWS
+Issue type        : kbinfo</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 3, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

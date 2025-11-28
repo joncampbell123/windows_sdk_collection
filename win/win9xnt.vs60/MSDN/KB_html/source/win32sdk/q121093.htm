@@ -1,0 +1,550 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Points to Remember When Writing a Debugger for Win32s </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q121093">
+<META NAME="KBModify" CONTENT="1997/01/15">
+<META NAME="KBCreate" CONTENT="1994/09/26">
+<META NAME="Keywords" CONTENT="kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article is intended for developers of debugging tools for the Win32s environment. It covers the issues that should be to taken into consideration while writing debugging tools for the Win32s environment.  Overall, the code of a debugger for th...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QAUD,QALW,QAC2,QAGI,QBVV,QAUQ,QBWP,QABA,QABG,QBXS,QASR,QAY5,QBV8,QAB9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Points to Remember When Writing a Debugger for Win32s</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 15, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q121093</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32s, versions 1.1, 1.15, 1.2, 1.3, 1.3c
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article is intended for developers of debugging tools for the Win32s
+environment. It covers the issues that should be to taken into
+consideration while writing debugging tools for the Win32s environment.
+<P>
+Overall, the code of a debugger for the Win32s environment is similar to
+the code of a debugger for the Windows NT environment. There are special
+points that must be considered before and while writing debugging tools for
+the Win32s environment. They are:
+
+<UL><LI>Using the WaitForDebugEvent() API Function
+
+<LI>Debugging Shared Code
+
+<LI>Getting and Setting Thread Context
+
+<LI>Tracing Through Mixed 16- and 32-bit Code
+
+<LI>Using Asynchronous Stops
+
+<LI>Identifying System DLLs
+
+<LI>Understanding Linear and Virtual Addresses
+
+<LI>Reading and Writing Process Memory
+
+<LI>Accessing the Thread Local Storage (TLS)
+<P>
+</UL>Each of these is discussed in detail in the More Information section below.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following information is specific to writing a debugger for the Win32s
+environment.
+<P>
+Using the WaitForDebugEvent() API Function
+ 
+<P>
+The WaitForDebugEvent() API function waits for a debugging event to occur
+in a process being debugged. Use it to trap debugging events.
+<P>
+Because of the non-preemptive nature of Windows version 3.1, it is not
+possible to guarantee the timeout functionality. For this reason, the
+dwTimeout parameter was implemented differently in Win32s. In Win32s, if
+dwTimeout is zero, the WaitForDebugEvent() function behaves as documented
+in the "Win32 Programmer's Reference." Otherwise, the function waits
+indefinitely, until a debug event occurs or until a message is received for
+that process.
+<P>
+Make sure the function returns if a message is received, so that the
+calling process can respond to messages. If WaitForDebugEvent() returns
+because a debug event has occurred, the return value is TRUE. Otherwise,
+the return value is FALSE. In Win32, a FALSE return value means failure.
+Have the calling process use SetLastError() to set the error value to 0
+before calling WaitForDebugEvent(). Then if the return value is FALSE and
+error value returned by GetLastError() is still zero, it means a message
+arrived.
+<P>
+The following code fragment demonstrates the use of WaitForDebugEvent() in
+the message loop:
+<P>
+<PRE>   while( GetMessage(&amp;msg, NULL, NULL, NULL) )
+   {
+      TranslateMessage(&amp;msg); /* Translate virtual key codes */
+      DispatchMessage(&amp;msg);  /* Dispatch message to window */
+
+      SetLastError( 0 );      /* Set error code to zero  */
+      if( WaitForDebugEvent(&amp;DebugEvent, INFINITE) )
+      {
+      /* Process the debug event */
+         ProcessDebugEvents( &amp;DebugEvent );
+      }
+      else
+      {
+         if( GetLastError() != 0 )
+         {
+         /* Handle error condition. */
+         }
+      }
+   }
+
+</PRE><h3>Debugging Shared Code</h3>
+ 
+<P>
+Under Win32s, all processes run in a single address space. For that reason,
+if a debugger sets a breakpoint in shared code, all processes will
+encounter this breakpoint, even those that are not being debugged. For
+these processes, the debugger should restore the code, let the process
+execute the restored instruction, and then reset the breakpoint. The
+problem is that in order to do these operations, the debugger needs a
+handle to the process thread.
+<P>
+The debugger does not have a handle for the process thread of a process it
+did not create. To get the handle, Win32s supports a new function,
+OpenThread(), which is not a part of the Win32 API.
+<P>
+<PRE>   HANDLE OpenThread(dwThreadId);
+
+   DWORD dwThreadId;  /* The thread ID */
+
+   Parameter description:
+
+      dwThreadId - Specifies the thread identifier of the thread to open.
+
+   Returns:
+
+      If the function succeeds, the return value is an open handle of the
+      specified thread; otherwise, it is NULL. To get extended error
+      information, use the GetLastError() API.
+
+   Comments:
+
+      The handle returned by OpenThread() can be used in any function that
+      requires a handle to a thread.
+
+</PRE>OpenThread() is exported by KERNEL32.DLL, but is not included in any of the
+SDK import libraries.
+<P>
+To create an import library on a Windows NT development machine:
+
+<OL><P><LI>Place the following contents into a file named W32SOPTH.C:
+<P>
+<PRE>   #include &lt;windows.h&gt;
+
+   HANDLE WINAPI OpenThread(DWORD dwThreadId)
+   {
+      return (HANDLE)NULL;
+   }
+
+</PRE><P><LI>Place the following contents into a file named W32SOPTH.DEF:
+<P>
+   LIBRARY kernel32
+<P>
+   DESCRIPTION 'Win32s OpenThread library'
+<P>
+   EXPORTS
+<P><PRE>      OpenThread
+</PRE>
+<P><LI>Place the following contents into a file named MAKEFILE:
+<P>
+   w32sopth.lib: w32sopth.obj
+<P><PRE>      lib -out:w32sopth.lib -machine:i386 -def:w32sopth.def w32sopth.obj
+</PRE><P>
+   w32sopth.obj: w32sopth.c
+<P><PRE>      cl /c w32sopth.c
+</PRE>
+<P><LI>Run the NMAKE utility from the directory that contains the files
+   created in steps 1-3. This creates the W32SOPTH.LIB file.
+<P>
+</OL>The debugger should perform the following test: in the DEBUG_INFO structure
+returned by WaitForDebugEvent(), there is a thread ID. The debugger should
+check to see if this ID is one of the debugged processes. If it is not, the
+debugger should call OpenThread() with the given thread ID as the parameter
+and receive a handle to the thread. Using this handle, the debugger should
+call GetThreadContext(), identify the breakpoint, restore the code, set the
+single step bit of EFlag, and resume the process by calling
+ContinueDebugEvent(). Then control returns to the debugger. The debugger
+restores the breakpoint. After dealing with the non-debugged process, the
+debugger must close the thread handle obtained from OpenThread() by using
+CloseHandle().
+<P>
+The following code fragment demonstrates how a debugger can handle
+breakpoints in the context of a non-debugged process:
+<P>
+<PRE>   LPDEBUG_EVENT lpEvent;  /* Pointer to the debug event structure */
+   HANDLE hProc;           /* Handle to process */
+   HANDLE hThread;         /* Handle to thread */
+   CONTEXT Context;        /* Context structure */;
+   BYTE bOrgByte;          /* Original byte in the place of BP */
+   DWORD cWritten;         /* Number of bytes written to memory */
+   static DWORD dwBPLoc;   /* Breakpoint location */
+
+   /*
+    * Other debugger functions:
+    *
+    * LookupThreadHandle -
+    *    Receives a thread ID and returns a handle to the thread, if
+    *    the thread created by the debugger, else returns NULL.
+    */
+   HANDLE LookupThreadHandle(DWORD);
+
+   /*
+    * LookupOriginalBPByte -
+    *    Receives an address of a breakpoint and returns the original
+    *    contents of the memory in the place of the breakpoint.
+    *    The memory contents is returned in the byte buffer passed as
+    *    a parameter.
+    * Return value - If the breakpoint was set by the debugger the
+    *   return value is TRUE, else FALSE.
+    */
+   BOOL LookupOriginalBPByte( LPVOID, LPBYTE );
+
+   /* Handle debug events according to event types */
+   switch( lpEvent-&gt;dwDebugEventCode )
+   {
+   /* ... */
+      case EXCEPTION_DEBUG_EVENT:
+      /* Handle exception debug events according to exception type */
+         switch( lpEvent-&gt;u.Exception.ExceptionRecord.ExceptionCode )
+         {
+         /* ... */
+         case EXCEPTION_BREAKPOINT:
+            /* Breakpoint exception */
+            /* Look for the thread handle in the debugger tables */
+               hThread = LookupThreadHandle( lpEvent-&gt;dwThreadId );
+               if( hThread == NULL )
+               {
+               /* Not a debuggee */
+               /* Get process and thread handles */
+                  hProc = OpenProcess( 0, FALSE, lpEvent-&gt;dwProcessId );
+                  hThread = OpenThread( lpEvent-&gt;dwThreadId );
+
+               /* Get the full context of the processor */
+                  Context.ContextFlags = CONTEXT_FULL;
+                  GetThreadContext( hThread, &amp;Context );
+
+               /* We get the exception after executing the INT 3 */
+                  dwBPLoc = --Context.Eip;
+
+               /* Restore the original byte in memory in the */
+
+               /* place of the breakpoint */
+                  if( !LookupOriginalBPByte((LPVOID)dwBPLoc, &amp;bOrgByte) )
+                  {
+                  /* Handle unfamiliar breakpoint */
+                  }
+                  else
+                  {
+                  /* Restore memory contents */
+                     WriteProcessMemory( hProc, (LPVOID)dwBPLoc,
+                     &amp;bOrgByte, 1, &amp;cWritten );
+
+                  /* Set the Single Step bit in EFlags */
+                     Context.EFlags |= 0x0100;
+                     SetThreadContext( hThread, &amp;Context );
+                  }
+
+               /* Free Handles */
+                  CloseHandle( hProc );
+                  CloseHandle( hThread );
+
+               /* Resume the interrupted process */
+                  ContinueDebugEvent( lpEvent-&gt;dwProcessId,
+                                      lpEvent-&gt;dwThreadId, DBG_CONTINUE );
+               }
+               else
+               {
+               /* Handle debuggee breakpoint. */
+               }
+               break;
+
+            case STATUS_SINGLE_STEP:
+               hThread = LookupThreadHandle( lpEvent-&gt;dwThreadId );
+               if( hThread == NULL )
+               {
+               /* Not a debuggee, just executed the original instruction */
+               /* and returned to the debugger. */
+
+               /* Get process handle */
+                  hProc = OpenProcess( 0, FALSE, lpEvent-&gt;dwThreadId );
+
+               /* Restore the INT 3 instruction in the place of the BP */
+                  bOrgByte = 0xCC;
+                  WriteProcessMemory( hProc, (LPVOID)dwBPLoc,
+                  &amp;bOrgByte, 1, &amp;cWritten );
+
+               /* Free Handle */
+                  CloseHandle( hProc );
+
+               /* Resume the process */
+                  ContinueDebugEvent( lpEvent-&gt;dwProcessId,
+                                      lpEvent-&gt;dwThreadId, DBG_CONTINUE );
+               }
+               else
+               {
+               /* Handle debuggee single-step. */
+               }
+               break;
+         /* .... */
+      }
+   /* .... */
+   }
+
+</PRE></OL>This sample code does not contain code to handle error checking and return
+values from APIs. The assumption is that a non-debugged process generates a
+single step exception only when it is executing the instruction in the
+place of the breakpoint. The code for handling the single step exception
+does not handle debug registers.
+<P>
+<P><h3>Getting and Setting Thread Context</h3>
+ 
+<P>
+Because of architectural differences between Windows NT and Win32s, there
+is a difference in the way GetThreadContext() and SetThreadContext() work
+in Win32s. These functions return successfully only if they are called
+after returning from WaitForDebugEvent() with the EXCEPTION_DEBUG_EVENT
+value in the dwDebugEventCode field of the DEBUG_INFO structure and before
+calling ContinueDebugEvent(). At any other point, these APIs fail and
+GetLastError() returns ERROR_CAN_NOT_COMPLETE.
+<P>
+<P><h3>Tracing Through Mixed 16- and 32-bit Code</h3>
+ 
+<P>
+Occasionally, Win32-based applications switch to 16-bit mode and then go
+back to 32-bit mode. For example, part of the Windows API is implemented in
+Win32s by using thunks to connect to Windows version 3.1. That means that
+in order to call the API, Win32s switches to 16-bit mode, calls the
+corresponding API on the Windows version 3.1 side, and then returns to 32-
+bit mode.
+<P>
+Most debuggers do not allow tracing through 16-bit code. So when the code
+is about to switch to 16-bit mode, the debugger should trace over this
+code. To do so, Win32s supplies the DbgBackTo32 label. All calls to 16-bit
+code return through this address. The DbgBackTo32 label is exported by
+W32SKRNL.DLL. At this label, there is a RET instruction. After executing
+this RET instruction and immediately another following RET instruction,
+Win32s resumes execution at the application code, at the instruction
+following the call to the thunked function. So if the debugger determines
+that the next call is into a thunk function, it can set a breakpoint at
+DbgBackTo32 and trace over this call.
+<P>
+<P><h3>Using Asynchronous Stops</h3>
+ 
+<P>
+The asynchronous stop key combination was set to CTRL+ALT+F11 in Win32s.
+It allows a 16-bit debugger to run at the same time as a 32-bit debugger.
+Each debugger can synchronously stop the other.
+<P>
+If the user presses CTRL+ALT+F11 when the executing code is 16-bit code,
+execution will not be interrupted until it returns to 32-bit code. This
+way, the debugger does not have to handle 16-bit code. If the user presses
+CTRL+ALT+F11 when the executing code is 32-bit code, execution is
+interrupted immediately.
+<P>
+Execution is interrupted by generating a single step exception. To handle
+the case where the user presses CTRL+ALT+F11 while 16-bit code is
+executing, the address of the exception is at a special Win32s label
+(W32S_BackTo32). This label is exported by W32SKRNL.DLL and is located a
+few instructions before DbgBackTo32. For more information on this see the
+"Tracing Through Mixed 16- and 32-bit Code" above.
+<P>
+The code at W32S_BackTo32 is system code and usually debuggers should not
+allow tracing through system code. But between W32S_BackTo32 and
+DbgBackTo32, the debugger may allow tracing through this specific code and
+also through the two following RET instructions. This will bring the user
+to the point in the application at which CTRL+ALT+F11 was pressed.
+<P>
+<P><h3>Identifying System DLLs</h3>
+ 
+<P>
+When tracing through application code, it is not desirable to trace into
+system DLL code. The main reason for this is that in many cases the code
+goes to 16-bit code. To enable the debugger to distinguish between system
+and user DLLs, all Win32s system DLLs contain an extra exported symbol
+called WIN32SYSDLL. The address of this symbol is meaningless. The
+existence of such a symbol indicates that this is a system DLL.
+<P>
+<P><h3>Understanding Linear and Virtual Addresses</h3>
+ 
+<P>
+Win32s uses flat memory address space as does Windows NT, but unlike
+Windows NT, the base of the code and data segments is not at zero. You must
+consider this when dealing with linear addresses -- such as hardware debug
+registers when setting a hardware breakpoint. When setting a hardware
+breakpoint, you need to add the base of the selector to the virtual address
+of the breakpoint and set the debug register with this value. If you do not
+do so, the code will run on Windows NT but not on Win32s.
+<P>
+The debugger needs to get the base address of the selectors by using the
+GetThreadSelectorEntry() function.
+<P>
+Similarly, when the hardware breakpoint is encountered, you must subtract
+the selector base address from the contents of the debug register in order
+to read the process memory at the breakpoint location.
+<P>
+<P><h3>Reading and Writing Process Memory</h3>
+ 
+<P>
+When reading from or writing to process memory, all hardware breakpoints
+must be disabled. If you do not do so, accessing the memory locations
+pointed to by the debug registers will trigger the hardware breakpoints.
+<P>
+The following code demonstrates how a debugger can read process memory at
+the location of a read memory hardware breakpoint:
+<P>
+<PRE>   CONTEXT Context;
+   LDT_ENTRY SelEntry;
+   DWORD dwDsBase;
+   DWORD DR7;
+   BYTE Buffer[4];
+
+   /* Get Context */
+   Context.ContextFlags = CONTEXT_FULL | CONTEXT_DEBUG_REGISTERS;
+   GetThreadContext( hThread, &amp;Context );
+
+   /* Calculate the base address of DS */
+   GetThreadSelectorEntry(hThread, Context.SegDs, &amp;SelEntry);
+   dwDsBase = ( SelEntry.HighWord.Bits.BaseHi &lt;&lt; 24) |
+                (SelEntry.HighWord.Bits.BaseMid &lt;&lt; 16) |
+                SelEntry.BaseLow;
+
+   /*
+    * Disable all hardware breakpoints before reading the process
+    * memory. Not doing so will lead to nested breapoints.
+    */
+   DR7 = Context.Dr7;
+   Context.Dr7 &amp;= ~0x3FF;
+   SetThreadContext( hThread, &amp;Context );
+
+   /* Read DWORD at the location of DR0 */
+   ReadProcessMemory( hProcess,
+                      (LPVOID)((DWORD)Context.Dr0-dwDsBase),
+                      Buffer, sizeof(Buffer), NULL);
+
+   /* Restore hardware breakpoints */
+   Context.Dr7 = DR7;
+   SetThreadContext( hThread, &amp;Context );
+
+
+</PRE>Accessing the Thread Local Storage (TLS)
+ 
+<P>
+The lpThreadLocalBase field of the CREATE_PROCESS_DEBUG_INFO structure in
+Windows NT specifies the base address of a per-thread data block. At offset
+0x2C within this block, there exists a pointer to an array of LPVOIDs.
+There is one LPVOID for each DLL/EXE loaded at process initialization, and
+that LPVOID points to Thread Local Storage (TLS). This gives a debugger
+access to per-thread data in its debuggee's threads using the same
+algorithms that a compiler would use.
+<P>
+On the other hand, in Win32s, lpThreadLocalBase contains a pointer directly
+to the array of LPVOIDs, not the pointer to the per-thread data block.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbcode<BR>
+KBSubCategory: W32s<BR>
+Additional reference words: 1.10 1.15 1.20 1.30 1.30c<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 15, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

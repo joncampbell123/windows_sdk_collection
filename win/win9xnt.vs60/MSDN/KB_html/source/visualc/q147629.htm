@@ -1,0 +1,231 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Problems If ODBC or DAO in DLL's InitInstance or DLLMain </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q147629">
+<META NAME="KBModify" CONTENT="1997/06/26">
+<META NAME="KBCreate" CONTENT="1996/02/28">
+<META NAME="Keywords" CONTENT="kbinterop kbprg MfcDAO MfcDatabase kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  If you use ODBC or DAO in the InitInstance or DLLMain functions of a DLL, your application may fail with an  Access Violation  or display some other unanticipated behavior. This can occur when you use the MFC Database Classes (ODBC-based or DAO-bas...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAY5,QA9E,QAH6,QA1S,QAIF,QAH4,QDL9,QBWQ,QBWO,QBWN,QBV8,QAB9,QABO,QDN9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Problems If ODBC or DAO in DLL's InitInstance or DLLMain</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q147629</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++, 32-bit Edition, versions 4.0, 4.1, 4.2, 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+If you use ODBC or DAO in the InitInstance or DLLMain functions of a DLL,
+your application may fail with an "Access Violation" or display some other
+unanticipated behavior. This can occur when you use the MFC Database
+Classes (ODBC-based or DAO-based), the ODBC API, or the dbDao classes
+provided with the DAO SDK.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The reason for this behavior is that ODBC drivers, DAO, or any of their
+underlying components may spawn multiple threads. Creating threads during
+initialization of a Win32 DLL can leave Windows in an undefined state.
+<P>
+When a Win32 DLL is loaded, Windows calls the DLL's DllMain function with a
+reason for calling of DLL_PROCESS_ATTACH.
+<P>
+When a new thread is created in Win32, each DLL in the process space will
+have its DllMain function called by Windows. Windows signals that a new
+thread has been created by passing a reason for calling of
+DLL_THREAD_ATTACH.
+<P>
+For a regular DLL that uses MFC, MFC supplies a DllMain that calls
+InitInstance. If you call a function in InitInstance that directly or
+indirectly creates one or more threads, you may experience unexpected
+behavior. This is because your application is within the context of DllMain
+(in InitInstance) with a DLL_PROCESS_ATTACH call, and creating a thread
+will result in Windows needing to call your DllMain again with a
+DLL_THREAD_ATTACH. The behavior resulting from this action is undefined.
+<P>
+If you are writing an extension DLL, you must supply your own
+implementation of the DllMain function. If you directly or indirectly
+create threads within this DllMain function, you will also experience this
+problem.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Do not create threads explicitly or implicitly within the context of
+DllMain.
+<P>
+Provide a function in your DLL for complex initialization that you can call
+outside of the scope of DllMain.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Currently the behavior described in this article is exhibited when using
+the Microsoft Access version 3 ODBC driver, using the ODBC SDK, or using
+MFC ODBC-based database classes. It can also occur when instantiating
+instances of MFC DAO-based database classes or the dbDao classes.
+<P>
+This behavior is not limited to a specific ODBC driver, DAO, or ODBC in
+general. You may experience this type of behavior with any API that creates
+threads.
+<P>
+If you suspect that this might be the cause of failure in your application,
+you can verify it by putting a breakpoint in the DllMain function and
+examining how many times it is called and by examining the dwReason
+parameter that is passed to it. If this is a regular DLL that uses MFC, set
+the breakpoint in MFC's DllMain function.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following code is for MFC ODBC-based database classes but applies
+equally well to MFC DAO-based database classes, or the dbDao classes.
+<P>
+<PRE>   // This code should reproduce the problem for a regular DLL that uses
+   // MFC.
+
+   BOOL CMyDllApp::InitInstance()
+   {
+     CDatabase db;
+     if(db.Open("MyDataSource")) //Open Microsoft Access 3 ODBC datasource
+       db.Close();
+     ...
+   }
+
+   // To fix the problem, put the code in your own initialize function
+   // that you call explicitly from your application.
+
+   BOOL CMyDllApp::MyInitFunction()
+   {
+     CDatabase db;
+     if(db.Open("MyDataSource")) //Open an Access 3 ODBC datasource
+       db.Close();
+     ...
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+"Advanced Windows" (Chapter 11) by Jeffery Richter, ISBN 1-55615-677-4.
+<P>
+For more information, please see the following related articles in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../oleprog/q138812.htm">Q138812</A></B>
+   TITLE     : Calls to an OLE Object Should Not Be Done from DllMain
+
+   ARTICLE-ID: <B><A href="../visualc/q142243.htm">Q142243</A></B>
+   TITLE     : PRB: Cannot Create an MFC Thread During DLL Startup
+
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : kbinterop kbprg MfcDAO MfcDatabase kbprb<BR>
+Technology          : kbMfc<BR>
+Version             : 4.0 4.1 4.2 5.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbprb<BR>
+Resolution Type     : Info_Provided<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,253 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: Socket Overlapped I/O Versus Blocking/Non-blocking Mode </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q181611">
+<META NAME="KBModify" CONTENT="1998/02/25">
+<META NAME="KBCreate" CONTENT="1998/02/23">
+<META NAME="Keywords" CONTENT="NtwkWinsock">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article explains the difference between a socket's overlapped I/O attribute and the socket's blocking or non-blocking mode.  MORE INFORMATION  When a socket is created, by default it is a blocking socket. You can use the FIONBIO command in the...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAY5,QAGI,QBWP,QBV8,QA5W,QAIF,QDIT,QBB0,QAH6,QAA8,QAB9,QAUD,QADN,QBXS,QBWQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: Socket Overlapped I/O Versus Blocking/Non-blocking Mode</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 25, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q181611</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) on the following
+   platforms:
+<P><PRE>    - Windows NT, version 4.0
+    - Windows 95
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article explains the difference between a socket's overlapped I/O
+attribute and the socket's blocking or non-blocking mode.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When a socket is created, by default it is a blocking socket. You can use
+the FIONBIO command in the ioctlsocket API call, WSAEventSelect, or
+WSAAysncSelect to change the socket mode from blocking to non-blocking. If
+a Winsock call cannot complete immediately, the call fails and
+WSAGetLastError returns a WSAEWOULDBLOCK error if it's a non-blocking
+socket, or the call blocks until the operation completes if it's a blocking
+socket.
+<P>
+The socket overlapped I/O attribute is different from the socket's blocking
+or non-blocking mode. Although the current Winsock implementation requires
+overlapped I/O attribute for non-blocking socket mode, they are
+conceptually independent and their programming model is different too. To
+create a socket with the overlapped I/O attribute, you can either use the
+socket API or the WSASocket API with the WSA_FLAG_OVERLAPPED flag set. If
+an overlapped I/O operation can not complete immediately, the call fails
+and WSAGetLastError or GetLastError return WSA_IO_PENDING or
+ERROR_IO_PENDING, which is actually the same define as WSA_IO_PENDING. For
+additional information, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q179942.htm">Q179942</A></B>
+   TITLE     : INFO: WSA_FLAG_OVERLAPPED Is Needed For Non-Blocking
+               Sockets
+
+</PRE>Please note that once a socket is created, there is no way to change the
+socket overlapped attribute. However, you can call the setsockopt API with
+SO_OPENTYPE option on any socket handles including an INVALID_SOCKET to
+change the overlapped attributes for all successive socket calls in the
+same thread. The default SO_OPENTYPE option value is 0, which sets the
+overlapped attribute. All non-zero option values make the socket
+synchronous and make it so that you cannot use a completion function.
+<P>
+By setting a socket's overlapped I/O attribute it doesn't mean that the
+socket will perform an overlapped I/O operation. For example, if you
+specify NULL for both the completion function and the overlapped structure
+in WSARecv and WSASend, or you simply call recv or send functions, they
+will complete in a blocking fashion. To make sure the I/O is performed in
+an overlapped fashion you need to provide an overlapped structure in your
+I/O function, depending on the function you use.
+<P>
+<P><h3>Overlapped I/O</h3>
+ 
+<P>
+In Winsock 1, you create an overlapped socket using the socket API, and use
+Win32 file I/O API ReadFile, ReadFileEx, WriteFile, WriteFileEx to perform
+overlapped I/O on the socket handle. In Winsock 2, you create an overlapped
+socket using WSASocket with the WSA_FLAG_OVERLAPPED flag, or simply using
+the socket API. You can use the above Win32 file I/O APIs or Winsock 2
+WSASend, WSASendTo, WSARecv, and WSARecvFrom to initiate an overlapped I/O
+operation.
+<P>
+If you use the SO_RCVBUF and SO_SNDBUF option to set zero TCP stack receive
+and send buffer, you basically instruct the TCP stack to directly perform
+I/O using the buffer provided in your I/O call. Therefore, in addition to
+the non- blocking advantage of the overlapped socket I/O, the other
+advantage is better performance because you save a buffer copy between the
+TCP stack buffer and the user buffer for each I/O call. But you have to
+make sure you don't access the user buffer once it's submitted for
+overlapped operation and before the overlapped operation completes.
+<P>
+To determine whether the overlapped I/O operation is completed, you can use
+one of the following options:
+
+<UL><LI>You can provide an event handle in an overlapped structure used
+   in the I/O call and wait on the event handle to signal.
+
+<LI>Use GetOverlappedResult or WSAGetOverlappedResult to poll the status of
+   the overlapped I/O operation. On Windows NT, you can specify NULL as the
+   event handle in the overlapped structure. However, on Windows 95 the
+   overlapped structure needs to contain a manual reset event handle.
+
+<LI>Use ReadFileEx, WriteFileEx, WSARecv, WSARecvFrom, WSASend, or WSASendTo
+   and choose to provide a completion function to be called when the
+   overlapped I/O operation has completed.
+<P>
+   If you use the completion function approach, at some point after you
+   have issued the overlapped I/O operation you need to issue a Win32 wait
+   function or a WSA version of wait function to wait on a non-signaled
+   handle to put your current thread into an alertable wait state. When the
+   overlapped I/O operation completes, your completion function is called,
+   your wait function is going to return WAIT_IO_COMPLETION, and your
+   alertable wait thread wakes up.
+
+<LI>Use GetQueuedCompletionStatus and associate a socket, along with the
+   overlapped I/O attribute set, with a Windows NT I/O Completion
+   Port(IOCP).
+<P>
+   With IOCP, you don't need to supply a completion function, wait on an
+   event handle to signal, or poll the status of the overlapped operation.
+   Once you create the IOCP and add your overlapped socket handle to the
+   IOCP, you can start the overlapped operation by using any of the I/O
+   APIs mentioned above (except recv, recvfrom, send, or sendto). You will
+   have your worker thread block on GetQueuedCompletionStatus API waiting
+   for an I/O completion packet. When an overlapped I/O completes, an I/O
+   completion packet arrives at the IOCP and GetQueuedCompletionStatus
+   returns.
+<P>
+   IOCP is the Windows NT Operating System support for writing a scalable,
+   high throughput server using very simple threading and blocking code on
+   overlapped I/O operations. Thus there can be a significant performance
+   advantage of using overlapped socket I/O with Windows NT IOCPs.
+<P>
+</UL><h3>Blocking and Non-Blocking Mode</h3>
+ 
+<P>
+When a socket is created, by default it is a blocking socket. Under
+blocking mode socket I/O operations, connect and accept operations all
+block until the operation in question is completed. To change the socket
+operation mode from blocking mode to non-blocking mode, you can either use
+WSAAsyncSelect, WSAEventSelect, or the FIONBIO command in the ioctlsocket
+API call.
+<P>
+WSAAsyncSelect maps socket notifications to Windows messages and is the
+best model for a single threaded GUI application.
+<P>
+WSAEventSelect uses WSAEnumNetworkEvents to determine the nature of the
+socket notification on the signaling event and maps socket notifications by
+signaling an event. This is a useful model for non-GUI applications that
+lack a message pump, such as a Windows NT service application.
+<P>
+The FIONBIO command in the ioctlsocket API call puts the socket into non-
+blocking mode as well. But you need to poll the status of the socket by
+using the select API.
+ 
+<PRE>Keywords          : NtwkWinsock
+Version           : WINNT:4.0;WIN95
+Platform          : Win95 winnt
+Issue type        : kbinfo</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 25, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

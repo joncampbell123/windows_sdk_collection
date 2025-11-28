@@ -1,0 +1,228 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Multiple Named Pipes Connections May Cause Error 17832 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q165189">
+<META NAME="KBModify" CONTENT="1997/04/07">
+<META NAME="KBCreate" CONTENT="1997/03/13">
+<META NAME="Keywords" CONTENT="kbnetwork kbusage SSrvDB_Lib SSrvNet_Lib">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  When SQL Server receives many simultaneous Named Pipes connection requests, some connection requests may fail if the pipe is busy. In the SQL Server error log, multiple  17832 Unable to read login packet  errors are typically logged. On the client ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QAI5,QBG2,QARL,QAGI,QAB4,QAAP,QAUJ,QBWD,QDIZ,QBWS,QDJ3,QBWP,QAY2,QAM4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Multiple Named Pipes Connections May Cause Error 17832</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 7, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q165189</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When SQL Server receives many simultaneous Named Pipes connection requests,
+some connection requests may fail if the pipe is busy. In the SQL Server
+error log, multiple "17832 Unable to read login packet" errors are
+typically logged. On the client side, error 231 "connection busy" or "pipe
+busy" may be generated.
+<P>
+These errors may be generated when a client connection tries to open a pipe
+and there is no pipe instance available to service the next pipe open
+request. This is an expected behavior in an environment where SQL Server is
+hit by numerous simultaneous connection requests, as in the case of
+Microsoft Internet Information Server (IIS).
+<P>
+However, this behavior does not prevent you from implementing very large
+multi-user systems. In fact, Microsoft SQL Server is used in production
+with over 4,000 concurrent users connecting by means of named pipes to a
+single server.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+There is only one thread that handles incoming SQL Server Named Pipes
+connection open requests. In an environment where multiple simultaneous
+named pipes connection requests are issued, it is very likely that no pipe
+instance is available to service the next pipe open request at any
+particular moment. In this case, a pipe busy status is returned to the
+client and the client retries the connection within the specified
+timeout period until the pipe is available. From a network sniffer trace,
+on the Windows NT Server Create response, error code (172)
+STATUS_PIPE_NOT_AVAILABLE is returned to the client. In case of a 16-bit
+client connection, code (231) ERROR_PIPE_BUSY is returned to the client.
+<P>
+In this situation, DB-Library and the ODBC driver issue a retry mechanism
+that retries after a delay that varies from 200 ms up to one second. The
+client may successfully connect during one of the retries, but it may also
+fail if the connection keeps receiving a pipe busy status in all the
+retries for the duration of the logon timeout value that is set on the
+client.
+<P>
+The "17832 Unable to read login packet" errors are more noticeable if you
+have an ODBC front end application. This error is generated because the
+initial session between the client and the server has been established but
+the client timed out before the login packet was sent to the server.
+<P>
+The following suggestions can help reduce the occurrences of these errors:
+
+<UL><LI>Increase the application logon timeout value. In this interval,
+   DB-Library and the ODBC driver manager will retry connecting to SQL
+   Server, thereby increasing the chance of a successful connection.
+
+<LI>Configure SQL Server to listen on multiple pipes. Doing this will
+   increase the number of threads available to process incoming Named Pipes
+   connections. Different client workstations must be configured to use
+   alternate pipes to evenly distribute the load on each pipe.
+<P>
+   You can configure SQL Server to listen on multiple pipes by using the
+   registry editor.
+<P>
+   WARNING: Using Registry Editor incorrectly can cause serious, system-
+   wide problems that may require you to reinstall Windows NT to correct
+   them. Microsoft cannot guarantee that any problems resulting from the
+   use of Registry Editor can be solved. Use this tool at your own risk.
+<P>
+   1. Start Registry Editor (Regedt32.exe) and locate the following subkey
+<P><PRE>      in the HKEY_LOCAL_MACHINE subtree:
+</PRE><P>
+<PRE>         Software\Microsoft\MSSQLServer\MSSQLServer
+
+   2. Double-click the ListenOn value.
+
+   3. On a new line in the Multi-string editor window, add the following:
+
+         SSNMPN60,\\.\pipe\sql1\query
+         SSNMPN60,\\.\pipe\sql2\query
+
+   4. Click OK and quit Registry Editor.
+
+   5. Shut down and restart SQL Server.
+
+   You can configure the client to connect to SQL server using an alternate
+   pipe through the SQL Client Configuration Utility.
+
+   1. From the client workstation, start SQL Client Configuration Utility.
+
+   2. Click the Advanced tab or click the Advanced button.
+
+   3. Add the following values in the Advanced window:
+
+         Server:            &lt;server name&gt;
+         DLL name:          DBNMPNTW
+         connection string: \\&lt;server name&gt;\pipe\sql1\query
+
+   In case of 16-bit tools, the DLL name should be DBNMP3.
+
+   4. Click the Add\Modify button and then click Done to exit from the SQL
+      Server Client Configuration Utility.
+
+</PRE><LI>Modify the application to trap the connection busy or pipe busy errors
+   and force the application to retry connecting to the server.
+
+<LI>Reconfigure the clients to use the sockets Net-Library, which avoids
+   busy signals (due to the TCP/IP backlog queue feature).
+<P>
+</UL>For more information about configuring TCP/IP backlog parameter to handle
+multiple and simultaneous connections to SQL Server, please refer to the
+following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q154628.htm">Q154628</A></B>
+   TITLE     : INF: SQL Log 17832 With Multiple TCP/IP Connection Requests.
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : kbnetwork kbusage SSrvDB_Lib SSrvNet_Lib<BR>
+Version             : 6.0 6.5<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 7, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

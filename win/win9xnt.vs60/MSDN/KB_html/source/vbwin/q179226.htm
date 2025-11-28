@@ -1,0 +1,258 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: RDO: CommitTrans/RollBackTrans Closes Cursor Causing Error </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q179226">
+<META NAME="KBModify" CONTENT="1998/01/13">
+<META NAME="KBCreate" CONTENT="1998/01/13">
+<META NAME="Keywords" CONTENT="vb432 VB4WIN">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  Attempting to perform any action on an rdoResultset object connected to a SQL Server database after committing or rolling back a transaction on the rdoResultset's rdoConnection object (or simply the act of committing or rolling back the transaction...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAAP,QAB4,QAI5,QBG2,QA4Q,QAPN,QAH4,QBV8,QAO2,QAGB,QAY5,QABM,QAK7,QAKP,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: RDO: CommitTrans/RollBackTrans Closes Cursor Causing Error</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 13, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q179226</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual Basic Enterprise Edition, 32-bit only, for Windows,
+   version 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Attempting to perform any action on an rdoResultset object connected to a
+SQL Server database after committing or rolling back a transaction on the
+rdoResultset's rdoConnection object (or simply the act of committing or
+rolling back the transaction), will result in the following error:
+<P>
+<PRE>   40002
+   S1010:[Microsoft][ODBC SQL Server Driver]Function sequence error
+
+</PRE>Similar errors can be expected with other servers.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+Depending on the cursor type, the error above will be raised either on the
+CommitTrans or RollBackTrans or when any attempt is made to access a
+property or method of the rdoResultset object after the CommitTrans or
+RollBackTrans.
+<P>
+This occurs because many servers, including SQL Server, default to closing
+or deleting cursors at the end of the transaction. Any action on the
+rdoResultset causes an action on the now-closed cursor, which causes the
+error. When using server-side keyset or dynamic cursors with SQL Server,
+RDO will erroneously call SQLExtendedFetch on the CommitTrans or
+RollBackTrans statement, raising this error.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+While this error can be trapped and handled, the better solution is to
+change the connection option so that the cursors are not closed at the end
+of the transaction. This behavior can be changed for most servers. The code
+to do this with SQL Server follows. For other servers, please consult the
+ODBC driver and server documentation for the equivalent call.
+<P>
+The following code works around the problem:
+
+<OL><P><LI>Start a New Project.
+
+<P><LI>Add a command button to the default form.
+
+<P><LI>Add the following to the General Declaration section:
+<P>
+<P><PRE>      Option Explicit
+      'SQL Server specific connection options
+       Private Const SQL_PRESERVE_CURSORS As Long = 1204
+       Private Const SQL_PC_ON As Long = 1
+       Private Const SQL_PC_OFF As Long = 0
+</PRE><P>
+<P><PRE>       'Possible ODBC function returns
+       Private Const SQL_ERROR As Integer = -1
+       Private Const SQL_INVALID_HANDLE As Integer = -2
+       Private Const SQL_NO_DATA_FOUND As Integer = 100
+       Private Const SQL_SUCCESS As Integer = 0
+       Private Const SQL_SUCCESS_WITH_INFO As Integer = 1
+</PRE><P>
+<P><PRE>       Private Declare Function SQLSetConnectOption Lib "odbc32.dll" _
+<PRE></PRE>          (ByVal hdbc As Long, ByVal fOption As Integer, pvParam As Any) _
+              As Integer
+
+       Private Declare Function SQLGetConnectOption Lib "odbc32.dll" _
+          (ByVal hdbc As Long, ByVal fOption As Integer, pvParam As Any) _
+                As Integer
+
+</PRE><P><LI>Add the following code to the click event of the CommandButton: (The
+   server will need to be changed.)
+<P>
+<P><PRE>      Private Sub Command1_Click()
+       Dim intRet As Integer
+       Dim lngConnOption As Long
+       Dim Conn As rdoConnection
+       Dim Rslt As rdoResultset
+</PRE><P>
+<P><PRE>       'Make DSN-less connection. CHANGE SERVER UID PWD for your server
+<PRE></PRE>        Set Conn = rdoEnvironments(0).OpenConnection(_
+            "", rdDriverComplete, False, _
+       "DRIVER={SQL Server};SERVER=hoohaa;DSN=;DATABASE=pubs;UID=sa;PWD=;")
+       'Getting connection option
+        intRet = SQLGetConnectOption(Conn.hdbc, SQL_PRESERVE_CURSORS, _
+           lngConnOption)
+        If SQL_SUCCESS &lt;&gt; intRet Then
+          MsgBox "SQLGetConnectOption Failed", "ERROR", vbCritical
+          Conn.Close
+         Exit Sub
+       End If
+       'display it
+       Select Case lngConnOption
+        Case SQL_PC_OFF
+           MsgBox "Cursor Behavior: Close", , "Connection Option Value"
+        Case SQL_PC_ON
+           MsgBox "Cursor Behavior: Maintain", , "Connection Option Value"
+        Case Else
+          MsgBox "ERROR: Unknown Connection Option", , _
+           "Connection Option Value", vbCritical
+       End Select
+       'uncomment the next 2 lines to stop error
+     'intRet = SQLSetConnectOption(Conn.hdbc, SQL_PRESERVE_CURSORS, ByVal _
+     'SQL_PC_ON)
+      If intRet &lt;&gt; SQL_SUCCESS Then
+       MsgBox "SQLSetConnectOption Failed", , "ERROR", vbCritical
+       Conn.Close
+       Exit Sub
+      End If
+      MsgBox "Connection Option Set to SQL_PC_ON", , _
+         "Connection Option Status"
+      Set Rslt = Conn.OpenResultset("select * from authors", _
+        rdOpenDynamic, rdConcurValues)
+      Conn.BeginTrans
+      Rslt.MoveFirst
+      Rslt.Edit
+      Rslt.rdoColumns("address").Value = "test"
+      Rslt.Update
+      'will error on this line if connection option not set
+      Conn.RollbackTrans
+      Rslt.MoveLast
+      Rslt.Close
+      Conn.Close
+     End Sub
+
+</PRE><P><LI>Run the project and note that the code fails as indicated.
+
+<P><LI>Uncomment the noted lines. Run the project again and note that the code
+   does not fail.
+<P>
+</OL><h2>STATUS</h2>
+ 
+<P>
+This behavior is not by design, but since a workaround exists, it will not
+be fixed.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+ODBC 2.0 Programmer's Guide and SDK Reference
+<P>
+(c) Microsoft Corporation 1998. All Rights Reserved.
+Contributions by Troy Cambra, Microsoft Corporation
+ 
+<PRE>Keywords          : vb432 VB4WIN
+Version           : WINDOWS:4.0
+Platform          : WINDOWS
+Issue type        : kbprb</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 13, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

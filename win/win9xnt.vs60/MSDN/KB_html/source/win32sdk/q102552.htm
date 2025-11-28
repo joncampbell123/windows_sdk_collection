@@ -1,0 +1,294 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB:Scroll Bar Continues Scrolling After Mouse Button Released </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q102552">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1993/08/04">
+<META NAME="Keywords" CONTENT="kbui kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The scroll bar continuously scrolls even after the left mouse button is released. The type of scroll bar is irrelevant to this problem, that is, the same problem occurs regardless of whether the scroll bar is part of the window or is a scroll bar c...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEV,QAYC,QBXQ,QAA7,QAGI,QAB5,QAA1,QABI,QDL9,QBWO,QBWN,QAJH,QDKW,QDI2,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB:Scroll Bar Continues Scrolling After Mouse Button Released</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q102552</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) versions 3.1
+
+<LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.5 and 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The scroll bar continuously scrolls even after the left mouse button
+is released. The type of scroll bar is irrelevant to this problem,
+that is, the same problem occurs regardless of whether the scroll bar
+is part of the window or is a scroll bar control.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This problem occurs usually when a message retrieval loop is executed
+as the result of actions taken for scrolling upon receiving one of the
+scroll bar notification messages.
+<P>
+When scrolling, an internal message retrieval loop is started in
+Windows. The task of this message loop is to keep track of scrolling
+and to send the appropriate scroll bar notification messages,
+WM_HSCROLL and WM_VSCROLL. Scrolling is terminated once WM_LBUTTONUP
+is received. If another message loop is started during scrolling, the
+WM_LBUTTONUP is retrieved by that message loop, and because an
+application does not have access to the scroll bar's internal message
+retrieval loop, WM_LBUTTONUP cannot be dispatched correctly.
+Therefore, the WM_LBUTTONUP is never received by the internal message
+retriever, and scrolling is never ended.
+<P>
+The application that is scrolling does not have to retrieve messages
+explicitly to cause this problem. Calling any of the following
+functions or processing any message that has a message retrieval loop,
+while scrolling, can cause the WM_LBUTTONUP to be lost. The functions
+listed below fall into this category:
+<P>
+<PRE>   DialogBox()
+   DialogBoxIndirect()
+   DialogBoxIndirectParam()
+   DialogBoxParam()
+   GetMessage()
+   MessageBox()
+   PeekMessage()
+
+</PRE><h2>RESOLUTION</h2>
+ 
+<P>
+While Scrolling, the WM_LBUTTONUP message should not be retrieved from
+the queue by any message retrieval loop other than the scroll bar's
+internal one.
+<P>
+An application may come across this problem as follows:
+
+<UL><LI>An application implements a message retrieval loop to implement
+   background processing, for example, background processing while
+   performing a time consuming paint.
+
+<LI>An application implements a message retrieval loop to implement
+   communication with another application or DLL. For example, in
+   order to scroll, the application needs to receive data from
+   elsewhere.
+<P>
+</UL><h3>Possible Workarounds</h3>
+ 
+<P>
+Two possible workarounds are listed below. The first workaround is
+used by many exiting applications and by Windows; however, under rare
+circumstances the first workaround may not be a feasible one. In this
+case, the second workaround may be used. However, if possible, please
+try to avoid implementing message retrieval completely while
+scrolling.
+
+<UL><LI>Use timer-message-based processing. Break down the complicated
+   processing into smaller tasks and keep track of where each task
+   starts and ends, then perform each task based on a timer message.
+   When all components of the processing are complete, kill the timer.
+   See below for an example of this workaround.
+
+<LI>Implement a message retrieval loop, but make sure WM_LBUTTONUP is
+   not retrieved by it. This can be accomplished by using filters. See
+   below for some examples of this workaround.
+<P>
+</UL><h3>Example Demonstrating Workaround 1</h3>
+ 
+<P>
+An application has a complex paint procedure. Calling ScrollWindow(), to
+scroll, generates paint messages. Background processing takes place
+while painting.
+
+<OL><P><LI>When receiving the WM_PAINT message do the following:
+<P>
+   a. Call BeginPaint().
+<P>
+   b. Copy the invalidated rect to a global rect variable (for
+<P><PRE>      example, grcPaint) to be used in step 2. The global rect
+      grcPaint would be a union of the previously obtained rect
+      (grcPaint) and the new invalidated rect (ps.rcPaint). The code
+      for this will resemble the following:
+</PRE><P>
+<PRE>         RECT grcPaint;    // Should be initialized before getting the
+                           // first paint message.
+            :
+            :
+         UnionRect(&amp;grcPaint, &amp;ps.rcPaint,&amp;grcPaint);
+
+   c. Call ValidateRect() with ps.rcPaint.
+
+   d. Call EndPaint().
+
+   e. Set a Timer.
+
+   This way, no more WM_PAINT messages are generated, because there
+   are no invalid regions, and a timer is set up, which will generate
+   WM_TIMER messages.
+
+</PRE><P><LI>Upon receiving a WM_TIMER message, check the global rect variable;
+   if it is not empty, take a section and paint it. Then adjust the
+   global rect variable so it no longer includes the painted region.
+
+<P><LI>Once the global rect variable is empty then kill the timer.
+<P>
+</OL><h3>Example Demonstrating Workaround 2</h3>
+ 
+<P>
+An application needs to obtain some data through DDE or some other
+mechanism from another application, which is then displayed in the
+window. In order to scroll, the application needs to request and then
+obtain the data from a server application.
+<P>
+There are three different filters that can be used to set up a
+PeekMessage() and get the information. The filters can be set up by
+using the uFilterFirst and uFilterLast parameters of PeekMessage().
+uFilterFirst specifies the fist message in the range to be checked and
+uFilterLast specifies the last message in the range to be checked. For
+more information on PeekMessage() and its parameters, see the Windows
+SDK "Programmer's Reference, Volume 2: Functions" for version 3.1 and
+"Reference, Volume 1" for version 3.0.
+
+<OL><P><LI>Check and retrieve only the related message(s) for obtaining the
+   needed data.
+
+<P><LI>Check for WM_LBUTTONUP without removing it form the queue; if it is
+   in the queue, break. Otherwise, retrieve and dispatch all messages.
+
+<P><LI>Retrieve all messages less than WM_LBUTTONUP and greater than
+   WM_LBUTTONUP, but do not retrieve WM_LBUTTONUP.
+<P>
+</OL><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+<P>
+The following is the sequence of events leading to the loss of
+the WM_LBUTTONUP message:
+
+<OL><P><LI>Click the scroll bar using the mouse.
+
+<P><LI>Step 1 generates a WM_NCLBUTTONDOWN message.
+
+<P><LI>Step 2 causes a Windows internal message loop to be started. This
+   message loop looks for scroll-bar-related messages. The purpose of
+   this message loop is to generate appropriate WM_HSCROLL or
+   WM_VSCROLL messages. The message loop and scrolling terminates once
+   WM_LBUTTONUP is received.
+
+<P><LI>When receiving the WM_HSCROLL or WM_VSCROLL message, the application
+   either gets into a message retrieval loop directly or calls functions
+   which result in retrieval of messages.
+
+<P><LI>WM_LBUTTONUP is removed from the queue by the message loop
+   mentioned in step 4. WM_LBUTTONUP is then dispatched.
+
+<P><LI>As result of step 5 WM_LBUTTONUP message is dispatched elsewhere
+   and the internal message retrieval loop, mentioned in step 3 never
+   receives it. The message loop in step 3 is looking for the
+   WM_LBUTTONUP to stop scrolling. Because it is not received, the
+   scroll bar continues scrolling.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.10 3.50 3.51 4.00 95 scrollbar stuck<BR>
+KBCategory: kbui kbprb<BR>
+KBSubcategory: UsrCtl<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

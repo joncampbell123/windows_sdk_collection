@@ -1,0 +1,324 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Use MIDI Stream Callbacks </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q142107">
+<META NAME="KBModify" CONTENT="1996/01/07">
+<META NAME="KBCreate" CONTENT="1996/01/04">
+<META NAME="Keywords" CONTENT="kbmm kbprg kbhowto kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Applications running under Windows 95 that use MIDI streams to send events to a MIDI device can use MIDI stream callbacks to be notified of the playback progress at specified times during playback of the stream. This article discusses the following...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAO4,QAPN,QAU3,QAMR,QBVV,QAJZ,QAHE,QBSO,QAY5,QAFH,QAJH,QAH4,QAPF,QACE,QALG V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Use MIDI Stream Callbacks</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 7, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q142107</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) for Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Applications running under Windows 95 that use MIDI streams to send events
+to a MIDI device can use MIDI stream callbacks to be notified of the
+playback progress at specified times during playback of the stream. This
+article discusses the following topics regarding MIDI stream callbacks:
+
+<UL><LI>Uses of MIDI Stream Callbacks.
+<LI>How to Generate a MIDI Stream Callback.
+<LI>Determining Resolution of Periodic MIDI Stream Callbacks.
+<LI>Processing MIDI Stream Callbacks.
+<LI>Behavior of MIDI Stream Callbacks in Real-time.
+<P>
+</UL>A general familiarity with MIDI stream APIs and especially the MIDIEVENT
+data structure is assumed. For an introduction to MIDI streams, see the
+"Stream Buffers" and "MIDIEVENT" topics in the Win32 SDK Multimedia
+documentation.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Uses of MIDI Stream Callbacks</h3>
+ 
+<P>
+MIDI stream callbacks can be used to inform the application of playback
+progress while a MIDI stream is being played. This allows the application
+to display a graphical indication of the progress of the music playback, or
+perform some other periodic task in synchronization with the music. MIDI
+stream callbacks can also be used to synchronize other non-periodic events
+as well. For example, a MIDI stream-based rendition of the 1812 Overture
+could include callback events to trigger the playback of a wave file of a
+cannon fusillade at appropriate times.
+<P>
+<P><h3>How to Generate a MIDI Stream Callback</h3>
+ 
+<P>
+An application specifies that a MIDI event within a MIDI stream be used to
+generate a callback by setting the MEVT_F_CALLBACK flag in the dwEvent
+parameter of the MIDIEVENT structure before the stream is sent to the MIDI
+device with midiStreamOut(). There are several kinds of short events and
+long events, and any of these may be used to generate a callback. The
+following is an example of a short MIDI event with callback:
+<P>
+<PRE>    MIDIEVENT me;
+    me.dwDeltaTime = 48;  // play 48 ticks after preceding event
+    me.dwStreamID = 0;    // must be 0
+    me.dwEvent = MEVT_F_SHORT | MEVT_F_CALLBACK | // flags
+   (((DWORD)MEVT_SHORTMSG) &lt;&lt; 24) | // event code
+        (DWORD) 0x90 |                   // MIDI note-on status byte
+        (((DWORD) 0x3C) &lt;&lt; 8) |          // middle C
+        (((DWORD) 0x7F) &lt;&lt; 16);          // maximum key velocity
+
+</PRE>Note that the flags and the event code must all be coded into the high byte
+of dwEvent, but only the flags are defined in Mmsystem.h as DWORD values
+with bits set in the high byte. The event codes such as MEVT_SHORTMSG are
+defined as BYTE values, so it is necessary to left-shift them to the high
+byte position. Similarly, two of the three bytes describing the event data
+are shifted to their appropriate positions in the lower 24 bits of dwEvent.
+<P>
+If a callback is desired at a time for which there are no MIDI events in
+the stream, a special event can be added that does not play back MIDI data
+but causes a callback to occur by using the MEVT_NOP "no-op" code. In the
+following example, the MIDI data is not played back through the MIDI output
+device, but a pointer is sent to the application in a callback:
+<P>
+<PRE>    MIDIEVENT me;
+    me.dwDeltaTime = 48;
+    me.dwStreamID = 0;
+    me.dwEvent = MEVT_F_SHORT | MEVT_F_CALLBACK |
+        (((DWORD)MEVT_NOP) &lt;&lt; 24) |
+        (DWORD) 0x90 |
+        (((DWORD) 0x3C) &lt;&lt; 8) |
+        (((DWORD) 0x7F) &lt;&lt; 16);
+
+</PRE>Simultaneous callback events are not meaningful and there are practical
+limitations to spacing callbacks close together in time. These limitations
+are described in detail later in this article.
+<P>
+<P><h3>Determining Resolution of Periodic MIDI Stream Callbacks</h3>
+ 
+<P>
+Periodic callbacks can be generated by tagging appropriate events with a
+callback, and in cases where there are no events at the required times,
+inserting MEVT_NOP events with callbacks, as discussed previously. Note
+that there is no API for generating periodic MIDI stream callbacks similar
+to the timeSetEvent API for generating periodic multimedia timer callbacks.
+Instead, each callback event must be individually specified by a MIDIEVENT
+data structure in the MIDI stream buffer.
+<P>
+You should choose a time period (dwDeltaTime) that provides sufficient
+resolution for your application's needs but does not impose too great a
+performance penalty. While the optimum period will depend on many factors,
+it is probably not realistic to try for a period shorter than something on
+the order of 25 milliseconds. Also, by allowing a tolerance on this period,
+you can tag existing events with a callback that are not exactly on time,
+but sufficiently close to being on time that it will not be noticed by the
+user. As a result, many fewer MEVT_NOP events with callbacks must be
+inserted, which will result in more efficient playback performance. The
+amount of tolerance to allow depends on a number of factors, but for a
+period of 25 milliseconds, a tolerance of 10 milliseconds would be a
+reasonable value to try.
+<P>
+Although there isn't a set hard-and-fast limit on the minimum effective
+callback period, the 25 milliseconds figure reflects realistic design
+limitations. You don't want to burn processor time trying to be more
+accurate than the user can possibly distinguish. And equally so, you don't
+want to burn processor time at the cost of application performance. Because
+MIDI stream callbacks result in system overhead which could potentially
+impact MIDI playback performance, callbacks should not be scheduled more
+frequently than absolutely necessary.
+<P>
+<P><h3>Processing MIDI Stream Callbacks</h3>
+ 
+<P>
+For each MIDI stream callback event, a MOM_POSITIONCB message is sent to
+the application's callback procedure. Along with this message, the callback
+procedure receives a pointer to a MIDIHDR structure, the dwOffset member of
+which specifies the offset into the MIDI stream buffer in bytes for the
+callback event most recently processed. Using this offset, the application
+can access the event data associated with the callback event to learn which
+event has occurred and perform any necessary processing.
+<P>
+The callback function used to process MIDI stream callbacks is similar to
+other MIDI callback functions. The following is an example of a MIDI stream
+callback function:
+<P>
+<PRE>void CALLBACK MidiStreamProc(
+    HMIDIOUT hmo,     // handle of MIDI output device
+    UINT uMsg,        // MIDI message
+    DWORD dwInstance, // callback instance data
+    DWORD dwParam1,   // address of MIDI header
+    DWORD dwParam2)   // unused parameter
+{
+    LPMIDIHDR lpMIDIHeader;
+    MIDIEVENT *lpMIDIEvent;
+
+    if (!dwParam1)
+        return;    // nothing to do
+
+    switch (uMsg)
+    {
+        case MOM_POSITIONCB:
+            // assign address of MIDIHDR
+            lpMIDIHeader = (LPMIDIHDR)dwParam1;
+
+            // get address of event data
+            lpMIDIEvent = (MIDIEVENT *)&amp;(lpMIDIHeader-&gt;
+                lpData[lpMIDIHeader-&gt;dwOffset]);
+
+            // do something here with event data
+
+            break;
+
+        // handle these messages if desired
+        case MOM_OPEN:
+        case MOM_DONE:
+        case MOM_CLOSE:
+            break;
+    }
+</PRE>}
+<P>
+<P><h3>Behavior of MIDI Stream Callbacks in Real-time</h3>
+ 
+<P>
+Look at the MIDI stream callback as a request by the application to be
+called after a specific event in the stream is reached during playback.
+Once the callback is delivered, the event referred to by the callback is
+always the absolutely most recent event processed that has the callback
+flag set. If the callbacks are far apart and the system is running well,
+this will usually be the same event that triggered the callback, but it
+doesn't have to be. Stated another way, if another event with the callback
+flag set has been processed by the time the callback is delivered, then the
+event referred to by the callback will be the most recently processed
+callback event, not the event that originally triggered the callback.
+<P>
+The dwOffset parameter of the MIDIHDR received by the callback function
+tells the application how far playback has travelled in the stream at the
+time the callback is finally given to the application. For callback events
+that are scheduled to occur at the same time, the same offset referring to
+the most recently processed callback event will be received with each of
+the callbacks. Therefore, the use of simultaneous callback events serves no
+useful purpose and results in unnecessary overhead, so it should be
+avoided. Similarly, if callback events are not scheduled simultaneously but
+are scheduled too closely together, the callbacks will also refer to the
+most recently processed callback event, so this situation should also be
+avoided.
+<P>
+When a callback is received by the application, it should use the dwOffset
+data to decide what to do. If it is expecting a callback at a particular
+location but gets a callback for somewhere further along in the stream
+instead, it means that the application is not keeping up or that the
+callbacks are scheduled too closely together for the capabilities of the
+machine. The best thing to do in this case is to just throw the callback
+away because there will be another one in the queue that will be delivered
+just as soon as processing of the current callback is completed. This may
+add a little complexity to the logic required to process the callbacks but
+not to any great extent, and it has the benefit of degrading gracefully on
+machines that can't keep up.
+<P>
+<P><h3>Additional Notes</h3>
+ 
+<P>
+Note that MIDI stream support is currently available only on Windows 95.
+For a complete implementation of a MIDI playback sequencer written with the
+MIDI stream APIs, see the MIDIPLYR sample in the Windows 95 multimedia
+samples in the Win32 SDK or the MSTREAM sample in the Games SDK. Although
+these samples do not use MIDI stream callbacks, they both demonstrate use
+of MIDI streams in general.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00 MEVT_EVENTPARM MEVT_EVENTTYPE<BR>
+KBCategory: kbmm kbprg kbhowto kbcode<BR>
+KBSubcategory: MMMidi<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 7, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

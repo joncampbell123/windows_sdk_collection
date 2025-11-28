@@ -1,0 +1,230 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Find the Size of an .FPT File with Different Blocksizes </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q136284">
+<META NAME="KBModify" CONTENT="1995/09/10">
+<META NAME="KBCreate" CONTENT="1995/09/05">
+<META NAME="Keywords" CONTENT="kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  Sometimes changing the blocksize of a memo field can result in significant savings in disk space. The BLOCKTEST() function listed in this article can determine exactly how much disk space can be gained or lost with different blocksizes.  MORE INFOR...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAZZ,QDI1,QBW5,QAVW,QAVX,QAI4,QAB9,QAEF,QAJQ,QBV8,QA4Q,QAY5,QALG,QAH4,QAHC V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Find the Size of an .FPT File with Different Blocksizes</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 10, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q136284</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual FoxPro for Windows, version 3.0
+<LI>Microsoft Foxpro for MS-DOS, versions 2.0, 2.5, 2.5a, 2.6, 2.6a
+<LI>Microsoft Foxpro for Windows, versions 2.5, 2.5a, 2.5b, 2.6, 2.6a
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Sometimes changing the blocksize of a memo field can result in significant
+savings in disk space. The BLOCKTEST() function listed in this article can
+determine exactly how much disk space can be gained or lost with different
+blocksizes.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+
+<OL><P><LI>Open a program file called LowLevel.prg and add this code:
+<P>
+   FUNCTION BLOCKTEST
+   PARAMETER lnTempsize
+   CLEAR
+   IF lnTempsize&gt;0
+<P><PRE>     IF lnTempsize&lt;=32
+       lnTempsize=lnTempsize*512
+     ENDIF
+     lnTempblk=0
+     lcFilename=LEFT(DBF(),LEN(DBF())-4)
+     lnBlksize=VAL(SYS(2012))
+     USE
+     lnHandle=FOPEN(lcFilename+".FPT")
+     IF lnHandle&gt;0
+<PRE></PRE>        lnFilesize=FSEEK(lnHandle,0,2)
+        =FSEEK(lnHandle,0)
+        lcByte=FREAD(lnHandle,8)
+        lnBlknum=ASC(SUBSTR(lcByte,4,1))+(ASC(SUBSTR(lcByte,3,1))*256)+;
+           (ASC(SUBSTR(lcByte,2,1))*256*256)+;
+           (ASC(SUBSTR(lcByte,1,1))*256*256*256)
+        ?  "Current Memo Stats"
+        ?  "    Blocksize    "+ALLTRIM(STR(lnBlksize))
+        ?  "    # of blocks  "+ALLTRIM(STR(lnBlknum))
+        ?  "    Filesize     "+ALLTRIM(STR(lnFilesize))+" Bytes"
+        lnBlkend=0
+        lni=1
+        DO WHILE lnBlkend&lt;512
+           lnBlkend=lni*lnBlksize
+           lni=lni+1
+        ENDDO
+        =FSEEK(lnHandle,lnBlkend+4)
+        lnRec=0
+        FOR lni=lni TO lnBlknum
+           lcByte=FREAD(lnHandle,4)
+           =FSEEK(lnHandle,lnBlksize-4,1)
+           IF (lnBlksize*lni)&gt;lnBlkend
+              lnx=ASC(SUBSTR(lcByte,4,1))+:
+                 (ASC(SUBSTR(lcByte,3,1))*256)+;
+                 (ASC(SUBSTR(lcByte,2,1))*256*256)+;
+                 (ASC(SUBSTR(lcByte,1,1))*256*256*256)+8
+              lnRec=lnRec+1
+              lnk=INT((lnx-1)/lnBlksize)
+              lni=lni+lnk
+              lnTempblk=lnTempblk+INT(lnx/lnTempsize)+;
+                 IIF(MOD(lnx,lnTempsize)=0,0,1)
+              =FSEEK(lnHandle,(lnBlksize*lnk),1)
+           ENDIF
+        ENDFOR
+        =FCLOSE(lnHandle)
+        lnTempblk=lnTempblk+INT(512/lnTempsize)+;
+           IIF(MOD(512,lnTempsize)=0,0,1)
+        lnTempfile=lnTempsize*lnTempblk
+        ?
+        ?  "Requested Memo Stats"
+        ?  "    Blocksize    "+ALLTRIM(STR(lnTempsize))
+        ?  "    # of blocks  "+ALLTRIM(STR(lnTempblk))
+        ?  "    Filesize     "+ALLTRIM(STR(lnTempfile))+" Bytes"
+        ?
+        ? "Savings: "+ALLTRIM(STR(lnFilesize-lnTempfile))+" Bytes"
+        USE &amp;lcFilename
+        IF lnRec&gt;RECCOUNT()
+          ?
+          ? ALLTRIM(str(lnrec-reccount()))+;
+             " disconneted records in memo file."
+          ? "Please PACK MEMO and run this command again"
+        ENDIF
+        RETURN lnTempfile
+     ENDIF
+   ENDIF
+
+</PRE><P><LI>Save and close LowLevel.prg.
+
+<P><LI>Test the function by opening a table with a memo field. For this
+   example, the table is Restaurs.dbf. A blocksize of 64 will be tested.
+   In the Command window, type:
+<P>
+   SET PROCEDURE TO LOWLEVEL.PRG
+   USE C:\FPW26\SAMPLE\ORGANIZE\DBFS\RESTAURS
+   =BLOCKTEST(64)
+<P>
+   Note that if the current blocksize is 64, there will be no savings in
+   creating a new file with the same blocksize.
+
+<P><LI>Test it again using the following different block sizes:
+<P>
+   =BLOCKTEST(32)
+   =BLOCKTEST(35)
+   =BLOCKTEST(40)
+
+<P><LI>To change the blocksize of Restaurs.dbf TO 40, use these commands:
+<P>
+   SET BLOCKSIZE TO 40
+   COPY TO TEMP
+   USE
+<P>
+   ERASE RESTAURS.DBF
+   ERASE RESTAURS.FPT
+<P>
+   RENAME TEMP.DBF TO RESTAURS.DBF
+   RENAME TEMP.FPT TO RESTAURS.FPT
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 VFoxWin FoxWin FoxDos 2.00 2.50 2.50a<BR>
+2.50b 2.60 2.60a 3.00<BR>
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: FxprgTable<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 10, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

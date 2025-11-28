@@ -1,0 +1,214 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Setting First Pane of CStatusBar </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q110505">
+<META NAME="KBModify" CONTENT="1997/05/28">
+<META NAME="KBCreate" CONTENT="1994/01/24">
+<META NAME="Keywords" CONTENT="MfcUI kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  If the text in the first pane of a CStatusBar window is changed using SetPaneText() and a menu is selected, the text is overwritten by the Help prompts for the menu.  CAUSE =====  Setting any but the first pane of the status bar is relatively simpl...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBTL,QBXS,QAGQ,QAGI,QABI,QBAO,QATX,QAMB,QALQ,QABA V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Setting First Pane of CStatusBar</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 28, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q110505</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI> The Microsoft Foundation Classes (MFC) included with:
+<P><PRE>     - Microsoft Visual C++ 32-bit Edition, version 1.0, 2.0, 2.1, 4.0,
+       4.1, 4.2, 5.0
+     - Microsoft Visual C++ for Windows, versions 1.0, 1.5, 1.51, 1.52
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+If the text in the first pane of a CStatusBar window is changed using
+SetPaneText() and a menu is selected, the text is overwritten by the Help
+prompts for the menu.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+Setting any but the first pane of the status bar is relatively simple. You
+just need to set the pane using SetPaneText() and make sure you have added
+in an ON_UPDATE_COMMAND_UI handler for the ID of that pane (set in your
+MAINFRAME.CPP as an element of an indicators[] array). This handler should
+call Enable() in the following manner to make sure that the pane is not
+erased:
+<P>
+<PRE>   void CMainFrame::OnUpdateMystat(CCmdUI* pCmdUI)
+   {
+      pCmdUI-&gt;Enable();
+   }
+
+</PRE>However, setting the FIRST pane of a status bar using SetPaneText() or
+calling SetWindowText() on the status bar is a bit more difficult.
+<P>
+The problem is that the framework itself is changing the first pane
+using some special techniques. Basically, the framework is passing a
+WM_SETTEXT command directly to the status bar, from a number of places
+within its own code.
+<P>
+Adding ON_UPDATE_COMMAND_UI handlers or calling SetPaneText() for the first
+pane of the status bar does not permanently set it. The framework
+eventually sends a WM_SETTEXT message directly to the status bar, changing
+the text from what was set.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+One way of setting the first pane yourself and keeping it set to what you
+want is to derive your own class from CStatusBar (for example CMyStat) and
+to give it a WM_SETTEXT handler. (Adding the WM_SETTEXT handler cannot be
+done using ClassWizard, so the handler must be added by hand.)
+<P>
+The steps to do this are as follows:
+
+<OL><P><LI>Use ClassWizard to add a new class, derived from a generic CWnd. Now
+   edit the .H and .CPP files to change the two references to CWnd to
+   CStatusBar.
+
+<P><LI>Add a protected member function of CMyStat:
+<P>
+<P><PRE>      afx_msg LRESULT OnSetText(WPARAM, LPARAM);
+</PRE>
+<P><LI>Add a message map entry for the function in the .CPP file, as follows:
+<P>
+<P><PRE>      BEGIN_MESSAGE_MAP(CMyStat, CStatusBar)
+<PRE></PRE>         //{{AFX_MSG_MAP(CMyStat)
+         // NOTE: ClassWizard will add and remove mapping macros here.
+         //}}AFX_MSG_MAP
+         ON_MESSAGE( WM_SETTEXT, OnSetText )
+      END_MESSAGE_MAP()
+
+</PRE><P><LI>Now implement the function as follows:
+<P>
+<P><PRE>      LRESULT CMyStat::OnSetText(WPARAM wParam, LPARAM lParam)
+      {
+<PRE></PRE>         if ( !bIgnoreSetText )
+            return CStatusBar::OnSetText( wParam, lParam );
+         return 0;  // Same as CStatusBar::OnSetText success
+      }
+
+   where bIgnoreSetText is true only if you have set your own text in the
+   status bar with a SetPaneText() call.
+
+</PRE><P><LI>Include CMyStat class header file in your MAINFRM.H file and
+   replace:
+<P>
+<P><PRE>      CStatusBar m_wndStatusBar;
+</PRE><P>
+<P><PRE>    with the following:
+</PRE><P>
+<PRE>       CMyStat     m_wndStatusBar;
+
+</PRE></OL>Whenever bIgnoreSetText is true, the first pane of the status bar will
+be updated only when you update it with SetPaneText(). The frameworks
+WM_SETTEXT messages will be blocked when you have this flag set to a non-
+zero value. Note that this blocking effects only the first pane of the
+status bar.
+<P>
+You could also add member functions to your status bar class that both set
+the text of the status bar and set the bIgnoreSetText flag to lock or
+unlock the status bar in one step. You might call them SetPaneOneAndLock()
+and SetPaneOneAndUnlock().
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : MfcUI kbprb<BR>
+Technology          : kbmfc<BR>
+Version             : 1.0 2.0 2.1 4.0 4.1 4.2 5.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 28, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

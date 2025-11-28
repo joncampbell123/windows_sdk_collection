@@ -1,0 +1,390 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Ejecting Removable Media in Windows NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q165721">
+<META NAME="KBModify" CONTENT="1997/03/25">
+<META NAME="KBCreate" CONTENT="1997/03/24">
+<META NAME="Keywords" CONTENT="BseFileio kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Win32 applications that run on Windows NT can programmatically eject media from drives that have hardware support for media removal. However, they must do so correctly to avoid corrupting the media. This article explains how to eject media correctl...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QAUD,QAYS,QA7T,QAEF,QAI4,QALW,QDKA,QDL9,QBWQ,QBWO,QBWN,QAY5,QAC9,QAYY V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Ejecting Removable Media in Windows NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q165721</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT versions 3.50, 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Win32 applications that run on Windows NT can programmatically eject media
+from drives that have hardware support for media removal. However, they
+must do so correctly to avoid corrupting the media. This article explains
+how to eject media correctly on Windows NT.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Windows NT version 4.0 and later support ejecting media formatted with NTFS
+and FAT file systems without shutting down the machine. Windows NT 3.51 and
+earlier support the ejecting FAT formatted media without shutting down.
+However, Windows NT versions 3.51 and earlier do not support removing media
+formatted with NTFS while the system is running. On these versions 3.51 and
+earlier the system must be shut down in order to avoid corrupting data on
+the media.
+<P>
+When a volume is mounted on Windows NT, there are two categories of read
+and write operations: 1) data operations performed by applications, and 2)
+file-system structure related operations performed by Windows NT. The
+second category is used by Windows NT to maintain the file system itself,
+such as directory entries of files (for example, file times, sizes, names,
+etc.).
+<P>
+Win32 applications can use either cached or uncached access to files.
+Windows NT, on the other hand, caches some write operations to file-system
+data structures to implement a "lazy-writer" scheme. This allows Windows NT
+to defer some writes to disk until they are absolutely required. This way,
+only the latest changes need to be written to disk if the file system data
+is updated often.
+<P>
+Because Windows NT uses a lazy writer system to update file system data
+structures on media, the media will be corrupted if the media is ejected
+while the system is updating this information. To avoid this problem, Win32
+applications must take the following steps to correctly eject removable
+media and prevent possible data corruption:
+
+<OL><P><LI>Call CreateFile with GENERIC_READ|GENERIC_WRITE,
+   FILE_SHARE_READ|FILE_SHARE_WRITE, and OPEN_EXISTING. The lpFileName
+   parameter should be \\.\X: (where X is the real drive letter). All other
+   parameters can be zero.
+
+<P><LI>Lock the volume by issuing the FSCTL_LOCK_VOLUME IOCTL via
+   DeviceIoControl. If any other application or the system is using the
+   volume, this IOCTL fails. Once this function returns successfully, the
+   application is guaranteed that the volume is not used by anything else
+   in the system.
+
+<P><LI>Dismount the volume by issuing the FSCTL_DISMOUNT_VOLUME IOCTL. This
+   causes the file system to remove all knowledge of the volume and to
+   discard any internal information that it keeps regarding the volume.
+
+<P><LI>Make sure the media can be removed by issuing the
+   IOCTL_STORAGE_MEDIA_REMOVAL IOCTL. Set the PreventMediaRemoval member of
+   the PREVENT_MEDIA_REMOVAL structure to FALSE before calling this IOCTL.
+   This stops the device from preventing the removal of the media.
+
+<P><LI>Eject the media with the IOCTL_STORAGE_EJECT_MEDIA IOCTL. If the device
+   doesn't allow automatic ejection, then IOCTL_STORAGE_EJECT_MEDIA can be
+   skipped and the user can be instructed to remove the media.
+
+<P><LI>Close the volume handle obtained in the first step or issue the
+   FSCTL_UNLOCK_VOLUME IOCTL. This allows the drive to be used by
+   other processes.
+<P>
+</OL>The following code demonstrates how to accomplish safe ejection using the
+steps described above:
+<P>
+<PRE>   #include &lt;windows.h&gt;
+   #include &lt;winioctl.h&gt;
+   #include &lt;tchar.h&gt;
+   #include &lt;stdio.h&gt;
+
+   // Prototypes
+
+   BOOL EjectVolume(TCHAR cDriveLetter);
+
+   HANDLE OpenVolume(TCHAR cDriveLetter);
+   BOOL LockVolume(HANDLE hVolume);
+   BOOL DismountVolume(HANDLE hVolume);
+   BOOL PreventRemovalOfVolume(HANDLE hVolume, BOOL fPrevent);
+   BOOL AutoEjectVolume(HANDLE hVolume);
+   BOOL CloseVolume(HANDLE hVolume);
+
+   LPTSTR szVolumeFormat = TEXT("\\\\.\\%c:");
+   LPTSTR szRootFormat = TEXT("%c:\\");
+   LPTSTR szErrorFormat = TEXT("Error %d: %s\n");
+
+   void ReportError(LPTSTR szMsg)
+   {
+       _tprintf(szErrorFormat, GetLastError(), szMsg);
+   }
+
+   HANDLE OpenVolume(TCHAR cDriveLetter)
+   {
+       HANDLE hVolume;
+       UINT uDriveType;
+       TCHAR szVolumeName[8];
+       TCHAR szRootName[5];
+       DWORD dwAccessFlags;
+
+       wsprintf(szRootName, szRootFormat, cDriveLetter);
+
+       uDriveType = GetDriveType(szRootName);
+       switch(uDriveType) {
+       case DRIVE_REMOVABLE:
+           dwAccessFlags = GENERIC_READ | GENERIC_WRITE;
+           break;
+       case DRIVE_CDROM:
+           dwAccessFlags = GENERIC_READ;
+           break;
+       default:
+           _tprintf(TEXT("Cannot eject.  Drive type is incorrect.\n"));
+           return INVALID_HANDLE_VALUE;
+       }
+
+       wsprintf(szVolumeName, szVolumeFormat, cDriveLetter);
+
+       hVolume = CreateFile(   szVolumeName,
+                               dwAccessFlags,
+                               FILE_SHARE_READ | FILE_SHARE_WRITE,
+                               NULL,
+                               OPEN_EXISTING,
+                               0,
+                               NULL );
+       if (hVolume == INVALID_HANDLE_VALUE)
+           ReportError(TEXT("CreateFile"));
+
+       return hVolume;
+   }
+
+   BOOL CloseVolume(HANDLE hVolume)
+   {
+       return CloseHandle(hVolume);
+   }
+
+   #define LOCK_TIMEOUT        10000       // 10 Seconds
+   #define LOCK_RETRIES        20
+
+   BOOL LockVolume(HANDLE hVolume)
+   {
+       DWORD dwBytesReturned;
+       DWORD dwSleepAmount;
+       int nTryCount;
+
+       dwSleepAmount = LOCK_TIMEOUT / LOCK_RETRIES;
+
+       // Do this in a loop until a timeout period has expired
+       for (nTryCount = 0; nTryCount &lt; LOCK_RETRIES; nTryCount++) {
+           if (DeviceIoControl(hVolume,
+                               FSCTL_LOCK_VOLUME,
+                               NULL, 0,
+                               NULL, 0,
+                               &amp;dwBytesReturned,
+                               NULL))
+               return TRUE;
+
+           Sleep(dwSleepAmount);
+       }
+
+       return FALSE;
+   }
+
+   BOOL DismountVolume(HANDLE hVolume)
+   {
+       DWORD dwBytesReturned;
+
+       return DeviceIoControl( hVolume,
+                               FSCTL_DISMOUNT_VOLUME,
+                               NULL, 0,
+                               NULL, 0,
+                               &amp;dwBytesReturned,
+                               NULL);
+   }
+
+   BOOL PreventRemovalOfVolume(HANDLE hVolume, BOOL fPreventRemoval)
+   {
+       DWORD dwBytesReturned;
+       PREVENT_MEDIA_REMOVAL PMRBuffer;
+
+       PMRBuffer.PreventMediaRemoval = fPreventRemoval;
+
+       return DeviceIoControl( hVolume,
+                               IOCTL_STORAGE_MEDIA_REMOVAL,
+                               &amp;PMRBuffer, sizeof(PREVENT_MEDIA_REMOVAL),
+                               NULL, 0,
+                               &amp;dwBytesReturned,
+                               NULL);
+   }
+
+   AutoEjectVolume(HANDLE hVolume)
+   {
+       DWORD dwBytesReturned;
+
+       return DeviceIoControl( hVolume,
+                               IOCTL_STORAGE_EJECT_MEDIA,
+                               NULL, 0,
+                               NULL, 0,
+                               &amp;dwBytesReturned,
+                               NULL);
+   }
+
+   BOOL EjectVolume(TCHAR cDriveLetter)
+   {
+       HANDLE hVolume;
+
+       BOOL fRemoveSafely = FALSE;
+       BOOL fAutoEject = FALSE;
+
+       // Open the volume.
+       hVolume = OpenVolume(cDriveLetter);
+       if (hVolume == INVALID_HANDLE_VALUE)
+           return FALSE;
+
+       // Lock and dismount the volume.
+       if (LockVolume(hVolume) &amp;&amp; DismountVolume(hVolume)) {
+           fRemoveSafely = TRUE;
+
+           // Set prevent removal to false and eject the volume.
+           if (PreventRemovalOfVolume(hVolume, FALSE) &amp;&amp;
+               AutoEjectVolume(hVolume))
+               fAutoEject = TRUE;
+       }
+
+       // Close the volume so other processes can use the drive.
+       if (!CloseVolume(hVolume))
+           return FALSE;
+
+       if (fAutoEject)
+           printf("Media in Drive %c has been ejected safely.\n",
+                  cDriveLetter);
+       else {
+           if (fRemoveSafely)
+               printf("Media in Drive %c can be safely removed.\n",
+               cDriveLetter);
+       }
+
+       return TRUE;
+   }
+
+   void Usage()
+   {
+       printf("Usage: Eject &lt;drive letter&gt;\n\n");
+       return ;
+   }
+
+   void main(int argc, char * argv[])
+   {
+       if (argc != 2) {
+           Usage();
+           return ;
+       }
+
+       if (!EjectVolume(argv[1][0]))
+           printf("Failure ejecting drive %c.\n", argv[1][0]);
+
+       return ;
+   }
+
+</PRE></OL><h2>REFERENCES</h2>
+ 
+<P>
+For more information on the IOCTLs and functions discussed in this article,
+please see the Win32 SDK Documentation.
+<P>
+For information about how to eject media on Windows 95, please use the
+following keywords to search the Microsoft Knowledge Base:
+<P>
+<PRE>   eject removable media
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: eject removable media disk disc<BR>
+Keywords            : BseFileio kbprg<BR>
+Version             : 3.5 3.51 4.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

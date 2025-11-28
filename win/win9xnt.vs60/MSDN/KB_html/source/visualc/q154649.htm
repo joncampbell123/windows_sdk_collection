@@ -1,0 +1,293 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: CSocket Operation Hangs if a Timer is Active </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q154649">
+<META NAME="KBModify" CONTENT="1997/09/19">
+<META NAME="KBCreate" CONTENT="1996/08/10">
+<META NAME="Keywords" CONTENT="MfcSockets vcbuglist420 vcfixlist420 kbnetwork kbprg kbbuglist kbfixlist">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  A call to CSocket Connect, Accept, Send, or Receive hangs if a timer is active.  CAUSE =====  CSocket operations are written using  pseudo-blocking.  The WinSock API call is not a true blocking call, but if it doesn't return immediately then CSocke...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAR4,QAGI,QAUD,QAY5,QATK,QAEV,QAI4,QBVV,QAMB,QAIF,QAYC,QAM1,QBSO,QAA1,QAJQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: CSocket Operation Hangs if a Timer is Active</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 19, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q154649</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++, 32-bit Edition, version 4.2
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+A call to CSocket Connect, Accept, Send, or Receive hangs if a timer
+is active.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+CSocket operations are written using "pseudo-blocking." The WinSock API
+call is not a true blocking call, but if it doesn't return immediately then
+CSocket will call PumpMessages. PumpMessages looks for the FD_xxx
+notification and the CSocket function will not return until the FD_xxx
+notification arrives.
+<P>
+PumpMessages will not detect the socket notification if a timer is active
+because it looks for WM_TIMER messages first. When a WM_TIMER message
+arrives, the function doesn't look any further for other messages.
+<P>
+The PumpMessages function is looking for WM_TIMER messages because it sets
+up its own timer to cause the application to retry its socket calls and do
+periodic idle-time processing while waiting for the socket notification.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+There are two possible resolutions:
+
+<OL><P><LI>Disable all timers while making CSocket calls.
+
+<P><LI>Override the PumpMessages function so that it only looks for its
+   own WM_TIMER messages and does not pick up other timer messages.
+   This can be done by borrowing the CSocket::PumpMessages function
+   from SOCKCORE.CPP and changing it as follows:
+<P>
+   #if _MFC_VER == 0x0420
+<P>
+<PRE>   #define _AFX_SOCK_THREAD_STATE AFX_MODULE_THREAD_STATE
+   #define WM_SOCKET_NOTIFY    0x0373
+   #define WM_SOCKET_DEAD      0x0374
+
+   #define _afxSockThreadState AfxGetModuleThreadState()
+
+   #endif
+
+   BOOL CMySocket::PumpMessages(UINT uStopFlag)
+   {
+   #if _MFC_VER != 0x0420
+     return CSocket::PumpMessages(uStopFlag);
+   #else
+
+     // The same socket better not be blocking in more than one place.
+     ASSERT(m_pbBlocking == NULL);
+
+     _AFX_SOCK_THREAD_STATE* pState = _afxSockThreadState;
+
+     ASSERT(pState-&gt;m_hSocketWindow != NULL);
+
+     BOOL bBlocking = TRUE;
+     m_pbBlocking = &amp;bBlocking;
+     CWinThread* pThread = AfxGetThread();
+
+     // This is not a timeout in the WinSock sense, but more
+     // like a WM_KICKIDLE to keep message pumping alive
+     UINT nTimerID = ::SetTimer(pState-&gt;m_hSocketWindow, 0,
+                              m_nTimeOut, NULL);
+
+     if (nTimerID == 0)
+       AfxThrowResourceException();
+
+     BOOL bPeek = TRUE;
+
+     while (bBlocking)
+     {
+       TRY
+       {
+         MSG msg;
+         if (::PeekMessage(&amp;msg, pState-&gt;m_hSocketWindow,
+           WM_SOCKET_NOTIFY, WM_SOCKET_DEAD, PM_REMOVE))
+         {
+           if (msg.message == WM_SOCKET_NOTIFY &amp;&amp;
+              (SOCKET)msg.wParam == m_hSocket)
+           {
+             if (WSAGETSELECTEVENT(msg.lParam) == FD_CLOSE)
+             {
+               break;
+             }
+             if (WSAGETSELECTEVENT(msg.lParam) == uStopFlag)
+             {
+               if (uStopFlag == FD_CONNECT)
+                 m_nConnectError = WSAGETSELECTERROR(msg.lParam);
+               break;
+             }
+           }
+           if (msg.wParam != 0 || msg.lParam != 0)
+             CSocket::AuxQueueAdd(msg.message, msg.wParam, msg.lParam);
+
+           bPeek = TRUE;
+         }
+         else if (::PeekMessage(&amp;msg, pState-&gt;m_hSocketWindow,
+           WM_TIMER, WM_TIMER, PM_REMOVE))
+         {
+             break;
+         }
+
+         if (bPeek &amp;&amp; ::PeekMessage(&amp;msg, NULL, 0, 0, PM_NOREMOVE))
+         {
+           if (OnMessagePending())
+           {
+             // allow user-interface updates
+             pThread-&gt;OnIdle(-1);
+           }
+           else
+           {
+             bPeek = FALSE;
+           }
+         }
+         else
+         {
+           // no work to do -- allow CPU to sleep
+           WaitMessage();
+           bPeek = TRUE;
+         }
+       }
+       CATCH_ALL(e)
+       {
+         TRACE0("Error: caught exception in PumpMessage - continuing.\n");
+         bPeek = TRUE;
+       }
+       END_CATCH_ALL
+     }
+
+     ::KillTimer(pState-&gt;m_hSocketWindow, nTimerID);
+
+     if (!bBlocking)
+     {
+       WSASetLastError(WSAEINTR);
+       return FALSE;
+     }
+     m_pbBlocking = NULL;
+
+     ::PostMessage(pState-&gt;m_hSocketWindow,WM_SOCKET_NOTIFY,0,0);
+
+     return TRUE;
+
+   #endif // _MFC_VER
+   }
+
+</PRE></OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This bug has been fixed with the Visual
+C++ 4.2b patch. For more information on this patch, please see the
+following articles in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q156934.htm">Q156934</A></B>
+   TITLE     : PATCH: Visual C++ 4.2b Patch
+
+   ARTICLE-ID: <B><A href="../visualc/q160491.htm">Q160491</A></B>
+   TITLE     : Information on Files Modified by VC42b Patch: Part 1 of 4
+
+   ARTICLE-ID: <B><A href="../visualc/q160496.htm">Q160496</A></B>
+   TITLE     : Information on Files Modified by VC42b Patch: Part 2 of 4
+
+   ARTICLE-ID: <B><A href="../visualc/q160505.htm">Q160505</A></B>
+   TITLE     : Information on Files Modified by VC42b Patch: Part 3 of 4
+
+   ARTICLE-ID: <B><A href="../visualc/q160506.htm">Q160506</A></B>
+   TITLE     : Information on Files Modified by VC42b Patch: Part 4 of 4
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: CAsyncSocket CSocket hangs timer
+<P>
+
+Keywords          : MfcSockets vcbuglist420 vcfixlist420 kbnetwork kbprg kbbuglist kbfixlist<BR>
+Technology        : kbMfc<BR>
+Version           : 4.2<BR>
+Platform          : NT WINDOWS<BR>
+Issue type        : kbbug<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 19, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

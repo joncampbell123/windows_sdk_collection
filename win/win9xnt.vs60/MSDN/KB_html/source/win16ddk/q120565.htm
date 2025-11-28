@@ -1,0 +1,213 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Read Text Mode Screen of MS-DOS Session in Windows </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q120565">
+<META NAME="KBModify" CONTENT="1995/02/24">
+<META NAME="KBCreate" CONTENT="1994/09/14">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win16ddk">
+<META NAME="Description" CONTENT="  Sometimes it is necessary to read the text from the screen of an MS-DOS session running under Windows version 3.1 in 386 Enhanced mode. Use a simple VxD to read the screen in an MS-DOS session. You don't need to access the MS-DOS session screen thr...">
+<META NAME="Product" CONTENT="Win16 DDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAA8,QAKC,QDK0,QA5W,QAYS,QBC6,QAE1,QATX,QAMB,QAG8,QA5V,QDL9,QBWO,QBWN,QBFN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Read Text Mode Screen of MS-DOS Session in Windows</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 24, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q120565</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Device Driver Kit (DDK) for Windows version 3.1
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Sometimes it is necessary to read the text from the screen of an MS-DOS
+session running under Windows version 3.1 in 386 Enhanced mode. Use a
+simple VxD to read the screen in an MS-DOS session. You don't need to
+access the MS-DOS session screen through the VDD or GRABBER to read it.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+In a VxD, by using VM Control Block (handle) for the virtual machine (VM)
+that contains the MS-DOS session, you can obtain the base linear address of
+the VM from the CB_High_Linear member of the control block. CB_High_Linear
+will contain the linear address of "virtual 0000:0000" for the MS-DOS
+session.
+<P>
+Use this linear address to offset to [CB_High_Linear + 0400h] in the VM to
+poke around in the BIOS DATA area. Information such as what video mode is
+active, how many screen columns are active, and so on can be found in the
+BIOS DATA area. You can use this data to determine the address and the size
+of the text screen in the MS-DOS session. Then you can use the address and
+size to read the whole screen or a portion of it.
+<P>
+By using MEMORY.LST included with Ralf Brown's Interrupt List compilation,
+or by using a good BIOS DATA reference found in many books, you can get
+this information:
+<P>
+ 
+Format of BIOS Data Segment at segment 40h:
+<PRE>                {items in curly braces not documented by IBM}
+Offset  Size    Description
+  . . .
+ 49h    BYTE    Video current mode
+ 4Ah    WORD    Video columns on screen
+ 4Ch    WORD    Video page (regen buffer) size in bytes
+ 4Eh    WORD    Video current page start address in regen buffer
+ 50h 16 BYTEs   Video cursor position (col, row) for eight pages,
+                0 based
+ 60h    WORD    Video cursor type, 6845 compatible, hi=startline,
+                lo=endline
+ 62h    BYTE    Video current page number
+ 63h    WORD    Video CRT controller base address: color=03D4h,
+                mono=03B4h
+ 65h    BYTE    Video current setting of mode select register
+                03D8h/03B8h
+ 66h    BYTE    Video current setting of CGA palette register 03D9h
+</PRE> 
+<P>
+By reading at [CB_High_Linear + 449h], for example, you can determine the
+screen mode active in the MS-DOS session. If it is 7, it is text
+mode on an MDA adapter, and the text screen buffer is at [CB_High_Linear +
+0B000h]. Otherwise, if it is a text video mode number, a color text
+mode is in use in the MS-DOS session, and the text screen buffer is at
+[CB_High_Linear + 0B800h].
+<P>
+If you determine that a color text mode is in use, the adapter could
+be CGA, EGA, or VGA, so the MS-DOS session could be in either 25-,
+43-, or 50-line mode.
+<P>
+The size of the screen regenerate buffer is stored at [CB_High_Linear +
+044Ch]. Based on the number of bytes the screen takes and the number of
+screen columns, you can determine the number of screen rows.
+<P>
+The screen regenerate buffer will typically contain one of the following
+values:
+<P>
+<PRE>  On CGA (25 lines, 40 columns), the buffer size will be 0800h (2048d)
+  On CGA (25 lines, 80 columns), the buffer size will be 1000h (4096d)
+  On EGA (43 lines, 80 columns), the buffer size will be 1BE0h (7136d)
+  On VGA (50 lines, 80 columns), the buffer size will be 2040h (8256d)
+
+</PRE>The number of columns on the screen is stored at [CB_High_Linear + 044Ah].
+By dividing the buffer size by the number of columns, then dividing by
+two (unless screen attributes need to be read, too), you can determine the
+number of rows on the screen:
+<P>
+<PRE>  Buffer size   Number of columns   Skip Attribs   Result
+  -------------------------------------------------------
+  2048          / 40                / 2             25.6
+  4096          / 80                / 2             25.6
+  7136          / 80                / 2             44.6
+  8256          / 80                / 2             51.6
+
+</PRE>NOTE: the results are not exact. Therefore, if the regenerate buffer is
+greater than 4096 bytes or if the number of screen columns is not equal to
+25, the result must be decremented by 1 to get the real number of screen
+lines.
+<P>
+Once you determine the screen buffer offset, number of columns, and size of
+text screen, you can read the screen by dereferencing to the screen buffer
+and reading the characters out of the screen buffer memory.
+<P>
+<P><h3>References</h3>
+ 
+<P>
+Windows 3.1 Device Driver Kit "Virtual Device Adaptation Guide"
+Microsoft Developers Network "Developers Library" CD
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 VxD VDD DISPLAY<BR>
+KBCategory: kbprg<BR>
+KBSubcategory:<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 24, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

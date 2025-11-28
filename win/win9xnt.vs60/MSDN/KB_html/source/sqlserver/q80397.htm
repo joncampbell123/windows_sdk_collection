@@ -1,0 +1,231 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Implementing Password Expiration of SQL Server Login IDs </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q80397 ">
+<META NAME="KBModify" CONTENT="1997/04/03">
+<META NAME="KBCreate" CONTENT="1992/01/28">
+<META NAME="Keywords" CONTENT="kbusage SsrvAdmin SSrvGen">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT=" This article discusses one way to implement password expiration dates on SQL Server logins. This process uses one user-created table and three stored procedures. This is just one variation of the process and it can be modified for your own needs.  N...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QAWK,QAML,QAB9,QAXB,QBWS,QBWP,QBVV,QBDM,QA9O,QALQ,QAH5,QAGU,QACI,QACE V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Implementing Password Expiration of SQL Server Login IDs</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 3, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q80397 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+  - Microsoft SQL Server version 4.2
+</PRE> 
+<P>
+This article discusses one way to implement password expiration dates
+on SQL Server logins. This process uses one user-created table and
+three stored procedures. This is just one variation of the process and
+it can be modified for your own needs.
+<P>
+Note that if you have Microsoft SQL Server running in Integrated Security
+mode under NT you can rely on the expiration of the NT password. The
+methodology discussed here applies to Microsoft SQL Server running in mixed
+or standard security mode as well as to Microsoft SQL Server for OS/2.
+
+<OL><P><LI>Create a table in the master database that will hold the user login
+   ID, the date the password was last changed and the last password
+   used.
+<P>
+   NOTE: Only the system administrator (SA) should have access to this
+   table.
+<P>
+<P><PRE>      CREATE TABLE PW_DATE
+<PRE></PRE>      (SUID   SMALLINT,
+       DATE   DATETIME,
+       OLD_PW SYSNAME(30) NULL)
+
+</PRE><P><LI>Create a stored procedure that will check and determine if the
+   password has expired. If it has, the procedure will then assign the
+   login ID a new password and the user must have the system
+   administrator change it back. The only two logins the procedure
+   will not change the password for are SA and PROBE; this is for
+   system safety. The following example sets the password to expire
+   after 30 days and also lists all users whose passwords have
+   expired.
+<P>
+   NOTE: Only the SA should have EXECUTE permission.
+<P>
+<P><PRE>      CREATE PROCEDURE SP_PASSWORD_CHECK
+      @SECRET VARCHAR(30)
+      AS
+      UPDATE SYSLOGINS
+<PRE></PRE>        SET PASSWORD = @SECRET
+        FROM PW_DATE
+        WHERE SYSLOGINS.SUID = PW_DATE.SUID
+          AND DATEADD(DAY, 30, PW_DATE.DATE) &lt;= GETDATE()
+          AND SYSLOGINS.NAME NOT IN ('sa', 'probe')
+      SELECT NAME
+        FROM SYSLOGINS
+        WHERE PASSWORD = @SECRET
+
+</PRE><P><LI>The SP_PASSWORD_CHECK procedure should then be run as a nightly
+   batch process that resembles the following:
+<P>
+<P><PRE>      USE MASTER
+      GO
+      SP_DBOPTION ALLOWUPDATES, 1
+      RECONFIGURE WITH OVERRIDE
+      GO
+      SP_PASSWORD_CHECK gulliver
+      GO
+      SP_DBOPTION ALLOWUPDATES, 0
+      RECONFIGURE WITH OVERRIDE
+      GO
+</PRE><P>
+   To have such a batch process run nightly, the administrator can use
+   either the LAN Manager AT command, the SQL WAITFOR command or the
+   Windows NT AT command.
+
+<P><LI>The last two stored procedures should then be used instead of the
+   normal system stored procedures. SP_CORP_ADDLOGIN replaces
+   SP_ADDLOGIN, and SP_CORP_PASSWORD should be used in place of
+   SP_PASSWORD. To ensure that the old procedures are not used, execute
+   permission should be revoked on SP_ADDLOGIN and SP_PASSWORD.
+<P>
+   NOTE: SP_ADDLOGIN and SP_PASSWORD can be modified, but care should be
+   taken in case of upgrades to ensure that the changes are not removed.
+<P>
+<P><PRE>      CREATE PROCEDURE SP_CORP_ADDLOGIN
+      @LOGIN_ID VARCHAR(30),
+      @PASSWD VARCHAR(30) = NULL,
+      @DEFDB  VARCHAR(30) = NULL
+      AS
+      EXEC SP_ADDLOGIN @LOGIN_ID, @PASSWD, @DEFDB
+      INSERT INTO PW_DATE (SUID, DATE, OLD_PW)
+<PRE></PRE>        VALUES (SUSER_ID(@LOGIN_ID), GETDATE(), NULL)
+
+
+      CREATE PROCEDURE SP_CORP_PASSWORD
+      @OLD VARCHAR(30) = NULL,
+      @NEW VARCHAR(30),
+      @LOGIN_ID VARCHAR(30) = NULL
+      AS
+      EXEC SP_PASSWORD @OLD, @NEW, @LOGIN_ID
+      IF (@LOGIN_ID = NULL)
+      BEGIN
+        UPDATE PW_DATE
+        SET DATE = GETDATE(), OLD_PW = @OLD
+        WHERE SUID = SUSER_ID ()
+      END
+      ELSE BEGIN
+        UPDATE PW_DATE
+        SET DATE = GETDATE(), OLD_PW = @OLD
+        WHERE SUID = SUSER_ID(@LOGIN_ID)
+
+</PRE><P><LI>The final step is to initialize the system. If you have an active
+   system with user login IDs, the following query should be run by the
+   SA to load the PW_DATE table with the necessary values:
+<P>
+<P><PRE>      INSERT INTO PW_DATE (SUID, DATE, OLD_PW)
+      SELECT SYSLOGINS.SUID, GETDATE(), SYSLOGINS.PASSWORD
+      FROM SYSLOGINS
+</PRE><P>
+</OL>At this point, the system should be ready. Again, this can be varied
+greatly to meet your own needs.
+<P>
+NOTE: It is important that the SA does not use SQL Administrator, or any
+other application that uses menu-driven methods for adding logins.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 4.20 Windows NT<BR>
+Keywords            : kbusage SsrvAdmin SSrvGen<BR>
+Version             : 4.2<BR>
+Platform            : OS/2 WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 3, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,260 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Update Methods Used in SQL Server 6.0 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q135871">
+<META NAME="KBModify" CONTENT="1997/04/15">
+<META NAME="KBCreate" CONTENT="1995/08/29">
+<META NAME="Keywords" CONTENT="kbprg kbusage SSrvTran_SQL">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  Microsoft SQL Server version 6.0 can process an UPDATE statement using one of four possible methods. These methods are: deferred, full delete/insert, on-page delete/insert, and in-place. This article discusses the rules that determine which method ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAXB,QBD2,QA5V,QAC1,QA28,QATJ,QACI,QA9N,QAEF,QABM,QBCT,QAGC,QAGB,QBVV,QAA5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Update Methods Used in SQL Server 6.0</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 15, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q135871</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Microsoft SQL Server version 6.0 can process an UPDATE statement using one
+of four possible methods. These methods are: deferred, full delete/insert,
+on-page delete/insert, and in-place. This article discusses the rules that
+determine which method is used.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The decision concerning deferred update is made at compile time; the
+decision concerning the three non-deferred methods is made at execution
+time on a row-by-row basis. Since Showplan is based on compile-time
+information and not run-time, the update mode it reports may be different
+from how the query was actually executed at runtime. You should note that
+if the showplan output indicates DEFERRED, the actual query plan used will
+always be deferred. To see exactly how the query was processed for non-
+deferred udpates, you can use trace flag 323. This is slightly different
+from other trace flags; it will only display output to the errorlog, not to
+the local session, and it will only write to the errorlog if SQL Server is
+started from the command line (for example, sqlservr -c -
+dc:\c:\sql60\data\master.dat). (NOTE: This will likely change in post-
+version 6.0 builds of SQL Server; it should follow the normal method of
+trace output using 3604/3605.)
+<P>
+<P><h3>DEFERRED</h3>
+ 
+<P>
+When multiple rows can qualify for the update, if the row can
+increase in size or if indexed columns are updated the rows could
+move out ahead of the current position and be processed again (the
+"Halloween problem"). For example:
+<P>
+<PRE>   UPDATE T1
+   SET col1 = col1 + 1
+
+</PRE>In this case, deferred mode must be used. If only a single row can
+qualify, the Halloween problem cannot occur and deferred update is
+not required.
+<P>
+<P><h3>IN-PLACE</h3>
+ 
+<P>
+When an update is done in-place, a log record of type MODIFY is
+recorded in the log. This record does not contain the old and new
+values of the row (only the differences), and it cannot handle changes
+in row length. For in-place updates, the following restrictions
+apply:
+
+<UL><LI>Table cannot contain an UPDATE trigger.
+
+<LI>Table cannot be marked for replication.
+
+<LI>Can only be one table involved in the UPDATE statement. Note that
+   primary/foreign key references automatically mean that more than
+   one table is involved. This rule includes any sub-select in the update
+   query including a self-join. Whenever more than one table is involved, a
+   deferred update takes place.
+
+<LI>Column being updated cannot be part of a clustered index.
+
+<LI>Column being updated can be variable length, but the new row length
+   must be exactly the same as the old row length.
+
+<LI>New row can not be "too different" from the old one. The number of
+   differing bytes can not be more than one half the total row size, and
+   the total number of discontiguous differing blocks is not more than
+   three (differing blocks within 8 bytes are considered a single block).
+<P>
+ Examples:
+<P>
+<P><PRE>    create table t1 (col1 int, col2 char(60))
+    go
+    insert t1 values
+    (1,'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz')
+</PRE><P>
+<P><PRE>    insert t1 values
+    (2,'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz')
+</PRE><P>
+  - continue for 1000 rows -
+<P>
+<P><PRE>    go
+    create unique index idx1 on t1 (col1)
+    go
+</PRE><P>
+</UL>A) If you try to change more than one half of the row size (note: do not
+<PRE>   confuse this with one half of the column length), it will do
+   delete/insert instead of in-place:
+
+       update t1 set col2 =
+       'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzjklmnopqrstuvwxyz'
+       where col1 = 1
+       go
+
+   In the above case you have a row size of 64 bytes and you are changing
+   35 bytes so it will do delete/insert.
+
+ B) If you have more than 3 differing blocks within the column being
+    updated:
+
+       update t1 set col2 =
+       'ZbcdefghijZlmnopqrstuvZxyzabcdefghijkZmnopqrstuvwxyz'
+       where col1 = 2
+       go
+
+    In the above example you are changing 4 bytes, each of which is in a
+    separate "block", so it must use delete/insert.
+
+</PRE>·   For single-row in-place updates, the optimizer must be able to
+<PRE>    determine ahead of time that only one row will qualify (that is,
+    there must be a unique index and that index must be used to drive the
+    search). The column being updated can be a nonclustered index key,
+    and that index may also be used to drive the search.
+
+    Multiple rows can be updated in-place, but only if the following
+    conditions apply:
+
+      - Updated column is fixed-length
+      - Clustered index is not updated
+      - Updated column can not be nonclustered index column used to
+        drive the search (other nc index columns can be updated though)
+
+</PRE><h3>ON-PAGE DELETE/INSERT</h3>
+ 
+<P>
+On-page delete/insert is an option when one of the above requirements
+for in-place update is not met. It is more efficient than a full
+delete/insert because the same row slot is used and only those
+nonclustered indexes that are actually updated are "fixed-up." If the
+new row is not the same size as the old row, but there is still
+enough room on that page for the new row, then on-page delete/insert
+is used.
+<P>
+<P><h3>FULL DELETE/INSERT</h3>
+ 
+<P>
+In full delete/insert, full delete and insert log records are
+recorded for the row being updated. In addition, all nonclustered
+index keys are deleted and re-inserted, regardless of whether or not
+they were updated. Full delete/insert is used when on-page
+delete/insert cannot be used, either when there is not enough room on the
+page for the new row, or when a clustered index key is updated.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: sql6 update options<BR>
+Keywords            : kbprg kbusage SSrvTran_SQL<BR>
+Version             : 6.0<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 15, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

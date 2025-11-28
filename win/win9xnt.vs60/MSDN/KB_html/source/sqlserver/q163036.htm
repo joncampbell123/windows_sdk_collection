@@ -1,0 +1,186 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Monitor Free Space in a User Database with PerfMon </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q163036">
+<META NAME="KBModify" CONTENT="1997/04/10">
+<META NAME="KBCreate" CONTENT="1997/01/31">
+<META NAME="Keywords" CONTENT="kbusage SSrvAdmin SSrvMon">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  Many database administrators (DBAs) need to know how to schedule alerts indicating that a database is full. SQL Server is tightly integrated with the Windows NT Server Performance Monitor, providing numerous pre-defined counters. One of these count...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAZV,QABM,QAM9,QALX,QDNQ,QA2Q,QAA1,QBWS,QAY2,QAG2,QBW5,QAU5,QDI2,QAY5,QAU3 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Monitor Free Space in a User Database with PerfMon</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q163036</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Many database administrators (DBAs) need to know how to schedule alerts
+indicating that a database is full. SQL Server is tightly integrated with
+the Windows NT Server Performance Monitor, providing numerous pre-defined
+counters. One of these counters monitors a database's log percent filled,
+but none of the counters monitors the database itself. However, you can add
+this functionality by using the user-defined SQL Server counters.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To set up user-defined performance counters, do the following:
+
+<OL><P><LI>Grant appropriate permissions for the logon "probe" for the database. On
+   the Manage menu, click Logins. Select "Probe" as the logon name. Place a
+   check in the Permit column for the databases that you want to monitor.
+
+<P><LI>Modify the script below. Replace the "X" in "sp_user_counterX" with a
+   number from 1 to 10 (this procedure only works with 10 databases).
+   Replace "DBNAME" with the name of the user database you want to monitor.
+
+<P><LI>Run the script in master.
+
+<P><LI>Open Performance Monitor and add the appropriate "SQL User Counter X"
+   from "SQLServer user-defined counters" to the chart.
+<P>
+</OL>*******Script Start********
+if exists (select * from sysobjects where id =
+object_id('dbo.sp_user_counterX') and sysstat &amp; 0xf = 4)
+<PRE>   drop procedure dbo.sp_user_counterX
+</PRE></OL>go
+<P>
+<PRE>/* This procedure returns an integer value representing how full a user
+</PRE>database is, as a percentage full.
+This procedure does not monitor the master, and does not track logs. */
+<P>
+CREATE PROCEDURE sp_user_counterX
+AS
+<P>
+DECLARE @dbsize dec(15,0)
+DECLARE @allocatedpages dec(15,0)
+<P>
+SELECT @dbsize = sum(convert(dec(15),size))
+FROM sysusages
+WHERE dbid = (SELECT dbid FROM sysdatabases WHERE name = 'DBNAME')
+AND (segmap &amp; 4) != 4
+<P>
+SELECT @allocatedpages =
+<PRE>   (SELECT sum(convert(dec(15), reserved))
+   FROM  DBNAME..sysindexes         --Note:  No quotes
+   WHERE indid in (0,1,255) AND (ID &lt;&gt; 8))
+
+</PRE>SELECT convert(tinyint,(@allocatedpages / @dbsize) * 100)
+GO
+<P>
+GRANT EXECUTE ON dbo.sp_user_counterX TO probe
+GO
+*********Script End************
+<P>
+Use the existing Performance Monitor counters to monitor the log. This
+procedure does not work for databases that include both data and log
+segments on the same fragment. For more information, see the following
+article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q110904.htm">Q110904</A></B>
+   TITLE     : How to Set Up SQL Performance Monitor Database Alerts
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: sql60 sql65<BR>
+Keywords            : kbusage SSrvAdmin SSrvMon<BR>
+Version             : 6.0 6.5<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

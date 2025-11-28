@@ -1,0 +1,554 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Backup Strategies and Tips Before Upgrading SQL Server </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q152247">
+<META NAME="KBModify" CONTENT="1997/09/18">
+<META NAME="KBCreate" CONTENT="1996/06/08">
+<META NAME="Keywords" CONTENT="SSrvGen SSrvInst kbenv kbsetup">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article describes some backup and upgrade strategies that you can perform before upgrading SQL Server. In addition, there are helpful tips included for performing a successful SQL Server upgrade operation. You should review the Microsoft SQL S...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QBWP,QAOX,QABI,QAA1,QAC1,QDIK,QBWS,QAZV,QAA5,QANE,QAY2,QAUR,QA3W,QDL9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Backup Strategies and Tips Before Upgrading SQL Server</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q152247</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 4.21a and 6.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes some backup and upgrade strategies that you can
+perform before upgrading SQL Server. In addition, there are helpful tips
+included for performing a successful SQL Server upgrade operation. You
+should review the Microsoft SQL Server documentation on upgrading SQL
+Server before performing any SQL Server upgrade.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>BACKUP</h3>
+ 
+<P>
+During any upgrade application process, it is recommended that you have a
+valid backup. Because Windows NT Server provides a file backup facility and
+SQL Server provides dump and load capabilities, it is best to perform two
+types of backup.
+<P>
+<P><h3>WINDOWS NT SERVER BACKUP</h3>
+ 
+<P>
+When using the Windows NT Server backup utility, stop SQL Server and back
+up all the data and log device files, including Master.dat (which, by
+default, are those files that end with a .dat extension). If you are unsure
+about the file name, go to a query window, set your database to master, and
+run the following command:
+<P>
+<PRE>   select * from sysdevices where cntrltype = 0 or cntrltype = 2
+
+</PRE>Note the values in the phyname column.
+<P>
+Copy all the data and log device files to tape or to a temporary directory
+other than SQL, SQL60, or any of their subdirectories; this prevents
+accidental deletion of the SQL directory. It is a good idea to have a
+recent backup of the registry. To learn how to back up the local registry
+to tape, see the "Backing Up Disk Files to Tape" section of the Windows NT
+Server documentation. After the upgrade successfully completes, you can
+delete the temporary directory.
+<P>
+If time or space is limited, you can make a copy of the Master.dat file and
+do a full dump all of the databases. See the next section of this article,
+SQL SERVER DUMP, for details on how to dump all of the databases.
+<P>
+<P><h3>SQL SERVER DUMP</h3>
+ 
+<P>
+It is very useful to have the results of SELECT statements against the
+sysdatabases, sysdevices, and sysusages table in the master database. To do
+this, perform the following steps:
+
+<OL><P><LI>Go to a query window and run the following:
+<P>
+<P><PRE>      /********************************/
+      use master
+      go
+      print 'select * from sysdatabases'
+      select * from sysdatabases
+      print 'select * from sysdevices'
+      select * from sysdevices
+      print 'select * from sysusages'
+      select * from sysusages
+      /*********************************/
+</PRE>
+<P><LI>Save the results to a directory other than SQL, SQL60, or any of their
+   subdirectories.
+
+<P><LI>Start SQL Server in single-user mode by going to a Windows NT Server
+   command prompt, changing to the Sql\Binn or Sql60\Binn directory, and
+   running the following command:
+<P>
+<P><PRE>      sqlservr -c -m
+</PRE>
+<P><LI>Minimize the command prompt window.
+
+<P><LI>Run sp_helpdb, DBCC CHECKDB, and DBCC NEWALLOC on each database. The
+   script below will facilitate this for you. Save this script in a text
+   file.
+<P>
+<P><PRE>      /*******************************************************/
+</PRE><P>
+<P><PRE>      set nocount on
+      go
+</PRE><P>
+<P><PRE>      create table #tblDatabases
+      (
+      strName varchar(30) not null
+      )
+      go
+</PRE><P>
+<P><PRE>      insert into #tblDatabases
+<PRE></PRE>         select name from sysdatabases where name &lt;&gt; 'tempdb'
+      go
+
+      print ''
+      print 'select * from master..sysdatabases'
+      print 'go'
+      print ''
+
+      declare @strDatabase varchar(30)
+
+      set rowcount 1
+      select @strDatabase = strName from #tblDatabases
+      set rowcount 0
+
+      while((select count(*) from #tblDatabases) &gt; 0)
+      begin
+         print 'exec sp_helpdb '
+         print @strDatabase
+         print 'go'
+         print 'print ""'
+         print 'go'
+         print ''
+
+         print 'dbcc checkdb('
+         print @strDatabase
+         print ')'
+         print 'go'
+         print 'print ""'
+         print 'go'
+         print ''
+
+         print 'dbcc newalloc('
+         print @strDatabase
+         print ')'
+         print 'go'
+         print 'print ""'
+         print 'go'
+         print ''
+
+         if(@strDatabase &lt;&gt; 'master')
+         begin
+            print 'exec sp_dboption '
+            print @strDatabase
+            print ',"read only", FALSE'
+            print 'go'
+            print 'print ""'
+            print 'go'
+            print ''
+         end
+         else
+         begin
+            print 'exec sp_defaultdb sa, "master"'
+            print 'go'
+            print 'print ""'
+            print 'go'
+            print ''
+         end
+
+         delete from #tblDatabases where strName = @strDatabase
+
+         set rowcount 1
+         select @strDatabase = strName from #tblDatabases
+         set rowcount 0
+      end
+
+      go
+
+      /*******************************************************/
+
+</PRE><P><LI>Go to another Windows NT Server command prompt window, change to the
+   Sql\Binn or Sql60\Binn directory and run the following command:
+<P>
+<P><PRE>      isql -U sa -P &lt;password&gt; -S &lt;server_name&gt; -n -i &lt;input_file&gt; -o
+      &lt;output_file&gt;
+</PRE>
+<P><LI>After this operation completes, use the output file that you created as
+   the input file and use the following command to create a new output file
+   for the results of the next query:
+<P>
+<P><PRE>      isql -U sa -P &lt;password&gt; -S &lt;server_name&gt; -n -i &lt;output_file&gt; -o
+      &lt;new_output_file&gt;
+</PRE>
+<P><LI>Use the following article in the Microsoft Knowledge Base to assist you
+   in scanning the new output file for errors:
+<P>
+<P><PRE>      ARTICLE-ID: <B><A href="../sqlserver/q115519.htm">Q115519</A></B>
+<PRE></PRE>      TITLE     : INF: How to Scan SQL Errorlog or DBCC Output for Errors
+
+</PRE><P><LI>If the databases are clean, proceed to dumping each database by running
+   the following command:
+<P>
+<P><PRE>      isql -U sa -P &lt;password&gt; -S &lt;server_name&gt; -Q "dump database
+      &lt;database_name&gt; to &lt;dump device name&gt;"
+</PRE>
+<P><LI>After that operation completes, take SQL Server out of single-user mode
+   by closing both command prompt windows and starting up SQL Server as a
+   service, using either the SQL Service Manager, SQL Enterprise Manager,
+   or MSSQLSERVER in the Services Control Panel.
+<P>
+</OL><h3>CONFIGURATION</h3>
+ 
+<P>
+Set the default database of the system administrator (SA) to master by
+typing the following command at a query window:
+<P>
+<PRE>   sp_defaultdb sa, master
+
+</PRE></OL>For more information, see the following article in the Microsoft Knowledge
+Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q135349.htm">Q135349</A></B>
+   TITLE     : FIX: SQL 6.0 Upgrade Fails if SA Default DB is Not Master
+
+</PRE>Make sure all the databases are NOT set to read-only by reviewing the
+sp_helpdb output from the above script and reviewing the status column.
+<P>
+Check the SQL Server documentation to determine how much physical disk
+space is required for the upgrade. The following are some other relevant
+articles that concern disk space that you should read before upgrading SQL
+Server:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q149650.htm">Q149650</A></B>
+   TITLE     : BUG: Upgrade Fails if Not Enough Space on Master for Tempdb
+
+   ARTICLE-ID: <B><A href="../sqlserver/q149566.htm">Q149566</A></B>
+   TITLE     : BUG: Upgrade/Install Fails if Model DB is Larger Than Msdb
+
+</PRE>Run the Chkupg.exe utility, which checks that the database status is
+acceptable, that all necessary comments exist in the syscomments system
+table, and that there are no keyword conflicts. You should resolve any
+keyword conflicts before upgrading SQL Server.
+<P>
+Upgrading a database requires all objects to be scanned. In doing so, the
+upgrade may exceed some of your current runtime configuration values. To
+avoid this, you may want to temporarily double the size of the 'open
+objects' and 'locks' options before the upgrade. If you chose to do this,
+make sure you have enough memory dedicated to SQL Server to accommodate the
+changed values.
+<P>
+Also, check how much memory is given to SQL Server. In SQL Server version
+4.21a, the minimum value is 3,072 bytes (6 megabytes), while in SQL Server
+versions 6.0 and 6.5, the minimum value is 4,096 (8 megabytes). If you have
+additional physical RAM, increase the memory given to SQL Server to the
+level recommended in the SQL Server documentation. For more information,
+see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q110983.htm">Q110983</A></B>
+   TITLE     : INF: Recommended SQL Server for NT Memory Configurations
+
+</PRE>In addition, make sure the open databases configuration option is equal to
+or greater than the total number of databases on your system. You can use
+sp_configure [&lt;config_name&gt; [, &lt;config_value&gt;]] from a query window to
+change any of these configuration options. Dynamic options take effect
+immediately after the RECONFIGURE statement has been run. For all
+non-dynamic options, you must stop and restart SQL Server for the changes
+to take effect. For details, see the documentation on the RECONFIGURE
+statement.
+<P>
+Next, execute sp_helpsort to determine what sort order and character sets
+you have installed. For SQL Server 6.0 and SQL Server 6.5, these values can
+be found in appendix A of the setup book under "About Character Sets" and
+"Sort Order Ids." For SQL Server 4.21a, these values can be found in the
+configuration guide.
+<P>
+Shut down SQL Server and close any open SQL Server windows before
+upgrading. In addition, make sure you are logged on to Windows NT Server as
+an administrator or someone with administrative privileges. Logging on with
+administrative privileges may still result in upgrade problems if the 'Full
+Control' permissions have been revoked for administrator at either the file
+level for NTFS partitions or at the registry level. Check that
+administrator and system accounts have full control in the registry hives
+listed in the TROUBLESHOOTING section of this article.
+<P>
+Finally, check the network capabilities. If the server that is being
+upgraded does not have network capabilities, stop the Workstation service
+to force the upgrade to use the local pipes. To do this, perform the
+following steps:
+
+<OL><P><LI>Open the Services Control Panel.
+
+<P><LI>Select the Workstation service.
+
+<P><LI>Click Close.
+<P>
+</OL>Alternatively, you can leave the Workstation service running and install
+the MS Loopback Adapter. To do this, perform the following steps:
+
+<OL><P><LI>Open the Network Control Panel.
+
+<P><LI>Click Add Adapter.
+
+<P><LI>Select MS Loopback Adapter and click Continue.
+<P>
+</OL>You will be prompted for the Windows NT Server compact disc. Click OK to
+install the MS Loopback Adapter. You must restart Windows NT Server when
+the installation completes.
+<P>
+Go to the SQL Server Setup.exe that you want to upgrade to and upgrade SQL
+Server. During the upgrade, it is best to specify the same drive and
+directory to copy the SQL Server files to. Also, make sure you know the
+correct password for the SA before upgrading.
+<P>
+NOTE: Upgrades from beta or evaluation versions of SQL Server are not
+supported.
+<P>
+<P><h3>WINDOWS NT SERVER VERSIONS FOR SQL SERVER</h3>
+ 
+<P>
+If you are planning on upgrading the computer to Windows NT Server 4.0, the
+sequence of upgrading SQL Server and Windows NT Server matters. For
+additional information on the Windows NT operating system versions that
+support Microsoft SQL Server versions 4.2x, 6.0, and 6.5, please see the
+following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q122352.htm">Q122352</A></B>
+   TITLE     : INF: Supported Windows NT Versions for SQL Server
+
+</PRE></OL>If you have a 4.2x or 6.0 version of SQL Server running on Windows NT
+Server 3.5 or 3.51, and you want to upgrade to SQL Server 6.5 and Windows
+NT Server 4.0, you need to upgrade SQL Server first. SQL Server 6.5 is
+supported on both Windows NT Server 3.51 and Windows NT Server 4.0.
+However, SQL Server 4.21a and 6.0 are only supported on Windows NT Server
+versions 3.5 or 3.51.
+<P>
+<P><h3>TROUBLESHOOTING</h3>
+ 
+<P>
+If the upgrade encounters a problem while copying files, correct whatever
+error you received and try the upgrade again. If you encounter a problem
+after copying all the files, remove all SQL directories and files in
+Windows NT Explorer or File Manager and remove any entries in the registry
+for SQL Server. Be very careful when editing anything in the registry. If
+you delete a key that does not belong to SQL Server, you can restore the
+registry backup that you made earlier, in the WINDOWS NT BACKUP section of
+this article.
+<P>
+WARNING: Using Registry Editor incorrectly can cause serious problems that
+may require you to reinstall SQL Server. Microsoft cannot guarantee that
+problems resulting from the incorrect use of Registry Editor can be solved.
+Use Registry Editor at your own risk.
+<P>
+For SQL Server 4.21a, select and delete SQLServer and SQLMonitor found in
+the following registry keys:
+<P>
+<PRE>   HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\SQLServer
+
+   HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\SQLServer
+
+   HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\SQLMonitor
+
+</PRE>For SQL Server 6.0, select and delete MSSQLServer and SQLExecutive found in
+the following registry keys:
+<P>
+<PRE>   HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\MSSQLServer
+
+   HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\MSSQLServer
+
+   HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\SQLExecutive
+
+</PRE>After you have removed the entries, you have two options to try the upgrade
+again:
+
+<UL><LI>Reinstall the original SQL Server version. After it is installed, stop
+   the SQL Server services and replace all of the data and log device
+   files, including Master.dat, into their respective directories. You can
+   find these directories from the phyname column in the output from the
+   sysdevices table. Fix whatever caused the upgrade to fail and try the
+   upgrade again. If the upgrade still does not successfully complete,
+   contact your primary support provider.
+
+<LI>Reinstall the SQL Server version that you are trying to upgrade to, then
+   load the earlier version of the SQL Server databases. Note the user
+   database dump (the master database is not allowed to be loaded or
+   upgraded from earlier versions of SQL Server dumps) must be a full
+   database dump, not a transaction log dump. Also, the SQL Server version
+   that you are trying to upgrade to must be using the same sort order as
+   the earlier version.
+<P>
+</UL>As with any database load, the user databases need to be re-created in
+exactly the same way they were created. That is, the device usage, log
+space allocation, and segment definitions in the new database must be
+identical to how they were when the database was dumped. This information
+is kept in the sysusages table in the master database. You can also find
+this information in the output from the script that you ran earlier that
+runs sp_helpdb, DBCC CHECKDB and DBCC NEWALLOC. Then run the CREATE
+DATABASE statement again and the ALTER DATABASE statement to reestablish
+the fragments.
+<P>
+<P><h3>SUMMARY</h3>
+ 
+<P>
+The following list summarizes the steps recommended for a SQL Server
+upgrade:
+
+<OL><P><LI>Select * from sysdatabases, sysdevices, and sysusages, and save the
+   results.
+
+<P><LI>Perform file backups of all the data and log device files.
+
+<P><LI>Run DBCC CHECKDB on each database.
+
+<P><LI>Put the server in single-user mode and run DBCC NEWALLOC on each
+   database.
+
+<P><LI>If DBCC CHECKDB and DBCC NEWALLOC show no errors, dump databases while
+   the server is in single-user mode.
+
+<P><LI>Take SQL Server out of single-user mode.
+
+<P><LI>Set the default database of the SA to master.
+
+<P><LI>Make sure no databases are set to read-only.
+
+<P><LI>Make sure you have enough disk space to perform the upgrade.
+
+<P><LI>Run Chkupg.exe.
+
+<P><LI>Resolve any keyword conflicts before upgrading.
+
+<P><LI>Increase the size of the 'open objects' and 'locks' options.
+
+<P><LI>Increase the 'memory' option to recommended levels, especially if the
+   current value is 3072.
+
+<P><LI>Make sure the value of the 'open databases' option is greater than the
+   number of databases on your system.
+
+<P><LI>Run sp_helpsort and save the results.
+
+<P><LI>Shut down SQL Server before upgrading.
+
+<P><LI>Make sure you either are logged on to Windows NT Server as an
+   administrator or have administrator privileges and the administrator has
+   full control permissions at the file and registry level. Also, make sure
+   you know the SA password.
+
+<P><LI>Check the network capabilities of the server you are upgrading. Test
+   whether the server is on the network by typing "net view" at a
+   command prompt; see whether you can view other computers on your
+   network.
+
+<P><LI>Upgrade SQL Server.
+
+<P><LI>Specify the same drive and directory to copy the new files to.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: hydra<BR>
+Keywords          : SSrvGen SSrvInst kbenv kbsetup<BR>
+Version           : 4.21a 6.0<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

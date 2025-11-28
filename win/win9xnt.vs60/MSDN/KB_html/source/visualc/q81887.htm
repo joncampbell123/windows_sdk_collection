@@ -1,0 +1,308 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Prevent a Warm Boot in Real Mode </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q81887 ">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1992/03/19">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The simultaneous pressing of the CTRL, ALT, and DEL keys (CTRL+ALT+DEL) causes the computer to restart. This article demonstrates one method of preventing this from occurring.  MORE INFORMATION  Every time a key is pressed, the following sequence o...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QADN,QAHC,QAHB,QAH4,QAGI,QAMN,QBVV,QACK,QBDT,QBE7,QBE6,QALG,QBQU,QAKJ,QA4P V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Prevent a Warm Boot in Real Mode</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q81887 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+6.00 6.00a 6.00ax 7.00 | 1.00 1.50
+<PRE>MS-DOS                 | WINDOWS
+</PRE>kbprg
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft C for MS-DOS, versions 6.0, 6.0a, and 6.0ax
+<LI>Microsoft C/C++ for MS-DOS, version 7.0
+<LI>Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The simultaneous pressing of the CTRL, ALT, and DEL keys
+(CTRL+ALT+DEL) causes the computer to restart. This article
+demonstrates one method of preventing this from occurring.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Every time a key is pressed, the following sequence of events take
+place:
+
+<OL><P><LI>The interrupt 09H handler reads a 1-byte scan code from the
+   keyboard controller.
+
+<P><LI>The interrupt 09H handler calls interrupt 15H with AH=4FH (the
+   keyboard intercept service) on PC/AT and PS/2 machines.
+
+<P><LI>Control is returned to interrupt 09H. If the CTRL+ALT+DEL key
+   sequence, or any other special key sequence, is detected, the
+   appropriate handler is invoked.
+
+<P><LI>If no special cases have occurred, the 1-byte code is translated
+   into a 2-byte code (using internal tables) and placed in a
+   circular keyboard buffer. This buffer may now be accessed by user
+   applications through interrupt 16H calls.
+<P>
+</OL>The sample code below takes advantage of the second event by hooking
+the keyboard interrupt service. When the new handler is called, if the
+scan code in the AL register is that of the DEL key, check to see if
+the CTRL and ALT keys are being pressed. This is done by checking the
+ROM BIOS keyboard-status byte located at 0040:0017H. Bits 2 and 3 of
+this byte will be set if the CTRL and an ALT keys are being pressed,
+respectively.
+<P>
+If a CTRL+ALT+DEL key sequence is detected by the handler, the handler
+resets the carry flag, which consumes the DEL. This causes the
+interrupt 09H handler to see only the CTRL and ALT key sequence, thus
+preventing the reboot from occurring.
+Note that MS-DOS and/or other applications may hook the keyboard
+intercept service first. If this occurs, the interrupt 15H service may
+not be called each time a key is pressed. Also, this program will not
+work properly with EMM386 earlier than version 4.44.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed: None
+*/
+
+#include &lt;dos.h&gt;
+#include &lt;conio.h&gt;
+#include &lt;stdio.h&gt;
+
+#define LOBYTE(x) ((unsigned char)((unsigned) x &amp; 0x00FF) )
+#define HIBYTE(x) ((unsigned char)(((unsigned) x &amp; 0xFF00) &gt;&gt; 8 ))
+#define BITSET(x, n) ((((unsigned char) x &gt;&gt; n) &amp; 1) == 1 ? 1 : 0)
+
+#define ESC              0x1B /* scan code for ESC */
+#define DEL              0x53 /* scan code for DEL */
+#define INT15            0x15 /* Interrupt to intercept */
+#define KBD_INT_BIT      4  /* Int 15H Service 4FH support bit */
+#define ESB_OFFSET       5  /* Environment status byte offset */
+#define KBD_STATUS_PTR 0x00400017  /* Address of shift-state byte */
+#define KEYBRD_INTERCEPT 0x4F /* Keyboard intercept subfunction */
+
+/* NewInt15 will point to the new interrupt 15H handler */
+void (_interrupt _far _cdecl *NewInt15)(
+          unsigned _es, unsigned _ds, unsigned _di,
+          unsigned _si, unsigned _bp, unsigned _sp,
+          unsigned _bx, unsigned _dx, unsigned _cx,
+          unsigned _ax, unsigned _ip, unsigned _cs,
+          unsigned _flags );
+
+/* OldInt15 will point to the original interrupt 15H handler */
+void (_interrupt _far _cdecl *OldInt15)(void);
+
+/****************************************************************
+   void _interrupt _far _cdecl Int15(unsigned _es,unsigned ds,...)
+
+       This function hooks service 4FH, and checks for the
+   CTRL+ALT+DEL key combination. If detected, the system
+   reboot is prevented by consuming the DEL and exiting the
+   interrupt handler. Otherwise, call the default handler.
+
+ ****************************************************************/
+void _interrupt _far _cdecl Int15(unsigned _es,unsigned _ds,
+          unsigned _di,unsigned _si, unsigned _bp,
+          unsigned _sp,unsigned _bx, unsigned _dx,
+          unsigned _cx,unsigned _ax, unsigned _ip,
+          unsigned _cs,unsigned _flags )
+{
+ unsigned char far *ptr=(unsigned char far *) KBD_STATUS_PTR;
+
+ if(HIBYTE(_ax)==KEYBRD_INTERCEPT) /* Was this a call to us? */
+ {
+   if(LOBYTE(_ax)==DEL)            /* Was DEL key pressed? */
+   {
+     if(BITSET(*ptr,2)&amp;&amp;BITSET(*ptr,3)) /* CTRL and ALT pressed? */
+     {
+       _flags ^= 1;                         /* Consume DEL */
+     }
+   }
+   else
+   {
+     _chain_intr( OldInt15 );  /* Call default handler    */
+   }
+ }
+ else
+ {
+   _chain_intr( OldInt15 );  /* Call default handler    */
+ }
+
+}
+
+/************************************************************
+    int Supports_Int154F(void)
+
+     Detects whether the ROM BIOS keyboard intercept function
+      is supported.
+
+    RETURNS:  TRUE if interrupt 15H service 4FH is supported,
+              FALSE if not.
+</PRE></OL>**************************************************************/
+<PRE>int Supports_Int154F(void)
+</PRE>{
+union  REGS inregs,outregs;
+struct SREGS segregs;
+unsigned char far *config_flags;
+<P>
+<PRE>  /* Set up to get system environment information */
+  inregs.h.ah = 0xC0;        /* Get system environment function */
+
+  /* Execute interrupt */
+  int86x( INT15, &amp;inregs, &amp;outregs, &amp;segregs );
+
+  /* Get the configuration flags */
+  config_flags = (unsigned char far *) (((long)segregs.es &lt;&lt; 16) |
+                          ((long) outregs.x.bx+ESB_OFFSET) );
+
+  /* Does this system support keyboard intercept function? */
+  return ( BITSET(*config_flags, KBD_INT_BIT) );
+</PRE>}
+<P>
+<P>
+<PRE>/***************************************
+ ***************************************
+ ****  MAIN  PROGRAM  BEGINS  HERE  ****
+ ***************************************
+ ***************************************/
+void main(void)
+</PRE>{
+unsigned ch;
+<P>
+<PRE>   if(Supports_Int154F()) /* program must support int 15 service */
+   {
+     OldInt15 = _dos_getvect( INT15 );  /* Save original handler */
+     NewInt15 = Int15;             /* Get pointer to new handler */
+
+     _dos_setvect( INT15, NewInt15 );   /* Hook interrupt 15H    */
+
+     printf("** WARM BOOT now disabled..."
+                       "press Escape Key to Exit **\n");
+
+     ch = getch();               /* Initialize character buffer  */
+
+     /**********************************
+      ** LOOP UNTIL ESCAPE IS PRESSED **
+      **********************************/
+      while ( LOBYTE(ch) != ESC )
+      {
+     ch = getch();
+      }
+
+      _dos_setvect(INT15,OldInt15); /* Restore original handler */
+  }
+  else
+  {
+    printf("This machine does not support interrupt "
+                              "15H service 4FH\n");
+  }
+
+}
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf trap reset 6.00 6.00a 6.00ax 7.00 1.00<BR>
+1.50<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: CLngIss<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

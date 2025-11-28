@@ -1,0 +1,337 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: SQL Server Disk-Space Management </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q36963 ">
+<META NAME="KBModify" CONTENT="1997/03/12">
+<META NAME="KBCreate" CONTENT="1988/10/19">
+<META NAME="Keywords" CONTENT="ssrvadmin ssrvgen">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The following information discusses how SQL Server manages disk space.  MORE INFORMATION  Part 1: SQL Server Disk-space Management  SQL Server acquires disk space from the operating system by allocating one or more OS/2 disk files. Each of these fi...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBXV,QBWA,QBTP,QBW5,QAZV,QABM,QAKC,QBC6,QA28,QAW6,QATJ,QAPN,QAB5,QAO3,QAO2 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: SQL Server Disk-Space Management</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 12, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q36963 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server versions 4.2 for OS/2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The following information discusses how SQL Server manages disk space.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Part 1: SQL Server Disk-space Management</h3>
+ 
+<P>
+SQL Server acquires disk space from the operating system by allocating
+one or more OS/2 disk files. Each of these files can be thought of as a
+segment of disk space that is reserved for use by the SQL Server. They
+are allocated in increments of 1 megabyte (up to the maximum file size
+permitted by the version of OS/2 being used) and are fixed in length.
+<P>
+Together, these disk space segments compose a pool of disk space that
+can be assigned to individual databases. If there is not enough space
+in the pool to satisfy a particular CREATE DATABASE or ALTER DATABASE
+request, another disk segment can be added dynamically with DISK INIT.
+<P>
+A segment may contain several databases and a database may be
+allocated on several segments. If disk-space requirements are static,
+or if the machine is dedicated, a single large segment is best. If
+space requirements cannot be predicted, if the disk is shared by
+several applications that compete for space, or if multiple physical
+disks (or partitions) exist, multiple segments are best.
+<P>
+A single large segment, allocated when the disk is relatively empty,
+will probably perform better than many small segments scattered over
+the disk; however, if multiple physical disk drives are available,
+spreading the segments over the multiple drives will give better
+performance.
+<P>
+The first disk segment contains initialization information and must
+exist before the SQL Server can be started. This segment is built
+during the installation process and utilities are provided to rebuild
+it if necessary (BLDMASTR and the SQL scripts INSTMSTR, INSTMSGS,
+INSTMODL, INSTPUBS). This segment contains the Master Database, Model
+Database, etc., and may contain user data as well. The default size of
+the master disk segment is 15 MB on 4.2 servers,
+which is enough for the Master, Model, Temp, and PUBS databases, but
+not for user data. Although it is possible to make the master disk
+segment large enough for user data (by deleting and rebuilding),
+it is better to keep system data on the first segment and put user data
+on additional segments.
+<P>
+Subsequent disk space segments are added with DISK INIT, which creates
+an OS/2 file of the specified size and adds an entry to the SYSDEVICES
+table containing the logical name of this segment, the physical name
+by which it is known to the operating system, and the size in 2K
+pages.
+<P>
+Each 2K page in the disk space pool is identified by a unique number.
+Each disk space segment contains a contiguous sequential range of page
+numbers; the corresponding SYSDEVICES entry contains the starting page
+number of each segment, which specifies its position in the "global
+page space."
+<P>
+A database can only use the disk space that has been previously
+assigned to it by the CREATE DATABASE or ALTER DATABASE commands.
+These commands add entries to the SYSUSAGES table that identify groups
+of pages by specifying the starting page number and number of pages,
+as well as the database to which they are assigned. Since each entry
+in SYSUSAGES can refer to only a single group of contiguous page
+numbers, multiple entries may be required to satisfy a single CREATE
+or ALTER DATABASE.
+<P>
+Parameters on the CREATE or ALTER DATABASE commands specify whether
+the space is to be allocated from particular disk segments (by logical
+name) or from any of the disk segments that have been marked as
+"default" segments by the stored procedure "sp_diskdefault".
+<P>
+To find free disk space, SQL Server compares the list of available
+segments and sizes (SYSDEVICES) with the list of pieces of those
+segments that are already assigned (SYSUSAGES) and finds the smallest
+free piece (or pieces) that will satisfy the request.
+<P>
+Once a group of pages is assigned to a database, the group is
+available for use by objects within that database.
+<P>
+<P><h3>Part 2: SQL Server Disk-space Management</h3>
+ 
+<P>
+Part 2 below covers the segmentation of global page-number space and
+the relationship of the "virtual device number" (VDEVNO) and low and
+high global page numbers to the database device.
+<P>
+The address space for database global page numbers is segmented by
+interpreting the 32-bit global page number as two separate components.
+The high-order 8 bits is the VDEVNO and the remaining 24 bits is the
+relative page number from the beginning of that device. This is
+similar to segmented addressing schemes in operating systems that use
+a segment number and offset within the segment. The following are
+examples:
+<P>
+<PRE>   0x01000003   is page 3 on device 1
+   0x02000003   is page 3 on device 2
+
+</PRE>This is why virtual device number 1 has a starting page number of
+16777216 (0x01000000 = 16777216).
+<P>
+The segmentation scheme allows database devices in the middle of the
+global page space to be expanded without affecting the page addresses
+of existing data. For example, device 1 could be initially allocated
+as 2 megabytes (giving it a starting page number of 16777216 and an
+ending page number of 16778240). Then, device 2 is added, also 2
+megabytes in size (33554432 to 33555456). Later, it becomes necessary
+to increase the size of device 1. There is no problem because each
+device has a page space of 16 million pages reserved for it. This does
+mean that each database device is limited to 32 gigabytes (16 million
+pages times 2048 bytes per page).
+<P>
+The discontinuous global page space is mapped into a contiguous local
+page space for each database by the entries in SYSUSAGES. Each entry
+associates a contiguous block of global pages (not necessarily an
+entire database device) with a range of local pages for a particular
+database. This is done by recording the starting global page number,
+the starting local page number, and the number of pages.
+<P>
+The local page space completely insulates each database from the
+complexity of the discontinuous global page-numbering system and allows
+each database to refer to its pages as though they were consecutively
+numbered starting with 0. Databases are expanded by adding contiguous
+blocks of pages to the end of local page space.
+<P>
+<P><h3>Part 3: SQL Server Disk-space Management</h3>
+ 
+<P>
+This is part 3 of the SQL Server disk-space management series. It
+covers space management within a database.
+<P>
+Space within each database is considered to be an array of fixed
+length: 2K pages. This is called local (or logical) page space,
+because the pages for each database are numbered consecutively
+beginning with zero. These page numbers are mapped to actual byte
+positions in one or more physical files by the information in
+SYSDEVICES and SYSSEGMENTS. This insulates each database from the
+complexities of managing discontinuous segments of physical page space
+spread over one or more physical files, which may be shared among
+other databases.
+<P>
+Space within each database is managed by allocation pages that occur
+every 256 pages. Each allocation page controls the next 255 pages.
+Pages are not controlled individually, but instead, in blocks of 8
+contiguous pages. This approach requires fewer entries (32 versus 255)
+than if one entry were used for each page, and allows each entry to be
+longer (16 bytes versus 8 bytes) and still fit into a single
+allocation page.
+<P>
+The important items in an allocation entry are object ID, object type,
+and a bitmap showing which of the 8 pages in the block are actually in
+use. Allocation entries for the same object are chained together in a
+circular doubly-linked list of block-starting-page-number.
+<P>
+This approach has certain consequences. An 8-page block can contain
+data for only one object. Each index on an object is a different type
+object and thus requires a separate block of 8 pages. If a table
+containing a single byte is created, an entire 8-page block (16K) is
+allocated. If an index is created on that 1-byte table, another 8-page
+block must be allocated. No further allocations are required until
+either of the 8-page blocks is filled. An advantage of this approach
+is that data is physically clustered by object rather than spread out
+randomly.
+<P>
+The 8-page allocation granularity is the reason for the two values
+returned by the space-used commands: space allocated and space
+actually used.
+<P>
+Space within a page is managed by a free-space pointer, which is part
+of the page header. Also in the page header are logical page number,
+next page in chain, previous page in chain, and object ID of this
+object. Pages that contain data for the same object are linked
+together using the next and previous page numbers in a doubly-linked
+NULL terminated list. Data is close-packed within a page and the
+free-space pointer points to the first free byte in the page.
+<P>
+New items are added to the end of existing items if sufficient space
+is available in the page. If not, a new page must be spliced into the
+chain. Items cannot span pages (except for TEXT/IMAGE).
+<P>
+If a free page is available in the same 8-page block, it will be used;
+otherwise, a new 8-page block will have to be allocated to the object.
+<P>
+Space from deleted items is immediately available within the page, but
+a page remains allocated to the object even if it is empty, until all
+pages in the 8-page block are freed.
+<P>
+Updates that increase the length of variable-length items are handled
+by deleting the item, sliding the rest of the data down, and adding
+the longer item to the end. In data pages, logical sequence is
+maintained by a list of row pointers at the end of the page. The data
+in a page grows down toward the pointer list, and the pointer list
+grows up toward the data. If they meet, the page is full. When items
+are slid down to reclaim space freed by deletions, all of the pointers
+at the end of the page must also be updated. To avoid having to update
+indexes that may reference those pointers, pointers to deleted items
+are zeroed rather than removed.
+<P>
+Index pages do not have row pointers at the end of the page to
+maintain sequence (though an offset table is sometimes built on the
+fly if there is enough room at the end of the page. This helps scan
+performance). Space is opened up for insertions (and for updates
+that increase item length) by sliding the following items toward the
+end of the page. Deletions are handled by reversing the process.
+<P>
+All pages (normal data pages, index pages, text and image data pages,
+transaction log pages, and allocation pages) are controlled by the
+entry in the allocation page for that block of 8 pages. All pages for
+the same object (except allocation pages) are chained together by
+forward and back pointers in the page header. Free space in all pages
+(except allocation pages) is collected at the end of the page and
+controlled by a free-space pointer in the page header. Pages that
+contain normal table data (as opposed to index, text/image, log, or
+allocation data) have a list of pointers to each row in the page. This
+list is used to maintain the logical sequence of the data and to
+eliminate the updating of pointers in corresponding index pages when
+data rows are shifted around within a page.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 4.20 4.2a 4.20b<BR>
+Keywords            : ssrvadmin ssrvgen<BR>
+Version             : 4.20<BR>
+Platform            : OS/2<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 12, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

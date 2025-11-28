@@ -1,0 +1,239 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FileTimeToLocalFileTime() Adjusts for Daylight Saving Time </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q128126">
+<META NAME="KBModify" CONTENT="1995/09/25">
+<META NAME="KBCreate" CONTENT="1995/03/27">
+<META NAME="Keywords" CONTENT="kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Under NTFS, the API GetFileTime() returns the create time, last access time, and last write time for the specified file. The times returned in the FILETIME structures are in Universal Coordinated Time (UTC). This is also the time that NTFS uses. Yo...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAMR,QAU3,QAFH,QACE,QAVX,QAVW,QAU7,QAUR,QAML,QAGI,QAH4,QAI4,QABX,QAPF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FileTimeToLocalFileTime() Adjusts for Daylight Saving Time</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 25, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q128126</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT version 3.5
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Under NTFS, the API GetFileTime() returns the create time, last access
+time, and last write time for the specified file. The times returned in the
+FILETIME structures are in Universal Coordinated Time (UTC). This is also
+the time that NTFS uses. You can use FileTimeToLocalFileTime() to convert a
+file time to a local time. However, if you automatically adjust for
+Daylight Saving Time, FileTimeToLocalFileTime() will adjust for Daylight
+Saving Time based on whether the current date should be adjusted for
+Daylight Saving Time, not based on whether the date represented by the
+FILETIME structure should be adjusted.
+<P>
+The behavior in this situation is different under FAT, but may be changed
+to match the behavior under NTFS in a future version of Windows NT.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The result of this behavior, which is by design, is that reported file
+times under NTFS may change with the start and end of Daylight Saving Time.
+For example, suppose that the file TEST.C has a last write FILETIME
+representing Jan 1, 1995 9:00pm (UTC), it is not Daylight Saving Time,
+and you are in the Pacific time zone. Both the DIR command and the
+following sample code report the file time as 1:00pm (LocalTime = UTC - 8).
+<P>
+<P><h3>Sample Code 1</h3>
+ 
+<P>
+<PRE>   #include &lt;windows.h&gt;
+
+   void main()
+   {
+      HANDLE hFile;
+      FILETIME ftCreate, ftLastAccess, ftLastWrite, ftLocal;
+      SYSTEMTIME st;
+
+      char buf[80];
+
+   // Open the file.
+
+      hFile = CreateFile( "test.c",
+                          GENERIC_READ,
+                          0,
+                          NULL,
+                          OPEN_EXISTING,
+                          FILE_ATTRIBUTE_NORMAL,
+                          NULL );
+
+   // Get the file time (in UTC) and convert to local time.
+
+      GetFileTime( hFile, &amp;ftCreate, &amp;ftLastAccess, &amp;ftLastWrite );
+      FileTimeToLocalFileTime( &amp;ftLastWrite, &amp;ftLocal );
+
+   // Display the time, as a test.
+
+      FileTimeToSystemTime( &amp;ftLocal, &amp;st );
+      GetTimeFormat( LOCALE_USER_DEFAULT, 0, &amp;st, NULL, buf, sizeof(buf) );
+      MessageBox( NULL, buf, " FILE TIME", MB_OK );
+   }
+
+</PRE>Now, set the date to 7/1/95 and enable Automatically Adjust for Daylight
+Saving Time. The DIR command and the sample code above will report the
+file time as 2:00pm, because FileTimeToLocalFileTime() has adjusted for
+Daylight Saving Time (LocalTime = UTC - 7).
+<P>
+The following sample code will correctly report the file time of TEST.C
+with the date set to 7/1/95 under NTFS. The FILETIME structure is
+converted to a SYSTEMTIME structure with FileTimeToSystemTime(). Then the
+time is converted using SystemTimeToTzSpecificLocalTime(). If you need to
+convert back to a FILETIME structure, use SystemTimeToFileTime() after the
+conversion to local time.
+<P>
+<P><h3>Sample Code 2</h3>
+ 
+<P>
+<PRE>   #include &lt;windows.h&gt;
+
+   void main()
+   {
+      HANDLE hFile;
+      FILETIME ftCreate, ftLastAccess, ftLastWrite;
+      SYSTEMTIME stUTC, st;
+      char buf[80];
+
+   // Open the file.
+
+      hFile = CreateFile( "test.c",
+                          GENERIC_READ,
+                          0,
+                          NULL,
+                          OPEN_EXISTING,
+                          FILE_ATTRIBUTE_NORMAL,
+                          NULL );
+
+   // Get the file time (in UTC) and convert to local time.
+
+      GetFileTime( hFile, &amp;ftCreate, &amp;ftLastAccess, &amp;ftLastWrite );
+      FileTimeToSystemTime( &amp;ftLastWrite, &amp;stUTC );
+      SystemTimeToTzSpecificLocalTime( NULL, &amp;stUTC, &amp;st);
+
+   // Display the time, as a test.
+
+      GetTimeFormat( LOCALE_USER_DEFAULT, 0, &amp;st, NULL, buf, sizeof(buf) );
+      MessageBox( NULL, buf, "FILE TIME", MB_OK );
+   }
+
+</PRE>The FAT file system stores local time, not UTC. GetFileTime() gets cached
+UTC times from FAT. In this sample, the time stored is 1pm and the cached
+time is 9pm. When it becomes Daylight Saving Time, sample codes 1 and 2
+will demonstrate the same behavior that they do under NTFS, because 9pm is
+still used. However, when you restart the machine, the new cached time will
+be 8pm (UTC = LocalTime + 7). The call to FileTimeToLocalFileTime() cancels
+the adjustment made by GetFileTime() (LocalTime = UTC - 7). Therefore,
+sample code 1 will report the correct time under FAT, but sample code 2
+will not.
+<P>
+On the other hand, FindFirstFile() on FAT always reads the time from the
+file (stored as local time) and converts it into UTC, adjusting for DST
+based on the current date. So if FindFirstFile() is called, the date is
+changed to a different DST season, and then FindFirstFile() is called
+again, the UTC returned by the two calls will be different.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.50<BR>
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: BseMisc<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 25, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

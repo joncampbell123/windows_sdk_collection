@@ -1,0 +1,237 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>An Efficient Animation Algorithm </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q75431 ">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1991/08/20">
+<META NAME="Keywords" CONTENT="kbgraphic">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  An application that shows an animated image cannot rely solely on Windows graphical device interface (GDI) functions because they will be too slow. Instead, the application must create its own set of bitmaps. This article discusses the process requ...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDM6,QBWN,QDL9,QBWO,QAB2,QAH4,QAGI,QBF0,QA9N,QA26,QAXQ,QAU3,QASB,QAMR,QAA7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>An Efficient Animation Algorithm</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q75431 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   versions 3.1 and 3.0
+
+<LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.5 and 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+An application that shows an animated image cannot rely solely on Windows
+graphical device interface (GDI) functions because they will be too slow.
+Instead, the application must create its own set of bitmaps. This article
+discusses the process required and provides tips to improve performance and
+memory use.
+<P>
+This information applies to any type of animation or fast drawing, from
+painting the game pieces in Reversi to updating the time each second in
+Clock.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+There are three major steps to this process:
+
+<OL><P><LI>Allocate the bitmap.
+<P>
+</OL>It is preferable to allocate a single bitmap to store all the different
+"cels"--the components of the animated scene. The contents of the bitmap
+should be arranged in a column that is wide enough to hold a single cel;
+the height is determined by the number of cels. To improve memory usage,
+the bitmap should be discardable.
+<P>
+For example, given the definitions of the three constants below, the
+following code allocates the correct size bitmap:
+<P>
+<PRE>   X_SIZE = width of the cel
+   Y_SIZE = height of the cel
+   NUM_CELS = number of cels in the animated sequence
+
+   HBITMAP hbm;
+
+   hbm = CreateDiscardableBitmap(hDC, X_SIZE, NUM_CELS * Y_SIZE);
+   if (!hbm)
+       {
+       // error - could not allocate bitmap
+       }
+
+</PRE><P><LI>Prepare the bitmaps.
+<P>
+</OL>To draw into the bitmap, it must be selected into a display context (DC).
+Allocate a (temporary) compatible DC for this purpose:
+<P>
+<PRE>   if (hTmpDC = CreateCompatibleDC(hDC))
+       {
+       HBITMAP hOldBm;
+
+       hOldBm = SelectObject(hTmpDC, hbm);
+       // and so forth
+       }
+
+</PRE></OL>In many cases, all cels will share the same background. Rather than drawing
+this background several times onto the bitmap, draw it once onto the first
+cel and copy it to the other cels, as the following code demonstrates:
+<P>
+<PRE>   // GDI calls to draw to hbm from (0, 0) to (X_SIZE, Y_SIZE)
+
+   for (i = 1; i &lt; NUM_CELS; i++)  // Perform the copy
+       BitBlt(hTmpDC, 0, i * Y_SIZE, X_SIZE, Y_SIZE, hTmpDC, 0, 0,
+                 SRCCOPY);
+
+</PRE>After the background is copied, draw the foreground on each cel, using
+regular GDI calls (in TRANSPARENT drawing mode). The coordinates for cel
+"i" in bitmap hbm are:
+<P>
+<PRE>   x_pos: 0 to (X_SIZE - 1)
+   y_pos: (i * Y_SIZE) to (((i + 1) * Y_SIZE) - 1)
+
+</PRE>If the cels in the bitmap contain sequential images, animating to the
+screen is simplified.
+<P>
+To finish this step, release the temporary DC.
+<P>
+<PRE>   SelectObject(hTmpDC, hOldBm);
+   DeleteDC(hTmpDC);
+
+</PRE><P><LI>Animate.
+<P>
+</OL>A temporary, off-screen DC is required to allow the application to select
+the bitmap. Note that selecting the object may fail if the bitmap has been
+discarded. If this has occurred, another bitmap must be allocated (if
+memory allows) and the bitmap must be initialized (as outlined in step 2,
+above).
+<P>
+<PRE>   if ((hTmpDC = CreateCompatibleDC(hDC)) != NULL)
+       {
+       HBITMAP hOldBm;
+
+       if (!(hOldBm = SelectObject(hTmpDC, hbm))
+           // must re-allocate bitmap. Note that this MAY FAIL!!!
+
+</PRE></OL>At this point, call the BitBlt() function to copy the various stages of the
+animation sequence to the screen. If the cels in the bitmap contain
+sequential images, a simple loop will do the job nicely, as the following
+code demonstrates:
+<P>
+<PRE>       for (i = 0; i &lt; NUM_CELS; i++)
+           {
+           BitBlt (hDC, x_pos, y_pos, X_SIZE, Y_SIZE, hTmpDC, 0,
+                        i * Y_SIZE, SRCCOPY);
+
+           // Some form of delay goes here. A real-time wait, based on
+           // clock ticks, is recommended.
+           }
+
+</PRE>When the drawing is done, delete the temporary DC:
+<P>
+<PRE>   SelectObject(hTmpDC, hOldBm);
+   DeleteDC(hTmpDC);
+
+</PRE>It is important to cancel the selection of the bitmap between passes
+through the for loop. This allows the bitmap to be discarded if the system
+runs low on memory.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.10 3.50 4.00 95 animation<BR>
+KBCategory: kbgraphic<BR>
+KBSubcategory: GdiBmp<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

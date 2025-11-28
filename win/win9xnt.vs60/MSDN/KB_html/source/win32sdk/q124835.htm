@@ -1,0 +1,246 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: JournalPlayback Hook Can Cause Windows NT to Hang </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q124835">
+<META NAME="KBModify" CONTENT="1995/09/29">
+<META NAME="KBCreate" CONTENT="1995/01/12">
+<META NAME="Keywords" CONTENT="kbui kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Incorrect use of the delay return value from a journal playback hook can cause Windows NT to hang temporarily.  CAUSE =====  The menu loop in Windows NT calls PeekMessage() with the PM_NOREMOVE flag, does some processing, and then removes the messa...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAGI,QBWP,QADN,QAPN,QAO4,QAEF,QAH4,QALW,QAKD,QAY2,QAR4,QAAP,QAIF,QDL9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: JournalPlayback Hook Can Cause Windows NT to Hang</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 29, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q124835</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.1 and 3.5
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Incorrect use of the delay return value from a journal playback hook can
+cause Windows NT to hang temporarily.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The menu loop in Windows NT calls PeekMessage() with the PM_NOREMOVE flag,
+does some processing, and then removes the message from the queue. This
+sequence is repeated until the menu goes away. When JournalPlayback is
+occurring, the PeekMessage( PM_NOREMOVE ) results in a callback to the
+application's JournalPlaybackProc with an HC_ACTION code. The subsequent
+PeekMessage( PM_REMOVE ) also calls the JournalPlaybackProc with an
+HC_ACTION code. If the peek is successful, it is followed by an HC_SKIP
+callback.
+<P>
+In order to have playback from a journal playback hook occur at a certain
+rate, Microsoft designed it so that the value returned by the
+JournalPlaybackProc can be non-zero. This value represents the number of
+clock-ticks the system should wait before processing the event. What the
+documentation doesn't make clear is that when the delay has expired,
+another callback to the JournalPlaybackProc is made to obtain the same
+event again; the event provided with the previous non-zero delay is not
+used at all. All subsequent HC_ACTION calls that request the same event
+should be returned with a zero delay value. Only after an HC_SKIP callback
+has been made, may an HC_ACTION callback return a non-zero delay value
+again. Some applications do not do this correctly, and simply alternate
+between returning a delay and returning a non-delay.
+<P>
+This alternating delay/no delay method made the Windows NT menu loop hang
+because the PeekMessage( PM_NOREMOVE ) would get an input event (with no
+delay), then the PeekMessage( PM_REMOVE ) would get a non-zero return
+value from the JournalPlaybackProc. This represents no message -- so
+instead of issuing an HC_SKIP callback to the JournalPlaybackProc to
+advance to the next event, the Windows NT menu loop code simply looped back
+to the PeekMessage( PM_NOREMOVE ) getting stuck in an infinite loop.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To work around this problem, make sure the JournalPlaybackProc correctly
+returns the delay only for the first request for an event.
+<P>
+Neither Windows version 3.1 nor Windows 95 have this problem.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following sample code demonstrates correct and incorrect methods of
+handling delays in a journal playback hook.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+LRESULT CALLBACK JournalPlaybackProc(
+<PRE>    int nCode,
+    WPARAM wParam,
+    LPARAM lParam)
+</PRE>{
+<PRE>    static BOOL     fDelay;
+    static EVENTMSG event;
+    static LRESULT  ticks_delay;
+    BOOL            fCallNextHook = FALSE;
+    LRESULT         lResult = 0;
+
+    switch( nCode )
+    {
+        case HC_SKIP:
+            fDelay = TRUE;      // &lt;&lt;&lt;&lt; CORRECT PLACE TO RESET fDelay
+
+            // Get the next event from the list.  If the routine returns
+            // FALSE, then we are done - release the hook.
+            if( !GetNextEvent( &amp;event, &amp;ticks_delay ))
+                SetJournalHook( FALSE, NULL );
+            break;
+
+        case HC_GETNEXT:
+        {
+            // Structure information returned from previous GetNextEvent
+            // call
+            LPEVENTMSG lpEvent = (LPEVENTMSG) lParam;
+
+            // Set the event
+            *lpEvent = event;
+
+            if( fDelay )
+            {
+                // Toggle pause variable so that the next call won't
+                // pause.  Return the pause length specified by ticks_delay
+                // since this is the first time the event has been
+                // requested.
+
+                fDelay = FALSE; // &lt;&lt;&lt;&lt; CORRECT PLACE TO CLEAR fDelay
+                return( ticks_delay );
+            }
+            break;
+        }
+
+        case HC_SYSMODALOFF:
+            // System modal dialog is going away - something really got
+            // hosed.  Windows took care of removing our JournalPlayback
+            // hook, so no need to call SetJournalHook( FALSE ).
+
+            fCallNextHook = TRUE;
+            break;
+
+        case HC_SYSMODALON:
+        default:
+            // Something is is not right here, let the next hook handle
+            // it.
+
+            fCallNextHook = TRUE;
+            break;
+    }
+
+    // If the event wasn't processed by our code, call next hook
+    if( fCallNextHook )
+        lResult = CallNextHookEx( s_journalHook, nCode, wParam, lParam );
+
+    // fDelay = TRUE;           // &lt;&lt;&lt;&lt; WRONG PLACE TO RESET bDelay !!!
+    return lResult;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 3.50<BR>
+KBCategory: kbui kbprb<BR>
+KBSubcategory: UsrHks<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 29, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

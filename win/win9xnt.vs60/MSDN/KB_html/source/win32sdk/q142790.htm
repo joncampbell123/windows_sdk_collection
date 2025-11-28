@@ -1,0 +1,461 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Extract the Profile Path from a Gina in Windows NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q142790">
+<META NAME="KBModify" CONTENT="1996/08/05">
+<META NAME="KBCreate" CONTENT="1996/01/18">
+<META NAME="Keywords" CONTENT="kbprg kbhowto kbcode kbwebcontent">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article explains how to get a profile path to return from a GINA in Windows NT.  MORE INFORMATION  In a standard Windows NT system, interactively logged-on users are given a profile. A profile is a registry hive that is tailored to a particula...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QDJ2,QAUD,QAGU,QAI4,QA9A,QAH6,QBW4,QDIT,QALW,QBW3,QAL3,QAH5,QAGI,QAY2 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Extract the Profile Path from a Gina in Windows NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 5, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q142790</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) for Windows NT
+   versions 3.5, 3.51
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article explains how to get a profile path to return from a GINA in
+Windows NT.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+In a standard Windows NT system, interactively logged-on users are given a
+profile. A profile is a registry hive that is tailored to a particular
+user. The profile is typically used to save user-specific information such
+as screen appearance, mouse click speeds, whether there is a screen saver,
+whether the screen saver is secure, and so on. This profile, referenced
+using the special registry key HKEY_CURRENT_USER, is loaded by Winlogon
+during the interactive boot process.
+<P>
+The interface between Winlogon and GINA DLLs includes information passed
+back from GINA that allows Winlogon to locate and load the logged-on user's
+profile. The WlxLoggedOutSAS() pProfile parameter is used to return a
+pointer to a structure of type WLX_PROFILE_V1_0.
+<P>
+The WLX_PROFILE_V1_0 structure is currently used to support remote and
+mandatory profiles, which can be configured with User Manager for Domains
+(usrmgr) | User properties | Profile | User Profile Path. This action can
+be performed programmatically through the Windows NT LAN Manager API
+NetUserSetInfo() at info-level 3.
+<P>
+If a NULL pointer is returned from WlxLoggedOutSAS() as the pProfile
+parameter, Winlogon will handle the loading (and creation) of the user
+profile. In this case, the optional, administrator-defined profile path
+will be ignored for the logon.
+<P>
+<P><h3>Step-by-Step Procedure</h3>
+ 
+<P>
+Based on the supplied username and domain name, the following steps can
+be used to determine if and what the administrator-defined profile path
+is set to:
+
+<OL><P><LI>Determine the current domain name, with a call to the Windows NT LAN
+   Manager API NetUserModalsGet() at info level 2. The returned
+   USER_MODALS_INFO_2 structure member usrmod2_domain_name will contain
+   the domain name. This call need only be made once, during the first
+   logon attempt. Store the result of the first call in a global variable.
+   The current domain name is needed for comparison against the logon
+   domain name, in order to determine where to look up account information.
+
+<P><LI>If the supplied domain name is not equal to the current domain name,
+   get the computer name of the domain controller associated with the
+   supplied domain. Use the Win32 API lstrcmpiW() for string comparison
+   and the Windows NT LAN Manager API NetGetDCName() to obtain the
+   computer name of the domain controller.
+
+<P><LI>Use the Windows NT LAN Manager API NetUserGetInfo() at info-level 3
+   to acquire the user account information for the specified user. When
+   calling NetUserGetInfo(), target the approriate machine -- either the
+   local machine by way of NULL, or the domain controller computer name
+   acquired from NetGetDCName().
+
+<P><LI>If the USER_INFO_3 structure member usri3_profile returned by
+   NetUserGetInfo() is an empty string, no profile was defined by an
+   administrator. In this case, WlxLoggedOutSAS() can return a NULL
+   pointer as the pProfile parameter, and no further actions need to be
+   performed; otherwise continue.
+
+<P><LI>Copy the USER_INFO_3 structure member usri3_profile to storage
+   allocated by HeapAlloc(GetProcessHeap()...).  The following source
+   code illustrates this point:
+<P>
+   HeapAlloc( GetProcessHeap(), 0,
+<P><PRE>      (lstrlenW(usri3_profile) + 1) * sizeof(WCHAR) // string + NULL
+      );
+</PRE>
+<P><LI>Allocate a block of memory of size WLX_PROFILE_V1_0. The following
+   source code illustrates this point:
+<P>
+   HeapAlloc( GetProcessHeap(), 0, sizeof(WLX_PROFILE_V1_0) );
+
+<P><LI>Set the dwType member of the WLX_PROFILE_V1_0 structure to
+   WLX_PROFILE_TYPE_V1_0.
+
+<P><LI>Set the pszProfile member of the WLX_PROFILE_V1_0 structure to
+   point to the copy of the USER_INFO_3 usri3_profile structure member.
+
+<P><LI>Return a pointer to the allocated WLX_PROFILE_V1_0 structure from
+   WlxLoggedOutSAS() as the pProfile parameter.
+<P>
+</OL>NOTE: The Windows NT LAN Manager APIs are Unicode only. Strings passed to
+these API must be in Unicode form. Gina is also Unicode only, so this is
+not usually an issue.
+<P>
+NOTE: It is important to free buffers allocated by the Windows NT LAN
+Manager API. The Windows NT Lan Manager API NetApiBufferFree() can be used
+for this purpose.
+<P>
+<P><h3>Windows NT Version Specific Information</h3>
+ 
+<P>
+In Windows NT 3.51 and above, Microsoft recommends that you call the Win32
+API LogonUser() to obtain an access token representing the supplied
+username and domain name. This API does not return information specific to
+any authentication package, such as the user profile path. For this reason,
+it is necessary to follow the steps outlined in this article.
+<P>
+In Windows NT 3.5, the LsaLogonUser() must be used to obtain an access
+token representing the supplied username and domain name. This API does
+return a profile path, so the steps outlined in this article do not apply.
+However, the interface to LsaLogonUser() is subject to change in future
+versions of Windows NT; LogonUser() should be used when possible.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/*
+ The following function illustrates a WlxLoggedOutSAS() which obtains
+ the user profile path, and returns the result if a profile path is
+ found. This function is a modified version of WlxLoggedOutSAS() taken
+ from the Win32 SDK version 3.51 gina sample, found in
+ Mstools/Samples/Win32/Winnt/Gina on the MSDN CD-ROM.
+*/
+
+</PRE></OL>int
+WINAPI
+WlxLoggedOutSAS(
+<PRE>    PVOID                   pWlxContext,
+    DWORD                   dwSasType,
+    PLUID                   pAuthenticationId,
+    PSID                    pLogonSid,
+    PDWORD                  pdwOptions,
+    PHANDLE                 phToken,
+    PWLX_MPR_NOTIFY_INFO    pMprNotifyInfo,
+    PVOID *                 pProfile
+    )
+</PRE>{
+<PRE>    int         result;
+    PWLX_PROFILE_V1_0   pWlxProfile;
+    PWSTR szProfile;
+    // PMiniAccount    pAccount;
+    PGlobals        pGlobals;
+
+    pGlobals = (PGlobals) pWlxContext;
+
+    result = pWlxFuncs-&gt;WlxDialogBoxParam(
+                hGlobalWlx,
+                hDllInstance,
+                (LPTSTR) MAKEINTRESOURCE(IDD_LOGON_DIALOG),
+                NULL,
+                LogonDlgProc,
+                (LPARAM) pGlobals );
+
+    if (result == WLX_SAS_ACTION_LOGON)
+    {
+        result = AttemptLogon(pGlobals, pGlobals-&gt;pAccount,
+                                pLogonSid, pAuthenticationId);
+
+        if (result == WLX_SAS_ACTION_LOGON)
+        {
+            *pdwOptions = 0;
+            *phToken = pGlobals-&gt;hUserToken;
+
+            if(!GetUserProfilePath(
+                pGlobals-&gt;pAccount-&gt;pszUsername,
+                pGlobals-&gt;pAccount-&gt;pszDomain,
+                &amp;szProfile
+                )) {
+                //
+                // error occurred acquiring profile path. Log error
+                // here if appropriate. Default is to not provide
+                // profile information as szProfile will be NULL
+                // which causes *pProfile to be set to NULL
+                //
+            }
+
+            //
+            // if no profile is specified in the userinfo, let winlogon
+            // handle locating the registry hive
+            //
+            if(szProfile == NULL) {
+                *pProfile = NULL;
+            }
+            else {
+                pWlxProfile = (PWLX_PROFILE_V1_0)HeapAlloc(
+                    GetProcessHeap(), 0, sizeof(WLX_PROFILE_V1_0) );
+
+                if(pWlxProfile == NULL) {
+                    //
+                    // error occurred allocating memory. Log error
+                    // here if appropriate. Free memory associated
+                    // with the acquired profile path. Default is to
+                    // not provide profile information by supplying
+                    // NULL as pProfile.
+                    //
+                    HeapFree(GetProcessHeap(), 0, szProfile);
+                    *pProfile = NULL;
+                }
+                else {
+                    //
+                    // the allocation succeeded -- fill in the profile
+                    // information
+                    //
+                    pWlxProfile-&gt;dwType = WLX_PROFILE_TYPE_V1_0;
+                    pWlxProfile-&gt;pszProfile = szProfile;
+                    *pProfile = pWlxProfile;
+                }
+            }
+
+            pMprNotifyInfo-&gt;pszUserName =
+                DupString(pGlobals-&gt;pAccount-&gt;pszUsername);
+            pMprNotifyInfo-&gt;pszDomain =
+                DupString(pGlobals-&gt;pAccount-&gt;pszDomain);
+            pMprNotifyInfo-&gt;pszPassword =
+                DupString(pGlobals-&gt;pAccount-&gt;pszPassword);
+            pMprNotifyInfo-&gt;pszOldPassword = NULL;
+        }
+    }
+    return(result);
+</PRE>}
+<P>
+<PRE>/*
+ The following function obtains the profile path for the supplied user
+ on the supplied domain.
+
+ If the function succeeds, the return value is TRUE.
+ If the function fails, the return value is FALSE, and the ProfilePath
+ is set to NULL.
+
+ If no profile path exists for the supplied user, the ProfilePath
+ parameter will be set to NULL. If ProfilePath is non-NULL, the caller
+ is responsible for freeing the string via HeapFree(GetProcessHeap...).
+
+ This source code relies on the lm.h header file and the netapi32.lib
+ import library.
+*/
+</PRE>BOOL
+GetUserProfilePath(
+<PRE>    IN LPWSTR UserName,     // UserName to retrieve profile path
+    IN LPWSTR Domain,       // Domain user resides on
+    OUT LPWSTR *ProfilePath // result profile path.  NULL == no profile
+    )
+</PRE>{
+<PRE>    LPWSTR wTargetComputer;
+    PUSER_INFO_3 ui3 = NULL;
+    PUSER_MODALS_INFO_2 umi2 = NULL;
+    NET_API_STATUS nas;
+    BOOL bSuccess = FALSE; // assume this function will fail
+
+    *ProfilePath = NULL;
+
+    //
+    // get the local domain name.
+    // NOTE: in a gina, it would be wise to retrieve this only once,
+    // in DllMain during DLL_PROCESS_ATTACH. The pointer could be
+    // saved in a global variable and then compared against below.
+    //
+    nas=NetUserModalsGet(NULL, 2, (LPBYTE *)&amp;umi2);
+    if(nas != NO_ERROR) {
+        return FALSE;
+    }
+
+    __try {
+
+    //
+    // determine if you need to look up at the domain controller
+    //
+    if(lstrcmpiW(Domain, umi2-&gt;usrmod2_domain_name) == 0) {
+        //
+        // target computer is local machine
+        //
+        wTargetComputer = NULL;
+    }
+    else {
+        //
+        // target computer is the PDC computer name for the specified
+        // domain
+        //
+        nas=NetGetDCName(NULL, Domain, (LPBYTE *)&amp;wTargetComputer);
+        if(nas != NO_ERROR) {
+            __leave;
+        }
+    }
+
+    //
+    // fetch the info for the user on the appropriate machine
+    //
+    nas=NetUserGetInfo(
+        wTargetComputer,
+        UserName,            // user name
+        3,                   // info-level
+        (LPBYTE *) &amp;ui3
+        );
+
+    if(nas != NO_ERROR) {
+        __leave;
+    }
+
+    //
+    // if there is no profile, indicate success.
+    // Note that *ProfilePath will be a NULL pointer
+    //
+    if(*ui3-&gt;usri3_profile == L'\0') {
+        bSuccess = TRUE;
+        __leave;
+    }
+
+    //
+    // allocate storage for profile string
+    //
+    *ProfilePath = HeapAlloc(GetProcessHeap(), 0,
+        (lstrlenW(ui3-&gt;usri3_profile) + 1) * sizeof(WCHAR) );
+
+    if(*ProfilePath == NULL) __leave;
+
+    //
+    // copy the appropriate structure memory to allocated storage
+    //
+    if(lstrcpyW(*ProfilePath, ui3-&gt;usri3_profile) != NULL)
+        bSuccess = TRUE; // indicate success if the copy succeeded
+
+    } // try
+    __finally {
+
+    //
+    // free the allocated buffers
+    //
+    if(umi2 != NULL)
+        NetApiBufferFree(umi2);
+
+    if(ui3 != NULL)
+        NetApiBufferFree(ui3);
+
+    if(wTargetComputer != NULL)
+        NetApiBufferFree(wTargetComputer);
+
+    if(!bSuccess) {
+        if(*ProfilePath != NULL) {
+            HeapFree(GetProcessHeap(), 0, *ProfilePath);
+            *ProfilePath = NULL;
+        }
+    }
+
+    } // finally
+
+    return bSuccess;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.50 LogonUser LsaLogonUser<BR>
+KBCategory: kbprg kbhowto kbcode kbwebcontent<BR>
+KBSubcategory: BseSecurity CodeSam<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 5, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

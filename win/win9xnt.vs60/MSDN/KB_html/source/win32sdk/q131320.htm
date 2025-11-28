@@ -1,0 +1,357 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Convert a Binary SID to Textual Form </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q131320">
+<META NAME="KBModify" CONTENT="1996/12/16">
+<META NAME="KBCreate" CONTENT="1995/06/07">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  It may be useful to convert a binary SID (security identifier) to a readable, textual form, for display or manipulation purposes.  One example of an application that makes use of SIDs in textual form is the Windows NT Event Viewer. If the Event Vie...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAKD,QAUD,QADT,QBWP,QAKC,QAGU,QATX,QALW,QACJ,QAO4,QAAP,QAB4,QBW7,QAPN,QAMB V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Convert a Binary SID to Textual Form</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 16, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q131320</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.1, 3.5, 3.51, and 4.00
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+It may be useful to convert a binary SID (security identifier) to a
+readable, textual form, for display or manipulation purposes.
+<P>
+One example of an application that makes use of SIDs in textual form is the
+Windows NT Event Viewer. If the Event Viewer cannot look up the name
+associated with the SID of a logged event, the Event Viewer displays a
+textual representation of the SID.
+<P>
+Windows NT also makes use of textual SIDs when loading user configuration
+hives into the HKEY_USERS registry key.
+<P>
+Applications that obtain domain and user names can display the textual SID
+representation when the Win32 API LookupAccountSid fails to obtain domain
+and user information. Such a failure can occur if the network is down, or
+the target machine is unavailable.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following sample code displays the textual representation of the SID
+associated with the current user. This source code converts a SID using the
+same algorithm that the Windows NT operating system components use.
+<P>
+<PRE>/*++
+
+</PRE>A standardized shorthand notation for SIDs makes it simpler to
+visualize their components:
+<P>
+S-R-I-S-S...
+<P>
+In the notation shown above,
+<P>
+S identifies the series of digits as an SID,
+R is the revision level,
+I is the identifier-authority value,
+S is subauthority value(s).
+<P>
+An SID could be written in this notation as follows:
+S-1-5-32-544
+<P>
+In this example,
+the SID has a revision level of 1,
+an identifier-authority value of 5,
+first subauthority value of 32,
+second subauthority value of 544.
+(Note that the above Sid represents the local Administrators group)
+<P>
+The GetTextualSid function will convert a binary Sid to a textual
+string.
+<P>
+The resulting string will take one of two forms.  If the
+IdentifierAuthority value is not greater than 2^32, then the SID
+will be in the form:
+<P>
+S-1-5-21-2127521184-1604012920-1887927527-19009
+<PRE>  ^ ^ ^^ ^^^^^^^^^^ ^^^^^^^^^^ ^^^^^^^^^^ ^^^^^
+  | | |      |          |          |        |
+  +-+-+------+----------+----------+--------+--- Decimal
+
+</PRE>Otherwise it will take the form:
+<P>
+S-1-0x206C277C6666-21-2127521184-1604012920-1887927527-19009
+<PRE>  ^ ^^^^^^^^^^^^^^ ^^ ^^^^^^^^^^ ^^^^^^^^^^ ^^^^^^^^^^ ^^^^^
+  |       |        |      |          |          |        |
+  |   Hexadecimal  |      |          |          |        |
+  +----------------+------+----------+----------+--------+--- Decimal
+
+</PRE>If the function succeeds, the return value is TRUE.
+If the function fails, the return value is FALSE.  To get extended
+<PRE>    error information, call the Win32 API GetLastError().
+
+Scott Field (sfield)    11-Jul-95
+</PRE>Unicode enabled
+<P>
+<PRE>Scott Field (sfield)    15-May-95
+--*/
+
+#define RTN_OK 0
+#define RTN_ERROR 13
+
+#include &lt;windows.h&gt;
+#include &lt;stdio.h&gt;
+
+</PRE>BOOL GetTextualSid(
+<PRE>    PSID pSid,          // binary Sid
+    LPSTR TextualSID,   // buffer for Textual representation of Sid
+    LPDWORD dwBufferLen // required/provided TextualSid buffersize
+    );
+
+int main(void)
+</PRE>{
+<PRE>    #define MY_BUFSIZE 256 // all allocations should be dynamic
+    HANDLE hToken;
+    TOKEN_USER ptgUser[MY_BUFSIZE];
+    DWORD cbBuffer=MY_BUFSIZE;
+    char szTextualSid[MY_BUFSIZE];
+    DWORD cbSid=MY_BUFSIZE;
+    BOOL bSuccess;
+
+    //
+    // obtain current process token
+    //
+    if(!OpenProcessToken(
+                GetCurrentProcess(), // target current process
+                TOKEN_QUERY,         // TOKEN_QUERY access
+                &amp;hToken              // resultant hToken
+                ))
+    {
+        fprintf(stderr, "OpenProcessToken error! (rc=%lu)\n",
+            GetLastError() );
+        return RTN_ERROR;
+    }
+
+    //
+    // obtain user identified by current process' access token
+    //
+    bSuccess=GetTokenInformation(
+                hToken,    // identifies access token
+                TokenUser, // TokenUser info type
+                ptgUser,   // retrieved info buffer
+                cbBuffer,  // size of buffer passed-in
+                &amp;cbBuffer  // required buffer size
+                );
+
+    // close token handle.  do this even if error above
+    CloseHandle(hToken);
+
+    if(!bSuccess)
+    {
+        fprintf(stderr, "GetTokenInformation error! (rc=%lu)\n",
+            GetLastError() );
+        return RTN_ERROR;
+    }
+
+    //
+    // obtain the textual representaion of the Sid
+    //
+    if(!GetTextualSid(
+                ptgUser-&gt;User.Sid, // user binary Sid
+                szTextualSid,      // buffer for TextualSid
+                &amp;cbSid             // size/required buffer
+                ))
+    {
+        fprintf(stderr, "GetTextualSid error! (rc=%lu)\n",
+            GetLastError() );
+        return RTN_ERROR;
+    }
+
+    // display the TextualSid representation
+    fprintf(stdout,"%s\n", szTextualSid);
+
+    return RTN_OK;
+</PRE>}
+<P>
+<P>
+BOOL GetTextualSid(
+<PRE>    PSID pSid,          // binary Sid
+    LPTSTR TextualSid,  // buffer for Textual representaion of Sid
+    LPDWORD dwBufferLen // required/provided TextualSid buffersize
+    )
+</PRE>{
+<PRE>    PSID_IDENTIFIER_AUTHORITY psia;
+    DWORD dwSubAuthorities;
+    DWORD dwSidRev=SID_REVISION;
+    DWORD dwCounter;
+    DWORD dwSidSize;
+
+    //
+    // test if Sid passed in is valid
+    //
+    if(!IsValidSid(pSid)) return FALSE;
+
+    // obtain SidIdentifierAuthority
+    psia=GetSidIdentifierAuthority(pSid);
+
+    // obtain sidsubauthority count
+    dwSubAuthorities=*GetSidSubAuthorityCount(pSid);
+
+    //
+    // compute buffer length
+    // S-SID_REVISION- + identifierauthority- + subauthorities- + NULL
+    //
+    dwSidSize=(15 + 12 + (12 * dwSubAuthorities) + 1) * sizeof(TCHAR);
+
+    //
+    // check provided buffer length.
+    // If not large enough, indicate proper size and setlasterror
+    //
+    if (*dwBufferLen &lt; dwSidSize)
+    {
+        *dwBufferLen = dwSidSize;
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return FALSE;
+    }
+
+    //
+    // prepare S-SID_REVISION-
+    //
+    dwSidSize=wsprintf(TextualSid, TEXT("S-%lu-"), dwSidRev );
+
+    //
+    // prepare SidIdentifierAuthority
+    //
+    if ( (psia-&gt;Value[0] != 0) || (psia-&gt;Value[1] != 0) )
+    {
+        dwSidSize+=wsprintf(TextualSid + lstrlen(TextualSid),
+                    TEXT("0x%02hx%02hx%02hx%02hx%02hx%02hx"),
+                    (USHORT)psia-&gt;Value[0],
+                    (USHORT)psia-&gt;Value[1],
+                    (USHORT)psia-&gt;Value[2],
+                    (USHORT)psia-&gt;Value[3],
+                    (USHORT)psia-&gt;Value[4],
+                    (USHORT)psia-&gt;Value[5]);
+    }
+    else
+    {
+        dwSidSize+=wsprintf(TextualSid + lstrlen(TextualSid),
+                    TEXT("%lu"),
+                    (ULONG)(psia-&gt;Value[5]      )   +
+                    (ULONG)(psia-&gt;Value[4] &lt;&lt;  8)   +
+                    (ULONG)(psia-&gt;Value[3] &lt;&lt; 16)   +
+                    (ULONG)(psia-&gt;Value[2] &lt;&lt; 24)   );
+    }
+
+    //
+    // loop through SidSubAuthorities
+    //
+    for (dwCounter=0 ; dwCounter &lt; dwSubAuthorities ; dwCounter++)
+    {
+        dwSidSize+=wsprintf(TextualSid + dwSidSize, TEXT("-%lu"),
+                    *GetSidSubAuthority(pSid, dwCounter) );
+    }
+
+    return TRUE;
+</PRE>}
+<P>
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg<BR>
+KBSubcategory: BseSecurity CodeSam<BR>
+Additional reference words: 3.10 3.50 3.51 4.00 Convert LookupAccountSid<BR>
+SID String<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 16, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

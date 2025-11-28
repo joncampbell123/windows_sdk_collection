@@ -1,0 +1,268 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Read Memo Field Data from Delimited ASCII Files </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q115731">
+<META NAME="KBModify" CONTENT="1996/04/30">
+<META NAME="KBCreate" CONTENT="1994/06/01">
+<META NAME="Keywords" CONTENT="kbenv kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  FoxPro uses the APPEND FROM command to read in text stored in various types of delimited ASCII file formats. The APPEND FROM command will read in all data with the exception of any memo field data. This data is completely ignored by the APPEND FROM...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBRZ,QAAP,QAB4,QBFN,QA7O,QA7N,QAGX,QAH4,QAY2,QAVK,QAYY,QAUD,QAKP,QA5V,QBV8 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Read Memo Field Data from Delimited ASCII Files</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 30, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q115731</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual FoxPro for Windows, version 3.0
+<LI>Microsoft FoxPro for Windows, versions 2.5, 2.5a, 2.5b, 2.6
+<LI>Microsoft FoxPro for MS-DOS, versions 2.5, 2.5a, 2.5b, 2.6
+<LI>Microsoft FoxPro for Macintosh, versions 2.5b, 2.5c
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+FoxPro uses the APPEND FROM command to read in text stored in various types
+of delimited ASCII file formats. The APPEND FROM command will read in all
+data with the exception of any memo field data. This data is completely
+ignored by the APPEND FROM command. The suggested work around has always
+been to read the file in using low-level I/O. This requires writing a
+program that will read the data in 1 byte at a time. The program shown
+below will work with almost any type of delimited ASCII text file and will
+read in the memo field data that in the past had been left out.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   ***************************************************
+   *  Append data from any delimited ASCII file into
+   *  a predefined FoxPro database file. The intent
+   *  is to read in memo field data, but the program
+   *  will also address files with varying delimiters.
+   *  This program assumes that the target database
+   *  file is currently in use, used exclusively, and
+   *  in the current work area.
+   ***************************************************
+   PARAMETERS text_file, char_delimiter, field_delimiter
+
+   ***************************************************
+   *  Create an array of database structure.
+   *  Determine number of records in array for FOR
+   *  loop counting.
+   ***************************************************
+   =AFIELDS(structure)
+   rows = ALEN(structure,1)
+
+   ***************************************************
+   *  Attempt to open text file with low-level handle.
+   *  If the test is successful, continue; otherwise,
+   *  report reason for failure.
+   ***************************************************
+   file_handle = FOPEN(text_file)
+   IF file_handle &lt; 0
+      DO errhand WITH FERROR()
+      RETURN .F.
+   ENDIF
+
+   ***************************************************
+   *  Begin DO WHILE loop and continue until end of
+   *  file marker is reached in text file.
+   ***************************************************
+   DO WHILE !FEOF(file_handle)
+      APPEND BLANK
+      FOR i = 1 TO rows
+         IF structure[i,2] = "N"
+            =readnum("",0)
+         ELSE
+            =readchar("",0)
+         ENDIF
+      ENDFOR
+   ENDDO
+   =FCLOSE(file_handle)
+
+
+   ***************************************************
+   *  Read numeric field data into corresponding
+   *  field in database.
+   ************************************************
+   FUNCTION readnum
+   PARAMETERS accum_text, count_comma
+   DO WHILE count_comma &lt; 1
+      single = FREAD(file_handle,1)
+      IF single = field_delimiter OR single = CHR(13)
+         single = ""
+         count_comma = count_comma + 1
+         IF count_comma &lt; 1 AND i &gt; rows
+            =FSEEK(file_handle,1,1)
+         ENDIF
+      ELSE
+         accum_text = accum_text + single
+      ENDIF
+   ENDDO
+   REPLACE &amp;structure[i,1] WITH VAL(accum_text)
+   accum_text = ""
+   RETURN
+
+   ***************************************************
+   *  Read all field types in as character except
+   *  numeric fields.
+   ***************************************************
+   FUNCTION readchar
+   PARAMETERS accum_text, count_quotes
+   DO WHILE count_quotes &lt; 2 AND !FEOF(file_handle)
+      single = FREAD(file_handle,1)
+      IF single = char_delimiter
+         single = ""
+         count_quotes = count_quotes + 1
+         IF count_quotes &gt;= 2
+            x=FREAD(file_handle,1)
+            IF x = CHR(13)
+               =FSEEK(file_handle,1,1)
+            ENDIF
+         ENDIF
+      ELSE
+         accum_text = accum_text + single
+      ENDIF
+   ENDDO
+   REPLACE &amp;structure[i,1] WITH accum_text
+   accum_text = ""
+   RETURN
+
+   ***************************************************
+   *  Error handling routine
+   ***************************************************
+   FUNCTION errhand
+   PARAMETERS error
+   DO CASE
+      CASE error = 2
+         reason = "File not found"
+      CASE error = 4
+         reason = "Too many files open"
+      CASE error = 5
+         reason = "File access denied"
+      CASE error = 6
+         reason = "Invalid file handle given"
+      CASE error = 8
+         reason = "Out of memory"
+      CASE error = 25
+         reason = "Seek error (can't seek before start of file)"
+      CASE error = 29
+         reason = "Disk is full"
+      CASE error = 31
+         reason = "Error opening file"
+   ENDCASE
+   WAIT WINDOW "Cannot open file: "+reason
+
+</PRE>NOTE: In order to call this program so it will work with a delimited ASCII
+file that uses a comma to separate fields and quotation marks to indicate
+character fields, issue the following command from a program or the Command
+window:
+<P>
+<PRE>   DO apndmemo.prg WITH "&lt;name of text file&gt;",'"',','
+
+</PRE>NOTE: This program assumes an ASCII file format as the source file. If
+there is an end-of-file (EOF) marker in this file, the program will not
+terminate and will remain in an infinite loop until the ESC key is pressed.
+Despite this minor problem, the data will still be read correctly. To avoid
+this problem, remove the EOF marker with a text editor.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: VFoxWin 3.00  FoxDos FoxWin 2.00 2.50 2.50a<BR>
+2.50b 2.60 2.50c<BR>
+KBCategory: kbenv kbprg kbcode<BR>
+KBSubcategory: FxenvMemory<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 30, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

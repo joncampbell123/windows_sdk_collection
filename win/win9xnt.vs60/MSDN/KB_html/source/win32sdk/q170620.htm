@@ -1,0 +1,951 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Manage Computer Domain Membership Programmatically </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q170620">
+<META NAME="KBModify" CONTENT="1997/06/25">
+<META NAME="KBCreate" CONTENT="1997/06/25">
+<META NAME="Keywords" CONTENT="BseSecurity kbcode kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  You can use the Control Panel Network applet to control the Windows NT domain membership for a Windows NT computer. By clicking on the Change button, you can move the computer from a workgroup or domain to another workgroup or domain.  This article...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QA9A,QBWP,QBW3,QAI4,QAUJ,QALW,QBG2,QAWK,QATQ,QAJG,QAI5,QAK7,QBVV,QAXB V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Manage Computer Domain Membership Programmatically</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q170620</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT versions 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+You can use the Control Panel Network applet to control the Windows NT
+domain membership for a Windows NT computer. By clicking on the Change
+button, you can move the computer from a workgroup or domain to another
+workgroup or domain.
+<P>
+This article describes how to programmatically manage domain membership for
+a Windows NT workstation.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+This article only describes how to join a workstation to a domain. It is
+assumed that a computer account for the machine has already been created on
+the Domain Controller. For information on how to create the computer
+account, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q136867.htm">Q136867</A></B>
+   TITLE     : HOWTO: Manage Computer Accounts Programmatically in
+               Windows NT
+
+</PRE>This article uses the Windows NT LSA (local security authority) APIs to
+manage domain membership and the machine password. The Windows NT LAN
+Manager APIs are used to obtain information about the computer and domain
+controllers.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   /*++
+
+   Copyright (c) 1997  Microsoft Corporation
+
+   Module Name:
+
+       wksacct.c
+
+   Description:
+
+       This sample illustrates how to manage Windows NT domain membership
+       at the workstation level.  This sample duplicates what takes place
+       when changing domain membership via the network control panel
+       applet.
+
+       The first command line argument indicates the name of the domain to
+       which you want the computer to belong (or trust).
+
+       The second command line argument should be equal to the password for
+       a newly created computer account. This password is typically the
+       machine name converted to all lowercase.
+
+       See the following Knowledge Base article for more details of machine
+       account creation:
+
+          ARTICLEID: <B><A href="../win32sdk/q136867.htm">Q136867</A></B>
+          TITLE    : HOWTO: Manage Computer Accounts Programmatically in
+                     Windows NT
+
+       Note that this sample will not allow this operation on a Domain
+       Controller.
+
+       This sample requires header files found on the Win32 SDK CD
+       in the \mstools\samples\win32\winnt\security directory.
+
+       TODO: Delete any existing domain trust accounts
+             Remove any previous Domain Admin groups from local groups
+             Add Domain Administrators to Local Administrators group
+             Change Net Logon Service to start automatically
+
+       NOTE: To change workgroup membership, change the following code such
+             that you do not call SetWorkstationTrustedDomainInfo() and
+             call SetPrimaryDomain() with a NULL Domain SID.
+
+       Note:  Lan Manager NetXxx API are Unicode only.
+       Note:  Windows NT LSA API are Unicode only.
+
+       The following import libraries are required:
+           netapi32.lib
+           advapi32.lib
+
+       David Mowers (davemo)   20-June-97
+
+   --*/
+
+   #ifndef UNICODE
+   #define UNICODE
+   #define _UNICODE
+   #endif
+
+   #include &lt;windows.h&gt;
+   #include &lt;lm.h&gt;         // for NetXxx API
+   // \mstools\samples\win32\winnt\security\include\ntsecapi.h
+   #include "ntsecapi.h"
+
+   #include &lt;stdio.h&gt;
+
+   #define RTN_OK 0
+   #define RTN_USAGE 1
+   #define RTN_ERROR 13
+
+   //
+   // if you have the ddk, include ntstatus.h
+   //
+   #ifndef STATUS_SUCCESS
+   #define STATUS_SUCCESS                  ((NTSTATUS)0x00000000L)
+   #define STATUS_OBJECT_NAME_NOT_FOUND    ((NTSTATUS)0xC0000034L)
+   #define STATUS_OBJECT_NAME_COLLISION    ((NTSTATUS)0xC0000035L)
+   #define STATUS_INVALID_SID              ((NTSTATUS)0xC0000078L)
+   #endif
+
+   BOOL
+   GetDomainDCName(
+       LPWSTR Domain,
+       LPWSTR *pPrimaryDC
+       );
+
+
+   BOOL
+   EstablishNullSession(
+       LPCWSTR Server,
+       BOOL bEstablish
+       );
+
+   BOOL
+   DoesAccountExist(
+       LPWSTR Domain,
+       LPWSTR Account
+       );
+
+   void
+   InitLsaString(
+       PLSA_UNICODE_STRING LsaString,
+       LPWSTR String
+       );
+
+   NTSTATUS
+   OpenPolicy(
+       LPWSTR ComputerName,
+       DWORD DesiredAccess,
+       PLSA_HANDLE PolicyHandle
+       );
+
+   BOOL
+   GetDomainSid(
+       LPWSTR DomainName,  // domain name to acquire Sid of
+       PSID *pDomainSid    // points to allocated Sid on success
+       );
+
+   NTSTATUS
+   SetWorkstationTrustedDomainInfo(
+       LSA_HANDLE PolicyHandle,
+       PSID DomainSid,             // Sid of domain to manipulate
+       LPWSTR TrustedDomainName,   // trusted domain name to add/update
+       LPWSTR Password             // new trust password for trusted domain
+       );
+
+   NTSTATUS
+   SetPrimaryDomain(
+       LSA_HANDLE PolicyHandle,
+       PSID DomainSid,
+       LPWSTR TrustedDomainName
+       );
+
+   void
+   DisplayNtStatus(
+       LPSTR szAPI,    // ansi string containing API name
+       NTSTATUS Status
+       );
+
+   void
+   DisplayError(
+       LPSTR szAPI,    // pointer to failed API name
+       DWORD dwLastError
+       );
+
+   //
+   // Unicode entry point and argv
+   //
+   int
+   __cdecl
+   wmain(
+       int argc,
+       wchar_t *argv[]
+       )
+   {
+       LSA_HANDLE PolicyHandle;
+       LPWSTR Workstation; // target machine of policy update
+       LPWSTR Password;          // password of machine account
+       PSID DomainSid=NULL;      // Sid representing domain to trust
+       LPWSTR TrustedDomainName; // domain to join
+       LPWSTR PrimaryDC=NULL;    // name of that domain's PDC
+       PSERVER_INFO_101 si101;
+       DWORD Type;
+       PUSER_MODALS_INFO_2 umi2;
+       NET_API_STATUS nas;
+       NTSTATUS Status;
+
+       if(argc &lt; 3) {
+           fprintf(stderr,
+               "Usage: %ls &lt;TrustedDomainName&gt; &lt;password&gt;\n",
+               argv[0]);
+           return RTN_USAGE;
+       }
+
+       TrustedDomainName = argv[1];    // existing or new TrustedDomain
+       Password = argv[2];
+
+       Workstation = LocalAlloc(LPTR,256);
+
+       //
+       // insure the local machine is NOT a DC, as this operation is
+       // only appropriate against a workstation.
+       //
+       nas = NetServerGetInfo(NULL, 101, (LPBYTE *)&amp;si101);
+       if(nas != NERR_Success) {
+           DisplayError("NetServerGetInfo", nas);
+           return RTN_ERROR;
+       }
+
+       Type = si101-&gt;sv101_type;
+       NetApiBufferFree(si101);
+
+       if( (Type &amp; SV_TYPE_DOMAIN_CTRL) ||
+           (Type &amp; SV_TYPE_DOMAIN_BAKCTRL) ) {
+           wprintf(L"Operation is not valid on a domain controller.\n");
+           return RTN_ERROR;
+       }
+
+       //
+       // obtain the local machine's name
+       //
+       nas = NetUserModalsGet(NULL, 2, (LPBYTE *)&amp;umi2);
+
+       if(nas != NERR_Success) {
+           DisplayError("NetUserModalsGet", nas);
+           return RTN_ERROR;
+       }
+
+       //
+       // copy the machine name to new storage
+       //
+       lstrcpy(Workstation, umi2-&gt;usrmod2_domain_name);
+
+       NetApiBufferFree(umi2); // free memory allocated by NetXxx
+
+       //
+       // do not allow a workstation to trust itself
+       //
+       if(lstrcmpiW(TrustedDomainName, Workstation) == 0) {
+           wprintf(L"Error:  Domain %ls cannot be a member of itself.\n",
+               TrustedDomainName);
+
+           return RTN_ERROR;
+       }
+
+       if(lstrlenW(TrustedDomainName ) &gt; MAX_COMPUTERNAME_LENGTH)
+           TrustedDomainName[MAX_COMPUTERNAME_LENGTH] = L'\0'; // truncate
+
+       //
+       // get the name of the domain DC
+       //
+       if(!GetDomainDCName(TrustedDomainName,&amp;PrimaryDC)) {
+           wprintf(L"Could not get DC Name\n");
+           return RTN_ERROR;
+       }
+
+       //
+       // establish NULL session to domain PDC
+       //
+       if(!EstablishNullSession(PrimaryDC, TRUE)) {
+           wprintf(L"Could not establish NULL session with %ls\n",
+               PrimaryDC);
+           return RTN_ERROR;
+       }
+
+       wprintf(L"NULL session established to Domain Controller (%ls)\n",
+           PrimaryDC);
+
+       //
+       // see if the computer account exists on the domain
+       //
+       if(!DoesAccountExist(PrimaryDC, Workstation))
+           return RTN_ERROR;
+
+       //
+       // fetch the DomainSid of the domain to trust
+       //
+       if(!GetDomainSid(PrimaryDC, &amp;DomainSid)) {
+           DisplayError("GetDomainSid", GetLastError());
+           return RTN_ERROR;
+       }
+
+       wprintf(L"opening policy on %s\n", Workstation);
+
+       //
+       // open the policy on this computer
+       //
+       Status = OpenPolicy(
+                   Workstation,
+                   POLICY_CREATE_SECRET |  // for password set operation
+                   POLICY_TRUST_ADMIN,     // for trust creation
+                   &amp;PolicyHandle
+                   );
+
+       if(Status != STATUS_SUCCESS) {
+           DisplayNtStatus("OpenPolicy", Status);
+           return RTN_ERROR;
+       }
+
+       wprintf(L"Setting Trusted Domain and account password\n");
+
+       Status = SetWorkstationTrustedDomainInfo(
+          PolicyHandle,
+          DomainSid,
+          TrustedDomainName,
+          Password
+          );
+
+       if(Status != STATUS_SUCCESS) {
+           return RTN_ERROR;
+       }
+
+       wprintf(L"Setting Primary Domain\n");
+
+       //
+       // Update the primary domain to match the specified trusted domain
+       //
+       Status = SetPrimaryDomain(
+           PolicyHandle,
+           DomainSid,
+           TrustedDomainName
+           );
+
+       if(Status != STATUS_SUCCESS) {
+           DisplayNtStatus("SetPrimaryDomain", Status);
+           return RTN_ERROR;
+       }
+
+       wprintf(L"Workstation %ls is now a member of domain %ls\n",
+           Workstation, TrustedDomainName);
+
+       //
+       // free the buffer allocated for the PDC computer name
+       //
+       if(PrimaryDC)
+           NetApiBufferFree(PrimaryDC);
+
+       LocalFree(Workstation);
+
+       //
+       // free the Sid which was allocated for the TrustedDomain Sid
+       //
+       if(DomainSid)
+           FreeSid(DomainSid);
+
+       //
+       // close the policy handle
+       //
+       LsaClose(PolicyHandle);
+
+       //
+       // close the NULL session to PDC
+       //
+       EstablishNullSession(PrimaryDC, FALSE);
+
+       wprintf(L"Restart the computer for the changes to take effect\n");
+
+       return RTN_OK;
+   }
+
+
+   BOOL
+   GetDomainDCName(
+       LPWSTR Domain,
+       LPWSTR *pPrimaryDC
+       )
+   {
+       NET_API_STATUS nas;
+
+       //
+       // get the name of the Primary Domain Controller
+       //
+       nas = NetGetDCName(NULL, Domain, (LPBYTE *)pPrimaryDC);
+
+       if(nas != NERR_Success) {
+           DisplayError("NetGetDCName", nas);
+           return FALSE;
+       }
+
+       return TRUE;
+   }
+
+
+   BOOL
+   EstablishNullSession(
+       LPCWSTR Server,
+       BOOL bEstablish
+       )
+   {
+       LPCWSTR szIpc = L"\\IPC$";
+       WCHAR RemoteResource[UNCLEN + 5 + 1]; // UNC len + \IPC$ + NULL
+       DWORD cchServer;
+
+       NET_API_STATUS nas;
+
+       //
+       // do not allow NULL or empty server name
+       //
+       if(Server == NULL || *Server == L'\0') {
+           SetLastError(ERROR_INVALID_COMPUTERNAME);
+           return FALSE;
+       }
+
+       cchServer = lstrlenW( Server );
+
+       if(Server[0] != L'\\' &amp;&amp; Server[1] != L'\\') {
+
+           //
+           // prepend slashes and NULL terminate
+           //
+           RemoteResource[0] = L'\\';
+           RemoteResource[1] = L'\\';
+           RemoteResource[2] = L'\0';
+       }
+       else {
+           cchServer -= 2; // drop slashes from count
+
+           RemoteResource[0] = L'\0';
+       }
+
+       if(cchServer &gt; CNLEN) {
+           SetLastError(ERROR_INVALID_COMPUTERNAME);
+           return FALSE;
+       }
+
+       if(lstrcatW(RemoteResource, Server) == NULL) return FALSE;
+       if(lstrcatW(RemoteResource, szIpc) == NULL) return FALSE;
+
+       //
+       // disconnect or connect to the resource, based on bEstablish
+       //
+       if(bEstablish) {
+           USE_INFO_2 ui2;
+
+           ZeroMemory(&amp;ui2, sizeof(ui2));
+
+           ui2.ui2_local = NULL;
+           ui2.ui2_remote = RemoteResource;
+           ui2.ui2_asg_type = USE_IPC;
+           ui2.ui2_password = ui2.ui2_username = ui2.ui2_domainname = L"";
+
+           nas = NetUseAdd(NULL, 2, (LPBYTE)&amp;ui2, NULL);
+       }
+       else {
+           nas = NetUseDel(NULL, RemoteResource, 0);
+       }
+
+       if( nas == NERR_Success ) return TRUE; // indicate success
+
+       return FALSE;
+   }
+
+
+   BOOL
+   DoesAccountExist(
+       LPWSTR PrimaryDC,
+       LPWSTR Account
+       )
+   {
+       LPWSTR NetAccountName=NULL;
+       PUSER_INFO_1 pUI_1=NULL;
+       DWORD  cbLength;
+       BOOL   fReturn=FALSE;
+       NET_API_STATUS nas;
+
+       NetAccountName = LocalAlloc(
+           LPTR, (lstrlenW(Account) + 2) * sizeof(WCHAR));
+
+       lstrcpyW(NetAccountName, Account);
+
+       cbLength = lstrlenW(NetAccountName);
+
+       //
+       // computer account names have a trailing Unicode '$'
+       //
+       NetAccountName[cbLength] = L'$';
+       NetAccountName[cbLength + 1] = L'\0'; // terminate the string
+
+       //
+       // verify that the account for this machine exists in domain
+       //
+       nas = NetUserGetInfo(
+                 PrimaryDC,
+                 NetAccountName,
+                 1,
+                 (LPBYTE *)&amp;pUI_1
+                 );
+
+       //
+       // free the allocated buffer for machine name
+       //
+       if(NetAccountName)
+           LocalFree(NetAccountName);
+
+       if(nas != NO_ERROR) {
+           DisplayError("NetUserGetInfo", nas);
+           return FALSE;
+       }
+
+       if(pUI_1-&gt;usri1_flags &amp; UF_WORKSTATION_TRUST_ACCOUNT)
+           fReturn = TRUE;
+       else
+           wprintf(L"Account on PDC wrong type (%lu)\n",
+               pUI_1-&gt;usri1_flags);
+
+       //
+       // free buffer for user information
+       //
+       if(pUI_1)
+           NetApiBufferFree(pUI_1);
+
+       return fReturn;
+
+   }
+
+   void
+   InitLsaString(
+       PLSA_UNICODE_STRING LsaString,
+       LPWSTR String
+       )
+   {
+       DWORD StringLength;
+
+       if(String == NULL) {
+           LsaString-&gt;Buffer = NULL;
+           LsaString-&gt;Length = 0;
+           LsaString-&gt;MaximumLength = 0;
+
+           return;
+       }
+
+       StringLength = lstrlenW(String);
+       LsaString-&gt;Buffer = String;
+       LsaString-&gt;Length = (USHORT) StringLength * sizeof(WCHAR);
+       LsaString-&gt;MaximumLength = (USHORT) (StringLength + 1) *
+                                  sizeof(WCHAR);
+   }
+
+   BOOL
+   GetDomainSid(
+       LPWSTR PrimaryDC,   // domain controller of domain to acquire Sid
+       PSID *pDomainSid    // points to allocated Sid on success
+       )
+   {
+       NET_API_STATUS nas;
+       PUSER_MODALS_INFO_2 umi2 = NULL;
+       DWORD dwSidSize;
+       BOOL bSuccess = FALSE; // assume this function will fail
+       *pDomainSid = NULL;    // invalidate pointer
+
+       __try {
+
+       //
+       // obtain the domain Sid from the PDC
+       //
+       nas = NetUserModalsGet(PrimaryDC, 2, (LPBYTE *)&amp;umi2);
+       if(nas != NERR_Success) __leave;
+
+       //
+       // if the Sid is valid, obtain the size of the Sid
+       //
+       if(!IsValidSid(umi2-&gt;usrmod2_domain_id)) __leave;
+       dwSidSize = GetLengthSid(umi2-&gt;usrmod2_domain_id);
+
+       //
+       // allocate storage and copy the Sid
+       //
+       *pDomainSid = LocalAlloc(LPTR, dwSidSize);
+       if(*pDomainSid == NULL) __leave;
+
+       if(!CopySid(dwSidSize, *pDomainSid, umi2-&gt;usrmod2_domain_id))
+           __leave;
+
+       bSuccess = TRUE; // indicate success
+
+       } // try
+       __finally {
+
+       if(umi2 != NULL)
+           NetApiBufferFree(umi2);
+
+       if(!bSuccess) {
+           //
+           // if the function failed, free memory and indicate result code
+           //
+
+           if(*pDomainSid != NULL) {
+               FreeSid(*pDomainSid);
+               *pDomainSid = NULL;
+           }
+
+           if(nas != NERR_Success) {
+               SetLastError(nas);
+           }
+       }
+
+       } // finally
+
+       return bSuccess;
+   }
+
+   NTSTATUS
+   OpenPolicy(
+       LPWSTR ComputerName,
+       DWORD DesiredAccess,
+       PLSA_HANDLE PolicyHandle
+       )
+   {
+       LSA_OBJECT_ATTRIBUTES ObjectAttributes;
+       LSA_UNICODE_STRING ComputerString;
+       PLSA_UNICODE_STRING Computer = NULL;
+      LPWSTR NewComputerName;
+
+      NewComputerName = LocalAlloc(LPTR,
+           (MAX_COMPUTERNAME_LENGTH+3)*sizeof(WCHAR));
+
+       //
+       // Prepend some backslashes to the computer name so that
+       // this will work on NT 3.51
+       //
+       lstrcpy(NewComputerName,L"\\\\");
+      lstrcat(NewComputerName,ComputerName);
+
+       lstrcpy(NewComputerName,ComputerName);
+
+       //
+       // Always initialize the object attributes to all zeroes
+       //
+       ZeroMemory(&amp;ObjectAttributes, sizeof(ObjectAttributes));
+
+       if(ComputerName != NULL) {
+           //
+           // Make a LSA_UNICODE_STRING out of the LPWSTR passed in
+           //
+           InitLsaString(&amp;ComputerString, NewComputerName);
+
+           Computer = &amp;ComputerString;
+       }
+
+       //
+       // Attempt to open the policy
+       //
+       return LsaOpenPolicy(
+                   Computer,
+                   &amp;ObjectAttributes,
+                   DesiredAccess,
+                   PolicyHandle
+                   );
+   }
+
+   /*++
+    This function sets the Primary Domain for the workstation.
+
+    To join the workstation to a Workgroup, ppdi.Name should be the name of
+    the Workgroup and ppdi.Sid should be NULL.
+
+   --*/
+   NTSTATUS
+   SetPrimaryDomain(
+       LSA_HANDLE PolicyHandle,
+       PSID DomainSid,
+       LPWSTR TrustedDomainName
+       )
+   {
+       POLICY_PRIMARY_DOMAIN_INFO ppdi;
+
+       InitLsaString(&amp;ppdi.Name, TrustedDomainName);
+       ppdi.Sid = DomainSid;
+
+       return LsaSetInformationPolicy(
+           PolicyHandle,
+           PolicyPrimaryDomainInformation,
+           &amp;ppdi
+           );
+   }
+
+   /*++
+    This function manipulates the trust associated with the supplied
+    DomainSid.
+
+    If the domain trust does not exist, it is created with the
+    specified password.  In this case, the supplied PolicyHandle must
+    have been opened with POLICY_TRUST_ADMIN and POLICY_CREATE_SECRET
+    access to the policy object.
+
+   --*/
+   NTSTATUS
+   SetWorkstationTrustedDomainInfo(
+       LSA_HANDLE PolicyHandle,
+       PSID DomainSid,             // Sid of domain to manipulate
+       LPWSTR TrustedDomainName,   // trusted domain name to add/update
+       LPWSTR Password             // new trust password for trusted domain
+       )
+   {
+       LSA_UNICODE_STRING LsaPassword;
+       LSA_UNICODE_STRING KeyName;
+       LSA_UNICODE_STRING LsaDomainName;
+       DWORD cchDomainName; // number of chars in TrustedDomainName
+       NTSTATUS Status;
+
+       InitLsaString(&amp;LsaDomainName, TrustedDomainName);
+
+       //
+       // ...convert TrustedDomainName to uppercase...
+       //
+       cchDomainName = LsaDomainName.Length / sizeof(WCHAR);
+       while(cchDomainName--) {
+           LsaDomainName.Buffer[cchDomainName] =
+            towupper(LsaDomainName.Buffer[cchDomainName]);
+       }
+
+       //
+       // ...create the trusted domain object
+       //
+       Status = LsaSetTrustedDomainInformation(
+           PolicyHandle,
+           DomainSid,
+           TrustedDomainNameInformation,
+           &amp;LsaDomainName
+           );
+
+       if(Status == STATUS_OBJECT_NAME_COLLISION)
+          printf("LsaSetTrustedDomainInformation: Name Collision (ok)\n");
+
+       else if (Status != STATUS_SUCCESS) {
+              DisplayNtStatus("LsaSetTrustedDomainInformation", Status);
+              return RTN_ERROR;
+       }
+
+       InitLsaString(&amp;KeyName, L"$MACHINE.ACC");
+       InitLsaString(&amp;LsaPassword, Password);
+
+       //
+       // Set the machine password
+       //
+       Status = LsaStorePrivateData(
+           PolicyHandle,
+           &amp;KeyName,
+           &amp;LsaPassword
+           );
+
+       if(Status != STATUS_SUCCESS) {
+           DisplayNtStatus("LsaStorePrivateData", Status);
+           return RTN_ERROR;
+       }
+
+       return STATUS_SUCCESS;
+
+   }
+
+   void
+   DisplayNtStatus(
+       LPSTR szAPI,    // ansi string containing API name
+       NTSTATUS Status
+       )
+   {
+       printf("erro=%lx\n", Status);
+       //
+       // convert the NTSTATUS to Winerror and display the result
+       //
+       DisplayError(szAPI, LsaNtStatusToWinError(Status));
+   }
+
+   void
+   DisplayError(
+       LPSTR szAPI, // pointer to failed API name
+       DWORD dwLastError
+       )
+   {
+       HMODULE hModule;
+       LPSTR MessageBuffer;
+       DWORD dwBufferLength;
+
+
+       DWORD dwFormatFlags = FORMAT_MESSAGE_ALLOCATE_BUFFER |
+           FORMAT_MESSAGE_IGNORE_INSERTS |
+           FORMAT_MESSAGE_FROM_SYSTEM ;
+
+       fprintf(stderr,"%s error! (rc=%lu)\n", szAPI, dwLastError);
+
+       //
+       // if dwLastError is in the network range, load the message source
+       //
+       if(dwLastError &gt;= NERR_BASE &amp;&amp; dwLastError &lt;= MAX_NERR) {
+           hModule = LoadLibraryEx(
+               TEXT("netmsg.dll"),
+               NULL,
+               LOAD_LIBRARY_AS_DATAFILE
+               );
+
+           if(hModule != NULL)
+               dwFormatFlags |= FORMAT_MESSAGE_FROM_HMODULE;
+       } else {
+           hModule = NULL; // default to system message source
+       }
+
+
+       if(dwBufferLength=FormatMessageA(
+           dwFormatFlags,
+           hModule,
+           dwLastError,
+           MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // default language
+           (LPSTR) &amp;MessageBuffer,
+           0,
+           NULL
+           ))
+       {
+           printf(MessageBuffer);
+
+           LocalFree(MessageBuffer);
+       }
+       else
+           printf("FormatMessageA failed - %lu\n", GetLastError());
+
+       //
+       // if we loaded a message source, unload it
+       //
+       if(hModule != NULL)
+           FreeLibrary(hModule);
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: nt winnt<BR>
+Keywords            : BseSecurity kbcode kbprg<BR>
+Version             : 3.51 4.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

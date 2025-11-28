@@ -1,0 +1,203 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Modal Dialogs in MFC Regular DLL Cause ASSERT in AfxWndProc </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q177101">
+<META NAME="KBModify" CONTENT="1998/03/13">
+<META NAME="KBCreate" CONTENT="1997/11/20">
+<META NAME="Keywords" CONTENT="MfcDLL MFCThreadIss vcbuglist420 vcbuglist500">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  If two or more threads display modal dialog boxes at the same time inside an MFC regular dynamic-link library (DLL) (USRDLL), the following ASSERT may be generated in AfxWndProc, on Wincore.cpp, line 368 (line 360 in VC++ 4.2):     // all other mes...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAJZ,QBE5,QA01,QAUQ,QABA,QAH7,QAH6,QAD7,QAUD,QAGI,QAW6,QAPN,QAEV,QDNN,QBFY V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Modal Dialogs in MFC Regular DLL Cause ASSERT in AfxWndProc</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 13, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q177101</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P><PRE>    - Microsoft Visual C++, 32-bit Editions, versions 4.2, 5.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+If two or more threads display modal dialog boxes at the same time inside
+an MFC regular dynamic-link library (DLL) (USRDLL), the following ASSERT
+may be generated in AfxWndProc, on Wincore.cpp, line 368 (line 360 in VC++
+4.2):
+<P>
+<PRE>   // all other messages route through message map
+   CWnd* pWnd = CWnd::FromHandlePermanent(hWnd);
+   ASSERT(pWnd != NULL);
+
+</PRE>This ASSERT occurs only if one of the threads was created outside of the
+DLL.
+<P>
+The probability of this problem occurring increases with the number of
+threads and modal dialog boxes.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+When AfxGetThread() is called in an MFC regular DLL from a secondary thread
+that was not created inside the DLL, it returns the CWinApp object for the
+DLL because a CWinThread object was not created for the thread in the
+context of the DLL.
+<P>
+When a modal dialog box is displayed, CWnd::RunModalLoop() pumps messages
+by calling AfxGetThread()-&gt;PumpMessage(). If two modal dialog boxes both
+call the CWinApp object's PumpMessage at the same time, synchronization
+problems cause the wrong message to get processed on the wrong thread.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+One possible work around is to spawn secondary threads, which in turn
+display the modal dialog boxes. Each new thread created inside the MFC
+regular DLL will have a new CWinThread object and a separate message pump.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+In Visual C++ versions earlier than VC++ 4.2, MFC regular DLLs could be
+accessed only from the same thread that loaded the DLL. Support for
+external secondary threads was added in Visual C++ 4.2.
+<P>
+The following sample code shows one possible workaround:
+<P>
+<PRE>      UINT ShowMeTheDlg( LPVOID pParam )
+   {
+    // Create CWnd object from passed in HWND
+    CFileSecurity FS(CWnd::FromHandle((HWND)pParam));
+    FS.DoModal();
+    return TRUE;
+   }
+
+   void CSubfolderPage::OnBreakit()
+   {
+   // Start MFC Worker thread for modal dialog box. Modal dialog box has
+   // PumpMessage code so, user interface thread is not necessary.
+   // Can't pass CWnds between threads, so pass HWND
+   // After DoModal call above, function returns
+   // and thread terminates.
+    AfxBeginThread(ShowMeTheDlg, (LPVOID)this-&gt;GetSafeHwnd());
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For additional information, please see the following article(s) in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q122676.htm">Q122676</A></B>
+   TITLE     : Multiple Threads and MFC _USRDLLs
+</PRE>(c) Microsoft Corporation 1997, All Rights Reserved. Contributions by Kelly
+Marie Ward, Microsoft Corporation
+ 
+<PRE>Keywords          : MfcDLL MFCThreadIss vcbuglist420 vcbuglist500
+Version           : WINNT:4.2,5.0
+Platform          : winnt
+Issue type        : kbbug</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 13, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

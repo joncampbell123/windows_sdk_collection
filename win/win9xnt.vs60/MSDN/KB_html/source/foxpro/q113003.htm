@@ -1,0 +1,223 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Send Multiple Mail Messages with FoxPro Extensions </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q113003">
+<META NAME="KBModify" CONTENT="1996/04/30">
+<META NAME="KBCreate" CONTENT="1994/03/23">
+<META NAME="Keywords" CONTENT="kbinterop kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  The FoxPro Extensions that come with the Workgroup Templates enable FoxPro developers to tap into the mail messaging API (MAPI) and the Microsoft Schedule+ API (SPLUS). Below is an example of how to send multiple mail messages in FoxPro for Windows...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAYC,QA4S,QA4R,QAGI,QAH6,QAEV,QA5V,QAY5,QAB9,QBV0,QA7O,QA7N,QA6A,QAH4,QAJQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Send Multiple Mail Messages with FoxPro Extensions</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 30, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q113003</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft FoxPro for Windows, versions 2.5, 2.5a, and 2.5b
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The FoxPro Extensions that come with the Workgroup Templates enable FoxPro
+developers to tap into the mail messaging API (MAPI) and the Microsoft
+Schedule+ API (SPLUS). Below is an example of how to send multiple mail
+messages in FoxPro for Windows when the addressee information, subject
+line, and message come from a database.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The FoxPro Extensions come with FOXMAPI.FLL, MAPILIB.PRG, and MAPIERR.PRG.
+FOXMAPI.FLL is a dynamic-link library (DLL) that is the interface between
+FoxPro and MAPI.DLL and SPLUS.DLL. MAPILIB.PRG is a file containing
+procedures that make calls to functions in FOXMAPI.FLL (instead of calling
+the functions in FOXMAPI.FLL directly, parameters can be passed to
+MAPILIB.PRG, which provides additional error checking). MAPIERR.PRG is
+called by MAPILIB.PRG if an error condition occurs while a procedure in
+MAPILIB.PRG is being executed.
+<P>
+For more information about the functions used in this example, examine
+MAPILIB.PRG to find the function that is called in MAPILIB.PRG and then see
+what function MAPILIB.PRG calls in FOXMAPI.FLL. The Help file located in
+C:\WGTPLATE\APPENDIX\FOXPRO\FOXMAPI.HLP explains what the functions in
+FOXMAPI.FLL do.
+<P>
+For the following example to work, you must have the FOXMAPI.FLL,
+MAPILIB.PRG, and MAPIERR.PRG files. MAPILIB.PRG and MAPIERR.PRG should be
+in the same directory as the program below.
+<P>
+The program below sends a mail message for each record in the MAILDAT.DBF
+file. The structure of the MAILDAT.DBF file is as follows:
+<P>
+<PRE>   Field     Field name      Type         Width
+   --------------------------------------------
+
+     1       TONAMES         Character      20
+     2       SUBJECT         Character      60
+     3       NOTETEXT        Character     254
+
+</PRE>The TONAMES field contains the addressee's e-mail name, the SUBJECT field
+contains the text for the subject line, and the NOTETEXT field contains the
+message to be sent.
+<P>
+<P><h3>Program Example</h3>
+ 
+<P>
+<PRE>   CLOSE ALL
+   USE maildat
+
+   SET LIBRARY TO foxmapi.fll
+
+   ** MAPILIB.PRG and MAPIERR.PRG must be in the same directory
+   ** as this program for things to work properly.
+
+   ** MAPILIB.PRG calls FOXMAPI.FLL.
+   ** Log on to mail.
+   msession=MAPILIB('LOGON')
+
+   * Continue until the end of the MAILDAT file is reached.
+   DO WHILE NOT EOF()
+      ** Get Info To Send by doing a SCATTER MEMVAR.
+      ** m.tonames- The e-mail name of the person the message is
+      ** addressed to.
+      ** m.subject- The subject line of the e-mail message.
+      ** m.notetext- The text of the e-mail message.
+      SCATTER MEMVAR
+
+      ** Create mapiRecip cursor.
+      ** Resolve name.
+      =MAPILIB('resolve',msession,m.tonames)
+
+      ** Send message.
+      =MAPILIB('newcursor','mapiFile')
+      =MAPILIB('newcursor','mapiMesg')
+
+
+      INSERT INTO mapimesg VALUES(0,m.subject,m.notetext,'IPM.',;
+         MAPILIB('getdate'),'',0,RECCOUNT('mapiRecip'),0)
+
+      retval=mapilib("sendmail",msession,"mapiMesg","mapiRecip",;
+         "mapiFile",0)
+
+      * Close cursors.
+      SELECT mapiFile
+      USE
+      SELECT mapiMesg
+      USE
+      SELECT mapiRecip
+      USE
+      SELECT maildat
+
+      * Go to the next record and send the next mail message.
+      SKIP 1
+
+   ENDDO
+
+   ** Log off and clean up.
+   ** Logging off by directly calling the mplogoff function in
+   ** FOXMAPI.FLL.
+   =mplogoff(msession,0,0,0)
+
+   CLEAR ALL
+   CLOSE ALL
+   RELEASE ALL
+   SET LIBRARY TO
+   ** END OF PROGRAM
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: FoxWin 2.50 2.50a 2.50b email electronic mail<BR>
+KBCategory: kbinterop kbprg kbcode<BR>
+KBSubcategory: FxtoolLck<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 30, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

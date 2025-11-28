@@ -1,0 +1,246 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: CRecordset::AddNew Inserts 32484 Into int Fields (RFX_INT) </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q170257">
+<META NAME="KBModify" CONTENT="1997/12/01">
+<META NAME="KBCreate" CONTENT="1997/06/17">
+<META NAME="Keywords" CONTENT="MfcDAO MfcDatabase VS97FixlistSP3">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  You may see one of the following problems when you update a newly-added record using a CRecordset derived class that uses RFX_Int:   - The value 32484 is saved in the table if the int data member was not    modified.   - If the int data member corr...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAKD,QA4Q,QA7O,QA7N,QA63,QAUD,QAH4,QAY5,QBXS,QA8N,QAYY,QAB9,QBVV,QA9N,QA5V V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: CRecordset::AddNew Inserts 32484 Into int Fields (RFX_INT)</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 1, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q170257</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual C++, 32-bit Editions, version 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+You may see one of the following problems when you update a newly-added
+record using a CRecordset derived class that uses RFX_Int:
+
+<UL><LI>The value 32484 is saved in the table if the int data member was not
+   modified.
+
+<LI>If the int data member corresponds to an identity column in the table,
+   an error message appears indicating that an attempt was made to save a
+   value to it. Identity fields are automatically updated by the server,
+   and cannot be modified by external applications without setting flags
+   on the server.
+
+<LI>Fields of type int that were not modified, and thus should contain NULL,
+   contain 32484 instead. This may cause queries involving NULLs to return
+   unexpected results.
+<P>
+</UL><h2>CAUSE</h2>
+ 
+<P>
+This problem is caused by a bug in the RFX_Int function which always causes
+it to mark the int data member as dirty during AddNew. This problem occurs
+only if the value of the int data member was not explicitly changed.
+<P>
+When a record is added, all of the data members are set to pseudo null
+values. The application then sets the values of any members that are to be
+changed. Subsequently, any fields where the corresponding data member is
+not a pseudo null are marked as dirty and an SQL statement including all of
+the dirty fields is generated.
+<P>
+In the RFX_Int::MarkForAddNew in Visual C++ 5.0, the if clause that checks
+for the pseudo null value was removed. The code in 5.0 appears as follows:
+<P>
+<PRE>   case CFieldExchange::MarkForAddNew:
+   // can force writing of psuedo-null value (as a non-null) by ...
+   if (!pFX-&gt;m_prs-&gt;IsFieldStatusDirty(nField - 1))
+   {
+      pFX-&gt;m_prs-&gt;SetDirtyFieldStatus(nField - 1);
+      pFX-&gt;m_prs-&gt;ClearNullFieldStatus(nField - 1);
+   }
+   return;
+
+</PRE>The effect of the change is to force the field to be set as dirty (no
+matter what value it has), and write that value out to the underlying
+table. If the application has not changed that value since the AddNew, then
+it will be AFX_RFX_INT_PSEUDO_NULL = 32484.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+The resolution depends on the application. The cleanest workaround is to
+change the int data member to a long, and use the RFX_Long function. The
+code problem above only exists with the int type, and most of the server
+data types that might be mapped to an int, such as Integer, Numeric(9),
+etc., will map to a long as well. This method also creates more portable
+code, since the size and max value of the int data type varies from one
+platform and operating system to another.
+<P>
+Another solution is to create your own RFX_Int functions. To create your
+own RFX_Int function, follow these steps:
+
+<OL><P><LI>From file vc\mfc\src\DBRFX.CPP, copy the function RFX_Int.
+
+<P><LI>Create a new .cpp file and include the file in your project that uses
+   ints. Place the copy of RFX_Int into this file and rename it RFX_Int1.
+   Change the switch statement case for MarkForAddNew from the following
+   code:
+<P>
+<P><PRE>      case CFieldExchange::MarkForAddNew:
+      // Can force writing of psuedo-null value (as a non-null) by
+      // setting field dirty.
+      if (!pFX-&gt;m_prs-&gt;IsFieldStatusDirty(nField - 1))
+      {
+<PRE></PRE>         pFX-&gt;m_prs-&gt;SetDirtyFieldStatus(nField - 1);
+         pFX-&gt;m_prs-&gt;ClearNullFieldStatus(nField - 1);
+      }
+      return;
+
+   to:
+
+      case CFieldExchange::MarkForAddNew:
+      // Can force writing of psuedo-null value (as a non-null) by
+      // setting field dirty.
+
+      // comment out -&gt; if (!pFX-&gt;m_prs-&gt;IsFieldStatusDirty(nField - 1))
+      if (value != AFX_RFX_INT_PSEUDO_NULL)   // add in this line
+      {
+         pFX-&gt;m_prs-&gt;SetDirtyFieldStatus(nField - 1);
+         pFX-&gt;m_prs-&gt;ClearNullFieldStatus(nField - 1);
+      }
+      return;
+
+</PRE><P><LI>Include the following header information in your new project file:
+<P>
+<P><PRE>      #include "stdafx.h"
+</PRE><P>
+<P><PRE>      #ifdef AFX_DB_SEG
+      #pragma code_seg(AFX_DB_SEG)
+      #endif
+</PRE><P>
+<P><PRE>      #ifdef _DEBUG
+      #undef THIS_FILE
+<PRE></PRE>         static char THIS_FILE[] = __FILE__;
+      #endif
+
+      #define new DEBUG_NEW
+
+</PRE><P><LI>Create a header file that declares your new RFX_INT1 function. Include
+   it into any CRecordset-derived classes that need to use small integers.
+
+<P><LI>Change all of the calls in the DoFieldExchange functions of your
+   CRecordset-derived classes from RFX_Int to RFX_Int1.
+<P>
+</OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This bug has been fixed in Visual Studio
+97 Service Pack 3.
+<P>
+For more information, please see the following article in the Microsoft
+Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../vstudio/q170365.htm">Q170365</A></B>
+   TITLE     : INFO: Visual Studio 97 Service Packs - What, Where, and Why
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: AddNew identity Update<BR>
+Keywords          : MfcDAO MfcDatabase VS97FixlistSP3<BR>
+Version           : 5.0<BR>
+Platform          : NT WINDOWS<BR>
+Issue type        : kbbug<BR>
+Solution Type     : kbfix kbservicepack<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 1, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

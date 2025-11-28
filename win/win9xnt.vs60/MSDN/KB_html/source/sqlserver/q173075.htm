@@ -1,0 +1,374 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Setting up Bidirectional Replication </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q173075">
+<META NAME="KBModify" CONTENT="1997/12/19">
+<META NAME="KBCreate" CONTENT="1997/08/25">
+<META NAME="Keywords" CONTENT="SSrvProg SSrvRep SSrvStProc kbsetup">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article details the steps to set up bidirectional transaction-based replication using a simple conflict resolution mechanism (also known as reconciliation), based on record ownership. It also discusses some situations that are handled by the c...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAXB,QA5V,QAA1,QBD2,QAC1,QACI,QAEF,QAFO,QDI2,QA9N,QAYY,QAGB,QAB9,QBCT,QAGC V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Setting up Bidirectional Replication</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 19, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q173075</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article details the steps to set up bidirectional transaction-based
+replication using a simple conflict resolution mechanism (also known as
+reconciliation), based on record ownership. It also discusses some
+situations that are handled by the custom stored procedures as well as
+recommendations on issues to be handled by the application.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Replication in SQL Server 6.x</h3>
+ 
+<P>
+Replication in SQL Server 6.x is intended to distribute logically read-only
+copies of data to multiple servers to offload report processing load out of
+an online transaction processing (OLTP) server. SQL Server replication also
+assumes that the data at the subscriber is always in sync with the data at
+the publisher. This constrains the data that is obtained as a result of
+subscribing to a publication to be static at the subscriber. SQL Server
+replication is intended to satisfy this class of applications that are
+designed for near real-time, static data at the subscriber.
+<P>
+Another class of applications that can use SQL Server replication is the
+one that depends on partitioned data. In this case, the servers own a
+disjointed set of data and each server replicates the data it owns to the
+other server. Effectively, the tables are published with a restriction
+clause to achieve horizontal partitioning and do not update data that is
+owned by the other server. This partitioning scheme implements two
+completely disjointed replication streams, thereby enhancing data
+availability.
+<P>
+However, some applications may require completely distributed data. Though
+SQL Server replication is not intended for such an update anywhere
+scenario, it provides the basic framework for implementing a two-way or
+bidirectional replication setup, using custom stored procedures and filter
+procedures. However, there are some constraints on the schema and the
+transactions. It relies on the procedure logic or manual intervention to
+detect and resolve conflicts. This setup using bidirectional replication is
+intended to be used only with applications that yield themselves well to
+these constraints.
+<P>
+Though this article uses an sample setup of bidirectional replication
+between two servers, it can easily be expanded to multiple servers. Also,
+the concepts discussed here apply to both SQL Server 6.0 and 6.5, though
+the features available are limited in SQL Server 6.0. For example, text and
+image columns cannot participate in transaction-based replication. Hence,
+appropriate modifications need to be done to the publication definition or
+custom stored procedures to handle the different cases.
+<P>
+<P><h3>Assumptions</h3>
+ 
+
+<OL><P><LI>The sample table is assumed to have the following structure:
+<P>
+<P><PRE>      create table twoway
+      (
+<PRE></PRE>      PKcol       int primary key not null,
+      Data       int)
+
+   You have to add a "replicate_flag" to indicate if a particular record
+   needs be replicated or not. If this field is 1, any changes to this
+   record will be replicated. Also, this flag will indicate ownership of
+   the record -- if this flag is 1 on a server, it should be 0 on the other
+   server. The server on which it is 1 is considered the "owner server" for
+   the record, thereby establishing ownership (and consequently, ability to
+   modify) at a record level. Any server that needs to modify this record
+   needs to first obtain ownership of the record.
+
+</PRE><P><LI>All application modifications will insert with the "replicate_flag" set
+   to 1, or modify (update/delete) the record after obtaining ownership, by
+   executing "update &lt;table&gt; set replicate_flag =1 where PKcol =
+   &lt;PK_value&gt;" prior to executing the real update/delete command. For
+   example, if a delete operation is to be done on a record, then, the
+   replicate_flag must be updated to 1 before the actual delete command is
+   executed on the record. This update must happen in the same transaction
+   as the delete/update operation.
+
+<P><LI>You have to use Custom Stored Procedures for Replication to handle
+   insert/update/delete at the subscriber -- this procedure will always set
+   "replicate_flag" to 0, thereby signifying that this is a replica of data
+   owned by another server; it also avoids re-applying transactions or
+   "looping" on replicated data. Often, an Update command is replicated as
+   a Delete command followed by an Insert command - the procedures will be
+   coded to handle cases where the delete part or insert part of an update
+   command is masked out due to filtering. These procedures will also
+   handle cases where the logreader generates an update command in the
+   place of a delete/insert pair at the publisher. The custom procedures
+   will have to be created on the subscriber -- assume the names of the
+   procedures are:
+<P>
+<P><PRE>      sp_twoway_i -- for insert
+      sp_twoway_u -- for update
+      sp_twoway_d -- for delete
+</PRE>
+<P><LI>No additional effort is required on a setup with empty tables at both
+   ends during the setup; if the tables contain data prior to publishing,
+   use manual synchronization. Synchronize the tables this way: data in the
+   tables should contain replicate_flag=1; Data from one server should be
+   BCPed into the other server with replicate_flag=0. This will establish
+   the respective servers as "owners" of existing records.
+<P>
+</OL><h3>Constraints</h3>
+ 
+<P>
+These constraints are based on the assumptions in the previous section.
+
+<OL><P><LI>Each record in the table is owned by one server at any time. Custom
+   Stored Procedures for Replication should be coded to
+   insert/update/delete records at subscriber to automatically indicate the
+   data is a replica. The application should insert with replicate_flag=1.
+
+<P><LI>The application will take ownership of a record prior to modification.
+   This should be done within the scope of the transaction doing the
+   modification to eliminate the possibility of conflicts.
+
+<P><LI>The application should handle unique primary key values for inserts by
+   submitting the inserts to one server or have disjoint values on
+   different servers. This will avoid conflicts on inserts -- otherwise,
+   the distribution task may fail attempting to insert duplicate values or
+   depending on the procedures, it may just update the information at the
+   subscriber. This may be misinterpreted as missing data.
+
+<P><LI>The replication mechanism should be nearly real-time. This will almost
+   serialize operations and thereby reduce the possibility of a conflict;
+   in cases where a conflict arises, we will reconcile using custom
+   procedures. It is not suitable for servers replicating over a slow LAN
+   or WAN network or over RAS, largely due to the possibility of delays in
+   distribution.
+<P>
+</OL>Not all applications are suitable for this or can work with these
+constraints. You should set up and test this procedure prior to deployment
+for possible conflicts and to ensure that the logic for satisfactory
+conflict resolution is added to the custom stored procedures and the
+application. If your application can work with these constraints, the
+following steps can be used to setup bidirectional replication.
+<P>
+Create custom stored procedures on both the servers involved. The following
+sample uses a simple reconciliation logic. The application can do data
+modification only on owned records (replicate_flag=1) or it will take
+ownership of the record prior to modification. Custom procedures will not
+update or delete data that is not a replica (replicate_flag=0). In such
+cases, update and delete commands will be ignored.
+<P>
+<P><h3>Create the Procedures in the Subscribing Database</h3>
+ 
+<P>
+<PRE>/* custom procedure for insert */
+</PRE></OL>create proc sp_twoway_i @PKcol int, @Data int, @repl_flag smallint
+as
+begin
+<PRE>   set nocount on
+   /* handle condition where delete part of update is filtered */
+   if exists (select * from twoway where PKcol = @PKcol)
+   begin
+      update twoway
+      set Data = @Data, replicate_flag=0
+      where PKcol=@PKcol
+   end
+   else
+   begin
+      insert into twoway values (@PKcol,@Data,0)
+   end
+</PRE>end
+go
+<P>
+<PRE>/* custom procedure for update */
+</PRE>create proc sp_twoway_u @PKcolNew int, @Data int,
+@replicate_flag smallint, @PKcol int
+as
+begin
+<PRE>   set nocount on
+   declare @flag smallint
+
+   /* Update data only if this is subscribed data */
+   /* replicate_flag will be 0 for subscribed data */
+   if exists (select * from twoway where PKcol=@PKcol)
+   begin
+      select @flag = replicate_flag from twoway
+      where PKcol=@PKcol
+      if (@flag=0)
+      begin
+         update twoway
+         set PKcol=@PKcolNew, Data=@Data,replicate_flag=0
+         where PKcol=@PKcol
+      end
+   end
+   else
+   /* handle cases where delete logreader generates */
+   /* update for delete/insert */
+   begin
+      insert twoway values (@PKcolNew,@Data,0)
+   end
+</PRE>end
+go
+<P>
+<PRE>/* custom procedure for delete */
+</PRE>create proc sp_twoway_d @PKcol int
+as
+begin
+<PRE>   set nocount on
+   /* Replication cannot update data owned by the site */
+   /* data owned by the site will have replicate_flag = 1 */
+   if exists (select * from twoway
+      where PKcol = @PKcol and replicate_flag = 0)
+   begin
+      delete twoway where PKcol=@PKcol
+   end
+</PRE>end
+go
+ 
+<P>
+Now that the table and the custom procedures have been created, set up
+replication on the table using a horizontal partition and select the "Do
+Nothing" option on the Auto-Generate Sync Scripts dialog box using the
+following steps:
+
+<OL><P><LI>from the Manage menu, choose Replication, and then from the drop-down
+   menu that appears, choose Publications.
+
+<P><LI>Select a database, and then click New. In the Edit Publications window,
+   type a name, choose the table to be published and click Edit.
+   
+</OL>3. In the Manage Articles dialog box, specify the Restriction Clause as
+<PRE>   replicate_flag = 1 on the Filters tab.
+   
+</PRE></OL>4. On the Scripts tab, under Data Replication Mechanism, click Custom
+<PRE>   option for Insert/Update/Delete and specify the appropriate procedure name.
+   For example, for insert, the entry similar to the following:
+   
+      call sp_twoway_i
+   
+</PRE>5. Now, click Generate. In the Auto-Generate Sync Scripts dialog box, under
+<PRE>   If Existing Table Detected in Subscriber, select the Do Nothing option.
+   This is required because the table will exist at the subscriber and will be
+   published. On synchronization, the default Drop Table option will be unable
+   to drop a published table.
+   
+</PRE>6. To finish the setup, click Auto-Generate, click OK, and then click Add.
+<P>
+The above steps must be performed on both servers. This will create the
+publications on both servers. From each server, subscribe to the other
+server's publication. If the tables do not contain any data, you may choose
+either the Data Synchronization Automatically Applied or the No Data
+Synchronization option in the Subscription Options dialog box. If the
+tables will contain data prior to publishing, on each server, the
+replication flag must be set to 1 and the primary key values must be
+unique. In this case, choose the Data Synchronization Manually Applied by
+Operator option and synchronize the tables as explained previously.
+<P>
+This will complete the setup of bidirectional replication with a very
+simple reconciliation scheme. This sample procedure should be modified to
+include any logic your specific application/design may require.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2-way repl bi-directional bi-dir update<BR>
+anywhere<BR>
+Keywords          : SSrvProg SSrvRep SSrvStProc kbsetup<BR>
+Version           : Windows:6.5<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto kbinfo<BR>
+Solution Type     : Info_Provided<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 19, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,230 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Getting the Contents of the Exchange Global Address List </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q166106">
+<META NAME="KBModify" CONTENT="1998/01/07">
+<META NAME="KBCreate" CONTENT="1997/03/31">
+<META NAME="Keywords" CONTENT="EDKAPI EMAPI">
+<META NAME="KBArea" CONTENT="Support; KB; mapi">
+<META NAME="Description" CONTENT="  This article describes the process and code for opening the Microsoft Exchange Global Address List (GAL) and then retrieving the list of recipients in it. This code is specific to Microsoft Exchange Server. Any other MAPI compliant server will have...">
+<META NAME="Product" CONTENT="mapi">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QAD2,QBXB,QAGB,QAGI,QAC2,QAUD,QA7H,QA6A,QANG,QAI4,QAE1,QBXD,QDOL,QBWS V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Getting the Contents of the Exchange Global Address List</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 7, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q166106</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Extended Messaging Application Programming Interface (MAPI), version
+   1.0
+<LI>Exchange Software Development Kit (SDK)
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes the process and code for opening the Microsoft
+Exchange Global Address List (GAL) and then retrieving the list of
+recipients in it. This code is specific to Microsoft Exchange Server. Any
+other MAPI compliant server will have a similar process but the actual code
+may be different.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To find the global address list:
+
+<OL><P><LI>Start a MAPI session.
+
+<P><LI>Open the address book by calling IMAPISession::OpenAddressBook, passing
+   the interface identifier (IID) of the address book object. This call
+   returns an lppAdrBook parameter, which points to a variable where the
+   pointer to the returned address book object is stored.
+
+<P><LI>Call HrFindExchangeGlobalAddressList to obtain the entry identifier
+   (lppeid) of the global address list container within the address book.
+
+<P><LI>Call the OpenEntry function, passing the entry identifier returned in
+   step 2.
+<P>
+</OL>Following is the code for opening the Exchange GAL and storing its contents
+in an SRowSet structure. This code assumes that steps 1 and 2 above have
+already been completed:
+<P>
+<PRE>    HRESULT GetGALContents ( LPSRowSet * ppRow )
+    {
+
+       ULONG    cbeid    = 0L;
+       LPENTRYID   lpeid    = NULL;
+       HRESULT     hRes     = S_OK;
+       LPSRowSet   pRow;
+       ULONG    ulObjType;
+       ULONG    cRows    = 0L;
+
+       LPMAPITABLE    lpContentsTable = NULL;
+       LPMAPICONTAINER   lpGAL = NULL;
+
+       SizedSPropTagArray ( 2, sptCols ) = { 2,
+                        PR_ENTRYID,
+                        PR_DISPLAY_NAME };
+
+       if ( FAILED ( hRes = HrFindExchangeGlobalAddressList ( m_pAddrBook,
+                                     &amp;cbeid,
+                                     &amp;lpeid ) ) )
+                goto Quit;
+
+      if(FAILED(hRes = m_pAddrBook-&gt;OpenEntry((ULONG) cbeid,
+                                         (LPENTRYID) lpeid,
+                                         NULL,
+                                         MAPI_BEST_ACCESS,
+                                         &amp;ulObjType,
+                                         (LPUNKNOWN *)&amp;lpGAL)))
+               goto Quit;
+
+     if ( ulObjType != MAPI_ABCONT )
+            goto Quit;
+
+     if(FAILED(hRes = lpGAL-&gt;GetContentsTable(0L, &amp;lpContentsTable)))
+                goto Quit;
+
+   if(FAILED(hRes = lpContentsTable-&gt;SetColumns((LPSPropTagArray)&amp;sptCols,
+                               TBL_BATCH)))
+               goto Quit;
+
+    if ( FAILED ( hRes = lpContentsTable -&gt; GetRowCount ( 0, &amp;cRows ) ) )
+               goto Quit;
+
+    if ( FAILED ( hRes = lpContentsTable -&gt; QueryRows ( cRows, 0L, &amp;pRow )
+       goto Quit;
+    else
+       *ppRow = pRow;
+
+   Quit:
+       if ( NULL != lpGAL)
+       {
+                 lpGAL -&gt; Release ( );
+                 lpGAL = NULL;
+       }
+
+       if ( lpContentsTable )
+       {
+            lpContentsTable -&gt; Release ( );
+            lpContentsTable = NULL;
+       }
+
+       return hRes;
+   }
+   // End code
+
+</PRE></OL>NOTE: In order to compile and run this code, you must have the Win32 SDK
+and the Platform SDK. The latest versions of these SDK's are January 1997
+and March 1997, respectively. The following libraries must be included for
+linking: Mapi32.lib, Edkmapi.lib, Edkutils.lib, and Addrlkup.lib. If you
+are building in debug mode, Edkdebug.lib is also necessary. Also, the debug
+or release MultiThreaded DLL option must be selected in the code generation
+options of the C/C++ tab in the build settings dialog box in order to link
+properly.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For more information on starting a MAPI session read the topic "Opening an
+Information Store" found on the January 1997 MSDN CD.
+ 
+<PRE>Keywords          : EDKAPI EMAPI
+Version           : 1.0
+Platform          : WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 7, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

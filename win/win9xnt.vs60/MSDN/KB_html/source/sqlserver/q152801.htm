@@ -1,0 +1,519 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Examples of Sp_OA Procedure Use and SQLOLE.Transfer Object </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q152801">
+<META NAME="KBModify" CONTENT="1997/04/10">
+<META NAME="KBCreate" CONTENT="1996/06/24">
+<META NAME="Keywords" CONTENT="kbnetwork SSrvTran_SQL">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The following Transact-SQL sample code transfers an entire database. It is a simplified example of how to use the Sp_OA procedures and the SQLOLE.Transfer object. For detailed documentation of the procedures and objects, query in SQL Server 6.50 Bo...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAW6,QASP,QAH6,QAOX,QDNQ,QAS1,QA4Q,QAB9,QBCF,QAI4,QBXS,QA2Q,QAEF,QABM V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Examples of Sp_OA Procedure Use and SQLOLE.Transfer Object</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q152801</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The following Transact-SQL sample code transfers an entire database. It is
+a simplified example of how to use the Sp_OA procedures and the
+SQLOLE.Transfer object. For detailed documentation of the procedures and
+objects, query in SQL Server 6.50 Books Online.
+<P>
+ 
+<UL><LI>The following is an example that uses the SQLOLE.Transfer Object to
+   transfer an entire database.
+<P>
+   ** For sample use only **
+</UL> 
+<P>
+use pubs
+go
+<P>
+ 
+-- Disconnect the server object
+ 
+drop procedure sp_OA_ServerDisconnect
+go
+<P>
+create procedure sp_OA_ServerDisconnect @bDebug bit, @oServer int
+as
+<PRE>   if @bDebug = 1
+      print 'sp_OA_ServerDisconnect starting...'
+
+   DECLARE  @hr   int
+
+   exec @hr = sp_OAMethod @oServer, 'Disconnect'
+   if @hr &lt;&gt; 0
+      EXEC sp_OAGetErrorInfo @oServer
+
+   return @hr
+</PRE>go
+<P>
+ 
+-- Create a stored procedure to handle the server object and make a login
+ 
+drop procedure sp_OA_ServerObject
+go
+<P>
+create procedure sp_OA_ServerObject @bDebug bit, @oServer int output,
+@strServer varchar(30), @strUser varchar(30)
+as
+<P>
+<PRE>   if @bDebug = 1
+      print 'sp_OA_ServerObject starting...'
+
+   DECLARE @hr       int
+
+   exec @hr = sp_OACreate 'SQLOLE.SQLServer', @oServer OUT
+
+   if @hr = 0
+   begin
+
+      Select 'Attempting to connect to ' + @strServer + ' as ' + @strUser
+      exec @hr = sp_OAMethod @oServer, 'Connect', NULL, @strServer,
+</PRE>@strUser
+<PRE>      if @hr &lt;&gt; 0
+      begin
+         exec sp_OAGetErrorInfo @oServer
+         exec sp_OADestroy @oServer
+      end
+
+   end
+   else
+      EXEC sp_OAGetErrorInfo @oServer
+
+
+   return @hr
+</PRE>go
+<P>
+ 
+-- Create a stored procedure to create transfer object and fill in
+properties
+ 
+drop procedure sp_OA_TransferObject
+go
+<P>
+create procedure sp_OA_TransferObject @bDebug bit, @oTransfer int OUT,
+@strDestDB varchar(30), @strToServer varchar(30), @strToUser varchar(30)
+as
+<P>
+<PRE>   if @bDebug = 1
+      print 'sp_OA_TransferObject starting...'
+
+   DECLARE @hr       int
+   DECLARE @oLogin      int
+
+   exec @hr = sp_OACreate 'SQLOLE.Transfer', @oTransfer OUT
+
+   if @hr = 0
+   begin
+
+      print 'Setting transfer properties...'
+
+      exec @hr = sp_OASetProperty @oTransfer, 'CopyAllObjects', 1
+      if @hr = 0
+      begin
+
+         exec @hr = sp_OASetProperty @oTransfer, 'CopyData', 1
+         if @hr = 0
+         begin
+
+            exec @hr = sp_OASetProperty @oTransfer, 'CopySchema', 1
+            if @hr = 0
+            begin
+
+               exec @hr = sp_OASetProperty @oTransfer, 'DestDatabase',
+</PRE>@strDestDB
+<PRE>               if @hr = 0
+               begin
+
+                  if @bDebug = 1
+                     print 'Setting DestServer'
+
+                  exec @hr = sp_OASetProperty @oTransfer, 'DestServer',
+</PRE>@strToServer
+<PRE>                  if @hr = 0
+                  begin
+
+
+                     exec @hr = sp_OASetProperty @oTransfer,
+'DropDestObjectsFirst', 1
+                     if @hr = 0
+                     begin
+
+                        exec @hr = sp_OASetProperty @oTransfer,
+'DestLogin', @strToUser
+                        if @hr &lt;&gt; 0
+                        begin
+                           exec sp_OAGetErrorInfo @oTransfer
+                           exec sp_OADestroy @oTransfer
+                        end
+
+                     end
+                     else
+                     begin
+                        exec sp_OAGetErrorInfo @oTransfer
+                        exec sp_OADestroy @oTransfer
+                     end
+
+                  end
+                  else
+                  begin
+                     exec sp_OAGetErrorInfo @oTransfer
+                     exec sp_OADestroy @oTransfer
+                  end
+
+
+               end
+               else
+               begin
+                  exec sp_OAGetErrorInfo @oTransfer
+                  exec sp_OADestroy @oTransfer
+               end
+
+            end
+            else
+            begin
+               exec sp_OAGetErrorInfo @oTransfer
+               exec sp_OADestroy @oTransfer
+            end
+
+         end
+         else
+         begin
+            exec sp_OAGetErrorInfo @oTransfer
+            exec sp_OADestroy @oTransfer
+         end
+
+      end
+      else
+      begin
+         exec sp_OAGetErrorInfo @oTransfer
+         exec sp_OADestroy @oTransfer
+      end
+
+
+   end
+   else
+      exec sp_OAGetErrorInfo @oTransfer
+
+   return @hr
+</PRE>go
+<P>
+<P>
+<P>
+ 
+-- Create a stored procedure to drive the transfer of the pubs database
+ 
+drop procedure sp_OA_TransferDB
+go
+<P>
+create procedure sp_OA_TransferDB @bDebug bit, @strFromDB varchar(30),
+@strFromServer varchar(30), @strFromUser varchar(30), @strDestDB
+varchar(30), @strToServer varchar(30), @strToUser varchar(30),
+@strScriptsDir varchar(255)
+as
+<P>
+<PRE>   if @bDebug = 1
+      print 'sp_OA_TransferDB starting...'
+
+
+   select 'Preparing to transfer from ' + @strFromServer + '.' + @strFromDB
+</PRE>+ ' to ' + @strToServer + '.' + @strDestDB
+<P>
+<PRE>   --
+   -- Variable declarations
+   --
+   DECLARE @oServer  int
+   DECLARE @oTransfer   int
+   DECLARE @hr       int
+   DECLARE @strResult   varchar(255)
+   DECLARE @strCommand  varchar(255)
+
+   --
+   -- Create the server object and get logged on
+   --
+   exec @hr = sp_OA_ServerObject @bDebug, @oServer OUT, @strFromServer,
+</PRE>@strFromUser
+<PRE>   if @hr = 0
+   begin
+
+
+      --
+      -- Create a transfer object and fill in the details
+      --
+      exec @hr = sp_OA_TransferObject @bDebug, @oTransfer OUT, @strDestDB,
+</PRE>@strToServer, @strToUser
+<PRE>      if @hr = 0
+      begin
+
+         print "Scripting the transfer..."
+
+         --
+         -- Script the transfer
+         --
+         -- SQLOLEXfrFile_SummaryFiles = 0x0001
+         --
+         select @strCommand = 'Databases("' + @strFromDB +
+'").ScriptTransfer'
+
+         if @bDebug = 1
+            select @strCommand
+
+         exec @hr = sp_OAMethod @oServer, @strCommand, @strResult OUT,
+</PRE>@oTransfer, 1, @strScriptsDir
+<PRE>         if @hr = 0
+         begin
+
+            if @bDebug = 1
+               select 'Result' = @strResult
+
+
+            print "Performing the transfer..."
+
+            select @strCommand = 'Databases("' + @strFromDB + '").Transfer'
+
+            if @bDebug = 1
+               select @strCommand
+
+            exec @hr = sp_OAMethod @oServer, @strCommand, NULL, @oTransfer
+            if @hr &lt;&gt; 0
+            begin
+               exec sp_OAGetErrorInfo @oServer
+               print '***The ::Transfer method failed.  Check your script
+</PRE>directory (.log) files for more details.'
+<PRE>            end
+            begin
+               print 'Transfer complete successfully!!!'
+            end
+
+         end
+         else
+         begin
+            exec sp_OAGetErrorInfo @oServer
+         end
+
+
+         --
+         -- Clean up the transfer object
+         --
+         exec sp_OADestroy @oTransfer
+      end
+
+      --
+      -- Clean up the server object
+      --
+      exec sp_OA_ServerDisconnect @bDebug, @oServer
+      exec sp_OADestroy @oServer
+   end
+
+</PRE>go
+<P>
+ 
+-- Execute a transfer
+ 
+set nocount on
+go
+<P>
+exec sp_OA_TransferDB 0, "pubs", "MyServer", "sa", "pubs2", "MyServer",
+"sa", "c:\temp\scripts"
+go
+<P>
+ 
+<UL><LI>The following two examples use the Visual Basic 4.0 (VB) environment to
+   perform a single object transfer and a character mode BCP operation with
+   a special delimiter.
+<P>
+   ** Make sure you add appropriate error checking. **
+</UL> 
+<P>
+ 
+Transfer a Single Table Structure and Data
+ 
+<P>
+<PRE>Dim oServer     As Object
+Dim oTransfer   As Object
+
+'
+'   Create the Server object and connect
+'
+'   To obtain the correct defs for constants you need to
+'   include the SQLOLE65.TLB.  Same is true if you want to
+'   DIM things as SQLOLE.SQLServer and not as Object
+'
+</PRE>Set oServer = CreateObject("SQLOLE.SQLServer")
+oServer.Connect "MyServer", "sa"
+<P>
+If oServer.VerifyConnection = True Then
+<P>
+<PRE>    Set oTransfer = CreateObject("SQLOLE.Transfer")
+
+    oTransfer.CopyAllDefaults = False
+    oTransfer.CopyAllObjects = False
+    oTransfer.CopyAllRules = False
+    oTransfer.CopyAllStoredProcedures = False
+    oTransfer.CopyAllTables = False
+    oTransfer.CopyAllTriggers = False
+    oTransfer.CopyAllUserDefinedDatatypes = False
+    oTransfer.CopyAllViews = False
+
+    oTransfer.CopyData = SQLOLECopyData_Replace
+    oTransfer.CopySchema = True
+
+    oTransfer.IncludeDependencies = False
+    oTransfer.IncludeGroups = False
+    oTransfer.IncludeLogins = False
+    oTransfer.IncludeUsers = False
+
+    oTransfer.DropDestObjectsFirst = True
+
+    oTransfer.DestDatabase = "pubs2"
+    oTransfer.DestServer = "MyServer"
+    oTransfer.DestLogin = "sa"
+
+    '
+    ' Note:    That when used AddObjectByName you must qualify the object
+    '    "Owner.Object".  If this is not done you the schema (.TAB) file
+will
+    '    remain empty and the drop file (.DP1, .DP2) will contain a
+</PRE>".Object".
+<PRE>    '
+    oTransfer.AddObjectByName "dbo.tblTrans", SQLOLEObj_UserTable
+
+    oServer.Databases("pubs").ScriptTransfer oTransfer, 1,
+</PRE>"c:\temp\scripts"
+<P>
+<PRE>    oServer.Databases("pubs").Transfer oTransfer
+
+</PRE>Else
+<PRE>    MsgBox "VerifyConnection failed"
+</PRE>End If
+<P>
+<P>
+MsgBox "Done"
+<P>
+ 
+BCP Operation
+ 
+<P>
+Dim oServer As Object
+Dim oBCP As Object
+<P>
+Set oServer = CreateObject("SQLOLE.SQLServer")
+Set oBCP = CreateObject("SQLOLE.BulkCopy")
+<P>
+oServer.Connect "MyServer", "sa"
+<P>
+oBCP.DataFileType = SQLOLEDataFile_SpecialDelimitedChar
+oBCP.ColumnDelimiter = "~~~"
+oBCP.RowDelimiter = Chr(10) + Chr(13)
+<P>
+oBCP.DataFilePath = "c:\temp\scripts\authors.bcp"
+<P>
+oServer.Databases("Pubs").Tables("authors").ExportData oBCP
+<P>
+MsgBox "Done"
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: SQL-DMO SQL Database Management Objects<BR>
+Keywords            : kbnetwork SSrvTran_SQL<BR>
+Version             : 6.5<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

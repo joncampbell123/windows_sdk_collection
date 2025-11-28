@@ -1,0 +1,264 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Write a Dialog-based ActiveX Control Using ATL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q175503">
+<META NAME="KBModify" CONTENT="1997/11/17">
+<META NAME="KBCreate" CONTENT="1997/10/22">
+<META NAME="Keywords" CONTENT="AtlControl AXSDKControls">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When writing ActiveX controls with the Active Template Library (ATL), it may be useful to create your control based on a dialog box template. This allows you to take advantage of the Visual C++ resource editor to lay out contained controls or to re...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAB5,QA7O,QAOE,QAMN,QAHV,QA36,QA01,QAPF,QAEV,QAY2,QABO,QAVI,QALW,QAYC V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Write a Dialog-based ActiveX Control Using ATL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q175503</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Active Template Library (ATL), versions 2.0, 2.1
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When writing ActiveX controls with the Active Template Library (ATL), it
+may be useful to create your control based on a dialog box template. This
+allows you to take advantage of the Visual C++ resource editor to lay out
+contained controls or to reuse existing MFC dialog box templates and Visual
+Basic forms.
+<P>
+You add an ActiveX control to your ATL project by selecting the
+Insert- &gt;'New ATL Object' menu item and clicking either Full Control or
+Internet Explorer Control. On completion, the ATL Object Wizard generates
+code that includes a class derived from CComControl, which further derives
+from CWindowImpl.
+<P>
+This article demonstrates how to derive your control class from CDialogImpl
+and associate a dialog box template with this class. This article also
+demonstrates providing support for UI activation and navigation keys.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+
+<OL><P><LI>Declare your own class, based on CComControl, which is derived from
+   CDialogImpl instead of CWindowImpl. The original definition of
+   CComControl can be found in ATLCTL.H. For example:
+<P>
+<P><PRE>      template &lt;class T&gt;
+      class ATL_NO_VTABLE CComDlgCtrl : public CComControlBase,
+<PRE></PRE>         public CDialogImpl&lt;T&gt;
+      {
+      public:
+         CComDlgCtrl() : CComControlBase(m_hWnd) {}
+         HRESULT FireOnRequestEdit(DISPID dispID)
+         {
+            T* pT = static_cast&lt;T*&gt;(this);
+            return T::__ATL_PROP_NOTIFY_EVENT_CLASS::FireOnRequestEdit
+               (pT-&gt;GetUnknown(), dispID);
+         }
+         HRESULT FireOnChanged(DISPID dispID)
+         {
+            T* pT = static_cast&lt;T*&gt;(this);
+            return T::__ATL_PROP_NOTIFY_EVENT_CLASS::FireOnChanged
+               (pT-&gt;GetUnknown(), dispID);
+         }
+         virtual HRESULT ControlQueryInterface(const IID&amp; iid, void** ppv)
+         {
+            T* pT = static_cast&lt;T*&gt;(this);
+            return pT-&gt;_InternalQueryInterface(iid, ppv);
+         }
+         virtual HWND CreateControlWindow(HWND hWndParent, RECT&amp; rcPos)
+         {
+            T* pT = static_cast&lt;T*&gt;(this);
+            return pT-&gt;Create(hWndParent);
+            // CDialogImpl::Create differs from CWindowImpl
+         }
+      };
+
+</PRE><P><LI>Derive your control from this new class, instead of CComControl. For
+   example:
+<P>
+<P><PRE>      class ATL_NO_VTABLE CMyDlgCtrl :
+      ...
+<PRE></PRE>         public CComDlgCtrl&lt;CMyDlgCtrl&gt;, // Replaced CComControl
+      ...
+
+</PRE><P><LI>Create your dialog template and make sure it is marked as a "Child"
+   template. This will set up correctly if you use the IDD_FORMVIEW dialog
+   subtype when creating the dialog using the Insert-&gt;Resource menu item.
+<P>
+   Update class definition to identify this resource. For example:
+<P>
+<P><PRE>      class ATL_NO_VTABLE CMyDlgCtrl :
+      ...
+      {
+      public:
+<PRE></PRE>         enum { IDD = IDD_MYDIALOG };
+      ...
+
+</PRE><P><LI>Declare and implement a message handler for WM_INITDIALOG and any
+   required message, command, and notify handlers. For example:
+<P>
+<P><PRE>      BEGIN_MSG_MAP(CMyDlgCtrl)
+<PRE></PRE>         MESSAGE_HANDLER(WM_INITDIALOG, OnInitDialog)
+         COMMAND_ID_HANDLER(IDC_SOMECOMMAND, OnSomeCommand)
+      END_MSG_MAP()
+
+      ...
+      LRESULT OnInitDialog(UINT uMsg,WPARAM wParam,LPARAM lParam,
+         BOOL&amp;bHandled)
+      {
+         InPlaceActivate( OLEIVERB_UIACTIVATE );
+         // Perform any dialog initialization
+         return FALSE;
+      }
+      LRESULT OnSomeCommand(WORD wNotifyCode,WORD wID,HWND hWndCtl,
+         BOOL&amp;bHandled)
+      {
+         // Perform operation for this command.
+         return 0;
+      }
+
+</PRE><P><LI>Remove the OnDraw declaration and implementation.
+
+<P><LI>If you wish to handle UI activation of your control correctly, add a
+   WM_MOUSEACTIVATE message handler to call CComControl::InPlaceActivate.
+   For example:
+<P>
+<P><PRE>      BEGIN_MSG_MAP(CMyDlgCtrl)
+<PRE></PRE>         ...
+         MESSAGE_HANDLER(WM_MOUSEACTIVATE, OnMouseActivate)
+      END_MSG_MAP()
+      ...
+      LRESULT OnMouseActivate(UINT uMsg,WPARAM wParam,LPARAM lParam,
+         BOOL&amp;bHandled)
+      {
+         // UI-Activate control
+         InPlaceActivate( OLEIVERB_UIACTIVATE );
+         return FALSE;
+      }
+
+</PRE><P><LI>If you wish to handle tabbing and other navigation keys correctly,
+   override IOleInPlaceActiveObjectImpl::TranslateAccelerator. For example:
+<P>
+<P><PRE>      STDMETHOD(TranslateAccelerator)(MSG *pMsg)
+      {
+<PRE></PRE>         if ( ( pMsg-&gt;message &lt; WM_KEYFIRST
+             || pMsg-&gt;message &gt; WM_KEYLAST )
+           &amp;&amp; ( pMsg-&gt;message &lt; WM_MOUSEFIRST
+             || pMsg-&gt;message &gt; WM_MOUSELAST ) )
+            return S_FALSE;
+         return ( IsDialogMessage( m_hWnd, pMsg ) ) ? S_OK : S_FALSE;
+      }
+
+</PRE><P><LI>Depending on how you created the control, you need to set the
+   m_bWindowOnly variable to 1 in your control's constructor to force the
+   control to be non-Windowless. For example:
+<P>
+<P><PRE>      CMyDlgCtrl()
+      {
+<PRE></PRE>         m_bWindowOnly = 1;
+      }
+
+</PRE></OL>(c) Microsoft Corporation 1997, All Rights Reserved.
+Contributions by Mark Davis, Microsoft Corporation
+ 
+<PRE>Keywords          : AtlControl AXSDKControls
+Technology        : kbole
+Version           : WINDOWS:2.0,2.1
+Platform          : WINDOWS
+Issue type        : kbhowto
+Solution Type     : kbsample</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

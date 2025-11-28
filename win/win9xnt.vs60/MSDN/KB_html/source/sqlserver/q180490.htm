@@ -1,0 +1,274 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: SP_Depends Does Not List Triggers </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q180490">
+<META NAME="KBModify" CONTENT="1998/02/05">
+<META NAME="KBCreate" CONTENT="1998/02/04">
+<META NAME="Keywords" CONTENT="kbbug6.50 SSrvStProc">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="BUG #: 15457 (6.5)   The sp_depends system procedure does not list triggers that belong to the table that sp_depends is run for.  CAUSE =====  Triggers implicitly belong to the table they are created on. Because of this there are no rows created in s...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QATP,QA2Q,QAG2,QABM,QBWS,QA4H,QAY2,QABI,QAW6,QAPN,QAOX,QAUD,QABH,QAOE,QAMA V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: SP_Depends Does Not List Triggers</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 5, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q180490</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+BUG #: 15457 (6.5)
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The sp_depends system procedure does not list triggers that belong to the
+table that sp_depends is run for.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+Triggers implicitly belong to the table they are created on. Because of
+this there are no rows created in sysdepends relating a trigger to the
+table it is created on. The sp_depends system procedure uses the sysdepends
+table for its information, so the triggers do not show up.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+Add the following stored procedure to master; use it instead of sp_depends.
+<P>
+if exists (select * from sysobjects where id = object_id('dbo.sp_depends2')
+and sysstat &amp; 0xf = 4)
+<PRE>   drop procedure dbo.sp_depends2
+</PRE>GO
+<P>
+create procedure sp_depends2  --1996/03/15 12:51
+<PRE>@objname varchar(92)    /* the object we want to check */
+as
+
+declare @objid int         /* the id of the object we want */
+declare @found_some bit       /* flag for dependencies found */
+</PRE>declare @dbname varchar(30)
+<P>
+<PRE>/*
+</PRE>**  Make sure the @objname is local to the current database.
+<PRE>*/
+</PRE>if @objname like '%.%.%' and
+<PRE>   substring(@objname, 1, charindex('.', @objname) - 1) &lt;&gt; db_name()
+   begin
+      raiserror(15250,-1,-1)
+      return (1)
+   end
+
+/*
+</PRE>**  See if @objname exists.
+<PRE>*/
+</PRE>select @objid = object_id(@objname), @dbname=db_name()
+if @objid is null
+<PRE>   begin
+      raiserror(15009,-1,-1,@objname,@dbname)
+      return (1)
+   end
+
+/*
+</PRE>**  Initialize @found_some to indicate that we haven't seen any
+dependencies.
+<PRE>*/
+</PRE>select @found_some = 0
+<P>
+set nocount on
+<P>
+<PRE>/*
+</PRE>**  Print out the particulars about the local dependencies.
+<PRE>*/
+</PRE>if exists (select *
+<PRE>      from sysdepends
+         where id = @objid)
+</PRE>begin
+<PRE>   print 'In the current database the specified object references the
+</PRE>following:'
+<PRE>   select       'name' = substring((s6.name + '.' + o1.name), 1, 40),
+          type = substring(v2.name, 1, 16),
+          updated = substring(u4.name, 1, 7),
+          selected = substring(w5.name, 1, 8)
+      from   sysobjects    o1
+         ,master.dbo.spt_values  v2
+         ,sysdepends    d3
+         ,master.dbo.spt_values  u4
+         ,master.dbo.spt_values  w5 --11667
+         ,sysusers      s6
+      where  o1.id = d3.depid
+      and    o1.sysstat &amp; 0xf = v2.number and v2.type = 'O'
+      and    u4.type = 'B' and u4.number = d3.resultobj
+      and    w5.type = 'B' and w5.number = d3.readobj|d3.selall
+      and    d3.id = @objid
+      and    o1.uid = s6.uid
+
+   select @found_some = 1
+</PRE>end
+<P>
+<PRE>/*
+</PRE>**  Now check for things that depend on the object.
+<PRE>*/
+</PRE>if exists (select *
+<PRE>      from sysdepends
+         where depid = @objid)
+</PRE>begin
+<PRE>   print 'In the current database the specified object is referenced by the
+</PRE>following:'
+<PRE>   select distinct 'name' = substring((s.name + '.' + o.name), 1, 40),
+      type = substring(v.name, 1, 16)
+         from sysobjects o, master.dbo.spt_values v, sysdepends d,
+            sysusers s
+         where o.id = d.id
+            and o.sysstat &amp; 0xf = v.number and v.type = 'O'
+            and d.depid = @objid
+            and o.uid = s.uid
+   select @found_some = 1
+</PRE>end
+<P>
+<PRE>/*If the object is a table check for triggers  */
+
+</PRE>if (select type from sysobjects where id = @objid) = 'U'
+begin
+<PRE>  if exists (select deltrig from sysobjects where deltrig = @objid)
+   begin
+     print "Table has the following triggers: "
+     select name from sysobjects where deltrig = @objid
+     select @found_some = 1
+   end
+</PRE>end
+<P>
+<P>
+<PRE>/*If the object is a trigger list the table it was created on */
+
+</PRE>if (select type from sysobjects where id = @objid) = 'TR'
+begin
+<PRE>  print 'This trigger was created on table:'
+  select name from sysobjects where id = (select deltrig from sysobjects
+</PRE>where id = @objid)
+<PRE>  select @found_some = 1
+</PRE>end
+<P>
+<P>
+<PRE>/*
+</PRE>**  Did we find anything in sysdepends?
+<PRE>*/
+</PRE>if @found_some = 0
+<PRE>   print 'Object doesn''t reference any object and no objects reference
+</PRE>it.'
+<P>
+set nocount off
+<P>
+return (0)
+GO
+<P>
+GRANT  EXECUTE  ON dbo.sp_depends2  TO public
+GO
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in Microsoft SQL Server
+version 6.5. We are researching this problem and will post new
+information here in the Microsoft Knowledge Base as it becomes available.
+ 
+<PRE>Keywords          : kbbug6.50 SSrvStProc
+Version           : 6.5
+Platform          : WINDOWS
+Issue type        : kbbug
+Solution Type     : kbpending</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 5, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

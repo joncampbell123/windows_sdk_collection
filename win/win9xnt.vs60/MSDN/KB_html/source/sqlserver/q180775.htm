@@ -1,0 +1,391 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Client Effects on SQL Server Throughput </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q180775">
+<META NAME="KBModify" CONTENT="1998/03/09">
+<META NAME="KBCreate" CONTENT="1998/02/10">
+<META NAME="Keywords" CONTENT="SSrvGen">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  In evaluating general areas that affect performance, the most commonly considered aspects are processor speed, disk I/O, and memory on the server. Although the performance of these parts of the server are crucial to proper performance, you must als...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAMR,QAU3,QAL3,QABM,QAFH,QARL,QAXB,QAI5,QACE,QBG2,QBVR,QAY5,QAHT,QAY2,QAVZ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Client Effects on SQL Server Throughput</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 9, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q180775</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In evaluating general areas that affect performance, the most commonly
+considered aspects are processor speed, disk I/O, and memory on the server.
+Although the performance of these parts of the server are crucial to proper
+performance, you must also consider network latency and client processing
+time as factors that can also have a major impact on the overall
+performance of the system.
+<P>
+This article discusses the latter areas and provides guidelines for
+evaluating what impact they may have on the server.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following example will be used throughout the document. The steps for
+the two connections perform the same update with just a small difference in
+the Transact-SQL syntax.
+<P>
+<P><h3>Connection 1</h3>
+ 
+<P>
+use pubs
+go
+<P>
+select convert(char(30), GetDate(), 9) "Start Time"
+go
+<P>
+<PRE>            Begin transaction
+   Go   ==&gt;   Send to SQL Server and process results
+
+            Update authors set au_lname = au_lname
+   Go   ==&gt;   Send to SQL Server and process results
+
+</PRE>Commit / Rollback transaction
+<PRE>   Go   ==&gt;   Send to SQL Server and process results
+
+</PRE>select convert(char(30), GetDate(), 9) "End Time"
+go
+<P>
+<P>
+<P><h3>Connection 2</h3>
+ 
+<P>
+use pubs
+go
+<P>
+select convert(char(30), GetDate(), 9) "Start Time"
+go
+<P>
+<P>
+begin transaction
+<P>
+if(0 = @@ERROR)
+begin
+<P>
+<PRE>   update authors set au_lname = au_lname
+
+   if(0 = @@ERROR)
+   begin
+      commit transaction
+   end
+   else
+   begin
+      rollback transaction
+   end
+
+</PRE>end
+<PRE>go    ==&gt;   Send to SQL Server and process results
+
+</PRE>select convert(char(30), GetDate(), 9) "End Time"
+go
+<P>
+<P>
+<P><h3>Network Round Trips</h3>
+ 
+<P>
+Connection 1 requires three trips to the SQL Server computer:
+
+<UL><LI>Begin Transaction
+<LI>Update
+<LI>Commit / Rollback Transaction
+<P>
+</UL>Connection 2 requires a single trip to complete the update.
+<P>
+<P><h3>Query Cancellation</h3>
+ 
+<P>
+Both the DB-Library and the ODBC APIs support asynchronous query
+processing. For example, DB-Library uses the dbdataready function to allow
+the client to poll the completion status of the query.
+<P>
+In DB-Library, the dbdataready function is controlled by the DataReadySleep
+value. For additional information about the DataReadySleep registry key,
+please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q159234.htm">Q159234</A></B>
+   TITLE     : INF: How to Change the Sleep Value Used by Dbdataready
+
+
+</PRE><h3>How Sleep Times Affect the Timings</h3>
+ 
+<P>
+By default, the sleep value is 250 milliseconds.
+<P>
+Connection 1 makes three round trips to the SQL Server. By default, the
+client encounters a minimum of 750 milliseconds of wait time, not counting
+the time for the actual network transfer. The wait time is calculated from
+(250 milliseconds * 3) = 750 milliseconds.
+<P>
+Connection 2 makes a single trip and encounters a minimum of 250
+milliseconds of wait time, not counting the time for actual network
+transfer.
+<P>
+You can change the speed of this example by a factor of three, simply by
+taking advantage of the Transact-SQL syntax and removing two network round
+trips.
+<P>
+<P><h3>How Network Roundtrips Affect Other Users</h3>
+ 
+<P>
+Connection 1 holds a transaction open for a minimum of 500 milliseconds.
+After the transaction is open, it takes 500 milliseconds to complete the
+update and then commit or rollback the transaction. Database concurrency
+prevents other users from accessing the records you are modifying.
+<P>
+Connection 2 keeps the transaction open only as long as necessary to
+complete the operation. On a 133-MHz Pentium single processor computer
+running both SQL Server and ISQL/w, the following timings are seen.
+<P>
+NOTE: The final Network I/O is not shown in either of the following
+examples. After the commit or rollback has completed the locks are released
+but the final I/O is not tallied.
+<P>
+<PRE>   Begin transaction                5 milliseconds
+   Update                          20 milliseconds
+   Commit/Rollback transaction      7 milliseconds
+      TOTAL                        32 milliseconds
+
+</PRE>Connection 2 will complete in approximately 32 milliseconds, whereas
+Connection 1 requires a much larger processing window and greatly extends
+the transaction latency time.
+<P>
+<PRE>   Begin transaction                5 milliseconds
+   Network I/O                    250 milliseconds
+   Update                          20 milliseconds
+   Network I/O                    250 milliseconds
+   Commit/Rollback transaction      7 milliseconds
+      TOTAL                       532 milliseconds
+
+</PRE>As shown earlier, the network time is a simple factor of three. However,
+the locking impact that the example imposes on other database users is a
+factor of 16 (532/32 = ~16).
+<P>
+Now let's say that this simple example is from a remote portable computer
+connecting with a 28.8 modem. In addition to the 250 milliseconds delay
+imposed by the dbdatareadysleep parameter, the time taken to actually
+transmit the information over the slow link is appreciable. Connection 1
+would affect other database users by an even larger factor, while
+Connection 2 would primarily affected by the speed of the client computer.
+The command is sent once, processed at the SQL Server in 32 milliseconds.
+The only user of the system that experiences a slowdown is the remote user,
+which is as expected, due to slow modem.
+<P>
+<P><h3>Client Lag Time</h3>
+ 
+<P>
+Client lag time is the period of time that elapses while the client
+processes the results which it received. If you again look at Connection 1,
+you can quickly see how this can affect the process. If an extra 10
+milliseconds are needed for the client to handle a result set, you can add
+another 30 milliseconds to the overall transaction time and yet another 20
+milliseconds to the transaction latency time.
+<P>
+Let's switch examples again. In this case there is an inventory table from
+an online system. You have spent months developing and installing what
+should be the fastest online order processing system in history. The users
+can search, buy, and keep a shopping cart, among other options. This is the
+tbllnventory table:
+<P>
+<PRE>   tblInventory
+      iProductID       int
+      strTitle         varchar(50)
+      strDescription   varchar(255)
+      iSize            int
+      iInStock         int
+      iOnOrder         int
+      iType            int
+
+</PRE>I want to purchase some cereal. However, I would like to see what is
+available. We can define cereal as type 2, so that the application issues
+the following query. In this example, the database contains 750 cereal-
+related items.
+<P>
+<PRE>   Select strTitle, strDescription, iSize, iInStock from tblInventory
+   where iType = 2
+
+</PRE>SQL Server will compile and parse the query and then begin to return the
+results. Shared locks are acquired on the appropriate pages. Remember that
+shared locks block update, insert, and delete operations.
+<P>
+At the same time, because your application is used nationwide, six other
+people are trying to place cereal orders.
+<P>
+SQL Server fills the first tabular data stream (TDS) packet, sends it to
+the client, and then waits for the client to process the results. During
+the time that the client is processing the results (client latency time),
+SQL Server continues to hold a shared page lock on the page where it was
+processing. This shared lock can block a user who is attempting to complete
+an order.
+<P>
+It seems like a simple action. Select a result set from the SQL Server and
+insert the values into a list box. A 133-MHz Pentium computer can add 750
+items to a list box in just over one second. Disabling the list box while
+filing it takes only one-third of a second. You can significantly decrease
+the client latency time by simply disabling the list box.
+<P>
+You might even be inclined to change the select operation to further reduce
+the locking. Limit the shared lock exposure by changing the query to the
+following.
+<P>
+<PRE>   Insert * into #tblSelect from
+   Select strTitle, strDescription, iSize, iInStock from tblInventory
+
+   Select * from #tblSelect
+
+</PRE>The query is isolated on the SQL Server and will not start returning
+results until they have been moved to the temporary table and all shared
+locks are released from the inventory table. This limits the time that
+shared locks are held on the inventory table to the time required for SQL
+Server to move the results to tempdb. The control is again with the
+database and not the client.
+<P>
+Another way to accomplish similar behavior is to make a "smart" client.
+Instead of filling a list box, it may be faster to load an array. However,
+you still have concerns about being bound by network throughput. The
+temporary table is a better solution in these situations.
+<P>
+As you can see, the client can play a pivotal roll in the database
+throughput. You should be especially careful when working with remote and
+reporting systems. The amount of time that the client takes to process
+results while holding locks has the potential to impact the database
+throughput. These types of issues may be hard to see as the latency periods
+may be timings of 100 milliseconds and difficult to see with the sp_who
+stored procedure. Use a slow link to quickly see the behavior. Run the
+application from a RAS link and see what the overall behavior is like. You
+can also take full advantage of the SQL Trace utility to carefully profile
+the application.
+<P>
+For additional information, please see the following articles in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q165951.htm">Q165951</A></B>
+   TITLE     : INF: Result Processing for SQL Server
+
+   ARTICLE-ID: <B><A href="../sqlserver/q172117.htm">Q172117</A></B>
+   TITLE     : INF: How to Profile Transact-SQL Code in Stored Procedures
+               and Triggers
+
+   ARTICLE-ID: <B><A href="../sqlserver/q162361.htm">Q162361</A></B>
+   TITLE     : INF: Understanding and Resolving SQL Server Blocking
+               Problems
+
+   ARTICLE-ID: <B><A href="../sqlserver/q167610.htm">Q167610</A></B>
+   TITLE     : INF: Assessing Query Performance Degradation
+
+   ARTICLE-ID: <B><A href="../sqlserver/q48712.htm">Q48712</A></B>
+   TITLE     : INF: Handling Timeouts Correctly in DB-Library
+
+   ARTICLE-ID: <B><A href="../sqlserver/q117143.htm">Q117143</A></B>
+   TITLE     : INF: When and How to Use dbcancel() or sqlcancel()
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: performance<BR>
+Keywords          : SSrvGen<BR>
+Version           : Windows:6.5<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 9, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

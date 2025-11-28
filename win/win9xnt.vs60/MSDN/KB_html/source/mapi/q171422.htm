@@ -1,0 +1,401 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Logging on to Active Messaging Session w/ Default Profile </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q171422">
+<META NAME="KBModify" CONTENT="1997/11/21">
+<META NAME="KBCreate" CONTENT="1997/07/16">
+<META NAME="Keywords" CONTENT="ActMsg">
+<META NAME="KBArea" CONTENT="Support; KB; mapi">
+<META NAME="Description" CONTENT="  In order to send mail via Active Messaging, you need to establish and logon to a session. Logging onto a session requires that you provide a profile name. If you do not programmatically provide a profile you receive a dialog box asking the user to ...">
+<META NAME="Product" CONTENT="mapi">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QANF,QATX,QA7H,QANG,QAYC,QDJ2,QAV5,QAY5,QAH4,QAAP,QAGX,QAB4,QABA,QBWS,QBS0 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Logging on to Active Messaging Session w/ Default Profile</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 21, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q171422</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Collaboration Data Objects (CDO), version 1.1
+<LI>Microsoft Visual Basic Learning, Professional, and Enterprise Editions
+   for Windows, version 5.0
+<LI>Microsoft Visual Basic Standard, Professional, and Enterprise Editions,
+   32-bit only, for Windows, version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In order to send mail via Active Messaging, you need to establish and logon
+to a session. Logging onto a session requires that you provide a profile
+name. If you do not programmatically provide a profile you receive a dialog
+box asking the user to choose a profile.
+<P>
+This article describes how to logon to an Active Messaging session by using
+the default profile of the current user.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+There are two ways to logon to an Active Messaging session using the
+current user's default profile:
+
+<OL><P><LI>If the user has a session running (for example, they have an
+   Outlook client running), executing the following line of code will
+   use the already instantiated session using the profile they are
+   currently logged on with:
+<P>
+<P><PRE>      objSession.Logon ShowDialog:=False, NewSession:=False
+</PRE><P>
+   Where "objSession" has been created as a MAPI.Session.
+
+<P><LI>If the user does not have a session running, you need to find the
+   default profile in the registry.
+<P>
+</OL>Since finding the default profile in the registry requires a lot of code,
+it makes sense to attempt to logon assuming that the user has a session
+running. If the user does not have a session running, a trappable error
+results. You can place the code for finding the default profile in the
+error handler.
+
+<OL><P><LI>Start a new Standard EXE Visual Basic Project.
+
+<P><LI>Add a module.
+
+<P><LI>Add a reference to the "Microsoft Active Messaging 1.1 Object Library"
+   (Olemsg32.dll).
+
+<P><LI>Copy and paste the following code to the General Declaration section
+   of your form:
+<P>
+<P><PRE>      Private Sub Form_Load()
+<PRE></PRE>         Dim objOutBox As Folder
+         Dim objNewMessage As Message
+         Dim objRecipients As Recipients
+         Dim objOneRecip As Recipient
+
+         StartMessagingAndLogon
+         Set objOutBox = objSession.Outbox
+         Set objNewMessage = objOutBox.Messages.Add
+         Set objRecipients = objNewMessage.Recipients
+         Set objOneRecip = objRecipients.Add
+         With objOneRecip
+            'Fill in an appropriate alias here
+            .Name = "MyName"
+            .Type = ActMsgTo
+            .Resolve ' get MAPI to determine complete e-mail address
+         End With
+         With objNewMessage
+            .Subject = "Test Active Messaging"
+            .Text = "Text of Active Messaging text"
+            .Send
+         End With
+      End Sub
+
+      Sub StartMessagingAndLogon()
+         Dim sKeyName As String
+         Dim sValueName As String
+         Dim sDefaultUserProfile As String
+         Dim osinfo As OSVERSIONINFO
+         Dim retvalue As Integer
+
+         On Error GoTo ErrorHandler
+         Set objSession = CreateObject("MAPI.Session")
+
+         'Try to logon.  If this fails, the most likely reason is
+         'that you do not have an open session.  The error
+         '-2147221231  MAPI_E_LOGON_FAILED will return.  Trap
+         'the error in the ErrorHandler
+         objSession.Logon ShowDialog:=False, NewSession:=False
+         Exit Sub
+      ErrorHandler:
+         Select Case Err.Number
+            Case -2147221231  'MAPI_E_LOGON_FAILED
+               'Need to find out what OS is in use, the keys are different
+               'for WinNT and Win95.
+               osinfo.dwOSVersionInfoSize = 148
+               osinfo.szCSDVersion = Space$(128)
+               retvalue = GetVersionEx(osinfo)
+               Select Case osinfo.dwPlatformId
+                  Case 0   'Unidentified
+                     MsgBox "Unidentified Operating System.  " &amp; _
+                        "Can't log onto messaging."
+                     Exit Sub
+                  Case 1   'Win95
+                     sKeyName = "Software\Microsoft\" &amp; _
+                                "Windows Messaging " &amp; _
+                                "Subsystem\Profiles"
+
+                  Case 2   'NT
+                      sKeyName = "Software\Microsoft\Windows NT\" &amp; _
+                                 "CurrentVersion\" &amp; _
+                                 "Windows Messaging Subsystem\Profiles"
+               End Select
+
+               sValueName = "DefaultProfile"
+               sDefaultUserProfile = QueryValue(sKeyName, sValueName)
+               objSession.Logon ProfileName:=sDefaultUserProfile, _
+                                ShowDialog:=False
+               Exit Sub
+            Case Else
+               MsgBox "An error has occured while attempting" &amp; Chr(10) &amp; _
+               "To create and logon to a new ActiveMessage session." &amp; _
+               Chr(10) &amp; "Please report the following error to your " &amp; _
+               "System Administrator." &amp;  Chr(10) &amp; Chr(10) &amp; _
+               "Error Location: frmMain.StartMessagingAndLogon" &amp; _
+               Chr(10) &amp; "Error Number: " &amp; Err.Number &amp; Chr(10) &amp; _
+               "Description: " &amp; Err.Description
+         End Select
+      End Sub
+
+</PRE><P><LI>Copy and paste the following code to your Module:
+<P>
+<P><PRE>      Public objSession As MAPI.Session
+      Public objNewMessage As Message
+</PRE><P>
+<P><PRE>      Public Type OSVERSIONINFO
+<PRE></PRE>         dwOSVersionInfoSize As Long
+         dwMajorVersion As Long
+         dwMinorVersion As Long
+         dwBuildNumber As Long
+         dwPlatformId As Long
+         szCSDVersion As String * 128
+      End Type
+
+      Global Const REG_SZ As Long = 1
+      Global Const REG_DWORD As Long = 4
+      Global Const HKEY_CURRENT_USER = &amp;H80000001
+      Global Const ERROR_NONE = 0
+      Global Const ERROR_BADDB = 1
+      Global Const ERROR_BADKEY = 2
+      Global Const ERROR_CANTOPEN = 3
+      Global Const ERROR_CANTREAD = 4
+      Global Const ERROR_CANTWRITE = 5
+      Global Const ERROR_OUTOFMEMORY = 6
+      Global Const ERROR_INVALID_PARAMETER = 7
+      Global Const ERROR_ACCESS_DENIED = 8
+      Global Const ERROR_INVALID_PARAMETERS = 87
+      Global Const ERROR_NO_MORE_ITEMS = 259
+
+      Global Const KEY_ALL_ACCESS = &amp;H3F
+
+      Global Const REG_OPTION_NON_VOLATILE = 0
+
+      Declare Function GetVersionEx Lib "kernel32" _
+         Alias "GetVersionExA" _
+               (ByRef lpVersionInformation As OSVERSIONINFO) As Long
+
+
+      Public Declare Function RegCloseKey Lib "advapi32.dll" _
+               (ByVal hKey As Long) As Long
+
+      Public Declare Function RegOpenKeyEx Lib "advapi32.dll" _
+         Alias "RegOpenKeyExA" _
+               (ByVal hKey As Long, _
+               ByVal lpSubKey As String, _
+               ByVal ulOptions As Long, _
+               ByVal samDesired As Long, _
+               phkResult As Long) As Long
+
+      Public Declare Function RegQueryValueExString Lib "advapi32.dll" _
+         Alias "RegQueryValueExA" _
+               (ByVal hKey As Long, _
+               ByVal lpValueName As String, _
+               ByVal lpReserved As Long, _
+               lpType As Long, _
+               ByVal lpData As String, _
+               lpcbData As Long) As Long
+
+      Public Declare Function RegQueryValueExLong Lib "advapi32.dll" _
+         Alias "RegQueryValueExA" _
+               (ByVal hKey As Long, _
+               ByVal lpValueName As String, _
+               ByVal lpReserved As Long, _
+               lpType As Long, lpData As Long, _
+               lpcbData As Long) As Long
+
+      Public Declare Function RegQueryValueExNULL Lib "advapi32.dll" _
+         Alias "RegQueryValueExA" _
+               (ByVal hKey As Long, _
+               ByVal lpValueName As String, _
+               ByVal lpReserved As Long, _
+               lpType As Long, _
+               ByVal lpData As Long, _
+               lpcbData As Long) As Long
+
+
+      Public Function QueryValue _
+               (sKeyName As String, _
+               sValueName As String)
+
+      Dim lRetVal As Long     'result of the API functions
+      Dim hKey As Long        'handle of opened key
+      Dim vValue As Variant   'setting of queried value
+
+      lRetVal = RegOpenKeyEx(HKEY_CURRENT_USER, _
+                           sKeyName, _
+                           0, _
+                           KEY_ALL_ACCESS, _
+                           hKey)
+
+      lRetVal = QueryValueEx(hKey, _
+                           sValueName, _
+                           vValue)
+      QueryValue = vValue
+      RegCloseKey (hKey)
+
+      End Function
+      Function QueryValueEx _
+            (ByVal lhKey As Long, _
+            ByVal szValueName As String, _
+            vValue As Variant) As Long
+
+         Dim cch As Long
+         Dim lrc As Long
+         Dim lType As Long
+         Dim lValue As Long
+         Dim sValue As String
+
+         On Error GoTo QueryValueExError
+
+         ' Determine the size and type of data to be read
+         lrc = RegQueryValueExNULL(lhKey, szValueName, 0&amp;, lType, 0&amp;, cch)
+         If lrc &lt;&gt; ERROR_NONE Then Error 5
+
+         Select Case lType
+            ' For strings
+            Case REG_SZ:
+               sValue = String(cch, 0)
+               lrc = RegQueryValueExString(lhKey, szValueName, 0&amp;, lType, _
+                  sValue, cch)
+               If lrc = ERROR_NONE Then
+                  vValue = Left$(sValue, cch)
+               Else
+                  vValue = Empty
+               End If
+            ' For DWORDS
+            Case REG_DWORD:
+               lrc = RegQueryValueExLong(lhKey, szValueName, 0&amp;, lType, _
+                  lValue, cch)
+               If lrc = ERROR_NONE Then vValue = lValue
+            Case Else
+               'all other data types not supported
+               lrc = -1
+         End Select
+
+      QueryValueExExit:
+         QueryValueEx = lrc
+         Exit Function
+      QueryValueExError:
+         Resume QueryValueExExit
+      End Function
+
+</PRE><P><LI>Run the project. You will send mail to the "Recipient" that you
+   entered in Form_Load.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+For additional information about Collaboration Data Objects versus Active
+Messaging, please see the following article in the Microsoft Knowledge
+Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../mapi/q176916.htm">Q176916</A></B>
+   TITLE     : INFO: Active Messaging and Collaboration Data Objects (CDO)
+</PRE></OL> 
+<PRE>Keywords          : ActMsg
+Version           : 1.1 4.0 5.0
+Platform          : WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 21, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

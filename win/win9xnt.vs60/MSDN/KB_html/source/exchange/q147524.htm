@@ -1,0 +1,228 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>XADM: How Circular Logging Affects the Use of Transaction Log </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q147524">
+<META NAME="KBModify" CONTENT="1998/02/03">
+<META NAME="KBCreate" CONTENT="1996/02/25">
+<META NAME="Keywords" CONTENT="XADM kbenv">
+<META NAME="KBArea" CONTENT="Support; KB; exchange">
+<META NAME="Description" CONTENT="  Microsoft Exchange Server stores its data in Jet databases. To commit this data to the database, Microsoft Exchange writes each transaction to a transaction log. In the background, these transaction logs are committed to the database. Microsoft Exc...">
+<META NAME="Product" CONTENT="Exchange">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDMH,QAHI,QAU5,QBXJ,QAZV,QAY1,QAUR,QDIU,QA3W,QAEF,QBW5,QADP,QAHT,QAL3,QANY V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>XADM: How Circular Logging Affects the Use of Transaction Log</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 3, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q147524</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Exchange Server, version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Microsoft Exchange Server stores its data in Jet databases. To commit this
+data to the database, Microsoft Exchange writes each transaction to a
+transaction log. In the background, these transaction logs are committed to
+the database. Microsoft Exchange Server has a circular logging option that,
+when enabled, limits the amount of disk space used by these transaction
+logs. This article describes the ways in which circular logging affects the
+use of transaction logs in Microsoft Exchange.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Transaction Logs and How Microsoft Exchange Uses Them</h3>
+ 
+<P>
+Transaction logs are files that Microsoft Exchange uses to commit data (e-
+mail messages, user additions, creation of folders, and so forth) to the
+corresponding database file on disk. For example in the \Exchsrvr\Mdbdata
+directory you may see files such as Edb.log, Edb00001.log, Priv.edb, and
+Pub.edb. The Edb*.log files are the transaction logs and the *.edb files
+are the information store database files. (Priv.edb is the private
+information store and Pub.edb is the public information store.) The most
+current transactions are stored in Edb.log; when Edb.log reaches 5 MB in
+size, a file called Edbtmp.log is created to accept incoming transactions
+and Edb.log in renamed to Edb00001.log. After Edb.log is renamed,
+Edbtmp.log is then renamed Edb.log. This process is repeated each time
+Edb.log reaches 5 MB in size. Thus, the log files build up as more and more
+transactions are created.
+<P>
+Microsoft Exchange Server uses these write-ahead transaction logs to ensure
+up-to-the-second recoverability of the database. Each (operation)
+transaction is written to a transaction file and to the database cache, and
+eventually to the database. After data is written to the database, a
+checkpoint (Edb.chk) is advanced. This checkpoint marks the position in the
+log files at which the database is in a consistent state. Thus, within the
+set of transaction logs there is a portion that can be considered active
+and a portion that can be considered inactive. If an event such as a power
+outage causes the system to fail, Microsoft Exchange goes into automatic
+recovery when the system is restarted. This entails rolling forward through
+the transactions in the existing log files to the checkpoint.
+<P>
+As described earlier, during recovery, the inactive portion of each log is
+not used; however, the logs can prove to be valuable when media failures
+occur. If the transaction logs are hosted on a different medium than the
+database and the medium containing the database fails, it is possible to
+generate a complete recovery by restoring the last full backup on the new
+medium and then roll forward through all the log files. Essentially, the
+checkpoint gets moved back from its location relative to the database on
+the disk that failed. Media failure is not a common scenario, but this is
+the only way (other than a fault tolerant solution, such as mirroring) that
+Microsoft Exchange can recover from media failures.
+<P>
+<P>
+When circular logging is disabled, the system will continue to create log
+files until a backup is completed. Backing up Microsoft Exchange Server is
+the preferred way of saving the log files and removing these logs from the
+disk to free up space.
+<P>
+For additional information on freeing up disk space, please see the
+following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../exchange/q128325.htm">Q128325</A></B>
+   TITLE     : Reclaiming Disk Space for the Information Store
+
+</PRE><h3>Effect of Having Circular Logging Turned On (Setup Default)</h3>
+ 
+<P>
+When circular logging is on, Microsoft Exchange writes transaction logs as
+usual; however, after the checkpoint (Edb.chk) file has been advanced, the
+inactive portion of the transaction log is discarded and overwritten.
+Typically, this represents the majority of the potential log data, because
+by definition, the total size of the active transactions will be less than
+the total amount of RAM on a given computer. Thus, when circular logging is
+on, the system still has complete recoverability with respect to hard and
+soft failures. The element that is sacrificed is the extra protection
+against media failure. Also, because the transaction logs are used for
+incremental and differential backups, these backup methods are no longer
+valid. If you try to do an incremental or a differential backup on a server
+that has circular logging enabled, Microsoft Windows NT Backup will
+generate an error informing the user that it cannot be done.
+<P>
+When circular logging enabled you can see more than one transaction log in
+the log directory. For example, if a user sends a message with a 25 MB
+attachment it is likely, because the maximum log file size is 5 MB, to see
+four logs created to process this transaction in addition to Edb.log. That
+is, you will see Edb00001.log, Edb00002.log, Edb00003.log, and
+Edb00004.log. After the transaction is processed completely, these log
+files will remain until a full backup is performed on the database, at
+which time they will be removed. If the number of log files generated with
+circular logging enabled is equal to or greater than four (not including
+Edb.log) the logs will stay until a full backup is performed.
+<P>
+When circular logging is enabled, high volume conditions also cause the
+number of log files to increase. Because the inactive portion of a
+transaction log is only discarded and reused after the Edb.chk has moved
+past it, many transactions may build up in the logs before they can be
+processed. If the total number of unprocessed transactions exceeds 5 MB and
+more continue to build up, another log file (for example, Edb00001.log)
+will be created to hold these transactions. If the high volume conditions
+continue, the log files will continue to grow in number until the
+transactions can be processed completely. After the transaction processing
+catches up and the Edb.chk is advanced past the transactions in these log
+files, they will become inactive and again will not be removed until a full
+backup is performed. Other possible causes of log files growing with
+circular logging enabled are faulty SCSI controllers or hard drives that
+cause the transactions not to be completed in a timely manner and the
+Edb.log files being held open exclusively by another process other then Jet
+(for example, backup programs, copying operations, and so forth).
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: kbfaq  crashes<BR>
+Keywords          : XADM kbenv<BR>
+Version           : 4.0 5.0<BR>
+Platform          : WINDOWS<BR>
+Solution Type     : Info_Provided<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 3, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

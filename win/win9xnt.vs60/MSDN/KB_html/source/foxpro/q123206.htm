@@ -1,0 +1,387 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: LCK _FindVar() Function Doesn't Work w/ Other Work Areas </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q123206">
+<META NAME="KBModify" CONTENT="1995/06/27">
+<META NAME="KBCreate" CONTENT="1994/11/23">
+<META NAME="Keywords" CONTENT="kbtool kbbuglist">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  The Library Construction Kit (LCK) _FindVar() function returns incorrect results if the second parameter of the LCK _FindVar() function is specified to be a work-area number other than the currently selected work area.  WORKAROUND  Use the LCK _Exe...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QA2Q,QAKD,QAKC,QAUJ,QAG2,QA7O,QA7N,QAY5,QAYL,QAG0,QAH4,QAH6,QBC6,QA4Q V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: LCK _FindVar() Function Doesn't Work w/ Other Work Areas</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 27, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q123206</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft FoxPro for Windows, versions 2.5, 2.5a, 2.5b, 2.6, 2.6a
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The Library Construction Kit (LCK) _FindVar() function returns incorrect
+results if the second parameter of the LCK _FindVar() function is specified
+to be a work-area number other than the currently selected work area.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+Use the LCK _Execute() function to select the work area and then use
+_FindVar() function to find the value of the field in the selected work
+area. The code in the More Information section demonstrates this
+workaround.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the Microsoft products
+listed at the beginning of this article. We are researching this problem
+and will post new information here in the Microsoft Knowledge Base as it
+becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The LCK _FindVar() function provides a way to initialize the Locator
+structure with information about a variable or field. The _FindVar()
+function has three parameters:
+<P>
+<PRE>   int _FindVar(NTI nti, int where, Locator FAR *loc)
+
+</PRE>Parameters:
+
+<UL><LI>"nti" is the NTI number of variable or field.
+
+<LI>"where" is the work area number.
+
+<LI>"loc" is a FAR pointer to the locator structure.
+<P>
+</UL><h3>FoxPro and C Sample Code to Demonstrate Workaround</h3>
+ 
+<P>
+<PRE>/* Date:  09/08/94
+   Purpose: To pass the work area number and the field name to the
+   function XREAD and return the corresponding value.
+
+   FoxPro Code:
+
+     CLEAR
+     SELECT 1
+     USE customer
+     SELECT 2
+     USE invoices
+     SELECT 1
+
+     SET LIBRARY TO test.dll     &amp;&amp; This is the name of .dll
+                                 &amp;&amp; created by this C program.
+     =XREAD(2,"itotal")
+     SET LIBRARY TO
+
+     CLOSE ALL
+*/
+
+#include &lt;pro_ext.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+
+void FAR readfield(ParamBlk FAR *parm)
+</PRE>{
+<PRE>     long int work_area;
+     NTI nti;
+     char FAR * field_name;
+     Locator loc;
+     Value val;
+
+     char FAR *select_cmd="SELECT ";
+     Value current_wa;     /* used to store current work area */
+     long int c_wa;
+     char buffer[4];
+
+     if (parm-&gt;p[0].val.ev_type='I')
+        work_area=parm-&gt;p[0].val.ev_long;
+
+     if (parm-&gt;p[1].val.ev_type='C')
+          {
+           //Null terminate character string that has field name.
+           if (!_SetHandSize(parm-&gt;p[1].val.ev_handle,parm-&gt;
+                      p[1].val.ev_length+1))
+           {
+                 _Error(182);   //Insufficient Memory
+           }
+
+           _HLock(parm-&gt;p[1].val.ev_handle);
+           field_name=(char FAR *)_HandToPtr(parm-&gt;
+                         p[1].val.ev_handle);
+           field_name[parm-&gt;p[1].val.ev_length]='\0';
+
+
+           // Display string Value
+           _PutStr("Field Name: ");
+           _PutStr(field_name);
+           //Carrage Return and Line Feed
+           _PutChr(13);
+           _PutChr(10);
+
+           /* Store current work area. */
+             _Evaluate(&amp;current_wa,"select(alias())");
+             c_wa=current_wa.ev_long;
+
+             _PutStr("Current Work Area: ");
+             _PutChr(c_wa+48);  /* In our test workarea &lt; 3 */
+             _PutStr("\n");
+
+             strcat(select_cmd,_itoa((int)work_area,buffer,10));
+             _PutStr("Select Command: ");
+             _PutStr(select_cmd);
+             _PutStr("\n");
+             _Execute(select_cmd);
+
+             _StrCpy(select_cmd,"SELECT ");  /* Reset Select
+                                                Command */
+
+             nti=_NameTableIndex(field_name);
+             if(nti == -1)
+             {
+              _HUnLock(parm-&gt;p[1].val.ev_handle);
+              _UserError("Cannot find variable in named table.");
+           }
+
+           if (_FindVar(nti,0,&amp;loc))
+           {
+              _Load(&amp;loc,&amp;val);
+
+              //Display value returned by _FindVar()
+              _PutStr("Value Returned by _FindVar()   : ");
+              _PutValue(&amp;val);
+           }
+             else
+           {
+            _PutStr("\nVariable does not exist!!!!");
+           }
+
+             /* Return to the previously selected work area. */
+             strcat(select_cmd,_itoa((int)c_wa,buffer,10));
+             _Execute(select_cmd);
+
+           //Unlock Handle - send address back to heap
+           _HUnLock(parm-&gt;p[1].val.ev_handle);
+        }
+}
+
+/* First parameter is the Work Area Number
+   Second parameter is the Field Name
+*/
+
+</PRE>FoxInfo myFoxInfo[]={
+<PRE> {"XREAD",(FPFI)readfield,2,"I,C"},
+</PRE>};
+<P>
+FoxTable _FoxTable={
+<PRE> (FoxTable FAR *)0,sizeof(myFoxInfo)/sizeof(FoxInfo),myFoxInfo
+</PRE>};
+<P>
+<P><h3>FoxPro and C Sample Code to Reproduce Problem</h3>
+ 
+<P>
+<PRE>/*  Purpose: To pass the work area number and the field name to the
+    function XREAD and return the corresponding value
+
+</PRE>FoxPro Code:
+<P>
+<PRE>  CLEAR
+  SELECT 1
+  USE customer
+  SELECT 2
+  USE invoices
+  SELECT 1
+
+  SET LIBRARY TO test.dll   &amp;&amp; Where test is the name of this C
+                            &amp;&amp; program when compiled.
+  =XREAD(2,"itotal")
+  SET LIBRARY TO
+
+  CLOSE ALL
+
+
+*/
+
+
+#include &lt;pro_ext.h&gt;
+
+void FAR readfield(ParamBlk FAR *parm)
+</PRE>{
+<PRE>   long int work_area;
+   NTI nti;
+   char FAR * field_name;
+   Locator loc;
+   Value val;
+
+   if (parm-&gt;p[0].val.ev_type='I')
+      work_area=parm-&gt;p[0].val.ev_long;
+
+   if (parm-&gt;p[1].val.ev_type='C')
+   {
+    //Null terminate character string that has field name.
+    if (!_SetHandSize(parm-&gt;p[1].val.ev_handle,parm-&gt;
+          p[1].val.ev_length+1))
+    {
+         _Error(182);   //Insufficient Memory
+    }
+
+    _HLock(parm-&gt;p[1].val.ev_handle);
+    field_name=(char FAR *)_HandToPtr(parm-&gt;p[1].val.ev_handle);
+      field_name[parm-&gt;p[1].val.ev_length]='\0';
+
+      // Display string Value
+    _PutStr("Field Name: ");
+    _PutStr(field_name);
+
+    //Carrage Return and Line Feed
+    _PutChr(13);
+    _PutChr(10);
+
+    nti=_NameTableIndex(field_name);
+    if(nti == -1)
+    {
+         _HUnLock(parm-&gt;p[1].val.ev_handle);
+         _UserError("Cannot find variable in named table.");
+    }
+
+    //Display number returned by nti
+    _PutStr(" A Value Was Returned by _NameTableIndex().");
+    _PutChr(13);
+    _PutChr(10);
+
+      if (_FindVar(nti,(int)work_area,&amp;loc))
+    {
+         _PutStr("Variable does exist.\n");
+        _Load(&amp;loc,&amp;val);
+
+        //Display value returned by _FindVar()
+        _PutStr("Value Returned by _FindVar()   : ");
+        _PutValue(&amp;val);
+      }
+      else
+      {
+          _PutStr("\nVariable does not exist!!!!");
+      }
+
+      //Unlock Handle - send address back to heap
+      _HUnLock(parm-&gt;p[1].val.ev_handle);
+   }
+</PRE>}
+<P>
+<PRE>/* First parameter is the Work Area Number
+   Second parameter is the Field Name
+*/
+
+</PRE>FoxInfo myFoxInfo[]={
+<PRE> {"XREAD",(FPFI)readfield,2,"I,C"},
+</PRE>};
+<P>
+FoxTable _FoxTable={
+<PRE> (FoxTable FAR *)0,sizeof(myFoxInfo)/sizeof(FoxInfo),myFoxInfo
+</PRE>};
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+FoxPro Library Construction Kit "Developer's Guide," _FindVar() section.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: FoxWin LCK 2.50 2.50a 2.50b 2.60 2.60a<BR>
+buglist2.50 buglist2.50a buglist2.50b buglist2.60 buglist2.60a<BR>
+KBCategory: kbtool kbbuglist<BR>
+KBSubcategory: FxtoolLck<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 27, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

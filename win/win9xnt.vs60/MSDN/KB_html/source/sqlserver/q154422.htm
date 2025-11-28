@@ -1,0 +1,272 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How Grant and Revoke work in SQL Server 6.5. </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q154422">
+<META NAME="KBModify" CONTENT="1997/04/09">
+<META NAME="KBCreate" CONTENT="1996/08/05">
+<META NAME="Keywords" CONTENT="kbnetwork SSrvGen SSrvSQL_Admin">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  In SQL Server version 6.5, the implementation of permissions has changed compared to previous versions. This article describes the SQL Server 6.5 behavior.  MORE INFORMATION  The Sysprotects table maintains information about user and group permissi...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBM2,QAGC,QABO,QBWG,QA5V,QAPN,QABM,QAK7,QAS1,QAGU,QAY2,QAUD,QA2Q,QASR,QAHD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How Grant and Revoke work in SQL Server 6.5.</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 9, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q154422</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In SQL Server version 6.5, the implementation of permissions has changed
+compared to previous versions. This article describes the SQL Server 6.5
+behavior.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The Sysprotects table maintains information about user and group
+permissions. A change in SQL Server 6.5 from the previous version is how it
+writes to the Sysprotects table, which in turn affects what permission is
+assigned to a user or to a group. SQL Server determines what to write to
+the Sysprotects table based on the current content of the table.
+<P>
+SQL Server evaluates whether a row exists in the Sysprotects table for the
+specific permission, action, object, and user or group. If a row exists in
+Sysprotects relating to the specific permission, SQL Server performs one of
+the following steps:
+
+<UL><LI>If a row exists, and the current GRANT or REVOKE statement duplicates
+   the existing row, nothing is entered in Sysprotects.
+
+<LI>If a row exists with GRANT permission and the current REVOKE statement
+   is the converse of the previously entered row, the previously entered
+   row is deleted from Sysprotects.
+
+<LI>If a row exists with REVOKE permission, and the current GRANT statement
+   is the converse of the previously entered row, the previously entered
+   row is deleted and a new row with GRANT permission is entered in
+   Sysprotects.
+<P>
+</UL>If no row exists in Sysprotects relating to the specific permission, SQL
+Server performs one of the following steps (depending on who the permission
+is being granted to or revoked from, and what other permissions exist in
+the Sysprotects table):
+
+<UL><LI>If a GRANT permission is issued, a new row with GRANT permission is
+   entered in Sysprotects.
+
+<LI>A user is subordinate to a group, and a group is subordinate to a
+   public. If a REVOKE permission is issued for a user or group and the
+   user's group or public group has already been granted permission (has an
+   entry with GRANT permission in Sysprotects), a new row with REVOKE
+   permission is entered in Sysprotects.
+
+<LI>If a REVOKE permission is issued for a user or group and there is no
+   entry with GRANT permission in Sysprotects for user's group or public
+   group, no new row is entered in Sysprotects.
+<P>
+</UL>Based on the above steps, permissions (in SQL Server 6.5) operate in a
+strict hierarchy with any explicit GRANT or REVOKE permission at the user
+level, overriding any explicit GRANT or REVOKE permission at the group
+level, which in turn overrides any explicit GRANT or REVOKE permission at
+the PUBLIC group level. Permissions granted to (or revoked from) the user
+level or the group level are evaluated independently of any permissions
+granted to (or revoked from) the group the user belongs to or the all-
+encompassing PUBLIC group.
+<P>
+The following example displays the behavior mentioned above. In the
+example, user1 is a user and group1 is a group which contains user1.
+<P>
+Step 1: Grant permission to a user. This will enter a row with GRANT in
+<PRE>        Sysprotects.
+
+</PRE>GRANT select ON authors_test TO user1
+go
+sp_helprotect authors_test
+go
+<P>
+Result:
+<P>
+<PRE>Owner Object       Grantee Grantor ProtectType Action Column
+</PRE>----- ------------ ------- ------- ----------- ------ ---------
+<PRE>dbo   authors_test  user1   dbo     Grant      Select (All+New)
+
+</PRE>Step 2: Issue another GRANT statement to group1. This enters another row in
+<PRE>        Sysprotects.
+
+</PRE>GRANT select ON authors_test TO group1
+go
+sp_helprotect authors_test
+go
+<P>
+Result:
+<P>
+<PRE>Owner Object       Grantee Grantor ProtectType Action Column
+</PRE>----- ------------ ------- ------- ----------- ------ ---------
+<PRE>dbo   authors_test  user1   dbo     Grant      Select (All+New)
+dbo   authors_test  group1  dbo     Grant      Select (All+New)
+
+</PRE>Step 3: REVOKE permission from group1, which cancels the previously
+<PRE>        assigned GRANT to group1 and only the one row with GRANT to user1
+        is left in Sysprotects.
+
+</PRE>REVOKE select ON authors_test FROM group1
+go
+sp_helprotect authors_test
+go
+<P>
+Result:
+<P>
+<PRE>Owner Object       Grantee Grantor ProtectType Action Column
+</PRE>----- ------------ ------- ------- ----------- ------ ---------
+<PRE>dbo   authors_test  user1   dbo     Grant      Select (All+New)
+
+</PRE>Step 4: Issue a REVOKE from either group1 or public. This does not place
+<PRE>        any entry in Sysprotects.
+
+</PRE>REVOKE select ON authors_test FROM group1
+go
+sp_helprotect authors_test
+go
+<P>
+Result:
+<P>
+<PRE>Owner Object       Grantee Grantor ProtectType Action Column
+</PRE>----- ------------ ------- ------- ----------- ------ ---------
+<PRE>dbo   authors_test  user1   dbo     Grant      Select (All+New)
+
+</PRE>Step 5: Issue a GRANT to public and then a REVOKE from group1. This enters
+<PRE>        two more entries in Sysprotects.
+
+</PRE>GRANT select ON authors_test TO public
+go
+REVOKE select ON authors_test FROM group1
+go
+sp_helprotect authors_test
+go
+<P>
+Result:
+<P>
+<PRE>Owner Object       Grantee Grantor ProtectType Action Column
+</PRE>----- ------------ ------- ------- ----------- ------ ---------
+<PRE>dbo   authors_test  user1   dbo     Grant      Select (All+New)
+dbo   authors_test  group1  dbo     Revoke     Select (All+New)
+dbo   authors_test  public  dbo     Grant      Select (All+New)
+
+</PRE>Step 6: Issue a GRANT to group1. This removes the existing REVOKE
+<PRE>        permission from group1 and adds a new entry for GRANT permission to
+        group1.
+
+</PRE>GRANT select ON authors_test TO group1
+go
+sp_helprotect authors_test
+go
+<P>
+Result:
+<P>
+<PRE>Owner Object       Grantee Grantor ProtectType Action Column
+</PRE>----- ------------ ------- ------- ----------- ------ ---------
+<PRE>dbo   authors_test  user1   dbo     Grant      Select (All+New)
+dbo   authors_test  group1  dbo     Grant      Select (All+New)
+dbo   authors_test  public  dbo     Grant      Select (All+New)
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: sql<BR>
+Keywords            : kbnetwork SSrvGen SSrvSQL_Admin<BR>
+Version             : 6.5<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 9, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

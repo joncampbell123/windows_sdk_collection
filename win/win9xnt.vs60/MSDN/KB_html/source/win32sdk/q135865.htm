@@ -1,0 +1,262 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Use Win32 API to Draw a Dragging Rectangle on Screen DC </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q135865">
+<META NAME="KBModify" CONTENT="1995/09/29">
+<META NAME="KBCreate" CONTENT="1995/08/28">
+<META NAME="Keywords" CONTENT="kbui kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article shows by example how to have your application draw a dragging rectangle on an arbitrary area of the screen. This action is known as  rubber banding.  Utilities that perform screen capture, zooming, and so on are typical examples of suc...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAQ7,QAJH,QAK4,QBE7,QBE6,QAPN,QAGU,QA9N,QA1O,QDL9,QBWO,QBWN,QBC9,QBC8,QANO V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Use Win32 API to Draw a Dragging Rectangle on Screen DC</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 29, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q135865</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT version 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article shows by example how to have your application draw a dragging
+rectangle on an arbitrary area of the screen. This action is known as
+"rubber banding." Utilities that perform screen capture, zooming, and so on
+are typical examples of such applications. Due to the change in behavior of
+the SetCapture API in win32, the standard technique used for rubber banding
+on the screen DC in 16-bit Windows no longer works under Windows NT and
+Windows95. This article explores alternate methods you can use to perform
+rubber banding in win32.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>16-bit Method for Rubber Banding Won't Work in Win32-Based Applications</h3>
+ 
+<P>
+In 16-bit Windows, an application called the SetCapture API prior to
+starting the rubber banding. This then directed all further mouse input to
+the application's capture window. This allowed the user to click anywhere
+on the desktop including the client area of other running applications and
+start the drag action. Because SetCapture directs all mouse input to the
+capture window, it is then a simple matter for the application to draw a
+rubber banding rectangle as the user moves the mouse.
+<P>
+However, the Win32 implementation of the SetCapture API has changed so that
+the 16-bit method fails. SetCapture no longer directs all mouse input to an
+application's capture window. If an application calls SetCapture and the
+user then clicks another application or the desktop (an application by
+itself) to activate it, subsequent mouse messages are no longer directed to
+the capture window. The only mouse messages that a capture window receives
+are those generated when the application's thread is active. This is
+applicable to a 16-bit application running under Windows NT or Windows 95
+as well as a newly written 32-bit application. There are two ways for a
+Win32-based application to perform rubber banding.
+<P>
+<P><h3>Method One: How to Perform Rubber Banding in Win32-Based Applications</h3>
+ 
+<P>
+In this method, the application imposes a restriction on the user as to how
+the dragging action is done. For example, the application might display a
+small window and require the user to depress the mouse button in the client
+area of the window to indicate the beginning of the rubber banding mode and
+drag the mouse, without releasing the mouse button, to whichever part of
+the desktop the user wants to capture. Upon reaching the appropriate anchor
+point, the user presses a key on the keyboard (for example, the CTRL key)
+and drags the mouse to perform the actual rubber banding. Note that during
+the entire process, the user keeps the mouse button depressed, so other
+applications are not activated, and all the mouse messages are therefore
+directed to the capture window.
+<P>
+The following sample code illustrates how this might be implemented:
+<P>
+<PRE>// some global declarations
+
+</PRE>BOOL bDrag;
+BOOL bDraw;
+POINT ptCurrent, ptNew;
+<P>
+<PRE>// inside the capture window procedure...
+
+</PRE>case WM_LBUTTONDOWN:
+<PRE>   SetCapture(hwnd);
+   bDrag = TRUE;   // set flag to check for key down in mouse move message
+
+</PRE>case WM_MOUSEMOVE:
+<PRE>   if (bDrag)
+   {
+      if ( keyFlags &amp; MK_CONTROL )  // CTRL key down
+      {
+         bDraw = TRUE;  // start actual drawing from next move message
+         ptCurrent.x = ptNew.x = x;  // store the first point after
+         ptCurrent.y = ptNew.y = y;  // converting to screen coordinates
+         ClientToScreen (hwnd,&amp;ptCurrent);
+         ClientToScreen (hwnd,&amp;ptNew);
+         bDrag = FALSE;
+      }
+   }
+   else if ( bDraw )
+   {
+
+      // Draw two rectangles in the screen DC to cause rubber banding
+
+      HDC hdc = CreateDC ( TEXT("DISPLAY"), NULL, NULL, NULL );
+      SetROP2(hdc, R2_NOTXORPEN );
+
+      // Draw over and erase the old rectangle
+
+      Rectangle   ( hdc, ptCurrent.x, ptCurrent.y, ptNew.x, ptNew.y );
+      ptNew.x = x;
+      ptNew.y = y;
+      ClientToScreen (hwnd,&amp;ptNew);
+
+      // Draw the new rectangle
+
+      Rectangle   ( hdc, ptCurrent.x, ptCurrent.y, ptNew.x, ptNew.y );
+      DeleteDC ( hdc );
+   }
+
+</PRE>case WM_LBUTTONUP:
+<P>
+<PRE>   if ( bDraw )
+   {
+
+      // Don't leave orphaned rectangle on desktop; erase last rectangle.
+
+      HDC hdc;
+      bDrag = FALSE;
+      bDraw = FALSE;
+      ReleaseCapture();
+      hdc = CreateDC ( TEXT("DISPLAY"), NULL, NULL, NULL );
+      SetROP2(hdc, R2_NOTXORPEN );
+      Rectangle   ( hdc, ptCurrent.x, ptCurrent.y, ptNew.x, ptNew.y );
+      DeleteDC ( hdc );
+
+      // At this point the application has the coordinates of the rubber
+      // banding rectangle.
+
+   } else if ( bDrag)
+   {
+      // The user released the mouse button without ever pressing CTRL key.
+
+      bDraw = FALSE;
+      bDrag = FALSE;
+      ReleaseCapture();
+   }
+
+</PRE>The drawback to this approach is that the rubber banding action may
+not be intuitive. The user is required to use a key in addition to the
+mouse now, whereas in 16-bit Windows this could have been accomplished with
+the mouse alone.
+<P>
+<P><h3>Method Two: How to Perform Rubber Banding in Win32-Based Applications</h3>
+ 
+<P>
+Another way to do rubber banding in win32 consistent with the 16-bit method
+is to create a popup window that covers the entire desktop and has the
+WS_EX_TRANSPARENT style bit set. This window can be created with no title
+bar or borders and is active only for the time period of the rubber
+banding. It is destroyed upon completion of the rubber banding - when the
+user releases the mouse button. This popup window becomes the capture
+window and the rubber banding logic would then simply be applied on the
+client area DC of the popup window.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00<BR>
+KBCategory: kbui kbcode<BR>
+KBSubcategory: usrctl<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 29, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

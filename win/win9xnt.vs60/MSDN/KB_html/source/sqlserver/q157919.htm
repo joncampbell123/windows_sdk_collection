@@ -1,0 +1,338 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Building an ODS Application with MFC </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q157919">
+<META NAME="KBModify" CONTENT="1997/04/09">
+<META NAME="KBCreate" CONTENT="1996/10/21">
+<META NAME="Keywords" CONTENT="kbprg kbusage SSrvODS SSrvProg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article describes the steps necessary to build an ODS application using MFC. The major issue is that without the _cdecl specifications, the C++ compiler cannot locate the standard C API calls.  1. Wrap the following code around the include of ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QA4Q,QA5E,QBXS,QAH4,QAGI,QAIJ,QAI4,QABM,QALW,QDON,QBFY,QAUQ,QAPF,QAMA V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Building an ODS Application with MFC</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 9, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q157919</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 4.21a, 6.0, and 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes the steps necessary to build an ODS application
+using MFC. The major issue is that without the _cdecl specifications, the
+C++ compiler cannot locate the standard C API calls.
+
+<OL><P><LI>Wrap the following code around the include of the Srv.h header file:
+<P>
+<PRE>         #ifdef __cplusplus
+            extern "C" {
+         #endif
+
+      #include &lt;srv.h&gt;
+
+         #ifdef __cplusplus
+            }
+         #endif
+
+</PRE><P><LI>If you are developing a non-console application, you should start a
+   separate thread to call srv_start. This frees the main thread to handle
+   Windows message processing activity. The following lines provide a small
+   example:
+<P>
+<P><PRE>      DWORD dwThread =  0;
+</PRE><P>
+<P><PRE>      hThread = CreateThread(NULL, 0 ,
+</PRE>   (LPTHREAD_START_ROUTINE)iServerRunThread, NULL, 0, &amp;dwThread);
+<P><PRE>      if(!hThread)
+<PRE></PRE>         ... Error processing ...
+
+      int iServerRunThread(void)
+      {
+         srv_run(pDlg-&gt;pserver);
+         return 1;
+      }
+
+</PRE><P><LI>Cast your calls to install event handlers as shown by the following:
+<P>
+<P><PRE>      srv_handle(pserver, SRV_START, (int (__cdecl *)(void *))
+<PRE></PRE>         iODSEventHandler);
+
+
+</PRE></OL>The following lines are examples of code:
+<P>
+BOOL CODSSampleDlg::OnInitDialog()
+{
+<PRE>   CDialog::OnInitDialog();
+
+   pDlg = this;
+
+   // Add "About..." menu item to system menu.
+
+   // IDM_ABOUTBOX must be in the system command range.
+   ASSERT((IDM_ABOUTBOX &amp; 0xFFF0) == IDM_ABOUTBOX);
+   ASSERT(IDM_ABOUTBOX &lt; 0xF000);
+
+   CMenu* pSysMenu = GetSystemMenu(FALSE);
+   CString strAboutMenu;
+   strAboutMenu.LoadString(IDS_ABOUTBOX);
+   if (!strAboutMenu.IsEmpty())
+   {
+      pSysMenu-&gt;AppendMenu(MF_SEPARATOR);
+      pSysMenu-&gt;AppendMenu(MF_STRING, IDM_ABOUTBOX, strAboutMenu);
+   }
+
+   // Set the icon for this dialog.  The framework does this automatically
+   //  when the application's main window is not a dialog
+   SetIcon(m_hIcon, TRUE);       // Set big icon
+   SetIcon(m_hIcon, FALSE);      // Set small icon
+
+
+   // ************************************************
+   //    BEGIN:   ODS Code Initialization
+   // ************************************************
+   if(pconfig = srv_config_alloc())
+   {
+      if(srv_config(pconfig, SRV_ANSI_CODEPAGE, "TRUE", SRV_NULLTERM) ==
+</PRE>SUCCEED)
+<PRE>      {
+         if(srv_config(pconfig, SRV_MINWORKINGTHREADS, "10", SRV_NULLTERM)
+</PRE>== SUCCEED)
+<PRE>         {
+            if(srv_config(pconfig, SRV_MAXWORKINGTHREADS, "25",
+</PRE>SRV_NULLTERM) == SUCCEED)
+<PRE>            {
+               if(srv_config(pconfig, SRV_THREADTIMEOUT, "1", SRV_NULLTERM)
+</PRE>== SUCCEED)
+<PRE>               {
+                  srv_errhandle(iODSErrorHandler);
+
+                  if(pserver = (PSRV_SERVER) srv_init(pconfig, "ODS",
+</PRE>SRV_NULLTERM))
+<PRE>                  {
+                     vAddLine("&gt;&gt;&gt; ODS Sample Starting.");
+
+                     srv_handle(pserver, SRV_START, (int (__cdecl *)(void
+</PRE>*))iODSEventHandler);
+<P>
+<PRE>                     //
+                     // Lets get things started
+                     //
+                     DWORD dwThread =  0;
+
+                     hThread = CreateThread(NULL, 0 ,
+</PRE>(LPTHREAD_START_ROUTINE)iServerRunThread, NULL, 0, &amp;dwThread);
+<PRE>                     if(!hThread)
+                        vAddLine("*** attempt to start ODS server thread
+</PRE>failed.");
+<P>
+<PRE>                  }
+                  else
+                     vAddLine("*** attempt to initialize server failed.");
+               }
+               else
+                  vAddLine("*** attempt to set thread timeout failed.");
+            }
+            else
+               vAddLine("*** attempt to set max worker threads failed.");
+         }
+         else
+            vAddLine("*** attempt to set min worker threads failed.");
+      }
+      else
+         vAddLine("*** attempt to set ANSI codepage failed.");
+   }
+   else
+      vAddLine("*** srv_config_alloc() failed.");
+
+
+   // ************************************************
+   //    END:  ODS Code Initialization
+   // ************************************************
+
+
+   return TRUE;  // return TRUE  unless you set the focus to a control
+</PRE>}
+<P>
+<P>
+#ifdef __cplusplus
+<PRE>   extern "C" {
+</PRE>#endif
+<P>
+<PRE>//
+//    ODS Handlers
+//
+int iODSErrorHandler(PSRV_SERVER pserver, PSRV_PROC psrvproc, int iErrorNo,
+</PRE>BYTE bSeverity,
+<PRE>                BYTE bState, int iOSErrorNo, DBCHAR * strError, int
+</PRE>iErrorLen, DBCHAR *strOSError, int iOSErrorLen)
+{
+<PRE>   CString     cstrError;
+   int   iRc = SRV_CONTINUE;
+
+    pDlg-&gt;vAddLine("");
+
+   cstrError.Format("*** OS Error %d: %s.", iOSErrorNo, strOSError);
+   pDlg-&gt;vAddLine((LPCTSTR)cstrError);
+
+   cstrError.Format("*** Error: (%d) Sev: (%d) State: (%d) %s.", iErrorNo,
+</PRE>bSeverity, bState, strError);
+<PRE>   pDlg-&gt;vAddLine((LPCTSTR)cstrError);
+
+   pDlg-&gt;vAddLine("");
+
+    return iRc;
+</PRE>}
+<P>
+<PRE>int iODSEventHandler(PSRV_SERVER pserver)
+</PRE>{
+<P>
+<PRE>   pDlg-&gt;vAddLine("&gt;&gt;&gt; SRV_START called.");
+
+   //
+   //    Setup ODS handlers
+   //
+   srv_handle(pserver, SRV_CONNECT, (int (__cdecl *)(void *))
+</PRE>iConnectionHandler);
+<PRE>   //   srv_handle(pserver, SRV_LANGUAGE, iLangExecHandler);
+   //   srv_handle(pserver, SRV_DISCONNECT, iExitConnectHandler);
+   //   srv_handle(pserver, SRV_ATTENTION, iAttentionHandler);
+
+
+    return(SRV_CONTINUE);
+</PRE>}
+<P>
+<P>
+<PRE>int iServerRunThread(void)
+</PRE>{
+<PRE>   srv_run(pDlg-&gt;pserver);
+
+   return 1;
+</PRE>}
+<P>
+<P>
+<PRE>int iConnectionHandler(PSRV_PROC psrvproc)
+</PRE>{
+<PRE>   CString     cstrData;
+
+    EnterCriticalSection(&amp;pDlg-&gt;csSync);
+
+
+   cstrData.Format("&gt;&gt;&gt; User name ............ \"%s\"",
+</PRE>srv_pfield(psrvproc, SRV_USER, NULL));
+<PRE>   pDlg-&gt;vAddLine((LPCTSTR)cstrData);
+
+   cstrData.Format("&gt;&gt;&gt; Password ............. \"%s\"",
+</PRE>srv_pfield(psrvproc, SRV_PWD, NULL));
+<PRE>   pDlg-&gt;vAddLine((LPCTSTR)cstrData);
+
+   LeaveCriticalSection(&amp;pDlg-&gt;csSync);
+
+    return SRV_DISCONNECT;
+</PRE>}
+<P>
+<P>
+#ifdef __cplusplus
+<PRE>   }
+</PRE>#endif
+<P>
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:<BR>
+Keywords            : kbprg kbusage SSrvODS SSrvProg<BR>
+Version             : 4.21 6.0 6.5<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 9, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

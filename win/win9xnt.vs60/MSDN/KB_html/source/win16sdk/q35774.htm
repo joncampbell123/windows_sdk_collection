@@ -1,0 +1,260 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Differences Between PostAppMessage and PostMessage Funcs </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q35774 ">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1988/09/22">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="  The following information describes the differences between the PostAppMessage and PostMessage functions, and the circumstances under which each should be used.  MORE INFORMATION  In most cases, the PostMessage function should be used. Essentially,...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEV,QAH6,QAD7,QAH7,QAI4,QAYC,QAGX,QAUD,QDL9,QBWO,QBWN,QAY5,QAYV,QAGQ,QBWQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Differences Between PostAppMessage and PostMessage Funcs</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q35774 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+3.00 3.10
+WINDOWS
+kbprg
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   versions 3.1 and 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The following information describes the differences between the
+PostAppMessage and PostMessage functions, and the circumstances under
+which each should be used.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+In most cases, the PostMessage function should be used. Essentially,
+both functions accomplish the same result, but PostMessage uses a
+window handle, and PostAppMessage uses a task handle to identify the
+destination window for the message.
+<P>
+In the Windows environment, it is possible to create a task that does
+not have a window associated with it, but not vice versa. Under some
+circumstances an application must send a message to a windowless
+application; there is no window handle to use as a parameter to
+PostMessage. In this case, use the PostAppMessage function to send the
+message using the task handle.
+<P>
+However, if an application will receive messages sent by
+PostAppMessage, its message loop must be modified. When a message is
+posted by PostAppMessage and retrieved by GetMessage, the hwnd field
+of the MSG structure is NULL because no window was specified as the
+target for the message. Therefore, it is important to process this
+special case and to perform whatever processing is appropriate. An
+application must not pass an MSG structure with a NULL hwnd field to
+the DispatchMessage function. Doing so will cause an error. Some
+possibilities for handling this special case are listed below:
+
+<UL><LI>Process the message within the message loop.
+
+<LI>Pass the message to another procedure that is set up to process
+   special cases.
+
+<LI>Set the hwnd field of the MSG structure to the window handle of the
+   window that should receive the message.
+
+<LI>Change any of the other values in the MSG structure before passing
+   the message along.
+<P>
+</UL>The following code demonstrates processing a message posted by the
+PostAppMessage function. After the window is drawn, pressing the left
+mouse button in the window generates a PostMessage call, and pressing
+the right mouse button generates an identical PostAppMessage call.
+When the application processes the message posted by PostAppMessage,
+it beeps the speaker and then passes the message to the main window.
+<P>
+<PRE>//*******************************************************************
+// MinWin - PostMessage versus PostAppMessage example.
+
+#include &lt;windows.h&gt;
+
+char szAppName[] = "MinWin";
+</PRE>HWND hMainWnd;
+<P>
+long FAR PASCAL WndProc(HWND, unsigned, WORD, LONG);
+<P>
+<PRE>int PASCAL WinMain(HANDLE hInstance, HANDLE hPrevInstance,
+                   LPSTR lpszCmdLine, int nCmdShow)
+{
+   MSG msg;
+   WNDCLASS wndclass;
+
+   if (!hPrevInstance)
+      {
+      wndclass.style = CS_HREDRAW | CS_VREDRAW;
+      wndclass.lpfnWndProc = WndProc;
+      wndclass.cbClsExtra = 0;
+      wndclass.cbWndExtra = 0;
+      wndclass.hInstance = hInstance;
+      wndclass.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+      wndclass.hCursor = LoadCursor(NULL, IDC_ARROW);
+      wndclass.hbrBackground = COLOR_WINDOW + 1;
+      wndclass.lpszMenuName = NULL;
+      wndclass.lpszClassName = szAppName;
+
+      if (!RegisterClass(&amp;wndclass))
+         return FALSE;
+      }
+
+   hMainWnd = CreateWindow(szAppName, szAppName, WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
+        NULL, NULL, hInstance, NULL);
+
+   ShowWindow(hMainWnd, nCmdShow);
+   UpdateWindow(hMainWnd);
+
+   while (GetMessage(&amp;msg, NULL, 0, 0))
+      {
+      if (msg.hwnd == NULL) // Beep, then pass the message to
+         {                  //  the window
+         MessageBeep(0);
+         msg.hwnd = hMainWnd;
+         }
+
+      TranslateMessage(&amp;msg);
+      DispatchMessage(&amp;msg);
+      }
+
+   return msg.wParam;
+</PRE>}
+<P>
+long FAR PASCAL WndProc(HWND hWnd, unsigned iMessage,
+<PRE>                        WORD wParam, LONG lParam)
+{
+   HANDLE hInst;
+   HANDLE hTask;
+
+   hInst = GetWindowWord(hWnd, GWW_HINSTANCE);
+
+   switch (iMessage)
+      {
+   case WM_LBUTTONDOWN:
+      PostMessage(hWnd, WM_USER+0x1000, 0, 0L);
+      break;
+
+   case WM_RBUTTONDOWN:
+      PostAppMessage(GetWindowTask(hWnd), WM_USER+0x1000, 0, 0L);
+      break;
+
+   case WM_USER+0x1000:
+      MessageBox(NULL, "Message Received", "WM_USER", MB_OK);
+      break;
+
+   case WM_DESTROY:
+      if (hWnd == hMainWnd)
+         PostQuitMessage(0);
+      break;
+
+   default:
+      return DefWindowProc(hWnd, iMessage, wParam, lParam);
+      }
+
+   return 0L;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.10<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: UsrMsg<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

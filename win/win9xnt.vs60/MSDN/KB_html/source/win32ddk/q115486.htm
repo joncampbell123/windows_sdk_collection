@@ -1,0 +1,288 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Control Device Driver Load Order </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q115486">
+<META NAME="KBModify" CONTENT="1998/02/17">
+<META NAME="KBCreate" CONTENT="1994/05/26">
+<META NAME="Keywords" CONTENT="NTDDKKMode">
+<META NAME="KBArea" CONTENT="Support; KB; win32ddk">
+<META NAME="Description" CONTENT="  Windows NT is designed around the concept that the first driver to claim a device obtains ownership of that device. This ownership can be shared or it can be exclusive; this is up to the claiming device driver. If the device is exclusively claimed ...">
+<META NAME="Product" CONTENT="Win32 DDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABO,QAB5,QAKD,QAIJ,QBWA,QAMB,QAU9,QDIV,QBE7,QBE6,QA2O,QABA,QAPN,QAKC,QBWP V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Control Device Driver Load Order</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 17, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q115486</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Device Development Kit (DDK) for Windows NT,
+   versions 3.5, 3.51
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Windows NT is designed around the concept that the first driver to claim a
+device obtains ownership of that device. This ownership can be shared or it
+can be exclusive; this is up to the claiming device driver. If the device
+is exclusively claimed by a device driver, any further attempts to claim
+the device by subsequently loaded device drivers fail. Because of this, it
+is imperative that the order in which device drivers load can be modified
+by device driver authors. This article describes the two methods that you
+can use to control the order in which device drivers load.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+There are two methods that you can use to control the order in which device
+drivers load. Both methods take advantage of entries in the registry that
+can be found at \HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control. The
+first method is to modify the ServiceGroupOrder. The second method is to
+assign Tag values that determine the order of driver loading according to
+the GroupOrderList.
+<P>
+These two methods only work for device drivers that have a start value of
+0 (SERVICE_BOOT_START) or 1 (SERVICE_SYSTEM_START). In all cases, device
+drivers with a start value of 0 load before any device drivers with a start
+value of 1 attempt to load.
+<P>
+<P><h3>Method 1: ServiceGroupOrder</h3>
+ 
+<P>
+The ServiceGroupOrder contains a list of group names in the order that they
+will be loaded. Here are the unmodified contents of ServiceGroupOrder:
+<P>
+<PRE>       SCSI miniport
+       port
+       Primary disk
+       SCSI class
+       SCSI CDROM class
+       filter
+       boot file system
+       Base
+       Pointer Port
+       Keyboard Port
+       Pointer Class
+       Keyboard Class
+       Video Init
+       Video
+       Video Save
+       file system
+       Event log
+       Streams Drivers
+       NDIS
+       TDI
+       NetBIOSGroup
+       SpoolerGroup
+
+</PRE>According to the ServiceGroupOrder, device drivers in the group "SCSI
+class" load after all device drivers in the group "Primary disk" and before
+device drivers in the group "SCSI CDROM class" load. The higher a device
+driver's group is in the list, the sooner it loads. The ServiceGroupOrder
+list is scanned twice. First, all device drivers with a start value of 0
+load; then, all device drivers with a start value of 1 load. Thus, a device
+driver with a start value of 0 loads before any device driver with a start
+value of 1, no matter what its position on the ServiceGroupOrder list.
+<P>
+It is possible for the device driver author to edit the ServiceGroupOrder.
+By doing this, a new group can be created at any place in the list. A good
+example might be an SCSI class device driver called "SAMPLDRV" needing to
+load before "SCSIDISK" because SCSIDISK is claiming a device that
+SAMPLDRV needs to claim. Here is SCSIDISK's registry entries:
+<P>
+<PRE>       \registry\machine\system\currentcontrolset\services\scsidisk
+          Type = REG_DWORD 0x00000001
+          Start = REG_DWORD 0x00000000
+          Group = SCSI class
+          ErrorControl = REG_DWORD 0x00000000
+          DependOnGroup = REG_MULTI_SZ "SCSI miniport"
+
+</PRE>A new group can be added to the ServiceGroupOrder called "Load Me
+First" and SAMPLDRV can have its group set to Load Me First. Here is
+the modified ServiceGroupOrder:
+<P>
+<PRE>       SCSI miniport
+       port
+       Primary disk
+       Load Me First
+       SCSI class
+       SCSI CDROM class
+       filter
+       boot file system
+       .
+       .
+       .
+
+</PRE>Here is SAMPLDRV's registry entries:
+<P>
+<PRE>       \registry\machine\system\currentcontrolset\services\sampldrv
+          Type = REG_DWORD 0x00000001
+          Start = REG_DWORD 0x00000000
+          Group = Load Me First
+          ErrorControl = REG_DWORD 0x00000000
+          DependOnGroup = REG_MULTI_SZ "SCSI miniport"
+
+</PRE>With this configuration, SAMPLDRV loads before SCSIDISK.
+<P>
+<P><h3>Method #2: GroupOrderList and Tag Values</h3>
+ 
+<P>
+An optional key called Tag can be included in a device driver's registry.
+The value of the Tag helps determine the loading order of the device
+drivers within a group. The loading order is not necessarily in numerical
+order; rather, it is in the order defined by the GroupOrderList. The first
+entry per group in the GroupOrderList is the number of Tag values. This is
+followed by the numerical sequence in which the Tag values are to be
+loaded. Device drivers in a group are first loaded according to their Tag
+value as defined by the GroupOrderList. If the device driver does not have
+a Tag value or if the Tag value is not in the GroupOrderList, then these
+device drivers load after the device drivers with valid Tag values load.
+For these device drivers, the order of loading is not guaranteed, other
+than that all device drivers in a group load before the next group loads.
+<P>
+Here is a partial output of the GroupOrderList:
+<P>
+<PRE>      \registry\machine\system\currentcontrolset\control\grouporderlist
+          Base = REG_BINARY 0d 00 00 00 01 00...
+          Extended base = REG_BINARY 04 00 00 00 01 00...
+          Filter = REG_BINARY 05 00 00 00 01 00...
+          Keyboard Class = REG_BINARY 01 00 00 00 01 00...
+          Keyboard Port = REG_BINARY 01 00 00 00 01 00...
+          Ndis = REG_BINARY 09 00 00 00 01 00...
+          Pointer Class = REG_BINARY 01 00 00 00 01 00...
+          Pointer Port = REG_BINARY 03 00 00 00 01 00...
+          .
+          .
+          .
+
+</PRE>NOTE: There is no value for SCSI class. Not every group is represented in
+the GroupOrderList. When a group is not in the GroupOrderList, the order in
+which device drivers load within the group cannot be guaranteed.
+<P>
+As with the ServiceGroupOrder, the GroupOrderList can be modified. Using
+the same example as above, Tag entries for SCSI class can be added:
+<P>
+<PRE>      \registry\machine\system\currentcontrolset\control\grouporderlist
+          SCSI class = REG_BINARY 02 00 00 00 02 00 00 00 01 00 00 00
+          Base = REG_BINARY 0d 00 00 00 01 00...
+          Extended base = REG_BINARY 04 00 00 00 01 00...
+          .
+          .
+          .
+
+</PRE>In this example, the group SCSI class recognizes two Tag values, 00000001
+and 00000002. The order in which the Tag values load is 00000002 first,
+followed by 00000001. If SAMPLDRV is in the SCSI class group, which is
+the same as SCSIDISK, either Tag value guarantees that SAMPLDRV loads
+before SCSIDISK because SCSIDISK has no Tag value and non-Tagged
+drivers load last in a group.
+<P>
+If for some reason SCSIDISK is assigned a Tag value of 0x00000001,
+SAMPLDRV loads before SCSIDISK when SAMPLDRV is assigned a Tag value
+of 00000002:
+<P>
+<PRE>       \registry\machine\system\currentcontrolset\services\sampldrv
+          Type = REG_DWORD 0x00000001
+          Start = REG_DWORD 0x00000000
+          Group = SCSI class
+          ErrorControl = REG_DWORD 0x00000000
+          DependOnGroup = REG_MULTI_SZ "SCSI miniport"
+          Tag = REG_DWORD 0x00000002
+</PRE> 
+<PRE>Keywords          : NTDDKKMode
+Version           : WINNT:3.5,3.51;
+Platform          : winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 17, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

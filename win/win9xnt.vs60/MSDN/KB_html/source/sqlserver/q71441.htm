@@ -1,0 +1,285 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Creating a Four-Byte User-Defined DATE Data Type </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q71441 ">
+<META NAME="KBModify" CONTENT="1997/04/03">
+<META NAME="KBCreate" CONTENT="1991/04/18">
+<META NAME="Keywords" CONTENT="kbprg SSrvDB_LIB SSrvGen SsrvTran_SQL">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  Using the SQL Server DATETIME data type is one way to represent a date in SQL Server. There are times, however, when it is necessary to store the date without the time. In this case, it may be more efficient to use an integer data type instead of t...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QACE,QATP,QABM,QAGJ,QAYV,QAKR,QABH,QABI,QAOX,QAPF,QACI,QA9N,QAIB,QA4Q,QDNG V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Creating a Four-Byte User-Defined DATE Data Type</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 3, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q71441 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+  - Microsoft SQL Server version 4.2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Using the SQL Server DATETIME data type is one way to represent a date
+in SQL Server. There are times, however, when it is necessary to store
+the date without the time. In this case, it may be more efficient to
+use an integer data type instead of the DATETIME data type, because
+four of the eight bytes of storage used by DATETIME would be unused.
+(Note: Current versions of Microsoft SQL Server do offer SMALLDATETIME;
+however, the range of dates that can be represented is smaller and this
+option may still be desired.)
+<P>
+The following example shows how to create a user-defined DATE datatype
+as a 4 byte integer. The example consists of three steps: creating the
+user-defined data type, creating a rule to validate the year, and
+creating a trigger to validate the date. Note that there are two
+different versions of the trigger.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The date is stored in a YYYYMMDD format directly into an integer. To
+insert the date in different formats, create either a stored procedure
+to convert the format to the storage format or convert the format to
+the storage format within the C application. Note that the rule
+validates the year and the integer is long enough to represent the
+needed YYYYMMDD format.
+<P>
+The first trigger checks to see if the date inserted/updated is valid
+by trying to convert the integer representation of the date to a
+datetime datatype. If the conversion fails, everything is rolled
+back, and the user is prompted with the following message:
+<P>
+<PRE>   The conversion from CHAR to DATETIME resulted in a DATETIME value
+   out of range
+   (MSG 242, LEVEL 16, STATE 0)
+
+</PRE>The second trigger validates the month and date, and gives more
+control over the error messages by using RAISEERROR or PRINT to send
+messages to the error and message handlers, respectively. Note
+that for further optimization, you can place much of this trigger
+in a stored procedure, allowing table(s) with multiple instances of
+DATE data types to make use of one block of code.
+<P>
+ 
+<P>
+<PRE>/* Creates a 4 byte integer under the datetype data type */
+</PRE>SP_ADDTYPE datetype, int, null
+go
+<P>
+<PRE>/* Rule checks to see if the date being inserted is between */
+/* the dates Jan 1, 1880 and Dec 31, 2099. These dates can */
+/* be tailored to your needs */
+</PRE>CREATE RULE datetype_rule
+<PRE>  AS @day between 18800101 and 20991231
+</PRE>go
+<P>
+<PRE>/* binds the rule to the datatype */
+</PRE>SP_BINDRULE datetype_rule, datetype
+go
+<P>
+<PRE>/* Below is the first version of the validation trigger */
+/* This trigger checks to validate the date.       */
+
+</PRE>CREATE TRIGGER date_trigger
+<PRE>  ON date_table
+  FOR insert, update
+  AS
+  SET arithignor on
+  declare @date datetime
+  /* Retrieve date from inserted table trying to convert it to */
+  /* a datetime data type. If the conversion fails, the insert */
+  /* or update will be rolled back. */
+  select @date=convert (datetime, convert (char(12), date_field_name))
+  from inserted
+  SET arithignor off
+
+</PRE> 
+<P>
+<PRE>/* Below is the second version of the validation trigger. */
+/* This trigger checks to validate both months and days,  */
+/* including the simple rule to validate for leap years.   */
+
+</PRE>CREATE TRIGGER date_trigger
+ON date_table
+FOR insert, update
+AS
+<PRE>declare @day_part tinyint    /* holds DD part of YYYYMMDD */
+declare @mon_part tinyint    /* holds MM part of YYYYMMDD */
+declare @yr_part smallint    /* holds YYYY part of YYYYMMDD */
+declare @date int            /* gets date field from inserted table */
+
+/* Retrieve date from inserted table
+</PRE>select @date=date_field_name from inserted
+<P>
+<PRE>/* As stated earlier, you can place this portion in a stored procedure */
+/* so that table(s) can make use of multiple DATE fields */
+
+/* Check allows for NULL dates */
+</PRE>if @date != NULL
+begin
+<PRE>  /* retrieves month part out of YYYYMMDD format */
+  select @mon_part = ((@date%10000)/100)
+
+  /* validates month */
+  if @mon_part between 1 and 12
+  begin
+    /* retrieves day part out of YYYYMMDD format */
+    select @day_part = (@date % 100)
+
+    /* Validates days of 1..31 for months of 31 days */
+    if @mon_part in (1,3,5,7,8,10,12)
+       and @day_part not between 1 and 31
+    begin
+      print "invalid day in date, rolling back transaction"
+      rollback transaction
+    end
+
+    /* Validates days of 1..30 for months of 30 days */
+    else if @mon_part in (4,6,9,11) and @day_part not between 1 and 30
+    begin
+      print "invalid day in date, rolling back transaction"
+      rollback transaction
+    end
+
+    /* This portion checks to see if the Feb. date satisfies  */
+    /* the Leap Year Rule. A year is a leap year if the year is */
+    /* divisible by four. However, if the year ends in 00, then it */
+    /* it is only a leap year if the year ending in 00 is divisible */
+    /* by 400. */
+    else if @mon_part = 2 and @day_part not between 1 and 28
+    begin
+      if @day_part = 29
+      begin
+        select @yr_part = @date/10000
+        if @yr_part % 4 = 0 begin
+          if @yr_part % 100 = 0 and @yr_part % 400 != 0
+          begin
+            print "invalid day, violates leap year rules, rolling back
+                   transaction"
+            rollback transaction
+          end
+        end
+        else begin
+          print "invalid day, violates leap year rules, rolling back
+                 transaction"
+          rollback transaction
+        end
+      end
+      else begin
+        print "invalid day in date, rolling back transaction"
+        rollback transaction
+      end
+    end
+    else begin
+      print "invalid day or month in date, rolling back transaction"
+      rollback transaction
+    end
+
+  end
+  else
+  begin
+    print "invalid month in date, rolling back transaction"
+    rollback transaction
+  end
+
+</PRE>end /* if not NULL */
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 4.20 dblib<BR>
+Keywords            : kbprg SSrvDB_LIB SSrvGen SsrvTran_SQL<BR>
+Version             : 4.2<BR>
+Platform            : OS/2 Windows<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 3, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

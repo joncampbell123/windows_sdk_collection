@@ -1,0 +1,855 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Using Smart Pointers to Simplify SQL-DMO </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q164292">
+<META NAME="KBModify" CONTENT="1997/04/25">
+<META NAME="KBCreate" CONTENT="1997/02/26">
+<META NAME="Keywords" CONTENT="kbprg SSrvDMO SSrvProg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The article contains two samples showing how you can use a  Smart Pointer  to simplify SQL Server Distributed Management Object (SQL-DMO) coding.  Smart pointers easily handle AddRef and Release scoping.  Smart Pointers are actually C++ classes, so...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAO2,QAO3,QAGI,QABI,QABM,QARZ,QBFY,QAUD,QAOX,QAAP,QAEF,QAB4,QAM2,QAMA,QABH V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Using Smart Pointers to Simplify SQL-DMO</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q164292</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The article contains two samples showing how you can use a "Smart Pointer"
+to simplify SQL Server Distributed Management Object (SQL-DMO) coding.
+<P>
+Smart pointers easily handle AddRef and Release scoping.
+<P>
+Smart Pointers are actually C++ classes, so when an exception is handled,
+the destructor is called. This makes it possible for a Smart Pointer to
+release an Interface pointer where an Interfaces alone may cause a memory
+leak.
+<P>
+For more details on Smart Pointers, please refer to either Chapter 9,
+"Making it Easier," in Inside COM, or Visual C/C++ 5.0 Books Online.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+You can use the first sample below with Visual C 4.2 or Visual C 5.0
+because you implement the Smart Pointer features. The second sample takes
+full advantage of the built-in Smart Pointer support of Visual C 5.0.
+<P>
+<PRE>   #include "afx.h"         //     Standard includes
+   #include "afxole.h"
+   #include "stdio.h"
+
+   #include "initguid.h"        //       Make sure the IID's are corrected
+
+   #include "c:\mssql\sqldmo\include\sqloleid.h" //     SQL-DMO includes
+   #include "c:\mssql\sqldmo\include\sqlole.h"
+
+   //========================================
+   //      Smart Pointer template definition
+   //========================================
+   template &lt;class cUserInterface&gt; class CISmartPointer
+   {
+    public:
+       //
+       //    Constructor
+       //
+       CISmartPointer()
+       {
+           m_pI = NULL;
+       }
+
+       //
+       //    Destructor
+       //
+       ~CISmartPointer()
+       {
+           Release();
+       }
+
+       //
+       //    Release
+       //
+       void  Release()
+       {
+           if(NULL != m_pI)
+           {
+             //
+             //  Make sure to clear the local variable so it does not come
+             //  here again on the destructor if explicitly released.
+             //
+             cUserInterface * pTemp = m_pI;
+
+             pTemp-&gt;Release();
+
+             m_pI = NULL;
+           }
+
+       }
+
+       //
+       //    Operators
+       //
+       cUserInterface * operator-&gt;()
+       {
+           return m_pI;
+       }
+
+
+
+    protected:
+
+       //
+       //    Leave this as the first data element so all &amp; references
+       //    will use this member variable.
+       //
+       cUserInterface *   m_pI;
+
+   };
+
+
+
+   //========================================
+   //      Function declarations
+   //========================================
+   HRESULT hrDisplayError(HRESULT hRes);
+   BOOL      bSetDefaults(CISmartPointer&lt;ISQLOLEServer&gt; &amp; spSQLServer);
+   BOOL      bConnect(CISmartPointer&lt;ISQLOLEServer&gt; &amp; spSQLServer);
+   void      vDisconnect(CISmartPointer&lt;ISQLOLEServer&gt; &amp; spSQLServer);
+   void      vDoQuery(CISmartPointer&lt;ISQLOLEServer&gt; &amp; spSQLServer,
+      LPCTSTR strQuery);
+   void      vDisplayResults(CISmartPointer&lt;ISQLOLEQueryResults&gt;
+      &amp; spQueryResults);
+
+
+   //========================================
+   //      Macros and Defines
+   //========================================
+
+   //
+   //      Make it easy to check for SUCCEEDED and print error
+   //      when encountered.
+   //
+   #define IS_OKAY(a)     SUCCEEDED(hrDisplayError(a))
+
+   #define _MAX_COL    25
+   #define _MAX_COL_FMT   "%-25s "
+
+   #define _SERVER   "."   //      Local server
+   #define _USER   "sa"
+   #define _PWD   ""
+
+
+   //
+   //      MAIN
+   //
+   void main(void)
+   {
+    printf("\n\nSQL-DMO Smart Pointer Sample\n");
+
+    //
+    //     Use the appropriate Interface for LPSQLOLESERVERS.
+    //
+    CISmartPointer&lt;ISQLOLEServer&gt;  spSQLServer;
+
+    if(SUCCEEDED(OleInitialize(NULL)))
+    {
+
+       //
+       //    Get a SQL Server object.
+       //
+       if(IS_OKAY(CoCreateInstance(CLSID_SQLOLEServer,
+                 NULL,
+                 CLSCTX_INPROC_SERVER,
+                 IID_ISQLOLEServer,
+                 (LPVOID *)&amp;spSQLServer)))
+       {
+
+           if(TRUE == bSetDefaults(spSQLServer))
+             vDoQuery(spSQLServer, "Select * from pubs.dbo.authors");
+
+
+           //
+           //  Because the spSQLServer was created in main, it will not
+           //  go out of scope until the end of main.
+           //
+           //  However, this is after the OleUninitilize is called,
+           //  and causes an error.
+           //
+           //  For this special case, call the .Release to
+           //  clean up the pointer and do the work.
+           //
+           spSQLServer.Release();
+       }
+
+
+       OleUninitialize();
+    }
+    else
+    {
+       printf("\nCall to OLEInitialize failed.");
+    }
+
+
+    printf("\n");
+   }
+
+
+
+   //
+   //      Check for and display rich error text.
+   //
+   HRESULT hrDisplayError(HRESULT hRes)
+   {
+    LPERRORINFO lpErrorInfo     =  NULL;
+    BSTR     bstrDesc;
+    BSTR     bstrSource;
+
+    GetErrorInfo(0, &amp;lpErrorInfo);
+    if(lpErrorInfo)
+    {
+       lpErrorInfo-&gt;GetDescription(&amp;bstrDesc);
+       lpErrorInfo-&gt;GetSource(&amp;bstrSource);
+
+       printf("\n%S\n\t%S\n", bstrSource, bstrDesc);
+
+       lpErrorInfo-&gt;Release();
+
+       SysFreeString(bstrDesc);
+       SysFreeString(bstrSource);
+    }
+
+    return hRes;
+   }
+
+
+   //
+   //      bSetDefaults
+   //
+   //      Accepts the current address so the RefCount does not need
+   //      to be touched. There is no reason to increment it on entry
+   //      and then decrement it on exit, just to be doing it.
+   //
+   BOOL bSetDefaults(CISmartPointer&lt;ISQLOLEServer&gt; &amp; spSQLServer)
+   {
+    BOOL   bRC = FALSE;
+
+    printf("\nSetting SQL Server object properties.");
+
+    if(    IS_OKAY(spSQLServer-&gt;SetLoginTimeout(10)) &amp;&amp;
+       IS_OKAY(spSQLServer-&gt;SetApplicationName("SmartPointers")) &amp;&amp;
+       IS_OKAY(spSQLServer-&gt;SetHostName("Test")) &amp;&amp;
+       IS_OKAY(spSQLServer-&gt;SetNetPacketSize(1024)) )
+    {
+       bRC = TRUE;
+    }
+
+    return bRC;
+   }
+
+   //
+   //      Connect to the SQL Server.
+   //
+   BOOL bConnect(CISmartPointer&lt;ISQLOLEServer&gt; &amp; spSQLServer)
+   {
+    BOOL   bRC  = FALSE;
+
+    printf("\nAttempting to connect to %s as %s", _SERVER, _USER);
+
+    if(IS_OKAY(spSQLServer-&gt;Connect(_SERVER, _USER, _PWD)))
+       bRC = TRUE;
+
+    return bRC;
+   }
+
+
+   //
+   //      Disconnect from the SQL Server.
+   //
+   void vDisconnect(CISmartPointer&lt;ISQLOLEServer&gt; &amp; spSQLServer)
+   {
+    //
+    //     Wrap with IS_OKAY so if an error is encountered it is printed
+    //     out.
+    //
+    printf("\nDisconnecting from %s", _SERVER);
+
+    IS_OKAY(spSQLServer-&gt;Close());
+   }
+
+
+   //
+   //      vDoQuery
+   //
+   void vDoQuery(CISmartPointer&lt;ISQLOLEServer&gt; &amp; spSQLServer, LPCTSTR
+   strQuery)
+   {
+    CISmartPointer&lt;ISQLOLEQueryResults&gt;  spQueryResults;
+
+    if(TRUE == bConnect(spSQLServer))
+    {
+       printf("\nExecuting %s", strQuery);
+
+       if(IS_OKAY(spSQLServer-&gt;ExecuteWithResults(strQuery,
+   (LPSQLOLEQUERYRESULTS*)&amp;spQueryResults)))
+           vDisplayResults(spQueryResults);
+
+       vDisconnect(spSQLServer);
+    }
+
+   }
+
+   //
+   //      Dump out result set(s) information.
+   //
+   void vDisplayResults(CISmartPointer&lt;ISQLOLEQueryResults&gt; &amp;
+   spQueryResults)
+   {
+    long      lTotalSets    =   0;
+    long      lTotalCols    =   0;
+    long      lTotalRows    =   0;
+    long      lMaxColLen    =   0;
+    char *    pchColName    =   NULL;
+    char *    pchRowInfo    =   NULL;
+    char      strDisplayData[_MAX_COL +1] = "";
+    BOOL      bDone        =    FALSE;
+
+
+    if(IS_OKAY(spQueryResults-&gt;GetResultSets(&amp;lTotalSets)))
+    {
+       //
+       //    Loop through the results sets.
+       //
+       for(long lSet = 0; lSet &lt; lTotalSets &amp;&amp; FALSE == bDone; lSet++)
+       {
+
+           if(IS_OKAY(spQueryResults-&gt;SetCurrentResultSet(lSet)))
+           {
+             printf("\n &gt;&gt;&gt; Result set #%ld\n", lSet + 1);
+
+             //
+             //  Print out the column headers.
+             //
+             if(IS_OKAY(spQueryResults-&gt;GetColumns(&amp;lTotalCols)))
+             {
+
+              for(long lCols = 0; lCols &lt; lTotalCols &amp;&amp; FALSE == bDone;
+               lCols++)
+              {
+
+               if(IS_OKAY(spQueryResults-&gt;GetColumnName(lCols,
+               &amp;pchColName)))
+               {
+                  strncpy(strDisplayData, pchColName, _MAX_COL);
+                  printf(_MAX_COL_FMT, strDisplayData);
+             SQLOLEFreeString(pchColName);
+               }
+               else
+               {
+                  bDone = TRUE;
+               }
+
+              }
+
+              printf("\n\n");
+
+
+
+              //
+              //  Show the data.
+              //
+              if(FALSE == bDone &amp;&amp;
+         IS_OKAY(spQueryResults-&gt;GetRows(&amp;lTotalRows)))
+              {
+               printf("\n------------------------------\n");
+
+               for(long lRows = 0; lRows &lt; lTotalRows &amp;&amp; FALSE == bDone;
+            lRows++)
+               {
+                for(long lCols = 0; lCols &lt; lTotalCols; lCols++)
+                {
+                 if(IS_OKAY(spQueryResults-&gt;GetColumnString(lRows, lCols,
+            &amp;pchRowInfo)))
+                 {
+                     strncpy(strDisplayData, pchRowInfo, _MAX_COL);
+                   printf(_MAX_COL_FMT, strDisplayData);
+            SQLOLEFreeString(pchRowInfo);
+                 }
+                 else
+                 {
+                     bDone = TRUE;
+                 }
+
+                }
+
+                printf("\n");      //    End of row
+               }
+
+      // End of result set
+                  printf("\nRows processed (%ld)", lTotalRows);
+              }
+              else
+              {
+                  bDone = TRUE;
+              }
+
+             }
+             else
+             {
+               bDone = TRUE;
+             }
+
+           }
+           else
+           {
+               bDone = TRUE;
+           }
+
+
+       }     // End of FOR looping
+
+    }
+
+   }
+
+
+</PRE> 
+The Visual C++ 5.0 release has simplified this even more. The following
+sample uses the built-in smart pointer support provided by Visual C 5.0.
+<P>
+<PRE>   //
+   //    This is a sample application showing the use of Smart pointers
+   //    to help simplify and maintain Interface pointers
+   //    for SQL-DMO components.
+   //
+   //    It uses the built-in Visual C 5.0 _com_ptr_t support, and it can
+   //    adapt to use the CComPtr or CComQIPtr if you prefer.
+   //
+   //    The _com_error calls -&gt;Release automatically when it
+   //    goes out of scope to clean itself up. There is no need to call
+   //    delete or release.
+   //
+
+
+   #include "afx.h"        //    Standard includes
+   #include "afxole.h"
+   #include "stdio.h"
+   #include &lt;comdef.h&gt;     //    COM Compiler support for _bstr_t
+
+   #import "c:\\mssql\\binn\\Sqlole65.tlb"   no_namespace
+
+
+   //========================================
+   //  Function declarations - used &amp; syntax so we do not call AddRef again
+   //========================================
+   void     vDisplayError(_com_error &amp; pCE);
+   BOOL     bSetDefaults(_SQLServerPtr &amp; spSQLServer);
+   BOOL     bConnect(_SQLServerPtr &amp; spSQLServer);
+   void     vDisconnect(_SQLServerPtr &amp; spSQLServer);
+   void     vDoQuery(_SQLServerPtr &amp; spSQLServer, LPCTSTR strQuery);
+   void     vDisplayResults(QueryResultsPtr &amp; spQueryResults);
+
+
+   //========================================
+   //    Macros and Defines
+   //========================================
+
+   //
+   //    Make it easy to check for SUCCEEDED and print error
+   //    when encountered.
+   //
+   #define _MAX_COL     25
+   #define _MAX_COL_FMT "%-25s "
+
+   #define _SERVER      "."      //    Local server
+   #define _USER        "sa"
+   #define  _PWD        ""
+
+
+
+   //
+   //    MAIN
+   //
+   void main(void)
+   {
+      printf("\n\nSQL-DMO Smart Pointer Sample\n");
+
+
+      if(SUCCEEDED(OleInitialize(NULL)))
+      {
+         //
+         //    Use the appropriate Interface for LPSQLOLESERVERS.
+         //
+
+         try
+         {
+            _SQLServerPtr  spSQLServer;
+
+            if(SUCCEEDED(spSQLServer.CreateInstance(__uuidof(SQLServer))))
+            {
+
+               try
+               {
+                  if(TRUE == bSetDefaults(spSQLServer))
+                     vDoQuery(spSQLServer,
+         "Select * from pubs.dbo.authors");
+
+                  //
+                  //    Because the spSQLServer was created in main, it
+                  //    will not go out of scope until the end of main.
+                  //
+                  //    However, this is after the OleUninitilize is called
+                  //    and causes an error.
+                  //
+                  //    For this special case, call the .Release to
+                  //    clean up the pointer and do the work.
+                  //
+                  spSQLServer.Release();
+
+               }
+               catch(_com_error pCE)
+               {
+                  vDisplayError(pCE);
+
+                  spSQLServer.Release();     //    Free the interface
+               }
+
+            }
+            else
+            {
+               printf("\nUnable to create the SQL Server object.");
+            }
+
+         }
+         catch(_com_error pCE)
+         {
+            vDisplayError(pCE);
+         }
+
+
+         OleUninitialize();
+      }
+      else
+      {
+         printf("\nCall to OLEInitialize failed.");
+      }
+
+
+      printf("\n");
+   }
+
+
+   //
+   //    Check for and display rich error text.
+   //
+   void vDisplayError(_com_error &amp; pCE)
+   {
+      //
+      //    Assuming ANSI build at this time.
+      //
+      printf(  "\n%s Error: %ld\r\n"
+            "%s\r\n"
+            "%s\r\n",
+            (char *)pCE.Source(),
+                  pCE.Error(),
+            (char *)pCE.Description(),
+            (char *)pCE.ErrorMessage());
+   }
+
+
+
+   //
+   //    bSetDefaults
+   //
+   //    Accepts the current address so the RefCount does not need
+   //    to be touched. There is no reason to increment it on entry
+   //    and then decrement it on exit, just to be doing it.
+   //
+   BOOL bSetDefaults(_SQLServerPtr &amp; spSQLServer)
+   {
+      BOOL  bRC   =  FALSE;
+
+      printf("\nSetting SQL Server object properties.");
+
+      try
+      {
+         spSQLServer-&gt;PutLoginTimeout(10);
+         spSQLServer-&gt;PutApplicationName("SmartPointers");
+         spSQLServer-&gt;PutHostName("Test");
+         spSQLServer-&gt;PutNetPacketSize(1024);
+
+         bRC = TRUE;
+      }
+      catch(_com_error pCE)
+      {
+         vDisplayError(pCE);
+      }
+
+      return bRC;
+   }
+
+
+   //
+   //    Connect to the SQL Server.
+   //
+   BOOL bConnect(_SQLServerPtr &amp; spSQLServer)
+   {
+      BOOL  bRC      =  FALSE;
+
+      printf("\nAttempting to connect to %s as %s", _SERVER, _USER);
+
+      try
+      {
+         spSQLServer-&gt;Connect(_SERVER, _USER, _PWD);
+
+         bRC = TRUE;
+      }
+      catch(_com_error pCE)
+      {
+         vDisplayError(pCE);
+      }
+
+      return bRC;
+   }
+
+
+   //
+   //    Disconnect from the SQL Server.
+   //
+   void vDisconnect(_SQLServerPtr &amp; spSQLServer)
+   {
+      //
+      //    Wrap with IS_OKAY so if an error is encountered, it is printed
+      //    out.
+      //
+      printf("\nDisconnecting from %s", _SERVER);
+
+      try
+      {
+         spSQLServer-&gt;Close();
+      }
+      catch(_com_error pCE)
+      {
+         vDisplayError(pCE);
+      }
+
+   }
+
+
+   //
+   //    vDoQuery
+   //
+   void vDoQuery(_SQLServerPtr &amp; spSQLServer, LPCTSTR strQuery)
+   {
+      QueryResultsPtr      spQueryResults;
+
+      if(TRUE == bConnect(spSQLServer))
+      {
+         printf("\nExecuting %s", strQuery);
+
+         try
+         {
+            spQueryResults = spSQLServer-&gt;ExecuteWithResults(strQuery);
+
+            vDisplayResults(spQueryResults);
+
+         }
+         catch(_com_error pCE)
+         {
+            vDisplayError(pCE);
+         }
+
+         vDisconnect(spSQLServer);
+      }
+
+   }
+
+   //
+   //    Dump out result set(s) information.
+   //
+   void vDisplayResults(QueryResultsPtr &amp; spQueryResults)
+   {
+      long        lMaxColLen        =  0;
+      char        strDisplayData[_MAX_COL +1]   =  "";
+      _bstr_t     bstrColName;
+      _bstr_t        bstrRowInfo;
+
+      try
+      {
+
+         //
+         //    Loop through the results sets.
+         //
+         for(long lSet = 1; lSet &lt;= spQueryResults-&gt;GetResultSets();
+            lSet++)
+         {
+
+            spQueryResults-&gt;PutCurrentResultSet(lSet);
+            printf("\n &gt;&gt;&gt; Result set #%ld\n", lSet + 1);
+
+            //
+            //    Print out the column headers.
+            //
+            for(long lCols = 1; lCols &lt;= spQueryResults-&gt;GetColumns();
+            lCols++)
+            {
+
+               //
+               //    You used to have to call the SQLOLEFreeString ==&gt;
+               //    SysFreeString.
+               //    However, the copy operator of the _bstr_t performs a
+               //    free on any prior value and then handles the new data.
+               //
+               //    This prevents a memory leak when using it in a loop.
+               //
+               //    Look at the _bstr_t copy coperator in COMUTIL.H for
+               //    complete details.
+               //
+               bstrColName = spQueryResults-&gt;GetColumnName(lCols);
+
+               //
+               //    Assuming ANSI build for sample so casing as char *
+               //
+               strncpy(strDisplayData, (char *)bstrColName, _MAX_COL);
+               printf(_MAX_COL_FMT, strDisplayData);
+
+
+            }
+
+            printf("\n\n");
+
+
+            //
+            //    Show the data.
+            //
+            printf("\n------------------------\n");
+            for(long lRows = 1; lRows &lt;= spQueryResults-&gt;GetRows();
+         lRows++)
+            {
+               for(long lCols = 1; lCols &lt;= spQueryResults-&gt;GetColumns();
+            lCols++)
+               {
+                  bstrRowInfo = spQueryResults-&gt;GetColumnString(lRows,
+                  lCols);
+
+                  strncpy(strDisplayData, (char *)bstrRowInfo, _MAX_COL);
+                  printf(_MAX_COL_FMT, strDisplayData);
+               }
+
+               printf("\n");     // End of row
+            }
+
+            printf("\nRows processed (%ld)", spQueryResults-&gt;GetRows());
+
+         }     // End of FOR looping
+
+      }
+      catch(_com_error pCE)
+      {
+         vDisplayError(pCE);
+      }
+
+   }
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : kbprg SSrvDMO SSrvProg<BR>
+Version             : 6.5<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+Resolution Type     : kbcode<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

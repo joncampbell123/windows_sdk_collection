@@ -1,0 +1,238 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Error Handling in Transact-SQL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q44519 ">
+<META NAME="KBModify" CONTENT="1997/04/25">
+<META NAME="KBCreate" CONTENT="1989/05/17">
+<META NAME="Keywords" CONTENT="kbprg SSrvServer SSrvTran_SQL SSrvWinNT">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article discusses the different kinds of error handling in Transact-SQL batches and stored procedures. Three classes of errors are described, as well as additional factors concerning error handling in nested transactions and procedures.  MORE ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAB4,QAAP,QAUD,QAB9,QABM,QBVV,QAXB,QAKP,QAPN,QALW,QAJ8,QAEF,QAM9,QALX,QAC1 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Error Handling in Transact-SQL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q44519 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server version 4.2 for OS/2
+<LI>Microsoft SQL Server, version 4.2
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article discusses the different kinds of error handling in
+Transact-SQL batches and stored procedures. Three classes of errors
+are described, as well as additional factors concerning error handling
+in nested transactions and procedures.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Syntax Errors</h3>
+ 
+<P>
+Syntax errors in SQL batches or procedures are detected before
+execution begins; therefore, a single syntax error will cause the
+entire batch or procedure to be rejected. What constitutes a
+transaction and what is backed out are not issues in this case,
+because execution never begins. A batch with syntax errors will
+produce one or more error messages that will cause the user-defined
+MESSAGE handler to be called (once for each message). The dbsqlexec
+that sent the bad batch will return a status of FAIL, and a dbresults
+issued to receive the results of the batch will return a status of
+NO_MORE_RESULTS. The user-defined ERROR handler is used only to report
+internal DB-Library (DB-Lib) errors.
+<P>
+<P><h3>Execution-Time Errors</h3>
+ 
+<P>
+Execution-Time errors can be either fatal or nonfatal. Attempting to
+use a table or column that does not exist is fatal. Permission
+violations and attempting to insert a duplicate value in a unique
+index are nonfatal. (Attempting to use a nonexisting table won't get
+past the syntax check, unless the table is dropped after the procedure
+referencing it is created)
+<P>
+In either case, the user-defined MESSAGE handler will be called (once
+for each message). Messages with severity 16 and higher are fatal.
+<P>
+If the error is fatal, uncommitted updates are backed out. Statements
+not bracketed by BEGIN/COMMIT are not backed out because each one is
+committed individually if it is successful. Execution is not
+terminated unless the current procedure is bracketed by BEGIN/COMMIT.
+<P>
+If the error is nonfatal, uncommitted updates are not backed out
+unless an explicit ROLLBACK is performed. Execution is not terminated
+unless the batch or procedure is bracketed by BEGIN/COMMIT or a RETURN
+is executed.
+<P>
+The dbsqlexec that sent the batch will return FAIL if the error is
+fatal, and SUCCEED if the error is nonfatal. The next dbresults will
+return NO_MORE_RESULTS if the error is fatal, and will return FAIL if
+the error is nonfatal.
+<P>
+<P><h3>Application-Level Errors</h3>
+ 
+<P>
+Exceptions such as "0 rows affected" are not considered to be errors
+because the SQL Server has no way of knowing whether or not such an
+error is serious. Each of these kinds of conditions must be explicitly
+tested by the application. A RETURN statement must be used if the
+procedure is to be terminated. Otherwise, the remainder of the
+statements in the procedure or batch will be executed (even if a
+ROLLBACK is executed).
+<P>
+Exceptions produce no messages for the user-defined message handler
+unless RAISERROR was executed. dbsqlexec will return SUCCEED.
+dbresults will return SUCCEED unless RAISERROR was executed; if
+RAISERROR was executed, dbresults will return FAIL. dbresults will
+return SUCCEED even if a "not found" exception occurs.
+<P>
+<P><h3>ROLLBACK</h3>
+ 
+<P>
+The ROLLBACK statement does not terminate a batch or procedure; it
+backs out uncommitted updates. Subsequent statements in the batch or
+procedure are executed normally. This allows the application to
+perform complex contingency operations if an error occurs.
+<P>
+<P><h3>Nested Logical Units of Work</h3>
+ 
+<P>
+Statements bracketed by BEGIN/COMMIT may be nested inside another
+group of statements also bracketed by BEGIN/COMMIT. If a fatal error
+occurs within the inner or outer LUW, execution is terminated and all
+updates are backed out. If a nonfatal error occurs in the inner or
+outer LUW, execution continues and nothing is backed out.
+<P>
+Nested logical units of work are meaningful only in the context of
+nested stored procedures. The ability to nest logical units of work
+allows stored procedures that use COMMIT/ROLLBACK to be written
+without regard for whether or not they will be called by other stored
+procedures that use COMMIT/ROLLBACK.
+<P>
+Each BEGIN TRANSACTION statement causes a counter to be incremented,
+and each COMMIT statement causes the counter to be decremented. When
+the counter reaches 0, a true COMMIT is performed. The current value
+of the counter is in the system variable "@@TRANCOUNT".
+<P>
+<P><h3>Nested Transact-SQL Procedures</h3>
+ 
+<P>
+Fatal errors in nested Transact-SQL procedures are not fatal to the
+parent. This allows a parent procedure to execute a contingency plan
+to handle a fatal error in a subordinate procedure. It also requires
+that the parent procedure check the status of @@ERROR after returning
+from a subordinate. @@ERROR is set by most Transact-SQL statements;
+therefore, you must be careful to RETURN before @@ERROR is changed.
+The nesting of transactions resulting from nesting procedures can
+cause a fatal error or ROLLBACK in the inner procedure to back out
+updates performed by the parent procedure (in addition to backing out
+the inner procedure's updates).
+<P>
+To signal to a parent procedure that a nonfatal error has occurred,
+set @@ERROR in the subordinate with RAISERROR. Follow it closely with
+RETURN to preserve the value of @@ERROR. In the case of fatal errors,
+no RAISERROR is necessary and the RETURN is automatic.
+<P>
+In future releases, it will be possible to return status information
+from subordinate procedures via an extension to the RETURN statement.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Windows NT<BR>
+Keywords            : kbprg SSrvServer SSrvTran_SQL SSrvWinNT<BR>
+Version             : 4.2 | 4.2<BR>
+Platform            : OS/2 WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,370 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Recovering a Full Master Database </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q102077">
+<META NAME="KBModify" CONTENT="1997/04/03">
+<META NAME="KBCreate" CONTENT="1993/07/28">
+<META NAME="Keywords" CONTENT="kbother SSrvAdmin">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  Users making many updates to system tables may fill their master database. The most common symptom is to receive the following message (1105 error):     Can't allocate space for object syslogs in database master because    the logsegment is full. I...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAWP,QAMA,QAOE,QABM,QAGX,QBPM,QAGU,QAY2,QA3W,QDKA,QAZV,QAOP,QAH4,QBWS,QASR V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Recovering a Full Master Database</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 3, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q102077</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Users making many updates to system tables may fill their master
+database. The most common symptom is to receive the following message
+(1105 error):
+<P>
+<PRE>   Can't allocate space for object syslogs in database master because
+   the logsegment is full. If you ran out of space in syslogs, dump the
+   transaction log. Otherwise use ALTER DATABASE or sp_extendsegment to
+   increase the size of the segment.
+
+</PRE>This article outlines the steps users can follow to safely recover
+from this condition.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Users can reduce the chances of filling the master database in two
+ways. First, no user information should be stored in the master
+database, it should be reserved for system level information. Second,
+users with SQL Server version 4.2a patch K9 or later can set the
+database option truncate log on checkpoint in the master database:
+<P>
+<PRE>   sp_dboption master,'trunc.',true
+
+</PRE>SQL Server 4.2a patch K9 can be obtained through your reseller or your
+usual support provider.
+<P>
+If a user receives an 1105 error message referencing the table syslogs
+in master, the response depends on several factors.
+<P>
+If the user has not yet shut down the system, they can simply log on
+as the SA user and type the following:
+<P>
+<PRE>   dump transaction master with no_log
+
+</PRE>If the user has shut down the system, and they have SQL Server version
+4.2a patch K7 or later, they can restart the system and use the above
+procedure to dump transaction master with no_log.
+<P>
+Use the following procedures if the system is shutdown, SQL Server
+version 4.2aK7 is not available, and the system is needed before a
+version 4.2aK7 or later patch can be received. The procedures depend
+on having the script MASTER.SQL found at the bottom of this article
+keyed in as a file on the user system. Note: The following steps
+assume that MASTER.DAT and the errorlog are in their default
+locations, if they are not, adjust the paths accordingly.
+<P>
+If the user has a valid, current dump of the master database, do the
+following:
+
+<OL><P><LI>Back up the existing system. At a minimum, back up MASTER.DAT.
+
+<P><LI>Bring up SQL Server in bypass recovery mode:
+<P>
+<P><PRE>      sqlservr /d c:\sql\data\master.dat /e c:\sql\log\errorlog -T3607
+</PRE>
+<P><LI>Run MASTER.SQL and print the resulting MASTER.RPT:
+<P>
+<P><PRE>      isql /Usa /P&lt;sa password&gt; /e /imaster.sql /omaster.rpt
+      copy master.rpt lpt1
+</PRE>
+<P><LI>Log in as SA, dump transaction master with no_log. Shut down SQL
+   Server.
+
+<P><LI>Bring up SQL Server in single user mode:
+<P>
+<P><PRE>      sqlservr /d c:\sql\data\master.dat /e c:\sql\log\errorlog /m
+</PRE>
+<P><LI>Log in as SA and load the master database from the dump file.
+   Remember that SQL Server will shut down automatically after completing
+   a load of master.
+
+<P><LI>Restart SQL Server as usual. Rerun the query from step 3 and ensure
+   the data in the system tables matches that in the old system.
+<P>
+</OL>If the user does not have a valid, current dump of the master
+database, they will have to rebuild the master device. This is a
+complex process and should be done under the supervision of the site's
+primary support provider.
+
+<OL><P><LI>Back up the existing system. At a minimum, back up MASTER.DAT and
+    the SQL Server executable directories.
+
+<P><LI>Bring up SQL Server in bypass recovery mode:
+<P>
+       sqlservr.exe /d c:\sql\data\master.dat /e c:\sql\log\errorlog -T3607
+
+<P><LI>Review existing errorlog to determine "character set" (either code
+    page 850 or 437) and the "default sort order" (write down the ID =
+    value).
+<P>
+<PRE>       code page     =
+       sort order ID =
+
+</PRE><P><LI>Run MASTER.SQL and print resulting MASTER.RPT:
+<P>
+       isql /Usa /P&lt;sa password&gt; /e /imaster.sql /omaster.rpt
+       copy master.rpt lpt1
+
+<P><LI>Shut down SQL Server.
+
+<P><LI>Rename the c:\sql\data\master.dat file (this should be deleted only
+    after a successful completion of this process has been ensured).
+
+<P><LI>Rebuild MASTER.DAT using the following steps:
+<P>
+    a. Run the SQL Server setup program from the Setup Disk 1.
+       Make sure you choose the same code page and sort order
+       determined in step 3. Refer to Sort Order chart below if
+       you are unsure which option to choose. You must also
+       specify the same size, in megabytes for the MASTER.DAT file.
+<P>
+    b. Once Setup is complete, you will have a new MASTER.DAT.
+<P>
+    c. Restart SQL Server in single user mode:
+<P>
+       sqlservr.exe /d c:\sql\data\master.dat /e c:\sql\log\errorlog /m
+
+<P><LI>Using the output of the MASTER.SQL from step 4, do
+    sp_addumpdevice's for all dump devices which existed in the old
+    system.
+<P>
+    Do DISK REINIT's for all user devices. To determine the vdevno to
+    specify for each user device, divide that device's value from the low
+    column in sysdevices by 16777216. The low value can be seen in the
+    print of MASTER.RPT from step 4. Determine the size by dividing the
+    number of bytes in the .DAT file by 2048. The number of bytes in the
+    .DAT file can be determined from a dir command listing of the
+    directory holding the .DAT file.
+<P>
+    Do a DISK REFIT to rebuild the sysusages and sysdatabases tables.
+<P>
+    (See the "Language Reference" and the "System Administrator's Guide"
+    for details on how to run DISK REINIT and DISK REFIT.)
+
+<P><LI>Do sp_addlogin's for all logins that existed in the old system.
+    Note that the logins have to be entered in exactly the same sequence
+    in which they existed in the old system. Any 'gaps' in the sequence of
+    said numbers must be filled in with a dummy login until all logins
+    have been entered.
+
+<P><LI>Redefine any remote logins or remote servers that were defined in
+    the old system.
+
+<P><LI>Using the output of the MASTER.SQL query from step 4, issue any
+    needed sp_configure parameters to reset the values to those of the old
+    system.
+
+<P><LI>Rerun the MASTER.SQL query as in step 4. Compare the output of the
+    new MASTER.RPT against the output of the old MASTER.RPT, ensure that
+    the new values are the same. If there are discrepancies, contact your
+    primary support provider to determine how they should be addressed.
+
+<P><LI>Reload any other databases, other than tempdb, that also reside on the
+    MASTER.DAT device. The other exception would be the model database if
+    it contains no user data. If there was any user data on MASTER.DAT
+    which was not covered by a valid dump, the user will have to recreate
+    the data.
+
+<P><LI>Shut down, and then restart SQL Server. Run a dbcc checkdb and a
+    dbcc checkalloc on all the databases in the system. If these checks
+    are successful, back up the system before letting users back on.
+    At this point, you can also delete the old master device that was
+    renamed in step 5.
+
+<P><LI>If the site was running a SQL Server patch in addition to the
+    version installed from the Setup disk, they should now reapply the
+    patch following the README.TXT instructions on the patch disk.
+<P>
+</OL><h3>MASTER.SQL</h3>
+ 
+<P>
+MASTER.SQL is a script to extract data from master database system
+tables. This information is used after MASTER.DAT has been rebuilt to
+recreate login id's, and so on. Type the following as a file
+MASTER.SQL:
+<P>
+use master
+go
+<P>
+select sd.dbid, dbname = convert(char(10), sd.name),
+<PRE>       su.segmap, su.lstart, su.size, su.vstart
+</PRE></OL>from sysusages su, sysdatabases sd
+where su.dbid = sd.dbid
+go
+<P>
+select low, high, status,
+<PRE>       devname = convert(char(13), name),
+       physname = convert(char(23), phyname)
+</PRE>from sysdevices
+go
+<P>
+select name, dbid, suid, mode, status, version
+from sysdatabases
+go
+<P>
+select suid, name, password
+from syslogins
+go
+<P>
+select * from sysremotelogins
+go
+<P>
+select srvid, srvstatus, srvrname = convert(char(16),
+srvname),
+<PRE>       netname = convert(char(16), srvnetname)
+</PRE>from sysservers
+go
+<P>
+select value, parameter = convert(char(60), comment)
+from sysconfigures
+go
+<P>
+<P><h3>Chart of Sort Orders</h3>
+ 
+<P>
+<PRE>ID  Character Set   Sort Order
+</PRE> 
+<P>
+<PRE>30  Code Page 437   Binary
+31  Code Page 437   Dictionary with Case Insensitivity
+32  Code Page 437   Case Insensitivity
+33  Code Page 437   Dictionary with Case Insensitivity
+                                         and Uppercase Preference
+34  Code Page 437   Dictionary with Case Insensitivity
+                                         and Accent Insensitivity
+40  Code Page 850   Binary
+41  Code Page 850   Dictionary with Case Insensitivity
+42  Code Page 850   Case Insensitivity
+43  Code Page 850   Dictionary with Case Insensitivity
+                                         and Uppercase Preference
+44  Code Page 850   Dictionary with Case Insensitivity
+                                         and Accent Insensitivity
+49  Code Page 850   Strict Compatibility with 1.1X Case
+                                         Insensitive Servers
+50  ISO 8859-1      Binary
+51  ISO 8859-1      Dictionary with Case Insensitivity
+52  ISO 8859-1      Case Insensitivity
+53  ISO 8859-1      Dictionary with Case Insensitivity
+                                  and Uppercase Preference
+54  ISO 8859-1      Dictionary with Case Insensitivity
+                                  and Accent Insensitivity
+55  Code Page 850   Alternate Dictionary with Case
+                                  Sensitivity
+56  Code Page 850   Alternate Dictionary with Case
+                                         Insensitivity; Uppercase
+</PRE>Preference
+<PRE>57  Code Page 850   Alternate Dictionary with Case
+                                        Insensitivity: Accent Insensitivity
+61  Code Page 850   Alternate Dictionary with Case
+                                         Insensitivity
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 4.20 Transact-SQL<BR>
+Keywords            : kbother SSrvAdmin<BR>
+Platform            : OS/2<BR>
+Issue type          : kbtshoot<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 3, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

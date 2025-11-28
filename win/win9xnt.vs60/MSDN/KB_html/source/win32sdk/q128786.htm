@@ -1,0 +1,241 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Shade Images to Look Like Windows 95 Active Icon </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q128786">
+<META NAME="KBModify" CONTENT="1995/09/29">
+<META NAME="KBCreate" CONTENT="1995/04/10">
+<META NAME="Keywords" CONTENT="kbgraphic kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article shows by example how to display an image or an icon in a shaded state, as Windows 95 does for the active icon.  MORE INFORMATION  Step-by-Step Procedure  To obtain the shaded look for your image or icon, follow these six steps:  1. Cre...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPG,QBCF,QAG9,QA38,QAI4,QAPF,QALD,QAB7,QBXN,QAU4,QABA,QBUT,QDL9,QBWO,QBWN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Shade Images to Look Like Windows 95 Active Icon</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 29, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q128786</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article shows by example how to display an image or an icon in a
+shaded state, as Windows 95 does for the active icon.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Step-by-Step Procedure</h3>
+ 
+<P>
+To obtain the shaded look for your image or icon, follow these six steps:
+
+<OL><P><LI>Create a compatible DC and bitmap.
+
+<P><LI>Create a monochrome pattern brush with every other pixel on.
+
+<P><LI>Fill the memory image with the pattern.
+
+<P><LI>BitBlt the source image over the pattern using SRCAND so that only the
+<PRE>   'on' destination pixels are transferred.
+
+</PRE><P><LI>Color the destination with the pattern, using the highlight color for
+   the 'off' pixels and using black for the 'on' pixels.
+
+<P><LI>Copy the filtered original from the memory DC to the destination using
+   SRCPAINT so that only the 'on' pixels are transferred.
+<P>
+</OL>This results in the destination having the original image with every other
+pixel colored with the highlight color.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following function implements these six steps to shade a rectangular
+area on a device context:
+<P>
+<PRE>// ShadeRect
+// hDC    : the DC on which the area is to be shaded
+// lpRect : the coordinates within which to shade
+</PRE></OL>BOOL ShadeRect( HDC hDC, LPRECT lpRect )
+{
+<PRE>   COLORREF  crHighlightColor, crOldBkColor, crOldTextColor;
+   HBRUSH    hBrush, hOldBrush;
+   HBITMAP   hBitmap, hBrushBitmap, hOldMemBitmap;
+   int       OldBkMode, nWidth, nHeight;
+   HDC       hMemDC;
+   RECT      rcRect = { 0, 0, 0, 0};
+   // The bitmap bits are for a monochrome "every-other-pixel"
+   //     bitmap (for a pattern brush)
+   WORD      Bits[8] = { 0x0055, 0x00aa, 0x0055, 0x00aa,
+                         0x0055, 0x00aa, 0x0055, 0x00aa };
+
+   // The Width and Height of the target area
+   nWidth = lpRect-&gt;right - lpRect-&gt;left + 1;
+   nHeight = lpRect-&gt;bottom - lpRect-&gt;top + 1;
+
+   // Need a pattern bitmap
+   hBrushBitmap = CreateBitmap( 8, 8, 1, 1, &amp;Bits );
+   // Need to store the original image
+   hBitmap = CreateCompatibleBitmap( hDC, nWidth, nHeight );
+   // Need a memory DC to work in
+   hMemDC = CreateCompatibleDC( hDC );
+   // Create the pattern brush
+   hBrush = CreatePatternBrush( hBrushBitmap );
+
+   // Has anything failed so far? If so, abort!
+   if( (hBrushBitmap==NULL) || (hBitmap==NULL) ||
+       (hMemDC==NULL) || (hBrush==NULL) )
+   {
+      if( hBrushBitmap != NULL ) DeleteObject(hBrushBitmap);
+      if( hBitmap != NULL ) DeleteObject( hBitmap );
+      if( hMemDC != NULL ) DeleteDC( hMemDC );
+      if( hBrush != NULL ) DeleteObject( hBrush );
+      return FALSE;
+   }
+
+   // Select the bitmap into the memory DC
+   hOldMemBitmap = SelectObject( hMemDC, hBitmap );
+
+   // How wide/tall is the original?
+   rcRect.right = nWidth;
+   rcRect.bottom = nHeight;
+
+   // Lay down the pattern in the memory DC
+   FillRect( hMemDC, &amp;rcRect, hBrush );
+
+   // Fill in the non-color pixels with the original image
+   BitBlt( hMemDC, 0, 0, nWidth, nHeight, hDC,
+   lpRect-&gt;left, lpRect-&gt;top, SRCAND );
+
+   // For the "Shutdown" look, use black or gray here instead
+   crHighlightColor = GetSysColor( COLOR_HIGHLIGHT );
+
+   // Set the color scheme
+   crOldTextColor = SetTextColor( hDC, crHighlightColor );
+   crOldBkColor = SetBkColor( hDC, RGB(0,0,0) );
+   SetBkMode( hDC, OPAQUE );
+
+   // Select the pattern brush
+   hOldBrush = SelectObject( hDC, hBrush );
+   // Fill in the color pixels, and set the others to black
+   FillRect( hDC, lpRect, hBrush );
+   // Fill in the black ones with the original image
+   BitBlt( hDC, lpRect-&gt;left, lpRect-&gt;top, nWidth, nHeight,
+           hMemDC, 0, 0, SRCPAINT );
+
+   // Restore target DC settings
+   SetBkMode( hDC, OldBkMode );
+   SetBkColor( hDC, crOldBkColor );
+   SetTextColor( hDC, crOldTextColor );
+
+   // Clean up
+   SelectObject( hMemDC, hOldMemBitmap );
+   DeleteObject( hBitmap );
+   DeleteDC( hMemDC );
+   DeleteObject( hBrushBitmap );
+   SelectObject( hDC, hOldBrush );
+   DeleteObject( hBrush );
+
+   return TRUE;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00 hatch darken shadow<BR>
+KBCategory: kbgraphic kbcode<BR>
+KBSubcategory: GdiMisc<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 29, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

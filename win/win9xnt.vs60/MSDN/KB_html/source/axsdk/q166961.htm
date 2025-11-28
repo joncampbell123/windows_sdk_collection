@@ -1,0 +1,253 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: FTP with CERN-Based Proxy Using WinInet API </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q166961">
+<META NAME="KBModify" CONTENT="1997/10/31">
+<META NAME="KBCreate" CONTENT="1997/04/15">
+<META NAME="Keywords" CONTENT="AXSDKWinInet kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; axsdk">
+<META NAME="Description" CONTENT="  A CERN-based Web proxy server uses HTTP for all communications with its clients. Therefore the FTP set of Wininet functions cannot be used to download resources on a FTP server if the FTP server is accessed through a CERN-based proxy on the client ...">
+<META NAME="Product" CONTENT="ActiveX SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ActiveX ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBW9,QDKF,QAGI,QARL,QBVW,QAQW,QA3N,QAPP,QAH4,QAFI,QAI5,QBXB,QATJ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: FTP with CERN-Based Proxy Using WinInet API</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 31, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q166961</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft ActiveX SDK, version 1.0
+   on the following platforms: NT, Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+A CERN-based Web proxy server uses HTTP for all communications with its
+clients. Therefore the FTP set of Wininet functions cannot be used to
+download resources on a FTP server if the FTP server is accessed through a
+CERN-based proxy on the client behalf. Instead, the client has to use
+general Wininet functions such as InternetOpenUrl and InternetReadFile to
+properly retrieve the data from the HTTP stream sent from the CERN-based
+proxy server.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+CERN-compatible proxy services support HTTP (WWW), FTP, and Gopher
+requests. But the communication between the CERN-based proxy server and its
+clients uses HTTP only. The following diagram show how a FTP request is
+forwarded using a CERN-compatible proxy service:
+<P>
+<PRE>   Get <B>ftp://host.com/root/test.doc</B> HTTP 1.0        FTP Request
+   |=========|                 |=============|          |=============|
+   |         |----------------&gt;| Cern-based  |---------&gt;|             |
+   | Client  |    HTTP         | Proxy Server|   FTP    |  Ftp Server |
+   |         |&lt;----------------|             |&lt;---------|             |
+   |=========|                 |=============|          |=============|
+         HTTP/1.0 200 &lt;document&gt;                  FTP Response
+
+</PRE>Since a CERN-based proxy server communicates with its clients in HTTP, you
+cannot use the FTP set of Wininet functions if the client accesses the FTP
+server through the proxy server. Instead, you should use InternetOpenUrl
+and InternetReadFile to retrieve the requested data from the HTTP stream
+sent by the proxy server.
+<P>
+If the FTP URL passed in InternetOpenUrl is a URL to a file on the FTP
+server, you can use InternetReadFile to read the entire file content. If
+the FTP URL passed in InternetOpenUrl is a URL to a directory on the FTP
+server, InternetReadFile retrieves a directory listing of the FTP URL as a
+HTML document. In both cases you may have to loop calling InternetReadFile
+until all data in the HTTP stream are read.
+<P>
+If the client intends to retrieve anything further below the FTP directory
+URL, it has to parse the HTML document to get URLs to sub-directories or
+files and issue more InternetOpenUrl and InternetReadFile calls. Also when
+a CERN-based proxy is used, the INTERNET_FLAG_RAW_DATA flag should not be
+specified in the InternetOpenUrl call.
+<P>
+The following pseudo code demonstrates how to call InternetOpenUrl and
+InternetReadFile when a CERN-based proxy server is used to access an FTP
+server:
+<P>
+<PRE>   CHAR strURL[]="<B>ftp://host.com/root/test.doc</B>";
+   HANDLE f;  //local file handle
+   HINTERNET hInternetFile;
+   DWORD dwRead, dwWritten;
+   CHAR szTemp[1024];
+   hInternetFile = InternetOpenUrl(hInternetSession,(LPCTSTR)strURL, NULL,
+     0,INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE, 0);
+   if (hInternetFile == NULL) { do some error processing; quit; }
+   //download the file to c:\deleteme
+   f = CreateFile("c:\\deleteme", GENERIC_WRITE,  0, NULL,
+     CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL, NULL);
+   if (f ==  INVALID_HANDLE_VALUE)
+   {
+     do some error processing; quit;
+   }
+
+   while (InternetReadFile(hInternetFile, (LPVOID)szTemp, 1024, &amp;dwRead))
+   {
+     if (!dwRead) break;
+     WriteFile(f, (LPVOID)szTemp, dwRead, &amp;dwWritten, NULL);
+   }
+   CloseHandle(f);
+   //if the strURL is a URL to a file on the ftp server, we get the file
+   //and store it in c:\deleteme.
+   //if the strURL is a URL to a directory on the ftp server, c:\deleteme
+   //will be a HTML page of the directory listing. You will have to parse
+   //the html page, and construct new URLs, and call the above code again.
+
+</PRE>When the client has direct connection to a FTP server, or is connected to
+the FTP server via a TIS FTP proxy server, the communication to and from
+the client is in FTP. The client can specify the INTERNET_FLAG_RAW_DATA
+flag in InternetOpenUrl and then use InternetFindNextFile to get a
+WIN32_FIND_DATA structure and enumerate all subdirectories and files of the
+URL. The client can also use the FTP set of Wininet functions in such
+situations.
+<P>
+The following pseudo code demonstrates how to call InternetOpenUrl and
+InternetReadFile when the INTERNET_FLAG_RAW_DATA flag is specified in
+the InternetOpenUrl call:
+<P>
+<PRE>   CHAR strURL[]="<B>ftp://host.com/root/test.doc</B>";
+   WIN32_FIND_DATA wfd;
+   HINTERNET hInternetFind;
+   CHAR *strFileName, *strDirectoryName;
+
+   hInternetFind = InternetOpenUrl(hInternetSession,(LPCTSTR)strURL,
+                    NULL, 0, INTERNET_FLAG_RAW_DATA| INTERNET_FLAG_RELOAD |
+     INTERNET_FLAG_DONT_CACHE, 0);
+   if (hInternetFind ==NULL) {do some error processing; quit}
+   if (!InternetFindNextFile (hInternetFind, &amp;wfd))
+   {do some error processing; quit}
+   do
+   {
+     if(wfd.dwFileAttributes &amp; FILE_ATTRIBUTE_DIRECTORY)
+     {
+       strDirectoryName = (LPCTSTR) &amp;wfd.cFileName;
+       if (strDirectoryName[0] == ".")
+         continue;
+       //store the directory name and construct a URL
+       //to this directory so that we can use the same
+       //code to enumerate it later;
+     }
+     else
+     {
+       strFileName = (LPCTSTR) &amp;wfd.cFileName;
+       //store the file name somewhere to get it later
+       //or you can get the file right here using the code
+       //similar to the pseudo code in the above section
+       //for CERN Proxy access;
+     }
+   }
+   while (InternetFindNextFile (hInternetFind, &amp;wfd));
+   InternetCloseHandle(hInternetFind);
+
+</PRE>When the connection between the client and the FTP server is direct or via
+a TIS FTP proxy, InternetOpenUrl and InternetReadFile are actually
+generating FTP traffic rather than HTTP traffic.
+<P>
+The above discussion regarding using Wininet APIs with CERN-based proxy
+applies to GOPHER as well. Also it is important to note that Wininet APIs
+support HTTP, HTTPS, FTP and GOPHER URLs only. For FILE URLs such as
+file://server/share/file or file://\\server\share\file, you need to use
+Win32 APIs such as FileCopy to download the file to the client machine, or
+FindFirstFile, FindNextFile, and FindClose to enumerate a directory.
+ 
+<PRE>Keywords          : AXSDKWinInet kbhowto
+Version           : 1.0
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 31, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

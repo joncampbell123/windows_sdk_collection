@@ -1,0 +1,392 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC: How to Use the ReplicationConflictFunction Property </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q158930">
+<META NAME="KBModify" CONTENT="1997/08/29">
+<META NAME="KBCreate" CONTENT="1996/11/07">
+<META NAME="Keywords" CONTENT="kbprg PgmHowTo">
+<META NAME="KBArea" CONTENT="Support; KB; vbapps">
+<META NAME="Description" CONTENT="  Advanced: Requires expert coding, interoperability, and multiuser skills.  This article describes how to use the ReplicationConflictFunction property in a database replica set so that you can create a custom procedure to resolve synchronization con...">
+<META NAME="Product" CONTENT="vbapps">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAB4,QAM9,QAHC,QA1S,QAAP,QBXS,QA5V,QAPN,QAZV,QAFO,QAO4,QAGB,QAB9,QDIZ,QANF P1 P2 P3 P4 P5 P6 T2 P7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC: How to Use the ReplicationConflictFunction Property</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 29, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q158930</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access versions 7.0, 97
+<LI>Microsoft Access Developer's Toolkit version 7.0
+<LI>Microsoft Office 97 Developer Edition Tools
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Advanced: Requires expert coding, interoperability, and multiuser skills.
+<P>
+This article describes how to use the ReplicationConflictFunction property
+in a database replica set so that you can create a custom procedure to
+resolve synchronization conflicts.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When you use replicated databases in Microsoft Access, you may encounter
+synchronization errors from time to time. Microsoft Access includes a
+Conflict Resolver wizard to help you resolve those conflicts when they
+occur.
+<P>
+However, you may want to create your own procedure to help users resolve
+synchronization conflicts. Also, the Microsoft Access Developer's Toolkit
+license agreement does not permit you to distribute wizards with your run-
+time applications; therefore, you must create your own conflict resolution
+procedure if your run-time application includes replicated databases.
+<P>
+The ReplicationConflictFunction property enables you to use a custom
+procedure to resolve conflicts instead of using the Conflict Resolver
+wizard. The procedure you create to resolve conflicts must be in a
+replicable module in the Design Master.
+<P>
+<P><h3>Creating a Custom Conflict Resolver</h3>
+ 
+<P>
+Your custom procedure must be able to process three types of errors:
+
+<UL><LI>Synchronization conflicts
+<LI>Synchronization errors
+<LI>Design errors
+<P>
+</UL><h3>Synchronization Conflicts</h3>
+ 
+<P>
+Synchronization conflicts occur when one record in a table is updated at
+two or more different replicas. Even if the changes are made to different
+fields in the record, the Microsoft Jet database engine treats it as a
+conflict. The Jet database engine does not attempt to resolve the conflict.
+Instead, it uses an algorithm to select one version of the record as the
+official change, and it stores the other version in a conflict table.
+<P>
+Conflict tables are named &lt;tablename&gt;_Conflict, where &lt;tablename&gt; is the
+table in which the conflict occurred. You can detect conflicts using Visual
+Basic code by looking for the ConflictTable property of a table. The
+following portion of a procedure checks for the existence of conflict
+tables in a replica database:
+<P>
+<PRE>   Sub ViewSyncConflict()
+      Dim Db As DATABASE
+      Dim Td As TableDef
+      Dim i as Integer
+      Set Db = CurrentDb
+      ' Step backward through the TableDefs collection so you
+      ' do not miss any tables when you delete conflict tables.
+      For i = Db.TableDefs.Count - 1 to 0 Step -1
+         Set Td = Db.Tabledefs(i)
+         If (Td.ConflictTable &lt;&gt; "") Then
+            ' Open a recordset based on the conflict table.
+            ' Insert code to do conflict resolution.
+            ' Delete the conflicting record when you are done.
+            ' Delete the conflict table when all its records are deleted.
+            ' Set the ConflictTable property to "".
+         End If
+      Next i
+   End Sub
+
+</PRE><h3>Synchronization Errors</h3>
+ 
+<P>
+Synchronization errors can come from at least four different sources:
+
+<UL><LI>A table-level validation rule is applied and other replicas have data
+   that does not satisfy the rule.
+
+<LI>A duplicate key error occurs because two different replicas entered
+   the same primary key into a table.
+
+<LI>A referential integrity error occurs because a primary table record
+   is deleted in one replica, and a record is added to a related table
+   in another replica.
+
+<LI>A record is locked when synchronization occurs.
+<P>
+</UL>Synchronization errors are recorded in the MSysErrors table and are
+replicated to all members of the replica set. Once you have corrected the
+errors, the Jet database engine automatically removes the error records
+during a subsequent synchronization.
+<P>
+Open the MSysErrors table to see what errors occurred. The following
+portion of a procedure displays the synchronization errors in the
+MSysErrors table:
+<P>
+<PRE>   Sub ViewSyncError()
+      Dim Db As DATABASE
+      Dim Rs As Recordset
+      Dim MsgString As String
+      On Error GoTo ErrorHandler
+      Set Db = CurrentDb
+      Set Rs = Db.OpenRecordset("MSysErrors", dbOpenSnapshot)
+      Rs.MoveLast
+      If Rs.RecordCount &gt; 0 Then
+         Rs.MoveFirst
+         Do Until Rs.EOF
+            ' Build the error message string.
+            MsgString = "Table ID: " &amp; Rs!TableGUID &amp; vbCr
+            MsgString = MsgString &amp; "Record ID: " &amp; Rs!RowGUID &amp; vbCr
+            MsgString = MsgString &amp; "Operation: " &amp; Rs!Operation &amp; vbCr
+            MsgString = MsgString &amp; "Failed Because: " &amp; Rs!ReasonText
+            MsgBox MsgString
+            Rs.MoveNext
+         Loop
+      End If
+
+   ExitProc:
+      Exit Sub
+
+   ErrorHandler:
+      ' If the MSysErrors table is empty...
+      If Err.Number = 3021 Then
+         Resume ExitProc
+      ' display any other error that occurs.
+      Else
+         MsgBox Err.Description
+         Resume ExitProc
+      End If
+   End Sub
+
+</PRE><h3>Design Errors</h3>
+ 
+<P>
+A design error occurs when a local object exists with the same name as a
+replicable object in the Design Master. For example, if a user at a replica
+creates a local form called Form1, and you create a replicable form in the
+Design Master called Form1, synchronization fails. The design error is
+recorded in a system table called MSysSchemaProb. The records in
+MSysSchemaProb are automatically deleted when the conflict is resolved and
+the design change is successfully synchronized.
+<P>
+The following sample procedure checks for the existence of the
+MSysSchemaProb table, and displays the design error:
+<P>
+<PRE>   Sub ViewDesignError()
+      Dim Db As DATABASE
+      Dim Rs As Recordset
+      Dim MsgString As String
+      On Error GoTo ErrorHandler
+      Set Db = CurrentDb
+      Set Rs = Db.OpenRecordset("MSysSchemaProb", dbOpenSnapshot)
+      Rs.MoveFirst
+      Do Until Rs.EOF
+         ' Build the error message string.
+         MsgString = "Operation: " &amp; Rs!Command &amp; vbCr
+         MsgString = MsgString &amp; "Failed Because: " &amp; Rs!ErrorText
+         MsgBox MsgString
+         Rs.MoveNext
+      Loop
+
+   ExitProc:
+      Exit Sub
+
+   ErrorHandler:
+         ' If the MSysSchemaProb table does not exist.
+         If Err.Number = 3078 Then
+            Resume ExitProc
+         ' If the MSysSchemaProb table is empty.
+         ElseIf Err.Number = 3021 Then
+            Resume ExitProc
+         ' Display any other error that occurs.
+         Else
+            MsgBox Err.Description
+            Resume ExitProc
+         End If
+   End Sub
+
+</PRE><h2>Putting It All Together</h2>
+ 
+<P>
+Once you have decided how you want to handle each type of synchronization
+error, create the custom function to use when conflicts occur. The
+following example combines the sample procedures in each of the earlier
+sections into a single function:
+<P>
+<PRE>   Function MyCustomFunction()
+      ViewSyncConflict
+      ViewSyncError
+      ViewDesignError
+   End Function
+
+</PRE><h3>Setting the ReplicationConflictFunction Property</h3>
+ 
+<P>
+You can set the ReplicationConflictFunction property programmatically or
+through the user interface. When you set the property programmatically, you
+may have to add ReplicationConflictFunction to the Properties collection of
+the database first, and then set its value.
+<P>
+<P><h3>Setting the ReplicationConflictFunction Programmatically</h3>
+ 
+
+<OL><P><LI>Open the Design Master database for the replica set.
+
+<P><LI>Create a module and type the following procedure:
+<P>
+<PRE>      Sub SetCustomFunction(FunctionName As String)
+         Dim Db As DATABASE, Ctr As Container, Doc As Document
+         Dim Prp As Property
+         On Error GoTo ErrorHandler
+         Set Db = CurrentDb
+         Set Ctr = Db.Containers!Databases
+         ' Set Document variable pointing to user defined document.
+         Set Doc = Ctr.Documents!UserDefined
+         ' Set the ReplicationConflictFunction property if it exists.
+         Doc.Properties!ReplicationConflictFunction = FunctionName
+      Exit Sub
+
+      ErrorHandler:
+         ' If the property does not exist...
+         If Err.Number = 3270 Then
+            ' create ReplicationConflictFunction property and set its
+            ' value.
+            Set Prp = Doc.CreateProperty("ReplicationConflictFunction", _
+                dbText, FunctionName)
+            ' Append the new property to the collection.
+            Doc.Properties.Append Prp
+            ' Resume the main procedure.
+            Resume Next
+         Else
+            ' Display any other error that occurs.
+            MsgBox Err.Number &amp; ": " &amp; Err.Description, vbCritical
+         End If
+      End Sub
+
+</PRE><P><LI>To test this function, type the following line in the Debug window,
+   and then press ENTER.
+<P>
+<P><PRE>      SetCustomFunction("MyCustomFunction()")
+</PRE><P>
+</OL><h3>Setting the ReplicationConflictFunction Through the User Interface</h3>
+ 
+
+<OL><P><LI>Open the Design Master database for the replica set.
+
+<P><LI>On the File menu, click Database Properties.
+
+<P><LI>In the &lt;DatabaseName&gt; Properties dialog box, click the Custom tab.
+
+<P><LI>Set the following properties:
+<P>
+<P><PRE>      Name: ReplicationConflictFunction
+      Type: Text
+      Value: MyCustomFunction()
+</PRE>
+<P><LI>Click OK to close the Properties dialog box.
+<P>
+</OL>For more information about using replication in your database, please
+see the following articles in the Microsoft Knowledge Base for
+instructions on obtaining the Microsoft Jet Database Replication white
+paper:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../access/q138828.htm">Q138828</A></B>
+   TITLE     : ACC95: Microsoft Jet Replication White Paper Available on
+               MSL
+
+   ARTICLE-ID: <B><A href="../access/q164553.htm">Q164553</A></B>
+   TITLE     : ACC97: Jet 3.5 Replication White Paper Available on MSL
+</PRE></OL> 
+<PRE>Keywords          : kbprg PgmHowTo
+Version           : 7.0 97
+Platform          : WINDOWS
+Hardware          : x86
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 29, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,287 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Use Java Serialization with VARIANT SafeArrays </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q178561">
+<META NAME="KBModify" CONTENT="1998/01/29">
+<META NAME="KBCreate" CONTENT="1997/12/29">
+<META NAME="Keywords" CONTENT="kbcode JCOM">
+<META NAME="KBArea" CONTENT="Support; KB; java">
+<META NAME="Description" CONTENT="  VARIANT SafeArrays are used in COM to hold Arrays of data (bytes, ints, etc). It may be useful for a Java developer to use a SafeArray to persist a Java object. In order to do so, we need a way to convert the data from ObjectOutputStream to a SafeA...">
+<META NAME="Product" CONTENT="java">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QBXF,QAW6,QAG1,QAPG,QAG9,QAY2,QALG,QAEQ,QAH4,QABO,QAYY,QBCF,QA2O,QABA V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Use Java Serialization with VARIANT SafeArrays</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 29, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q178561</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>SDK for Java, versions 2.0, 2.01
+<LI>Microsoft Win32 Virtual Machine for Java
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+VARIANT SafeArrays are used in COM to hold Arrays of data (bytes, ints,
+etc). It may be useful for a Java developer to use a SafeArray to persist a
+Java object. In order to do so, we need a way to convert the data from
+ObjectOutputStream to a SafeArray and back again.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Serialization in Java allows you to transmit or store a Java object in a
+stream. If you would like to use Serialization with COM objects, you will
+need to convert the Java stream to some form that COM understands. The most
+common form of parameter in COM is a VARIANT.
+<P>
+Because a VARIANT has limited types that can be placed inside of it, a
+serialized Java object's stream must be converted to a SafeArray. A
+SafeArray can hold a collection of bytes which is what a serialized Java
+object consists of. Java's representation of a SafeArray is
+com.ms.com.SafeArray. We need to create a simple class to convert the
+OutputStream to the SafeArray and another class to convert the SafeArray
+back to an InputStream.
+<P>
+NOTE: In order to compile the following code, you MUST use the latest
+Virtual Machine for Java (version 2252 or 2339 or newer) included in
+Internet Explorer 4.0 and 4.01 and Microsoft SDK for Java 2.0 and 2.01. The
+following code depends on new features of the SafeArray class included in
+the new Virtual Machine.
+<P>
+The following class called SafeArrayOutputStream converts data coming from
+an OutputStream into a SafeArray:
+<P>
+<PRE>   import java.io.*;
+   import java.util.*;
+   import com.ms.com.*;
+
+   // SafeArrayOutputStream
+   public class SafeArrayOutputStream extends ByteArrayOutputStream
+   {
+      public SafeArray getSafeArray()
+      {
+         // Allocate an array the size of the vector
+         byte[] byteArray = toByteArray();
+
+         // Create the safearray
+         SafeArray array = new SafeArray(Variant.VariantByte,
+            byteArray.length);
+
+         // Fill in safearray
+         array.setBytes(0, byteArray.length, byteArray, 0);
+
+         return array;
+      }
+   }
+
+</PRE>The following class called SafeArrayInputStream converts data from a
+SafeArray into an InputStream:
+<P>
+<PRE>   import java.io.*;
+   import com.ms.com.*;
+
+   // SafeArrayInputStream
+   public class SafeArrayInputStream extends ByteArrayInputStream
+   {
+      public SafeArrayInputStream(SafeArray array)
+      {
+         super(array.toByteArray());
+      }
+   }
+
+</PRE>Notice that both of these classes extend classes that are in the package
+Java.io. The ByteArrayOutputStream and the ByteArrayInputStream already
+provide most of the functionality necessary for the conversion.
+<P>
+If you have the following Automation COM interface:
+<P>
+<PRE>   interface IShortStorage
+   {
+      public void setAppData(Variant v);
+      public Variant getAppData();
+   }
+
+</PRE>You would be able to use them in the following manner:
+<P>
+<PRE>   // This is our variable that contains the COM interface
+   IShortStorage istor = (IShortStorage) storageCOMObject;
+
+   // This is our Object that we want to store
+   Color color = new Color(255,0,128);
+
+   // Create our SafeArrayOutputStream
+   SafeArrayOutputStream safeOutStream = new SafeArrayOutputStream();
+
+   // Declare a ObjectOutputStream for Serialization
+   ObjectOutputStream objOutStream = null;
+   try
+   {
+      // Create the ObjectOutputStream passing in our SafeArrayOutputStream
+      objOutStream = new ObjectOutputStream(safeOutStream);
+
+      // Write our color object to the stream
+      objOutStream.writeObject(color);
+
+      // Flush the stream
+      objOutStream.flush();
+   }
+   catch(Exception e)
+   {
+      // ObjectOutputStream threw an exception
+   }
+
+   // Close the stream
+   safeOutStream.close();
+
+   // Get the SafeArray from our SafeArrayOutputStream
+   SafeArray bytes = safeOutStream.getSafeArray();
+
+   // Create a new Variant to hold the SafeArray
+   Variant data = new Variant();
+
+   // Put the SafeArray inside the Variant
+   data.putSafeArray ( bytes );
+
+   // Store the Variant inside the Automation Object
+   istor.setAppData(data);
+
+</PRE>When you are ready to retieve the Object, use this code to deserialize your
+Object from the SafeArrayInputStream:
+<P>
+<PRE>   // Get the Variant back from the Automation Object
+   Variant data = istor.getAppData();
+
+   // Get the SafeArray out of the Variant
+   SafeArray bytes = body.toSafeArray();
+
+   // Create a new SafeArrayInputStream based on the SafeArray
+   SafeArrayInputStream safeInStream = new SafeArrayInputStream(bytes);
+
+   // Create a ObjectInputStream based on the SafeArrayInputStream
+   ObjectInputStream objInStream = new ObjectInputStream(safeInStream);
+
+   // Get the serialized object out of the ObjectInputStream
+   Object obj = objInStream.readObject();
+
+   // Check to see if the object is a color
+   if(obj instanceof Color)
+   {
+      Color col = (Color)obj;
+      // Use the color
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+SafeArrays and Variants are described in the Microsoft SDK for Java 2.0 and
+2.01 documentation which is available from
+<B><A href="http://www.microsoft.com/java/sdk/">http://www.microsoft.com/java/sdk/.</A></B>
+<P>
+For the latest Knowledge Base articles and other support information on
+Visual J++ and the SDK for Java, see the following page on the Microsoft
+Technical Support site:
+<P>
+<PRE>   <B><A href="http://support.microsoft.com/support/visualj/">http://support.microsoft.com/support/visualj/</A></B>
+   <B><A href="http://support.microsoft.com/support/java/">http://support.microsoft.com/support/java/</A></B>
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: SafeArray serialization
+<P>
+
+Keywords          : kbcode JCOM<BR>
+Technology        : internet<BR>
+Version           : WINDOWS:2.0,2.01<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 29, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,226 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How To Use the Win32 Registry from 16-bit Windows-Based App </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q137378">
+<META NAME="KBModify" CONTENT="1997/01/15">
+<META NAME="KBCreate" CONTENT="1995/09/26">
+<META NAME="Keywords" CONTENT="kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  By obtaining access to all Win32-based registry APIs, a 16-bit Windows-based application can also gain full access to the Win32 registry. Such access would be based on Generic Thunking to ensure portability between Windows NT and Windows 95.  MORE ...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAKD,QBW7,QAI5,QBWP,QBWG,QAJH,QAB5,QAY5,QAY2,QAGI,QDL9,QBWQ,QBWO,QBWN,QAI4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How To Use the Win32 Registry from 16-bit Windows-Based App</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 15, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q137378</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development KIT (SDK)
+   versions 3.1x, 3.5, 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+By obtaining access to all Win32-based registry APIs, a 16-bit
+Windows-based application can also gain full access to the Win32 registry.
+Such access would be based on Generic Thunking to ensure portability
+between Windows NT and Windows 95.
+<P>
+<P><h2>MORE  INFORMATION</h2>
+ 
+<P>
+A 16-bit Windows-based application must implement a generic thunk function
+for each Win32 API required to access the Win32 registry. To achieve the
+greatest flexibility, you need to implement these new functions in a 16-bit
+Windows-based DLL that can be implicitly linked to a 16-bit Windows-based
+application. In Windows NT and Windows 95, all Win32 registry APIs are
+exported from Advapi.dll.
+<P>
+For a 16-bit Windows-based application to access the Win32 registry, it
+must first define the predefined reserved handle value (HKEY_LOCAL_MACHINE)
+as defined by the Win32 environment. These predefined reserved handle
+values are located in the Winreg.h file in the Win32 SDK.
+<P>
+The following demonstrates a sample technique used to perform registry
+thunking:
+<P>
+<PRE>// required includes
+#include "wownt16.h"     // available from Win32 SDK
+#include "shellapi.h"    // 16-bit Windows header
+
+// As defined by the Win32 SDK in Winreg.h
+#define HKEY_CURRENT_USER           (( HKEY ) 0x80000001 )
+
+</PRE>HKEY hOpen;
+DWORD rc;
+<P>
+if ( ERROR_SUCCESS ==
+<PRE>      (rc=RegOpenKey(HKEY_CURRENT_USER, "Control Panel\\Desktop", &amp;hOpen)))
+      {
+         DWORD dwType, cbData;
+         BYTE   bData[1000];
+         cbData = 1000;
+
+         if ( (rc =
+         RegQueryValueEx(hOpen, "BorderWidth", NULL,
+                              &amp;dwType, bData, &amp;cbData ))
+              == ERROR_SUCCESS )
+          {
+          // used retreived data
+          MessageBox(NULL, "Value Retreived","Information",MB_OK);
+          }
+          else
+             MessageBox(NULL, "RegQueryValueEx Failed","Error",MB_OK);
+             RegCloseKey(hOpen);
+      }
+
+// This code should be placed in a DLL to allow for maximum flexibility.
+// When the full conversion to 32-bit is complete, the thunking library
+// need not be included.
+
+</PRE>LONG RegQueryValueEx(
+<PRE>    HKEY  hKey,
+    LPSTR  lpszValueName,
+    LPDWORD  lpdwReserved,
+    LPDWORD  lpdwType,
+    LPBYTE  lpbData,
+    LPDWORD  lpcbData
+   )
+</PRE>{
+<PRE>    DWORD pFn;
+    DWORD dwResult = ERROR_ACCESS_DENIED; //random error if fail
+    DWORD hAdvApi32;
+
+    hAdvApi32=LoadLibraryEx32W("ADVAPI32.DLL", NULL, 0);
+
+    if ((DWORD)0!=hAdvApi32)
+     {
+           // call ANSI version
+      pFn=GetProcAddress32W(hAdvApi32, "RegQueryValueExA");
+      if ((DWORD)0!=pFn)
+       {
+        dwResult=CallProcEx32W(
+               CPEX_DEST_STDCALL | 6, // standard function call with
+                                      // six parameters
+               0x3e,                  // Identify what parameters
+                                      //(addresses) must be translated
+               pFn,                   // function pointer
+               hKey,                  // open key
+               lpszValueName,         // value to query
+               lpdwReserved,          // reserved for future use
+               lpdwType,              // value type
+               lpbData,               // value data
+               lpcbData               // value data length
+               );
+       }
+     }
+    if (hAdvApi32)
+                 FreeLibrary32W(hAdvApi32);
+
+              return(dwResult);
+}
+
+</PRE>To include the generic thunk APIs, the 16-bit app needs to add the
+following to its module definition (.DEF) file:
+<P>
+IMPORTS
+<PRE>        _CallProcEx32W           = KERNEL.518
+        LoadLibraryEx32W         = KERNEL.513
+        FreeLibrary32W           = KERNEL.514
+        GetProcAddress32W        = KERNEL.515
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: BseRegistry<BR>
+Additional reference words: 3.50 3.51 4.00<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 15, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

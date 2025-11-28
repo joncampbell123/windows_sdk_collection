@@ -1,0 +1,260 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Output Parameters Not Received From Stored Procedure </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q120513">
+<META NAME="KBModify" CONTENT="1997/07/31">
+<META NAME="KBCreate" CONTENT="1994/09/13">
+<META NAME="Keywords" CONTENT="MfcDatabase kbcode kbprb kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When using stored procedures with the Microsoft Foundation Class Library CRecordset class, no values are returned from the stored procedures for output parameters.  CAUSE =====  The record field exchange (RFX) functions handles the fifth parameter ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAKD,QAHE,QAH7,QAY5,QAH6,QAD7,QA9E,QA4Q,QAGI,QAB9,QA6E,QA5A,QAKC,QAY2,QAUD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Output Parameters Not Received From Stored Procedure</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 31, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q120513</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.50 1.51 1.52
+WINDOWS
+kbprg kbcode kbprb
+<P>
+ 
+The information in this article applies to:
+<P>
+<PRE>  The Microsoft Foundation Classes (MFC), included with:
+
+    - Microsoft Visual C++ for Windows, versions 1.5, 1.51, 1.52
+</PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When using stored procedures with the Microsoft Foundation Class Library
+CRecordset class, no values are returned from the stored procedures for
+output parameters.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The record field exchange (RFX) functions handles the fifth parameter of
+SQLSetParam (cbColDef) incorrectly.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+If you are using the ODBC SQL Server driver, you can write a custom record
+field exchange (RFX) function to handle the CFieldExchange::BindParam
+operation differently. Call your custom RFX function rather than the
+existing MFC RFX functions. The sample code below demonstrates two cases;
+one for RFX_Long() and and one for RFX_Text().
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+ODBC needs to know whether a parameter is an output parameter for a
+parameter marker. ODBC 1.0 didn't make it clear how this was to be done. In
+ODBC 2.0 a new function, SQLBindParameter(), can tell a 2.0 driver what
+type of parameter it has (input or output). A feature was added to the ODBC
+1.0 SQL Server driver to allow this to occur.
+<P>
+To specify whether a parameter to a stored procedure is an output
+parameter, add to or pass the value of 65536 to the cbColDef parameter of
+the SQLSetParam ODBC API. The parameter's SQL data type determines if the
+value is added or passed.
+<P>
+Listed in Appendix D of the ODBC Programmer's Reference manual is a table
+of precisions for the cbColDef parameter. If the table says that the
+cbColDef argument is ignored, pass the value of 65536 for cbColDef. If the
+value is not ignored, add the value to cbColDef.
+<P>
+The sample code below demonstrates both cases. The only way this code
+differs from the MFC implementations, RFX_Long and RFX_Text, is that these
+pass the correct value for the fifth parameter in the call to SQLSetParam.
+Call these functions from your CRecordset's DoFieldExchange where you would
+normally call RFX_Text and RFX_Long when using parameters in your
+recordset.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>#define SQL_OUTPUT_PARAM_VALUE 65536
+
+void AFXAPI RFX_LongOut(CFieldExchange* pFX, const char *szName, long&amp;
+</PRE>value)
+<P>
+{
+<PRE>    if( pFX-&gt;m_nOperation == CFieldExchange::BindParam )
+    {
+        // deal with the special case ourselves
+        RETCODE nRetCode;
+        ASSERT(AfxIsValidAddress(pFX, sizeof(CFieldExchange)));
+        ASSERT(AfxIsValidString(szName));
+        UINT nField;
+        if (!pFX-&gt;IsFieldType(&amp;nField))
+            return;
+
+        LONG* plLength = pFX-&gt;m_prs-&gt;GetFieldLength(pFX);
+
+        if (pFX-&gt;m_prs-&gt;IsFieldFlagNull(nField, CFieldExchange::param))
+            *plLength = SQL_NULL_DATA;
+        else
+            *plLength = sizeof(value);
+        // For params, CType is same as SQL type
+        AFX_SQL_SYNC(::SQLSetParam(pFX-&gt;m_hstmt,
+           (unsigned short int)nField,
+
+           (short int)SQL_C_LONG, (short int)SQL_C_LONG,
+           (unsigned long )SQL_OUTPUT_PARAM_VALUE, 0, &amp;value, plLength))
+;
+        if (nRetCode != SQL_SUCCESS)
+            pFX-&gt;m_prs-&gt;ThrowDBException(nRetCode, pFX-&gt;m_hstmt);
+    }
+    else
+    {
+        // let MFC handle all other operations
+        RFX_Long( pFX, szName, value );
+    }
+</PRE>}
+<P>
+<PRE>void AFXAPI RFX_TextOut( CFieldExchange* pFX, const char *szName,
+                         CString&amp; value, int nMaxLength /*= 255*/,
+                         int nColumnType /*= SQL_VARCHAR*/ )
+{
+    // handle this ourselves
+    if( pFX-&gt;m_nOperation == CFieldExchange::BindParam )
+    {
+        ASSERT(AfxIsValidAddress(pFX, sizeof(CFieldExchange)));
+        ASSERT(AfxIsValidString(szName));
+        ASSERT(AfxIsValidAddress(&amp;value, sizeof(CString)));
+
+        RETCODE nRetCode;
+        UINT nField;
+        if (!pFX-&gt;IsFieldType(&amp;nField))
+            return;
+
+        LONG* plLength = pFX-&gt;m_prs-&gt;GetFieldLength(pFX);
+
+        *plLength = SQL_NTS;
+        // Preallocate to nMaxLength
+        value.GetBufferSetLength(nMaxLength);
+        AFX_SQL_SYNC(::SQLSetParam(pFX-&gt;m_hstmt,
+          (unsigned short int)nField,
+
+         (short int)SQL_C_CHAR, (short int)nColumnType,
+         (unsigned long)SQL_OUTPUT_PARAM_VALUE + value.GetLength(),
+            0, value.GetBuffer(0), plLength));
+        value.ReleaseBuffer();
+        if (nRetCode != SQL_SUCCESS)
+            pFX-&gt;m_prs-&gt;ThrowDBException(nRetCode, pFX-&gt;m_hstmt);
+
+    }
+    else
+    {
+        // let MFC handle all other operations
+        RFX_Text( pFX, szName, value, nMaxLength, nColumnType );
+    }
+</PRE>}
+<P>
+NOTE: The ODBC 2.0 Programmer's Reference recommends using the
+SQLBindParameter() function rather than SQLSetParam(). The only reason
+SQLSetParam() is used here is because it is documented in the on-line
+documentation for Microsoft Visual C++ version 1.5.
+<P>
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.50 1.51 1.52 2.00 2.10 2.50 2.51 2.52<BR>
+KBCategory: kbprg kbcode kbprb<BR>
+KBSubcategory: MfcDatabase<BR>
+Keywords          : MfcDatabase kbcode kbprb kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.50 1.51 1.52<BR>
+Platform          : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 31, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

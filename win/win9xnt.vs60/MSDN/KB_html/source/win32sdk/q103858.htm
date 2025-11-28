@@ -1,0 +1,222 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Copy on Write Page Protection for Windows NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q103858">
+<META NAME="KBModify" CONTENT="1996/12/20">
+<META NAME="KBCreate" CONTENT="1993/09/01">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The Windows NT's Copy on Write page protection is a concept that allows multiple applications to map their virtual address spaces to share the same physical pages, until an application needs to modify the page and have its own instance copy. This i...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAJQ,QA9N,QASB,QAH4,QA8T,QABA,QAC2,QBW6,QBWA,QAJH,QBWP,QA2O,QA3A,QAR5,QDH9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Copy on Write Page Protection for Windows NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 20, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q103858</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.1, 3.5, 3.51, 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The Windows NT's Copy on Write page protection is a concept that allows
+multiple applications to map their virtual address spaces to share the same
+physical pages, until an application needs to modify the page and have its
+own instance copy. This is part of a technique called Lazy Evaluation,
+which allows the system to not waste time by committing resources, time, or
+execution until/unless absolutely necessary. Copy on Write allows the
+virtual memory manager to save memory and execution time.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Copy on Write works as follows: In generic terms, an application can load
+something into its virtual memory (for example, a code section or DLL
+code). Virtual memory is mapped to physical memory. Another process may
+want to load the same thing into its virtual memory. As long as neither
+process writes to this memory, they can map to, and share, the same
+physical pages.
+<P>
+If either process needs to write to this memory, because the memory is
+marked as Copy on Write, the physical page frame will be copied somewhere
+else in physical memory. Fixups are made for the virtual memory mapping of
+the writing process. Both applications now have their own instance of the
+memory contents. In short, applications can share the same physical memory
+with Copy on Write, until one of the applications has to modify the
+contents. At that point, a new copy of the contents is made, and the
+writing process has its own copy.
+<P>
+It should be emphasized that this is not to say that applications are
+sharing memory in the sense that one application can write to it and
+another can read what the first one wrote; as long as applications are only
+going to read a piece of memory (for example, a code section), then the
+physical pages supporting that memory for the applications can be shared.
+Once the application needs to write to the memory (for example, in the form
+of a fixup), then that application must have a new physical page so that
+the modifications are not seen by other processes. The processes are no
+longer sharing the same physical pages.
+<P>
+<P><h3>Applications</h3>
+ 
+<P>
+When multiple instances of the same Windows-based application load, you may
+notice that most, if not all, of their instance handles (hInstance) have
+the same value. In fact, almost all of the windows on the desktop have this
+value, which represents the base address where the application loaded in
+virtual memory.
+<P>
+Each of the instances of the same application running has its own protected
+virtual address space to run in. If each of these applications can load
+into its default base address, each will map to, and be able to share, the
+same physical pages in memory. Using Copy on Write, the system will allow
+these applications to share the same physical pages until one of the
+applications modifies a page. Then a copy is made in physical memory, and
+that process's virtual memory is fixed up to use the new physical page. If
+for some reason one of these instances cannot load in the desired base
+address, it will get its own physical pages. See the section on DLLs below
+for more explanation.
+<P>
+<P><h3>DLLs</h3>
+ 
+<P>
+Dynamic-link libraries (DLLs) are created with a default base address to
+load at. Assuming that multiple applications call the DLL, they will all
+try to load it within their own address space at that default virtual
+address. If they are all successful, they can all map that virtual address
+space to share the same physical pages.
+<P>
+However, if for some reason the DLL cannot be loaded within the process's
+address space at the default address, it will load the DLL elsewhere. The
+DLL must be copied into another physical address frame. The reason is that
+fixups for jump instructions in a DLL are written as specific locations
+within the DLL's pages. If the DLL can be loaded at the same base address
+for each process, the second to the nth process does not have to write that
+memory location for the jump. If a process cannot load the DLL at the
+specified base address, the locations written in the DLL's jumps will be
+different for this process. This forces the fixup to write a new location
+into the jump, and the Copy on Write will automatically force a new
+physical page.
+<P>
+Note that all references to data must be fixed up too. If this causes
+virtual memory of the code section to be updated, then the process will
+again go through the Copy on Write process. For example, if there are a
+great many places in the code section that make reference into data in a
+DLL, if the DLL cannot be loaded at its default location, the locations in
+the code section data in the DLL are referenced will have to be modified.
+If this is one of multiple instances of a process, these fixups must go
+through the copy on write process, and the virtual memory pages of the
+process's code section will not be able to map and share the same physical
+pages as the other instances. If there are a lot of references to the data
+in the DLL by the code section, this can essentially cause the entire code
+section to be copied to new physical pages.
+<P>
+<P><h3>POSIX</h3>
+ 
+<P>
+In POSIX, there is a fork() instruction that basically creates two copies
+of the same program. It is an expensive process for the system to copy the
+address space of one process into another. Instead, under Windows NT, the
+system simply marks the parent's pages with Copy on Write. This way new
+physical frames are copied only if and when they are needed (have been
+modified). The system does not waste time or memory if all of the address
+space doesn't need to be copied. (For more information, see "Inside Windows
+NT" by Microsoft Press).
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg<BR>
+KBSubcategory: BseMm<BR>
+Additional reference words: 3.10 3.50 4.00<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 20, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

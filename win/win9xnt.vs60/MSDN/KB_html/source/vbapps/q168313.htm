@@ -1,0 +1,328 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC97: DAO Property Retrieval Slow with Linked Table Objects </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q168313">
+<META NAME="KBModify" CONTENT="1997/08/29">
+<META NAME="KBCreate" CONTENT="1997/05/09">
+<META NAME="Keywords" CONTENT="kbprg PgmHowTo MdlDao TblOthr">
+<META NAME="KBArea" CONTENT="Support; KB; vbapps">
+<META NAME="Description" CONTENT="  Advanced: Requires expert coding, interoperability, and multiuser skills.  When you use data access objects (DAO) to retrieve properties for linked TableDef objects, the process is much slower than when you use DAO to retrieve the properties  for l...">
+<META NAME="Product" CONTENT="vbapps">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QA1S,QANF,QAVX,QDKY,QBWS,QDN9,QAW6,QAZV,QBXS,QAG8,QAKC,QAYZ,QAGU,QA01 P1 P2 P3 P4 P5 P6 T2 P7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC97: DAO Property Retrieval Slow with Linked Table Objects</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 29, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q168313</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access 97
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Advanced: Requires expert coding, interoperability, and multiuser skills.
+<P>
+When you use data access objects (DAO) to retrieve properties for linked
+TableDef objects, the process is much slower than when you use DAO to
+retrieve the properties  for local Tabledef objects.
+<P>
+This article assumes that you are familiar with Visual Basic for
+Applications and with creating Microsoft Access applications using the
+programming tools provided with Microsoft Access. For more information
+about Visual Basic for Applications, please refer to the "Building
+Applications with Microsoft Access 97" manual.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The Microsoft Jet database engine must create a temporary query for each
+property retrieval of a linked TableDef object. The Jet database engine
+does not need to do this when retrieving properties for local TableDef
+objects.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Instead of retrieving the properties for the linked TableDef objects in
+the current database, you can use DAO to open the database that the
+TableDef objects actually reside in, and then retrieve the properties. To
+accomplish this, follow steps 1 - 17 in the "Steps to Reproduce Behavior"
+section later in this article and substitute the following procedure for
+the procedure documented in step 15:
+<P>
+<PRE>   Sub EnumProperties(tDefName As String)
+       Dim db As Database
+       Dim tDef As TableDef
+       Dim tDefSourceTableName As String
+       Dim tDefProperty As Property
+       Dim PropCount As Integer
+       Dim dbPath As String
+       Dim tDefField As Field
+       Dim StartTime As Date, EndTime As Date
+
+       StartTime = Now
+       Set db = CurrentDb
+       Set tDef = db.TableDefs(tDefName)
+
+       If (tDef.Attributes And dbAttachedTable) &lt;&gt; 0 Then
+           If InStr(tDef.Connect, ".mdb") &gt; 0 Then
+               tDefSourceTableName = tDef.SourceTableName
+               dbPath = Right$(tDef.Connect, _
+                        Len(tDef.Connect) - _
+                        InStr(tDef.Connect, "="))
+               Set db = DBEngine(0).OpenDatabase(dbPath)
+               Set tDef = db.TableDefs(tDefSourceTableName)
+           End If
+       End If
+
+       For Each tDefProperty In tDef.Properties
+       Next
+
+       For Each tDefField In tDef.Fields
+           For Each tDefProperty In tDefField.Properties
+               PropCount = PropCount + 1
+           Next
+       Next
+
+       EndTime = Now
+       Debug.Print
+       Debug.Print "Table: " &amp; tDef.Name
+       Debug.Print "Number of Table and Field Properties: " &amp; _
+          tDef.Properties.Count + PropCount
+       Debug.Print "Total Time: " &amp; _
+          DateDiff("s", StartTime, EndTime) &amp; " second(s)"
+       db.Close
+   End Sub
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+<P>
+CAUTION: Following the steps in this example will modify the sample
+database Northwind.mdb. You may want to back up the Northwind.mdb file
+and perform these steps on a copy of the database.
+
+<OL><P><LI>Open the sample database Northwind.mdb.
+
+<P><LI>Create a module and type the following line in the Declarations
+    section if it is not already there:
+<P>
+       Option Explicit
+
+<P><LI>Type the following procedure. This procedure adds 700 user-defined
+    properties to the Employees table.
+<P>
+<PRE>       Sub CreateProperties()
+          Dim db As Database
+          Dim tDef As TableDef
+          Dim prop As Property
+          Dim i As Integer
+
+          Set db = CurrentDb
+          Set tDef = db.TableDefs!Employees
+          For i = 1 To 700
+             Set prop = tDef.CreateProperty("Prop" &amp; i, dbText, i)
+             tDef.Properties.Append prop
+          Next
+          tDef.Properties.Refresh
+          MsgBox "Number of Properties: " &amp; tDef.Properties.Count
+          db.Close
+       End Sub
+
+</PRE><P><LI>To run this procedure, type the following line in the Debug window,
+    and then press ENTER.
+<P>
+       CreateProperties
+<P>
+    Note that the message box indicates the number of properties that were
+    added to the Employees table. This number will include any existing
+    properties as well.
+
+<P><LI>Create a new, blank database named PropTest.mdb.
+
+<P><LI>On the File menu, point to Get External Data, and then click Import.
+
+<P><LI>In the Import dialog box, select Microsoft Access (*.mdb) from the
+    Files Of Type list.
+
+<P><LI>Locate your Office97\Office\Samples folder, select Northwind.mdb,
+    and then click Import.
+
+<P><LI>In the Import Objects dialog box, select the Employees table, and then
+    click OK.
+
+<P><LI>On the File menu, point to Get External Data, and then click Link
+    Tables.
+
+<P><LI>In the Link dialog box, select Microsoft Access (*.mdb) from the
+    Files Of Type list.
+
+<P><LI>Locate your Samples folder, select Northwind.mdb, and then click Link.
+
+<P><LI>In the Link Tables dialog box, select the Employees table, and then
+    click OK. Note that the linked table is named "Employees1."
+
+<P><LI>Create a module and type the following line in the Declarations
+    section if it is not already there:
+<P>
+       Option Explicit
+
+<P><LI>Type the following procedure:
+<P>
+<PRE>       Sub EnumProperties(tDefName As String)
+           Dim db As Database
+           Dim tDef As TableDef
+           Dim tDefProperty As Property
+           Dim PropCount As Integer
+           Dim tDefField As Field
+           Dim StartTime As Date, EndTime As Date
+
+           StartTime = Now
+           Set db = CurrentDb
+           Set tDef = db.TableDefs(tDefName)
+           For Each tDefProperty In tDef.Properties
+           Next
+
+           For Each tDefField In tDef.Fields
+              For Each tDefProperty In tDefField.Properties
+                 PropCount = PropCount + 1
+              Next
+           Next
+
+           EndTime = Now
+           Debug.Print
+           Debug.Print "Table: " &amp; tDef.Name
+           Debug.Print "Number of Table and Field Properties: " &amp; _
+               tDef.Properties.Count + PropCount
+           Debug.Print "Total Time: " &amp; _
+               DateDiff("s", StartTime, EndTime) &amp; " second(s)"
+           db.Close
+       End Sub
+
+</PRE><P><LI>Test this procedure with the local Employees table to determine the
+    amount of time it takes to enumerate its properties. To run this
+    procedure, type the following line in the Debug window, and then
+    press ENTER.
+<P>
+       EnumProperties "Employees"
+<P>
+    Note the number of seconds it takes to enumerate through all
+    properties of the Employees table.
+
+<P><LI>Test this procedure with the linked Employees1 table to determine the
+    amount of time it takes to enumerate its properties. To run this
+    procedure, type the following line in the Debug window, and then
+    press ENTER.
+<P>
+       EnumProperties "Employees1"
+<P>
+    Note that the number of seconds it takes to enumerate the properties
+    of the linked table is much higher.
+</OL> 
+<PRE>Keywords          : kbprg PgmHowTo MdlDao TblOthr
+Version           : 97
+Platform          : WINDOWS
+Hardware          : x86
+Issue type        : kbprb
+Solution Type     : kbcode</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 29, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

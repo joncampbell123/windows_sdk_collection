@@ -1,0 +1,224 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Disk Dumps May Cause Handled AV When Space Is Low </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q164970">
+<META NAME="KBModify" CONTENT="1997/03/12">
+<META NAME="KBCreate" CONTENT="1997/03/10">
+<META NAME="Keywords" CONTENT="kbprg SSrvAdmin SSrvGPF SSrvODS SSrvProg kbbug6.00">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  Under rare circumstances, if the amount of available disk space is very low, SQL Server may generate a handled access violation (AV) when trying to dump to disk.  WORKAROUND  Make sure that there is an adequate amount of free space before dumping t...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBW5,QABM,QAUD,QABI,QAI4,QAH6,QA5A,QAH4,QBBI,QALW,QAB9,QAC9,QAPF,QA4Q,QAH7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Disk Dumps May Cause Handled AV When Space Is Low</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 12, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q164970</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Under rare circumstances, if the amount of available disk space is very
+low, SQL Server may generate a handled access violation (AV) when trying
+to dump to disk.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+Make sure that there is an adequate amount of free space before dumping to
+the disk, or dump to a different type of dump device. Sample code is
+provided in the MORE INFORMATION section of this article for an extended
+stored procedure that you can use to determine the amount of free space
+before dumping to disk.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in Microsoft SQL Server
+version 6.0. This problem has been corrected in Microsoft SQL Server
+version 6.5.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To assist in checking for necessary disk space before performing an
+automated backup, you can use an extended stored procedure to determine
+the amount of available disk space on the server. The documentation
+provides a sample procedure, xp_diskfree, that provides this capability.
+The following sample is similar to that function, but allows UNC drive
+specifications and returns the result as an output parameter rather than a
+result set.
+<P>
+If the code were compiled into a procedure called xp_sample, the usage
+would be:
+<P>
+<PRE>    declare @freespace int
+    exec xp_sample '\\server1\share1\', @freespace output
+    select @freespace
+
+</PRE>*** THE FOLLOWING CODE IS FOR SAMPLE USE ONLY ***
+<P>
+<PRE>   #define MAX_SRVINT4_VALUE 2147483647
+
+      DBINT paramlength;
+      DBCHAR rootname[_MAX_PATH];
+      DBCHAR bErrorMsg[2 * _MAX_PATH];
+      DWORD secPerCluster;
+      DWORD bytesPerSector;
+      DWORD freeClusters;
+      DWORD totalClusters;
+      DBINT space_remaining;
+      __int64 large_calc;
+
+      //Make sure they specified drive and output param for space
+      if (srv_rpcparams(srvproc) &lt; 2)
+      {
+         sprintf(bErrorMsg, "SYNTAX:\nDECLARE @freespace int\nexec
+         xp_sample '&lt;path&gt;', "  \
+         "@freespace OUTPUT\n\nwhere &lt;path&gt; is like
+         \\\\&lt;machine&gt;\\&lt;share&gt;\\ or &lt;drive&gt;:\\");
+         srv_sendmsg(srvproc, SRV_MSG_ERROR, CMDSHELL_ERROR, SRV_INFO,
+         (DBTINYINT)0, NULL, 0, 0, bErrorMsg, SRV_NULLTERM);
+
+         srv_senddone(srvproc, (SRV_DONE_ERROR | SRV_DONE_MORE), 0, 0);
+         return(XP_ERROR);
+      }
+
+      //Move the path specified into rootname
+      paramlength = srv_paramlen(srvproc, 1);
+      srv_bmove(srv_paramdata(srvproc, 1), rootname, paramlength);
+      rootname[paramlength] = '\0'; //NULL terminate
+
+      if (GetDiskFreeSpace(rootname, &amp;secPerCluster,
+            &amp;bytesPerSector, &amp;freeClusters, &amp;totalClusters))
+      {
+          large_calc = secPerCluster * freeClusters * bytesPerSector;
+      }
+      else
+      {
+         sprintf(bErrorMsg, "GetDiskFreeSpace failed with error %d "  \
+            "on path %s", GetLastError(), rootname);
+         srv_sendmsg(srvproc, SRV_MSG_ERROR, CMDSHELL_ERROR, SRV_INFO,
+            (DBTINYINT)0, NULL, 0, 0, bErrorMsg, SRV_NULLTERM);
+
+         srv_senddone(srvproc, (SRV_DONE_ERROR | SRV_DONE_MORE), 0, 0);
+         return(XP_ERROR);
+      }
+
+      //If we exceed 2 GB of disk space, return 2 GB free as this is
+      //the largest value we can pass back to an INT value
+      if (large_calc &gt; MAX_SRVINT4_VALUE)
+      {
+         large_calc = MAX_SRVINT4_VALUE;
+      }
+      space_remaining = (DBINT)large_calc;
+
+      //Return the size in the output param
+      srv_paramset(srvproc, 2, (BYTE *)&amp;space_remaining, 4);
+      srv_senddone(srvproc, SRV_DONE_MORE, 0, 0);
+      return(XP_NOERROR);
+
+</PRE>See the Programming Open Data Services documentation for further
+information on writing and registering extended stored procedures.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: hard<BR>
+Keywords            : kbprg SSrvAdmin SSrvGPF SSrvODS SSrvProg kbbug6.00<BR>
+Version             : 6.0<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbbug<BR>
+Resolution Type     : kbcode<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 12, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

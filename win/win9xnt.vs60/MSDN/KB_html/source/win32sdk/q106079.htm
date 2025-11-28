@@ -1,0 +1,245 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: CBT_CREATEWND Struct Returns Invalid Class Name </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q106079">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1993/10/31">
+<META NAME="Keywords" CONTENT="kbui kbprb kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The CBT_CREATEWND structure contains information passed to a WH_CBT hook callback function before a window is created in the system. The lpszClass field of this CBT_CREATEWND structure may return an invalid class name, particularly for windows crea...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWN,QDL9,QBWO,QAUJ,QBWQ,QABO,QAY5,QAGI,QAUD,QAH4,QAGQ,QARM,QBV8,QAB9,QA7O V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: CBT_CREATEWND Struct Returns Invalid Class Name</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q106079</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) versions 3.1
+
+<LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.5 and 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The CBT_CREATEWND structure contains information passed to a WH_CBT
+hook callback function before a window is created in the system. The
+lpszClass field of this CBT_CREATEWND structure may return an invalid
+class name, particularly for windows created internally by the system.
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The code to get to the window class name via the CBT_CREATEWND
+structure in a CBT callback function may look like the following:
+<P>
+<PRE>   int FAR PASCAL CBTProc (int nCode, WPARAM wParam, LPARAM lParam)
+    {
+         LPCBT_CREATEWND  CreateWndParam;
+
+           if (nCode &gt;= 0)
+           {
+                switch (nCode)
+                {
+                   case HCBT_CREATWND:
+                        CreateWndParam = (LPCBT_CREATEWND)lParam;
+                        OutputDebugString ("ClassName = ");
+                        OutputDebugString (lParam-&gt;lpcs-&gt;lpszClass);
+                        OutputDebugString ("\r\n");
+                        break;
+                     :
+                     :
+                }
+           }
+
+           return (int)CallNextHookEx (hHook, nCode, wParam, lParam);
+    }
+
+</PRE>However, this code may or may not output the correct class name,
+depending on what the call to CreateWindow() (for the window about to
+be created) looks like.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Windows provides the GetClassName() function to allow applications to
+retrieve a window's class name. This function takes the handle to the
+window as a parameter, as well as a buffer to receive the
+null-terminated class name string. This function is a more reliable
+and a more recommended means to obtain window class name information
+than the CBT callback function's CBT_CREATEWND structure.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Whenever a window is about to be created, Windows checks to see if a
+WH_CBT hook is installed anywhere in the system. If it finds one, it
+calls the CBTProc() callback function with hook code set to
+HCBT_CREATEWND, and with the lParam parameter containing a long
+pointer to a CBT_CREATEWND structure.
+<P>
+The CBT_CREATEWND structure is defined in WINDOWS.H as follows
+<P>
+<PRE>   typedef struct tagCBT_CREATEWND {
+       CREATESTRUCT FAR* lpcs;
+       HWND hwndInsertAfter;
+   } CBT_CREATEWND;
+
+</PRE>with the CREATESTRUCT structure defined in the same file as:
+<P>
+<PRE>   typedef struct tagCREATESTRUCT {
+      void FAR* lpCreateParams;
+         :
+      LPCSTR  lpszClass;    // Null-terminated string specifying window
+                            // class name
+      DWORD  dwExStyle;
+   } CREATESTRUCT;
+
+</PRE>When Windows internally creates windows (such as predefined controls
+in a dialog box, for example), it uses atoms for lpszClass instead of
+the actual string to minimize overhead. This makes it a little less
+straightforward (sometimes impossible) to get to the actual class name
+directly from the lpszClass field of the CREATESTRUCT structure.
+<P>
+To cite one particular example, when an application is minimized in
+Windows, Windows calls CreateWindow() for the icon title, specifying a
+class name of
+<P>
+<PRE>   (LPSTR)MAKEINTATOM (ICONTITLECLASS == 0x8004)
+
+</PRE>where MAKEINTATOM() is defined in WINDOWS.H as:
+<P>
+<PRE>   #define MAKEINTATOM (i)    ((LPCSTR) MAKELP (NULL, i))
+
+</PRE>Given this, to get to the actual class name, GetAtomName() must be
+called in this manner:
+<P>
+<PRE>   char szBuf [10];
+
+   GetAtomName (LOWORD (lpszClass), szBuf, 10);
+   OutputDebugString (szBuf);
+
+</PRE>This outputs a class name of #32772 for the IconTitleClass.
+<P>
+For predefined controls, such as "static", "button", and so forth, in
+a dialog box, the Dialog Manager calls CreateWindow() on each control,
+similarly using atoms for lpszClass. The Dialog Manager, however,
+creates these atoms in a local atom table in USER's default data
+segment (DS), thus making it impossible for other applications to get
+to these class names.
+<P>
+[Note the difference between local and global atom tables, where
+global atom tables are stored in a shared DS, and are therefore
+accessible to all applications, while local atom tables are stored in
+USER's default DS. DDE uses global atom tables so that Excel, for
+example, can use GlobalAddAtom() to add a string to the atom table,
+and another program could use GlobalGetAtomName() to obtain the
+character string for that atom.]
+<P>
+More information on atoms can be found by searching on the following
+word in the Microsoft Knowledge Base:
+<P>
+<PRE>   atoms
+
+</PRE>More Information can also be found in the Windows version 3.1 online
+Help file under the heading Function Groups, under the Atom Functions
+subheading.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 3.50 3.51 4.00 95<BR>
+KBCategory: kbui kbprb kbcode<BR>
+KBSubcategory: UsrHks<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

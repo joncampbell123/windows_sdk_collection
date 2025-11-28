@@ -1,0 +1,255 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Deferred Constraints and Disable_Def_Cnst_Chk </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q150874">
+<META NAME="KBModify" CONTENT="1997/04/08">
+<META NAME="KBCreate" CONTENT="1996/05/10">
+<META NAME="Keywords" CONTENT="kbusage SSrvInst SSrvProg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  SQL Server version 6.5 has the ability to disable deferred constraint checking. Deferred constraints are described in this article; examples showing the effects of disabling them with the use of SET Disable_Def_Cnst_Chk ON are also provided.  MORE ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAXB,QABN,QAC1,QBD2,QABI,QBXS,QABH,QA5V,QAY5,QAPN,QAA5,QABM,QACI,QA9N,QAB9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Deferred Constraints and Disable_Def_Cnst_Chk</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 8, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q150874</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+SQL Server version 6.5 has the ability to disable deferred constraint
+checking. Deferred constraints are described in this article; examples
+showing the effects of disabling them with the use of SET
+Disable_Def_Cnst_Chk ON are also provided.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+By default, constraints are checked during the execution of a statement
+for each row that the statement affects and then perhaps again after all
+rows have been modified. This is necessary because an UPDATE statement
+might make a change to a row that by itself might seem to violate a
+constraint, but when viewed with all of the subsequent changes to other
+rows (by the same statement execution), the table is left in a
+consistent state. As constraints are checked for each row, any apparent
+violations are marked for rechecking and "deferred." Once all rows have
+been updated, all marked rows have their constraints rechecked (this is
+"deferred constraint checking"); if any violations now occur, the
+execution of the statement fails; and if no violation occurs, the statement
+succeeds.
+<P>
+For example: The def_employee table has a primary key on emp_id and a
+self-referencing foreign key from the mgr_id to emp_id. The statements
+to create this table and populate it with 5 rows are given below. The
+inserts are followed by updates so the employees will not have to be
+inserted in order with the managers entered first.
+<P>
+DROP TABLE def_employee
+go
+CREATE TABLE def_employee (
+<PRE>   emp_id INT NOT NULL PRIMARY KEY,
+   name CHAR(10),
+   mgr_id INT NULL REFERENCES def_employee)
+</PRE>go
+INSERT def_employee VALUES ( 1, 'VP', NULL)
+INSERT def_employee VALUES ( 2, 'PRES', NULL)
+INSERT def_employee VALUES ( 4, 'JOE', NULL)
+INSERT def_employee VALUES ( 6, 'CEO', NULL)
+INSERT def_employee VALUES ( 8, 'MGR', NULL)
+UPDATE def_employee SET mgr_id = 2 WHERE emp_id = 1
+UPDATE def_employee SET mgr_id = 6 WHERE emp_id = 2
+UPDATE def_employee SET mgr_id = 8 WHERE emp_id = 4
+UPDATE def_employee SET mgr_id = 6 WHERE emp_id = 6
+UPDATE def_employee SET mgr_id = 1 WHERE emp_id = 8
+SELECT * FROM def_employee
+<P>
+This gives the following table:
+<P>
+<PRE>emp_id      name       mgr_id
+</PRE>----------- ---------- -----------
+<PRE>1           VP         2
+2           PRES       6
+4           JOE        8
+6           CEO        6
+8           MGR        1
+
+</PRE>When the following UPDATE statement is executed, if the rows were
+considered individually, the UPDATE should fail for every row in the table
+(because of a missing primary key for its mgr_id value) except for CEO; but
+even that should fail because that would leave PRES without a primary key
+for its manager. However, the UPDATE statement succeeds without any
+constraint errors because it uses deferred constraint checking.
+<P>
+UPDATE def_employee
+<PRE>  SET emp_id = emp_id + 1000,
+      mgr_id = mgr_id + 1000
+
+</PRE>SELECT * FROM def_employee
+<P>
+Gives the result:
+<P>
+<PRE>emp_id      name       mgr_id
+</PRE>----------- ---------- -----------
+<PRE>1001        VP         1002
+1002        PRES       1006
+1004        JOE        1008
+1006        CEO        1006
+1008        MGR        1001
+
+</PRE>For an operation on a large table, deferred constraint checking may cause a
+loss in performance. An UPDATE may affect thousands of rows only to find
+that many of the constraint violations that it found as it was checking
+each row are still violations once it does the deferred constraint
+checking. Of course, all it has to find is the first failure in the
+deferred phase, and then it will have to cancel the statement and rollback
+all of the changes. It may take quite a long time to perform the operation
+and all of the checking, plus the rolling back (the system is optimized for
+going forward, not rolling back). It might have been better if the first
+failed constraint it encountered had caused the entire operation to fail
+rather than perform all that additional processing only to confirm that it
+could have failed earlier.
+<P>
+<P>
+<P><h3>DISABLING DEFERRED CONSTRAINT CHECKING</h3>
+ 
+<P>
+In SQL Server 6.5, it is possible to disable deferred constraint checking
+by using the command:
+<P>
+SET DISABLE_DEF_CNST_CHK ON
+<P>
+With this option on, the reverse of the above operation will fail (as
+would the original operation):
+<P>
+SET DISABLE_DEF_CNST_CHK ON
+GO
+UPDATE def_employee
+<PRE>  SET emp_id = emp_id - 1000,
+      mgr_id = mgr_id - 1000
+
+</PRE>Msg 547, Level 16, State 2
+UPDATE statement conflicted with COLUMN REFERENCE constraint
+<PRE>'FK__def_emplo__mgr_i__496EF0FC'. The conflict occurred in database
+'pubs', table 'def_employee', column 'mgr_id'
+</PRE>Command has been aborted.
+<P>
+Notice that the UPDATE fails even though it is valid and would leave the
+table in a consistent state with all constraints satisfied. On a very
+large table, the apparent speed will be much improved, although it may
+fail when it actually should not have.
+<P>
+The deferred constraint behavior depends on the current setting of
+Disable_Def_Cnst_Chk when the operation is performed, not what its value
+was when the table or constraint was created.
+<P>
+The behavior with deferred constraint checking shut off is similar to a
+poorly written trigger that only validates operations a row at a time
+rather than the result of the operation as a whole.
+<P>
+ANSI specifies that deferred constraint checking should occur (the
+Disable_Def_Cnst_Chk option should be OFF). Higher levels of the ANSI
+standard (not implemented in SQL Server 6.5) allow constraints to be
+specified with terms like 'Initially Deferred', 'Initially Immediate', and
+<PRE>'[Not] Deferrable' to customize this behavior at the constraint-level.
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:<BR>
+Keywords            : kbusage SSrvInst SSrvProg<BR>
+Version             : 6.5<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 8, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

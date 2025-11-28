@@ -1,0 +1,246 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: PowerPC FPSCR Not Saved on Thread Context Switch </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q158947">
+<META NAME="KBModify" CONTENT="1996/11/18">
+<META NAME="KBCreate" CONTENT="1996/11/07">
+<META NAME="Keywords" CONTENT="kbprg kbbuglist">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Multithreaded applications compiled for Windows NT on PowerPC processors may show incorrect or unexpected floating point exception handling behavior. When two or more threads in a process set their floating point masks to different values, all of t...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QANO,QBC9,QBC8,QAUQ,QAII,QBWP,QAKN,QAKR,QAHE,QAKP,QBVV,QAI4,QAJQ,QBXS,QAH4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: PowerPC FPSCR Not Saved on Thread Context Switch</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 18, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q158947</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) for Windows NT,
+   versions 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Multithreaded applications compiled for Windows NT on PowerPC processors
+may show incorrect or unexpected floating point exception handling
+behavior. When two or more threads in a process set their floating point
+masks to different values, all of the threads get the same mask value as
+the thread that set its mask last.
+<P>
+When this problem is encountered, the exact behavior of the application
+will depend on which floating point exceptions are masked and unmasked and
+how the application handles exceptions that do occur. Following is a
+possible scenario:
+
+<UL><LI>One thread unmasks a floating point exception and, some time
+   after that, another unmasks a different exception. Then, during the
+   course of computation the first thread generates an exception
+   that it has unmasked but its exception handler does not get
+   called. Or, it generates the exception that the second thread
+   unmasked and its handler does get called but with an exception
+   that it wasn't expecting.
+<P>
+</UL>This problem occurs only on PowerPC processors; Windows NT on other
+processors does not exhibit this problem.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The PowerPC's floating point status and control register (FPSCR) is not
+being saved during thread context switches; it is being treated as a per-
+process resource rather than a per-thread resource.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in Microsoft Windows NT
+versions 3.51 and 4.0. Microsoft is researching this problem and will post
+new information here as it becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The only time this behavior becomes a problem is when a multithreaded
+application uses different floating point exception masks for each thread.
+If the application is single-threaded or if all threads use the same
+floating point exception mask, the problem does not occur.
+<P>
+The code below demonstrates the problem. The first thread unmasks floating
+point divide by zero exceptions and then spawns another thread and waits
+for it to exit. The spawned thread unmasks floating point underflow
+exceptions and then exits. When the first thread returns from waiting for
+the second, the FPSCR is set to floating point underflow exceptions being
+unmasked but floating point divide by zero exceptions being masked. Thus,
+the FPSCR value of the first thread's is now set to that of the second
+thread. When the first thread performs the computation, the divide by zero
+error is not sent to the exception handler.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+To see the problem in a debugger as it happens, build this sample with
+Microsoft Visual C++, and then set breakpoints on the lines with the
+"BP x here" comments. As you step through the code, examine the value of
+the FPSCR in the registers window of the debugger:
+<P>
+<PRE>   #include &lt;windows.h&gt;
+   #include &lt;stdio.h&gt;
+   #include &lt;float.h&gt;
+
+   DWORD WINAPI Thread (LPVOID lpvParam);
+
+   void main (int argc, char ** argv)
+   {
+      volatile float x1 = 5.0F,
+                     x2 = 0.0F;
+      DWORD          tid;
+      HANDLE         hThread;
+
+      // Unmask floating point divide by zero exceptions for
+      // this thread.
+      _controlfp ((unsigned int)~_EM_ZERODIVIDE, _MCW_EM);   // BP 1 here
+
+      // Create another thread
+      hThread = CreateThread(NULL, 0, Thread, NULL, 0, &amp;tid);
+
+      // This will force a context switch.
+      WaitForSingleObject (hThread, INFINITE);       // BP 2 here
+      CloseHandle (hThread);
+
+      // WHEN GET TO HERE, this thread's FPSCR should still
+      // have the FP divide by zero exception unmasked.
+      __try
+      {
+
+         x1 /= x2;   // cause FP divide by zero         // BP 3 here
+
+      }
+      __except (GetExceptionCode() == EXCEPTION_FLT_DIVIDE_BY_ZERO ?
+                EXCEPTION_EXECUTE_HANDLER :
+                EXCEPTION_CONTINUE_SEARCH)
+      {
+         // BP 4 on next line
+         printf ("Trapped floating point divide by zero exception\n");
+         _clearfp();
+      }
+      // BP 5 on next line
+      printf ("past floating point divide by zero exception\n");
+   }
+
+   // This is a dummy thread that gets the default FPSCR settings
+   // when created.
+   DWORD WINAPI Thread (LPVOID lpvParam)
+   {
+      // Unmask floating point underflow exceptions for
+      // this thread.
+      _controlfp ((unsigned int)~_EM_UNDERFLOW, _MCW_EM);    // BP 6 here
+      return 0;
+   }
+
+</PRE>When this application works correctly, it should produce this output:
+<P>
+<PRE>   Trapped floating point divide by zero exception
+   past floating point divide by zero exception
+
+</PRE>The incorrect output is:
+<P>
+<PRE>   past floating point divide by zero exception
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbbuglist<BR>
+KBSubcategory: BseFltpt<BR>
+Additional reference words: 3.51 4.00 kbdss fp floating point status<BR>
+control signal interrupt handler
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 18, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

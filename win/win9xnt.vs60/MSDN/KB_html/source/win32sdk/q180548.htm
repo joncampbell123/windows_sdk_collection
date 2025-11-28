@@ -1,0 +1,431 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Validate User Credentials on Microsoft WinNT and Win95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q180548">
+<META NAME="KBModify" CONTENT="1998/02/05">
+<META NAME="KBCreate" CONTENT="1998/02/05">
+<META NAME="Keywords" CONTENT="BseSecurity">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Occasionally you may want an application to verify a user's user name and password (hereafter referred to as credentials). You can do this a couple of different ways, depending on whether you are running the application on Windows 95 or Windows NT....">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QAGU,QBWQ,QAUD,QAK7,QDL9,QBWO,QBWN,QAI5,QAAD,QAH6,QAKR,QAWK,QAI4,QAGI V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Validate User Credentials on Microsoft WinNT and Win95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 5, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q180548</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P><PRE>    - Microsoft Windows NT
+    - Microsoft Windows 95
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Occasionally you may want an application to verify a user's user name and
+password (hereafter referred to as credentials). You can do this a couple
+of different ways, depending on whether you are running the application on
+Windows 95 or Windows NT.
+<P>
+This article describes all of the common ways to verify a user's
+credentials and the special requirements for each method.
+<P>
+NOTE: Collecting user credentials from a User-mode application can be
+annoying to the users and can provide a possible security hole in the
+enterprise computing environment. The Unified Logon requirement (a
+requirement that the user should only have to type their credentials one
+time at the Ctl-Alt-Del screen of either Windows 95 or Windows NT), was
+added to the Microsoft BackOffice logo requirements for these very reasons.
+It is important to make sure that you really need to gather credentials and
+that some other method of client/server validation is not more appropriate.
+Consult the security documentation in the Platform SDK for more information
+on impersonation and programming secured servers.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The LogonUser API has been available and documented since Windows NT 3.51,
+and is commonly used to verify user credentials. Unfortunately, there are
+some restrictions on using LogonUser that are not always convenient to
+satisfy. The first and biggest of these restrictions is that the process
+calling LogonUser must have the SE_TCB_NAME privilege (in User Manager,
+this is the "Act as part of the Operating System" right). The SE_TCB_NAME
+privilege is very powerful and should not be granted to any arbitrary user
+just so that they can run an application that needs to validate
+credentials. The recommended method is to call LogonUser from a service
+running in the local system account since the local system account already
+has the SE_TCB_NAME privilege.
+<P>
+One other problem with LogonUser is that the API is not available on
+Windows 95. Windows 95 applications that need to verify user credentials
+have to rely on the networking API WnetAddConnection2, which takes the user
+name and password as parameters. Although the API was not specifically
+designed for this functionality, it does work adequately in certain
+situations. The drawback with this method is that it can have performance
+problems, and it needs to have a specific machine/share combination
+available for the connection.
+<P>
+As another option, you can use the Security Support Provider Interface
+(SSPI) to do a network style logon with provided user credentials. This
+method of validation has the advantage of not requiring any special
+privilege, as well as working on Windows 95. The end result of using the
+SSPI services to validate the credentials is a logon that is analogous to
+calling the LogonUser API with the LOGON32_LOGON_NETWORK logon type. The
+biggest downside to this type of logon is that you cannot access remote
+network resources after impersonating a network type logon. If your
+application is calling LogonUser with the LOGON32_LOGON_INTERACTIVE
+logon type to workaround Windows NT's inability to perform delegation, then
+the SSPI logon/validation will probably not be a viable alternative.
+<P>
+The sample code provided below shows how to call the SSPI services to
+perform credential validation. This is just a modification of the SOCKAUTH
+sample from the Platform SDK that uses the SSPI services. Two modules from
+that sample are necessary to compile the code below.
+<P>
+To use this sample on Windows 95, you need to load the Windows 95 version
+of the SSP package. The Windows 95 version of the SSP package is called
+Secur32.dll, rather than the Security.dll on Windows NT. You need to make
+this change in SECURITY.C for the NT_DLL_NAME constant value.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   /*++
+
+   Module Name:
+
+       SSPLogon.c
+
+   Abstract:
+
+      This module implements the network logon type by
+      interfacing with the Windows NT Lan Man Security Support
+      Provider (NTLMSSP) for the purpose of validating
+      the provided users credentials.
+
+
+   Author:
+
+      David Mowers (DaveMo) January 14, 1998
+
+   The following modules from the SockAuth sample are required:
+
+      security.c (modify according to comment below)
+      collect.c
+
+   The following import libraries are required:
+
+      none
+
+   Revision History:
+
+   --*/
+
+   #define SECURITY_WIN32
+
+   #include &lt;windows.h&gt;
+   #include &lt;sspi.h&gt;
+
+   //
+   // Slight change to GenClientContext so that you can
+   // pass user credentials.
+   //
+   BOOL GenClientContext (
+      DWORD dwKey,
+      SEC_WINNT_AUTH_IDENTITY *pAuthIdentity,
+      BYTE *pIn,
+      DWORD cbIn,
+      BYTE *pOut,
+      DWORD *pcbOut,
+      BOOL *pfDone);
+
+   /*
+
+      In security.c, for the GenClientContext function,
+      make the following modification:
+
+      ss = g_pFuncs-&gt;AcquireCredentialsHandle (
+         NULL,   // principal
+         PACKAGE_NAME,
+         SECPKG_CRED_OUTBOUND,
+         NULL,   // LOGON id
+         pAuthIdentity,   // auth data
+         NULL,   // get key fn
+         NULL,   // get key arg
+         &amp;pAS-&gt;_hcred,
+         &amp;Lifetime
+         );
+   */
+
+
+   static PBYTE g_pClientBuf = NULL;
+   static PBYTE g_pServerBuf = NULL;
+   static DWORD g_cbMaxMessage = 0;
+
+   BOOL
+   SSPLogonUser(
+      LPTSTR DomainName,
+      LPTSTR UserName,
+      LPTSTR Password
+      )
+   {
+
+      BOOL done = FALSE;
+      DWORD cbOut, cbIn;
+      char szUser[80];
+      DWORD cbUser = 80;
+      SEC_WINNT_AUTH_IDENTITY AuthIdentity;
+
+      if(!InitSession(0))
+      {
+         return(FALSE);
+      }
+
+      if(!InitSession(1))
+      {
+         return(FALSE);
+      }
+
+      if (!InitPackage (&amp;g_cbMaxMessage))
+      {
+         return(FALSE);
+      }
+
+      g_pClientBuf = (PBYTE) malloc(g_cbMaxMessage);
+      g_pServerBuf = (PBYTE) malloc(g_cbMaxMessage);
+
+      ZeroMemory( &amp;AuthIdentity, sizeof(AuthIdentity) );
+
+      if ( DomainName != NULL )
+      {
+         AuthIdentity.Domain = DomainName;
+         AuthIdentity.DomainLength = lstrlen(DomainName);
+      }
+
+      if ( UserName != NULL )
+      {
+         AuthIdentity.User = UserName;
+         AuthIdentity.UserLength = lstrlen(UserName);
+      }
+
+      if ( Password != NULL )
+      {
+         AuthIdentity.Password = Password;
+         AuthIdentity.PasswordLength = lstrlen(Password);
+      }
+
+   #ifdef UNICODE
+       AuthIdentity.Flags = SEC_WINNT_AUTH_IDENTITY_UNICODE;
+   #else
+      AuthIdentity.Flags = SEC_WINNT_AUTH_IDENTITY_ANSI;
+   #endif
+
+      //
+      // Prepare client message (negotiate).
+      //
+      cbOut = g_cbMaxMessage;
+      if (!GenClientContext (
+         0,
+         &amp;AuthIdentity,
+         NULL,
+         0,
+         g_pClientBuf,
+         &amp;cbOut,
+         &amp;done))
+      {
+         return(FALSE);
+      }
+
+      cbIn = cbOut;
+      //
+      // Prepare server message (challenge).
+      //
+      cbOut = g_cbMaxMessage;
+      if (!GenServerContext (
+         1,
+         g_pClientBuf,
+         cbIn,
+         g_pServerBuf,
+         &amp;cbOut,
+         &amp;done))
+      {
+         //
+         // Most likely failure: AcceptServerContext fails with
+         // SEC_E_LOGON_DENIED in the case of bad username or password
+         //
+         // Unexpected Result: Logon will succeed if you pass in a bad
+         // username and the guest account is enabled in the specified
+         // domain.
+         //
+         return(FALSE);
+      }
+
+      cbIn = cbOut;
+      //
+      // Prepare client message (authenticate).
+      //
+      cbOut = g_cbMaxMessage;
+      if (!GenClientContext (
+         0,
+         &amp;AuthIdentity,
+         g_pServerBuf,
+         cbIn,
+         g_pClientBuf,
+         &amp;cbOut,
+         &amp;done))
+      {
+         return(FALSE);
+      }
+
+      cbIn = cbOut;
+      //
+      // Prepare server message (authentication).
+      //
+      cbOut = g_cbMaxMessage;
+      if (!GenServerContext (
+         1,
+         g_pClientBuf,
+         cbIn,
+         g_pServerBuf,
+         &amp;cbOut,
+         &amp;done))
+      {
+         return(FALSE);
+      }
+
+      TermSession(0);
+      TermSession(1);
+
+      TermPackage();
+
+      free(g_pClientBuf);
+      free(g_pServerBuf);
+
+      return(TRUE);
+   }
+
+   int main( int argc, char *argv[] )
+   {
+
+      if(argc&lt;4)
+      {
+         printf(
+            "Usage: %s &lt;domain&gt; &lt;user&gt; &lt;password&gt;\n",
+            argv[0]);
+         exit(0);
+      }
+
+      if(SSPLogonUser(
+         argv[1],
+         argv[2],
+         argv[3]))
+      {
+         printf("SSP Logon Succeeded!\n");
+         exit(1);
+      }
+      else
+      {
+         printf("SSP Logon Failed!\n");
+         exit(0);
+      }
+
+   }
+</PRE> 
+<PRE>Keywords          : BseSecurity
+Version           : WINNT:4.0;WIN95
+Platform          : Win95 winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 5, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

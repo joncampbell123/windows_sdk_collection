@@ -1,0 +1,240 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Calling CDatabase::Open in a USRDLL Causes CDBException </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q125794">
+<META NAME="KBModify" CONTENT="1997/07/10">
+<META NAME="KBCreate" CONTENT="1995/02/06">
+<META NAME="Keywords" CONTENT="kbcode kbprb kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Calling the CDatabase::Open function in a USRDLL and using a parameter list of (NULL, FALSE, FALSE,  ODBC; ) may generate a CDBException with it's m_strError member set to a value of  Dialog failed.   CAUSE =====  When the CDatabase::Open function ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAK6,QA01,QAUD,QAGI,QBFY,QAY5,QBWS,QA9E,QA3P,QAHE,QABM,QBV8,QAYY,QBWP,QA56 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Calling CDatabase::Open in a USRDLL Causes CDBException</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q125794</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50 1.51 1.52 | 1.00 2.00 2.10
+<PRE>WINDOWS             | WINDOWS NT
+</PRE>kbprg kbcode kbprb
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes, included with:
+<P>
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.0, 1.5, 1.51, 1.52
+    - Microsoft Visual C++, 32-bit Edition, versions 1.0, 2.0, 2.1
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Calling the CDatabase::Open function in a USRDLL and using a parameter
+list of (NULL, FALSE, FALSE, "ODBC;") may generate a CDBException with
+it's m_strError member set to a value of "Dialog failed."
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+When the CDatabase::Open function is called with a value of NULL for the
+first parameter and the default values for the remaining parameters, an SQL
+Data Source dialog is displayed to the user allowing them to choose the
+data source they want to open.
+<P>
+When this is done in the context of a USRDLL, the CDBException is generated
+because CDatabase::Open() attempts to specify the main or active window of
+the CWinApp or CWinThread object as the parent of the SQL Data Source
+dialog. In a USRDLL, the main or active window of the CWinApp or CWinThread
+object is typically NULL.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Avoid the problem by using the main window of the calling application as
+the parent of the SQL Data Source dialog. The sample code listed below
+illustrates one way to implement this solution. The sample DLL exports one
+function, OpenDatabase(), which displays a dialog with a list of data
+sources. The OpenDatabase() function accepts a single parameter of type
+HWND, which is then used as the handle to the parent window of the SQL Data
+Source dialog.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior was by design, however it was modified in Visual C++ version
+2.2. to eliminate the problem.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* 16-bit Compile options needed: /GD
+*  16-bit Link options needed:    /LIB:"odbc"
+*/
+
+#ifndef _WINDLL        // Make this work with WIN32 and WIN16
+#define _WINDLL
+</PRE>#endif
+#ifndef _USRDLL
+<PRE>#define _USRDLL
+</PRE>#endif
+<P>
+<PRE>#include &lt;afxwin.h&gt;
+#include &lt;afxext.h&gt;
+#include &lt;afxdb.h&gt;
+
+</PRE>class MyDLL : public CWinApp
+{
+public:
+<PRE>    BOOL InitInstance();
+</PRE>};
+<P>
+<PRE>#ifdef WIN32    // Make this work with WIN32 and WIN16
+</PRE>extern "C" __declspec(dllexport) int
+#else
+extern "C" int _export
+#endif
+FAR PASCAL OpenDatabase(HWND hWndParent /* Needs a parent window */)
+{
+<PRE>    TRY
+    {
+        // Before calling MyDb.Open setup a parent window
+        AfxGetApp()-&gt;m_pMainWnd = new CWnd;
+        AfxGetMainWnd()-&gt;Attach(hWndParent);
+
+        CDatabase MyDb;
+
+        // Present list of ODBC sources
+        MyDb.Open(NULL,FALSE,FALSE,"ODBC;");
+        MyDb.Close();
+
+        // Clean Up
+        AfxGetMainWnd()-&gt;Detach();
+        delete AfxGetMainWnd();
+        AfxGetApp()-&gt;m_pMainWnd = NULL;
+    }
+    CATCH_ALL(e)
+    {
+        if ( AfxGetMainWnd()-&gt;GetSafeHwnd() != NULL )
+        {
+            // Clean Up
+            AfxGetMainWnd()-&gt;Detach();
+            delete AfxGetMainWnd();
+            AfxGetApp()-&gt;m_pMainWnd = NULL;
+        }
+
+        // Exception caused a failure
+        return FALSE;
+    }
+    END_CATCH_ALL
+
+    return TRUE;
+</PRE>}
+<P>
+BOOL MyDLL::InitInstance()
+{
+<PRE>    return TRUE;
+</PRE>}
+<P>
+MyDLL theDLL;
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00 1.50 2.00 2.10 2.50 2.51 2.52 3.00 3.10<BR>
+KBCategory: kbprg kbcode kbprb<BR>
+KBSubCategory: MfcDatabase<BR>
+Keywords            : kbcode kbprb kbprg<BR>
+Technology          : kbMfc<BR>
+Version             : 1.00 1.50 1.51 1.52 | 1.00 2.00<BR>
+Platform            : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

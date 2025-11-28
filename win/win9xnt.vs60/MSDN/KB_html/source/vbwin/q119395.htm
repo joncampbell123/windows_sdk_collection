@@ -1,0 +1,319 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Extract the Metafile from an OLE Control </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q119395">
+<META NAME="KBModify" CONTENT="1995/06/21">
+<META NAME="KBCreate" CONTENT="1994/08/15">
+<META NAME="Keywords" CONTENT="kbgraphic kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  The Visual Basic OLE Control uses a metafile to display its object data. You can extract this metafile and play it to a printer, picture control, and so forth. By activating the OLE control and setting its format property to CF_METAFILEPICT, its me...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA4Q,QAH2,QBS0,QANF,QAMN,QAPN,QA9Q,QA7O,QAY5,QAOE,QAH4,QAB5,QACJ,QBXS,QA3P V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Extract the Metafile from an OLE Control</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 21, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q119395</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Standard and Professional Editions of Microsoft Visual Basic for
+   Windows, version 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The Visual Basic OLE Control uses a metafile to display its object data.
+You can extract this metafile and play it to a printer, picture control,
+and so forth. By activating the OLE control and setting its format property
+to CF_METAFILEPICT, its metafile picture can be obtained from the data
+property.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The code below demonstrates how to extract a metafile from the OLE
+control and play it to either a picture box, or the printer.
+
+<OL><P><LI>Start Visual Basic, or if Visual Basic is already running, choose
+   New Project from the File menu (Alt+F, N) to create a new project.
+
+<P><LI>On Form1, add the OLE Control, and select the object you want to
+   insert.
+
+<P><LI>On Form1, add a Picture Box and two Command Buttons. Set the Picture
+   Box AutoRedraw property to True.
+
+<P><LI>Create a new module by choosing File New Module (Alt+F, M). This
+   will create "module1.bas". Enter the following code for
+   "module1.bas" (making sure that the declare statements below each fit
+   on one line):
+<P>
+   Option Explicit
+<P>
+   Type METAFILEPICT
+<P><PRE>       mm As Integer
+       xext As Integer
+       yext As Integer
+       hmf As Integer
+</PRE>   End Type
+<P>
+   Type POINTAPI
+<P><PRE>       x As Integer
+       y As Integer
+</PRE>   End Type
+<P>
+<PRE>   Declare Function GLobalLock Lib "kernel" (ByVal hMem As Integer) As Long
+   Declare Function GlobalUnlock Lib "kernel" (ByVal hMem As Integer)
+                                              As Integer
+   Declare Sub hmemcpy Lib "kernel" (hpvDest As Any,
+                                     ByVal hpvSource As Any,
+                                     ByVal cbCopy As Long)
+   Declare Sub hmemcpy2 Lib "kernel" Alias "hmemcpy" (hpvDest As Any,
+                                                      hpvSource As Any,
+                                                      ByVal cbCopy As Long)
+   Declare Function PlayMetafile% Lib "GDI" (ByVal hDC%, ByVal hmf%)
+   Declare Function SetMapMode Lib "GDI" (ByVal hDC As Integer,
+                                          ByVal nMapMode As Integer)
+                                         As Integer
+   Declare Function SetViewPortExt Lib "GDI" (ByVal hDC As Integer,
+                                              ByVal x As Integer,
+                                              ByVal y As Integer)
+                                             As Long
+
+   ' A Special declare of SetViewPortExt that allows us
+   ' to pass the x,y coordinates in one long variable.
+   Declare Function SetViewPortExtd Lib "GDI" Alias "SetViewPortExt"
+                                             (ByVal hDC As Integer,
+                                              ByVal viewport As Long)
+                                             As Long
+   Declare Function LPtoDP Lib "GDI" (ByVal hDC As Integer,
+                                      lpPoints As POINTAPI,
+                                      ByVal nCount As Integer) As Integer
+
+   Global Const MM_HIMETRIC = 3
+   Global Const MM_ANISOTROPIC = 8
+
+
+   Function DrawMetaFile (MFPict As METAFILEPICT, zoomfactor As Integer,
+                          hDC As Integer) As Integer
+      Dim mappoint As POINTAPI  ' Stores a point (x,y) to help
+                                ' convert from HIMETRIC to pixels.
+      Dim oldmapmode As Integer ' Stores the old map mode.
+      Dim picwidth As Integer   ' Holds picture width in pixels.
+      Dim picheight As Integer  ' Holds picture height in pixels.
+      Dim oldviewport As Long   ' Stores the old viewport.
+      Dim retvalue As Long      ' Holds API return values.
+
+      DrawMetaFile = True
+
+      ' The metafile coordinates are in HIMETRIC units.
+      ' Set the mapmode of the hdc to HIMETRIC
+      ' so you can calculate the size in pixels.
+      oldmapmode = SetMapMode(hDC, MM_HIMETRIC)
+
+      mappoint.x = MFPict.xext ' HIMETRIC width
+      mappoint.y = MFPict.yext ' HIMETRIC height
+
+      ' LPtoDP will convert the width and height to pixels.
+      If (False = LPtoDP(hDC, mappoint, 1)) Then
+         ' ReEstablish oldmapmode and exit with error.
+         retvalue = SetMapMode(hDC, oldmapmode)
+         GoTo DMFError
+      End If
+
+      ' Now set the mapmode to ANISOTROPIC to match the
+      ' mapmode of the metafile.
+      retvalue = SetMapMode(hDC, MM_ANISOTROPIC)
+
+      ' Retrieve the converted width and height.
+      ' Some values will be negative, so use Abs.
+      picwidth = Abs(mappoint.x)
+      picheight = Abs(mappoint.y)
+
+      ' Scale to Zoom factor.
+      picheight = picheight * zoomfactor
+      picwidth = picwidth * zoomfactor
+
+      ' Set the viewport to match our zoom.
+      oldviewport = SetViewPortExt(hDC, picwidth, picheight)
+
+      ' Play the metafile to the hdc.
+      If (False = PlayMetafile(hDC, MFPict.hmf)) Then GoTo DMFError
+
+      ' ReEstablish old viewport and map mode for the hdc.
+      retvalue = SetViewPortExtd(hDC, oldviewport)
+      retvalue = SetMapMode(hDC, oldmapmode)
+
+      Exit Function
+
+   DMFError:
+      DrawMetaFile = False
+   End Function
+
+   Sub GetMetaFile (MFPict As METAFILEPICT, olectrl As OLE)
+      Dim hGlbMem As Integer  ' Handle to Global Memory Object.
+      Dim lpMem As Long       ' Long Pointer to Memory.
+      Dim APISuccess As Integer ' Return value for errors (if any)
+      Dim tempdata As Long      ' temporary for storing data property.
+
+      ' OLE Control must be activated to get MetaFile.
+      olectrl.Action = 7
+
+      ' Tell the OLE Control what format we want.
+      olectrl.Format = "CF_METAFILEPICT"
+
+      ' Retrieve the Global Memory Handle from Data Property.
+      ' Copy low 2 bytes to hGlbMem.
+      ' hmemcpy2 lets us copy the unsigned integer part of tempdata.
+      tempdata = olectrl.Data
+      Call hmemcpy2(hGlbMem, tempdata, 2)
+
+      ' Retrieve pointer to Global Memory.
+      lpMem = GLobalLock(hGlbMem)
+
+      ' Copy Metafile to MFPict.
+      Call hmemcpy(MFPict, lpMem, Len(MFPict))
+
+      ' Release pointer to Global Memory.
+      APISuccess = GlobalUnlock(hGlbMem)
+   End Sub
+
+</PRE><P><LI>For the Form1 Command1 Click event, enter the following code:
+<P>
+<PRE>   Sub Command1_Click ()
+      ' Draw Metafile to Printer.
+      Dim MFPict As METAFILEPICT
+      GetMetaFile MFPict, ole1
+
+      ' Initialize the printer.
+      printer.Print " "
+
+      ' Draw to printer and double the size.
+      If Not DrawMetaFile(MFPict, 2, (printer.hDC)) Then
+         MsgBox "DrawMetaFile failed"
+      End If
+      printer.EndDoc
+   End Sub
+
+</PRE><P><LI>For the Form1 Command2 Click event, enter the following code:
+<P>
+<PRE>   Sub Command2_Click ()
+      ' Draw Metafile to picture1.
+      Dim MFPict As METAFILEPICT
+      GetMetaFile MFPict, ole1
+
+      If Not DrawMetaFile(MFPict, 1, (picture1.hDC)) Then
+         MsgBox "DrawMetaFile failed"
+      End If
+      picture1.Refresh
+   End Sub
+
+</PRE><P><LI> Save the project and run it. Choose Command1 to draw the metafile
+<P><PRE>    displayed by the OLE control to the printer. Choose Command2 to
+    draw it to the picture box.
+</PRE><P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+Please see the following Microsoft Knowledge Base article for more
+information:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../vbwin/q113682.htm">Q113682</A></B>
+   TITLE     : How to Print a Metafile and Text to Form or Printer
+
+</PRE></OL>Please also see MSDN 8 article "Metafiles," by Ron Gery.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00<BR>
+KBCategory: kbgraphic kbprg kbcode<BR>
+KBSubCategory: APrgGrap<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 21, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

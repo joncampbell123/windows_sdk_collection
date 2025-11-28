@@ -1,0 +1,220 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Subclass a Window in Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q125680">
+<META NAME="KBModify" CONTENT="1997/03/04">
+<META NAME="KBCreate" CONTENT="1995/02/01">
+<META NAME="Keywords" CONTENT="kbui UsrWndw">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  While sub-classing windows within the same application in Windows 95 is unchanged from Windows version 3.1, sub-classing windows belonging to other applications is somewhat more complicated in Windows 95. This article explains the process.  MORE IN...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWN,QDL9,QBWO,QBWQ,QAHT,QBWP,QAH4,QAGQ,QAC2,QAY4,QAB9,QAJQ,QBW5,QAR5,QAPN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Subclass a Window in Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 4, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q125680</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows 95 version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+While sub-classing windows within the same application in Windows 95 is
+unchanged from Windows version 3.1, sub-classing windows belonging to other
+applications is somewhat more complicated in Windows 95. This article
+explains the process.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+For a 16-bit application, sub-classing methods are the same as they were in
+Windows version 3.1. However, Windows 95 performs some behind-the-scenes
+magic to make it possible for a 16-bit window to subclass a 32-bit window.
+<P>
+Usually, a subclass consists of saving one window procedure and
+substituting another in its place. However, this could present a problem
+when a 16-bit application tries to call a 32-bit window procedure. Windows
+95 works around this potential problem by providing 32-bit windows with a
+16-bit window procedure. All 32-bit windows will have the same selector for
+their wndProcs that references code in KRNL386.EXE where the 16-bit
+wndProcs for all 32-bit windows are stored. Eventually, each of these
+16-bit wndProcs will jump to the real 32-bit window procedure.
+<P>
+Sub-classing windows belonging to another process, either 16-bit or 32-bit,
+from a 32-bit process or application works as it does in Windows NT. The
+difficulty is that each 32-bit process has its own private address space.
+Hence, a window procedure's address in one process is not valid in another.
+To get a window procedure from one process into another, you need to inject
+the subclass procedure code into the other process's address space. There
+are a number of ways to do this.
+<P>
+<P><h3>Three Ways to Inject Code Into Another Process's Address Space</h3>
+ 
+<P>
+<P><h3>Method 1: Windows 95 and Windows NT</h3>
+ 
+<P>
+You can use the registry, hooks, or remote threads and the
+WriteProcessMemory() API to inject code into another process's address
+space.
+<P>
+<P><h3>Method 2: Windows NT Only</h3>
+ 
+<P>
+If you use the registry, the code that needs to be injected should reside
+in a DLL. By either running REGEDIT.EXE or using the registry APIs, add the
+\HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\AppInit_DLLs key to the
+registry if it does not exist. Set its value to a string containing the
+DLL's pathname. This key may contain more than one DLL pathname separated
+by single spaces. This has the effect, once the machine is restarted, of
+loading the library with DLL_PROCESS_ATTACH into every process at its
+creation time. While this method is very easy, it also has several
+disadvantages. For example, the computer must be restarted before it takes
+effect, and the DLL will last the lifetime of the process.
+<P>
+<P><h3>Method 3: Windows 95 and Windows NT</h3>
+ 
+<P>
+You can also use hooks to inject code into another process's address space.
+When a window hooks another thread belonging to a different process, the
+system maps the DLL containing the hook procedure into the address space of
+the hooked thread. Windows will map the entire DLL, not just the hook
+procedure. 
+<P>
+Because of this mapping, the target process will get a fresh copy of all the 
+DLL’s variables. Any changes to variables that are created by one process will 
+not be available to another. One way to share DLL data among processes is to 
+create a shared section:
+<P>
+#pragma data_seg(“.MyData”)
+HWND hMyWin = NULL
+HHOOK ghMyHookProc = MyProcedureName
+…other data
+#pragma data_seg()
+<P>
+These items should be initialized when the share is created. Please review the 
+documentation on Win95’s memory management to make sure that your data is 
+sharable. 
+<P>
+Be aware that shared sections are a violation of Level B security on WinNT 
+systems, so be careful about what kind of data gets placed in these sections. 
+<P>
+To subclass a window in another process, install a
+WH_GETMESSAGE hook or another such hook on the thread that owns the window
+to be sub-classed. In the DLL that contains the hook procedure, include the
+subclass window procedure. In the hook procedure, call SetWindowLong() to
+enact the subclass. It is important to leave the hook in place until the
+subclass is no longer needed, so the DLL remains in the target window's
+address space. When the subclass is removed, the hook would be unhooked,
+thus un-mapping the DLL.
+<P>
+A third way to inject a DLL into another address space involves the use of
+remote threads and the WriteProcessMemory() API. It is more flexible and
+significantly more complicated than the previously mentioned methods, and
+is described in the following reference.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+"Load Your 32-bit DLL into Another Process's Address Space Using
+INJLIB" by Jeffrey Richter, MSJ May 1994.
+<P>
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : kbui UsrWndw<BR>
+Version             : 4.0<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 4, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

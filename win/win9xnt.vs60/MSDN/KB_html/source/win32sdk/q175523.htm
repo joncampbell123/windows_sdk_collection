@@ -1,0 +1,247 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: Winsock TCP Connection Performance to Unused Ports </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q175523">
+<META NAME="KBModify" CONTENT="1998/01/20">
+<META NAME="KBCreate" CONTENT="1997/10/22">
+<META NAME="Keywords" CONTENT="NtwkMisc NtwkWinsock">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article discusses how the Winsock implementation of TCP on the various Microsoft platforms handles socket connections to ports that do not have a server listening to them. It also describes the performance-related considerations and how to adj...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAI5,QBG2,QA5E,QAKD,QABA,QDNT,QAKG,QAKC,QBVV,QBXS,QAGI,QAKJ,QDJP,QAU3,QAMR V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: Winsock TCP Connection Performance to Unused Ports</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 20, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q175523</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+<P>
+- Microsoft Win32 Application Programming Interface (API) included with:
+<PRE>  - Microsoft Windows NT versions 3.50, 3.51, 4.0
+  - Microsoft Windows 95
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article discusses how the Winsock implementation of TCP on the various
+Microsoft platforms handles socket connections to ports that do not have a
+server listening to them. It also describes the performance-related
+considerations and how to adjust them to suit your needs.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When a process creates a TCP socket in the Microsoft Winsock layer and
+issues a connect() call to some host and port number, the TCP protocol
+performs its standard "three-way handshake" of a SYN packet, acknowledged
+by the target host with ACK/SYN, and a final ACK from the initiating
+client. However, per the TCP specifications stated in RFC-793 (Transmission
+Control Protocol), a reset (RST) might be generated if the SYN attempt is
+addressed to a host which exists but the port is unused. This is best
+described by the following RFC quote from page 35:
+<P>
+<PRE>   Reset Generation
+
+   As a general rule, reset (RST) must be sent whenever a segment arrives
+   which apparently is not intended for the current connection.  A reset
+   must not be sent if it is not clear that this is the case ...
+
+   If the connection does not exist (CLOSED) then a reset is sent
+   in response to any incoming segment except another reset.  In particular
+   SYNs addressed to a non-existent connection are rejected by this means.
+
+   Reset Processing [page 36]
+
+   ... In the SYN-SENT state (a RST received in response
+   to an initial SYN), the RST is acceptable if the ACK field
+   acknowledges the SYN.
+
+</PRE>Upon receiving the ACK/RST client from the target host, the client
+determines that there is indeed no service listening there. In the
+Microsoft Winsock implementation of TCP, a pending connection will keep
+attempting to issue SYN packets until a maximum retry value is reached (set
+in the registry, this value defaults to 3 extra times). Since an ACK/RST
+was received from the target host, the TCP layer knows that the target host
+is indeed reachable and will not double the time-out value in the packet's
+IP header, as is standard during connection attempts with unacknowledged
+SYNs. Instead, the pending connection will wait for the base connection's
+time-out value and reissue another SYN packet to initiate a connection. As
+long as an ACK/RST packet from an unused port is received, the time-out
+value will not increase and the process will repeat until the maximum retry
+value is reached.
+<P>
+This behavior may result in poor performance if for some reason a process
+repeatedly issues connect() calls to ports with nothing listening there,
+resulting in the error WSAECONNREFUSED. Note that with other
+implementations of TCP, such as those commonly found in many UNIX systems,
+the connect() fails immediately upon the receipt of the first ACK/RST
+packet, resulting in the awareness of an error very quickly. However, this
+behavior is not specified in the RFCs and is left to each implementation to
+decide. The approach of Microsoft platforms is that the system
+administrator has the freedom to adjust TCP performance-related settings to
+their own tastes, namely the maximum retry that defaults to 3. The
+advantage of this is that the service you're trying to reach may have
+temporarily shut down and might resurface in between SYN attempts. In this
+case, it's convenient that the connect() waited long enough to obtain a
+connection since the service really was there.
+<P>
+You can adjust the TCP performance-related values on Microsoft platforms.
+For WinNT, it is recommended that you obtain the white paper "Microsoft
+Windows NT Server: TCP/IP Implementation Details," which is available
+from:
+<P>
+<PRE>   ftp.microsoft.com/bussys/winnt/winnt-docs/papers/tcpipimp2.doc
+
+</PRE>It contains the complete listing of NT TCP registry values. Of particular
+interest is the key:
+<P>
+<PRE>   HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters
+   Key         : TcpMaxConnectRetransmissions
+   Value Type  : REG_DWORD - Number
+   Valid Range : 0 - 0xFFFFFFFF
+   Default     : 3
+   Description : This parameter determines the number of times TCP will
+                 retransmit a connect request (SYN) before aborting the
+                 attempt. The retransmission time-out is doubled with each
+                 successive retransmission in a given connect attempt
+                 (except in the situation discussed above). The initial
+                 time-out value is three seconds (since an ACK/RST was
+                 received in the case above, this is irrelevant).
+
+</PRE>For additional information on the Windows 95 TCP registry entries, please
+see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../zmiscellaneous/q158474.htm">Q158474</A></B>
+   TITLE     : INFO: Winsock TCP connection performance to unused ports
+
+</PRE>Of particular interest is the key:
+<P>
+<PRE>   Hkey_Local_Machine\System\CurrentControlSet\Services\VxD\MSTCP
+   Key         : MaxConnectRetries
+   Value Type  : DWORD - 32 bit number
+   Default     : 3
+   Description : Specifies the number of times a connection attempt (SYN)
+                 will be retransmitted before giving up. The initial
+                 retransmission time-out is 3 seconds (irrelevant in
+                 the above case), and it is doubled each time (the
+                 case above is an exception) up to a maximum of 2 minutes.
+
+</PRE>You need to reboot after adjusting these registry values.
+<P>
+WARNING: Modifying these values affects any and all TCP outgoing connection
+requests from the affected machine. If all of the TCP activity on the
+machine has little latency and little distance to travel round-trip,
+reducing this as low as zero (though not recommended) will make no
+difference. However, should applications or connection attempts fail with
+great regularity with the standard Winsock errors and the target remote
+servers are known to be available, these registry entries should be
+suspect. If this is the case you may be required to raise the maximum
+retries some such that TCP will double the SYN packet's time-to-live value
+in its IP header at successive retries until it has a long enough life-span
+to reach the target host and receive an ACK/SYN.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+RFC-793, Transmission Control Protocol, September 1981
+<P>
+Whitepaper, Microsoft Windows NT: TCP/IP Implementation Details, 1996
+Knowledge Base article <B><A href="../zmiscellaneous/q158474.htm">Q158474</A></B>
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: winsock tcp connect performance<BR>
+Keywords          : NtwkMisc NtwkWinsock<BR>
+Version           : WIN95;WINNT:3.50,3.51,4.0<BR>
+Platform          : Win95 winnt<BR>
+Issue type        : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 20, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

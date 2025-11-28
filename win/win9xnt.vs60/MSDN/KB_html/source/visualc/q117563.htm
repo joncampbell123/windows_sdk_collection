@@ -1,0 +1,257 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Trap WM_KEYDOWN Messages in a CDialog </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q117563">
+<META NAME="KBModify" CONTENT="1997/10/10">
+<META NAME="KBCreate" CONTENT="1994/06/30">
+<META NAME="Keywords" CONTENT="MfcMisc kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Certain Windows messages are difficult to trap in a dialog box because they are either processed by the Windows internal dialog procedure or sent to the control instead of the dialog box. There are several ways to do this, but they usually involve ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEV,QA01,QAH4,QAYC,QAOE,QBAD,QAY5,QBSO,QDL9,QBWQ,QBWO,QBWN,QAB5,QAYL,QAUD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Trap WM_KEYDOWN Messages in a CDialog</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q117563</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50 1.51 1.52 | 1.00 2.00 2.10 4.00
+<PRE>WINDOWS             | WINDOWS NT
+</PRE>kbprg
+<P>
+ 
+The information in this article applies to:
+<PRE>  The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++ for Windows, versions 1.0, 1.5, 1.51, and
+     1.52
+   - Microsoft Visual C++ 32-bit Edition, versions 2.0 2.1, and 4.0
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Certain Windows messages are difficult to trap in a dialog box because they
+are either processed by the Windows internal dialog procedure or sent to
+the control instead of the dialog box. There are several ways to do this,
+but they usually involve subclassing all the controls in the dialog box or
+using a Windows hook function. The method described in this article uses
+the predefined overridable MFC hook function ProcessMessageFilter() to
+capture these messages. The idea is to override the MFC preinstalled hook
+function, ProcessMessageFilter(), to trap the messages before they get to
+the dialog box.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following steps are the required to implement the hook function. The
+SCRIBBLE sample was used as the base for the steps. In Visual C++ 32-bit
+Edition, version 4.0, use SCRIBBLE sample STEP3.
+<P>
+In this example, the steps outlined below trap WM_KEYDOWN for a specific
+dialog box:
+
+<OL><P><LI>Add a member variable to your CWinApp-derived class to hold the
+   handle to the dialog box for which you want to trap the messages.
+   You need to know the handle because ProcessMessageFilter is receiving
+   messages for the entire application, while you only want a small
+   selection of those messages:
+<P>
+<P><PRE>      SCRIBBLE.H
+</PRE><P>
+<P><PRE>      &lt;Inside CScribbleApp class&gt;
+</PRE><P>
+<P><PRE>      public:
+<PRE></PRE>        HWND m_hwndDialog;
+
+      SCRIBBLE.CPP
+
+      &lt;Inside CScribbleApp::InitInstance&gt;
+
+      m_hwndDialog = NULL;
+
+   NOTE: Because this message filter applies to the entire application,
+   there may be a performance hit when you use this method.
+
+</PRE><P><LI>Override CWinApp::ProcessMessageFilter in your CWinApp-derived class.
+   CWinApp::ProcessMessageFilter is a virtual function of CWinApp, so
+   all you need to do is put a declaration in the header file and an
+   implementation in the source file.
+<P>
+<P><PRE>      SCRIBBLE.H
+</PRE><P>
+<P><PRE>      public:
+<PRE></PRE>        virtual BOOL ProcessMessageFilter(int code, LPMSG lpMsg);
+
+      SCRIBBLE.CPP
+
+      BOOL CScribbleApp::ProcessMessageFilter(int code, LPMSG lpMsg)
+      {
+              // Check to make sure CPenWidthsDlg is up
+           if (m_hwndDialog != NULL)
+              {
+             if ((lpMsg-&gt;hwnd == m_hwndDialog) ||
+                 ::IsChild(m_hwndDialog, lpMsg-&gt;hwnd))
+                // Use ::IsChild to get messages that may be going
+                // to the dialog's controls.  In the case of
+                // WM_KEYDOWN this is required.
+             {
+                  if (lpMsg-&gt;message == WM_KEYDOWN)
+                       TRACE("Got WM_KEYDOWN\n");
+             }
+              }
+           // Default processing of the message.
+           return CWinApp::ProcessMessageFilter(code, lpMsg);
+      }
+
+   For more information on overriding ProcessMessageFilter, please see
+   the MFC online Help.
+
+</PRE><P><LI>Add initialization code for the dialog handle member variable in our
+   OnInitDialog for the desired dialog box. You also have to add exit
+   code to reset the member variable after the dialog box closes:
+<P>
+<P><PRE>      PENDLG.H
+</PRE><P>
+<P><PRE>      protected:
+<PRE></PRE>        virtual BOOL OnInitDialog();
+        afx_msg void OnDestroy();
+
+      PENDLG.CPP
+
+      &lt;Add to Message Map&gt;
+      ON_WM_DESTROY()
+
+      BOOL CPenWidthsDlg::OnInitDialog()
+      {
+           CDialog::OnInitDialog();
+
+           // Use AfxGetApp() to get pointer to CWinApp-derived
+           // object; then cast the pointer to our type and assign
+           ((CScribbleApp *)AfxGetApp())-&gt;m_hwndDialog = m_hWnd;
+
+           return TRUE;  // Return TRUE
+                         // unless you set the focus to a control.
+      }
+
+      void CPenWidthsDlg::OnDestroy()
+      {
+           CDialog::OnDestroy();
+
+           // Use AfxGetApp() to get pointer to CWinApp-derived
+           // object; then cast the pointer to our type and assign
+           ((CScribbleApp *)AfxGetApp())-&gt;m_hwndDialog = NULL;
+
+      }
+
+</PRE></OL>Once these steps are completed, you can trap any message intended
+for the CPenWidthsDlg or any of its children (such as edit controls,
+combo boxes, and radio buttons)
+<P>
+If this method is unacceptable because of the application-wide nature of
+the message filter, please see the following article in the Microsoft
+Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win16sdk/q72219.htm">Q72219</A></B>
+   TITLE     : Context-Sensitive Help in a Dialog Box Through F1
+
+</PRE>This article explains how to set a hook function for a specific dialog
+and how to remove the hook after the dialog box has terminated. That method
+requires more Windows programming knowledge.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.00 1.50 2.00 2.10 2.50 3.00 3.10 4.00<BR>
+key keystroke<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: MfcMisc<BR>
+Keywords          : MfcMisc kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.00 1.50 1.51 1.52 | 1.00 2.00<BR>
+Platform          : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

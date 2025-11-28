@@ -1,0 +1,312 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Using Recipients Collection RawTable with Active Msg/VC++ </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q175368">
+<META NAME="KBModify" CONTENT="1997/11/21">
+<META NAME="KBCreate" CONTENT="1997/10/20">
+<META NAME="Keywords" CONTENT="ActMsg">
+<META NAME="KBArea" CONTENT="Support; KB; mapi">
+<META NAME="Description" CONTENT="  The Collaboration Data Objects Library (formally known as Active Messaging, versions noted above) contains a bug that prevents the successful execution of the GetItem() method of any object that has this method. This is documented in the Microsoft ...">
+<META NAME="Product" CONTENT="mapi">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAR2,QAV5,QAI4,QAH4,QAYC,QA62,QA6A,QA5V,QAW6,QAYY,QAY2,QAUJ,QBHQ,QBC9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Using Recipients Collection RawTable with Active Msg/VC++</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 21, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q175368</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Collaboration Data Objects (CDO), versions 1.0, 1.0a, 1.1
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The Collaboration Data Objects Library (formally known as Active Messaging,
+versions noted above) contains a bug that prevents the successful execution
+of the GetItem() method of any object that has this method. This is
+documented in the Microsoft Knowledge Base Article:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../mapi/q173850.htm">Q173850</A></B>
+   TITLE     :PRB: #Import Does not Include Index Parameter Error from VC5
+
+</PRE>The article documents the problem, and indicates that context-specific
+workarounds are available. The following article covers one of these
+workarounds and can be used as a template for any Collection that includes
+a RawTable property.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The code sample below instantiates an Active Messaging Session, logs on to
+that Session, grabs the first Message it finds in your Inbox, and then uses
+the RawTable Method off of the Recipients Collection to get a pointer to
+the underlying Extended MAPI IMAPITable, which contains information about
+the Recipients of this Message.
+<P>
+To demonstrate that we have this information, it also collects the names of
+the Recipients into a string and subsequently displays the string in a
+MessageBox.
+<P>
+<P><h3>Code Sample Follows:</h3>
+ 
+<P>
+<PRE>    #import "olemsg32.dll" no_namespace
+
+    #include &lt;stdio.h&gt;
+    #include &lt;assert.h&gt;
+    #include &lt;tchar.h&gt;
+
+    #define INITGUID
+
+    #define USES_IID_IMAPITable
+    #define USES_IID_IMAPITableData
+
+    #include "mapidefs.h"
+    #include "MAPIGUID.H"
+
+    // Arbitrary Maximum # of recipients we will process
+    #define MAX_RECIPS 500
+
+    void dump_com_error(_com_error &amp;e)
+    {
+      _tprintf(_T("Oops - hit an error!\n"));
+      _tprintf(_T("\a\tCode = %08lx\n"), e.Error());
+      _tprintf(_T("\a\tCode meaning = %s\n"), e.ErrorMessage());
+      _bstr_t bstrSource(e.Source());
+      _bstr_t bstrDescription(e.Description());
+      _tprintf(_T("\a\tSource = %s\n"), (LPCTSTR) bstrSource);
+      _tprintf(_T("\a\tDescription = %s\n"), (LPCTSTR) bstrDescription);
+    }
+
+    // If this is placed in the scope of the smart pointers, they must be
+    // explicitly Release(d) before CoUninitialize() is called.  If any
+    // reference count is non-zero, a protection fault will occur.
+    struct StartOle {
+        StartOle() { CoInitialize(NULL); }
+        ~StartOle() { CoUninitialize(); }
+    } _inst_StartOle;
+
+    void main(int argc, char *argv[])
+    {
+      TCHAR szNames[MAX_RECIPS * 20];
+
+      try
+      {
+        SessionPtr pSession("MAPI.Session");
+        pSession-&gt;Logon();
+
+        FolderPtr     pFolder = pSession-&gt;Inbox;
+        MessagesPtr   pMessages = pFolder-&gt;Messages;
+        MessagePtr    pMessage = pMessages-&gt;GetFirst();
+
+        if (pMessage!=NULL)
+        {
+          RecipientsPtr  pRecipColl=pMessage-&gt;Recipients;
+          LPMAPITABLE    lpRecipsTable = NULL;
+          IUnknown*      lpRecipsObj = NULL;
+          HRESULT        hr = S_OK;
+          int            iNumRows = 0;
+
+          // Get an IUnknown Interface to the Recipient Obj
+          (IUnknown*)lpRecipsObj = pRecipColl-&gt;RawTable;
+
+          // From this point down to (but not including) the Logoff, we
+          // are using pure Extended MAPI functionality except for refering
+          // to the field names by their constants as defined in the Active
+          // Messaging Library. (aka - ActMsgPR_DISPLAY_NAME)
+          //
+          // Get an Interface to the IMAPITable from that interface
+          hr = lpRecipsObj-&gt;QueryInterface(IID_IMAPITable,
+                                           (void**)&amp;lpRecipsTable);
+
+          // Make sure we got a table back
+          if(lpRecipsTable)
+          {
+            LPSRowSet     lpRows = NULL;  // Table
+            LPSRow         lpRow  = NULL;  // 1 row from table
+            LPSPropValue  lpProp = NULL;  // 1 Prop (column) from row
+            SizedSPropTagArray(1, Columns) =
+            {
+              1,  // number of properties
+              {
+                ActMsgPR_DISPLAY_NAME
+              }
+            };
+
+            // Set the columns to just ActMsgPR_DISPLAY_NAME
+            hr = lpRecipsTable-&gt;SetColumns((LPSPropTagArray)&amp;Columns, 0);
+
+            // If you care to use TBLVU32 to view you IMAPITable, insert
+            // the code commented after the end of the program at this
+            // point.
+
+            // Set BookMark to beginning of table
+            hr = lpRecipsTable-&gt;SeekRow(BOOKMARK_BEGINNING,0,NULL);
+
+            // Find out how many rows are in the table.
+            ULONG lCount = 0;
+            hr = lpRecipsTable-&gt;GetRowCount(0, &amp;lCount);
+
+            // Get all of the rows.
+            hr = lpRecipsTable-&gt;QueryRows(lCount, 0, &amp;lpRows);
+
+            // Get number of rows returned
+            iNumRows = lpRows-&gt;cRows;
+
+            // Loop through the rows and collect the names for later use
+            for (int iIndex =0; iIndex &lt; iNumRows; iIndex++)
+            {
+              lpRow = &amp;lpRows-&gt;aRow[iIndex];
+              lpProp = &amp;lpRow-&gt;lpProps[0];
+              if(lpProp-&gt;ulPropTag == ActMsgPR_DISPLAY_NAME)
+              {
+                // append the name and a ";" to the string of names
+                strcat(&amp;szNames[0], lpProp-&gt;Value.lpszA);
+                strcat(&amp;szNames[0], ";");
+              }
+            }
+          }
+          char sNumRecips[35];
+          sprintf(sNumRecips, "There are %d Recipients", iNumRows);
+          MessageBox(NULL, szNames, sNumRecips, MB_OK);
+        }
+        // Logoff the Active Messaging MAPI Session
+        pSession-&gt;Logoff();
+
+      }
+      catch (_com_error &amp;e)
+      {
+        dump_com_error(e);
+      }
+    }
+
+    /*
+    #ifdef _DEBUG
+      // Prepare to show the table with tblvu32.dll
+      HINSTANCE hInstTableVu = LoadLibrary("tblvu32.dll");
+
+      ULONG (PASCAL *lpfnViewMAPITable)(LPMAPITABLE FAR *, HWND);
+      (FARPROC&amp;)lpfnViewMAPITable = GetProcAddress(hInstTableVu,
+                                    "ViewMapiTable");
+
+      lpfnViewMAPITable((LPMAPITABLE FAR *)&amp;lpRecipsTable, NULL);
+      FreeLibrary (hInstTableVu);
+    #endif _DEBUG
+    */
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+This sample assumes that Collaboration Data Objects (CDO) version 1.1 is
+installed on your system. For additional information on obtaining the
+Active Messaging library, please see the following article in the Microsoft
+Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../mapi/q171440.htm">Q171440</A></B>
+   TITLE     : Where to Acquire the Active Messaging Libraries
+
+</PRE>For additional information about Collaboration Data Objects versus Active
+Messaging, please see the following article in the Microsoft Knowledge
+Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../mapi/q176916.htm">Q176916</A></B>
+   TITLE     : INFO: Active Messaging and Collaboration Data Objects (CDO)
+
+</PRE> 
+<PRE>Keywords          : ActMsg
+Version           : WINDOWS:1.0,1.0a,1.1
+Platform          : WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 21, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

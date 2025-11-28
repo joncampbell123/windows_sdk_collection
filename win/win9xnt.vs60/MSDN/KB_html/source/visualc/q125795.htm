@@ -1,0 +1,230 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: VBX Events Aren't Routed Correctly </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q125795">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1995/02/06">
+<META NAME="Keywords" CONTENT="kb16bitonly kbbuglist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  VBX Event handlers are not called even though the events have been properly registered using AfxRegisterVBEvent. You can solve the problem by reducing the size of the application's DGROUP by, for example, reducing stack size.  CAUSE =====  There is...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAO4,QAPN,QAH4,QAM5,QAGI,QANY,QABA,QAHT,QAKP,QAI4,QBVV,QBHQ,QAY2,QAPF,QAKD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: VBX Events Aren't Routed Correctly</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q125795</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50 1.51 1.52
+WINDOWS
+kbprg kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes, included with:
+   Microsoft Visual C++ for Windows, versions 1.0, 1.5, 1.51, 1.52
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+VBX Event handlers are not called even though the events have been properly
+registered using AfxRegisterVBEvent. You can solve the problem by reducing
+the size of the application's DGROUP by, for example, reducing stack size.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+There is a bug in the routing mechanism for VBX events. The bug becomes
+apparent when an event's registered value is greater than 0xFF00; at which
+point, the program will not call the handler for the event because the
+routing in CCmdTarget::OnCmdMsg will not route the VBX event as a
+registered notification code but as a regular Windows message.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+VBX events are registered using AfxRegisterVBEvent. The value assigned to
+the VBX event is directly related to the amount of space available in the
+default data segment. If an application's default data segment is nearing
+maximum capacity (0xFFFF), then these values could end up being greater
+than 0xFF00. Here are several possible workarounds for this problem:
+
+<UL><LI>Put the module where you have the AfxRegisterVBEvent calls first in the
+   link order. This ensures that the events are registered before other
+   heap allocations occur during initialization of other modules. As a
+   result, the event values tend to be smaller. If you are building the
+   application from the Visual WorkBench, you can accomplish this by
+   removing the modules from your project and adding the module with the
+   AfxRegisterVBEvent calls before the other modules in your project
+   except a pre-compiled header module, such as STDAFX.CPP.
+<P>
+   -or-
+
+<LI>Reduce your application's stack size. To be precise, you need to reduce
+   the stack size by at MOST 768 bytes.
+<P>
+   -or-
+
+<LI>Use other techniques to reduce the size of DGROUP. For more information
+   on how to do this, please see the following article in the Microsoft
+   Knowledge Base:
+<P>
+<P><PRE>      ARTICLE-ID: <B><A href="../utilities/q49935.htm">Q49935</A></B>
+<PRE></PRE>      TITLE     : PRB: L2028 Error Caused by HEAPSIZE, STACKSIZE and
+                  DGROUP Size
+
+   -or-
+
+</PRE><LI>Reduce heap allocations done during global initialization. If your
+   application is built in small/medium memory model, these allocations
+   will come out of your default data segment. This will not help, however
+   if you are using the Compact/Large memory model.
+<P>
+   -or-
+
+<LI>If your use of VBX controls is limited to one parent window (for
+   example, all your VBX controls exist on only one window) and you are
+   handling a limited number of events, you can handle the WM_VBXEVENT
+   message in the parent window class. Then you can take care of
+   decoding and handling the particular event and right in the OnVBXEvent
+   function. Please see MFC TechNote #24 for details.
+<P>
+   -or-
+
+<LI>Modify the OnCmdMsg function to route the events correctly. This would
+   require that you rebuild the MFC libraries, so this solution should be
+   used as a last resort. For details on rebuilding the MFC Libraries,
+   please see the section titled "How To Build Other Library Versions"
+   in the "Class Library User's Guide." Or read the README.TXT file that
+   can be found in the MFC source directory (the default directory is
+   \MSVC\MFC\SRC). The modification would be to change the following lines
+   in CMDTARG.CPP:
+<P>
+   From:
+<P>
+<P><PRE>      // Constant code...
+      if ((UINT)nCode &lt; 0xC000 || (UINT)nCode &gt; 0xFF00)
+</PRE><P>
+   To:
+<P>
+<P><PRE>      if ((UINT)nCode &lt; 0xC000 || (UINT)nCode == 0xFFFF)
+</PRE><P>
+   And change the following lines:
+<P>
+   From:
+<P>
+<P><PRE>      #endif //_DEBUG
+      if ((UINT)nCode &lt; 0xC000 || (UINT)nCode &gt; 0xFF00)
+</PRE><P>
+   To:
+<P>
+<P><PRE>      #endif //_DEBUG
+      if ((UINT) nCode &lt; 0xC000 || (UINT)nCode == 0xFFFF)
+</PRE><P>
+</UL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this problem and will
+post new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00 1.50 1.51 1.52 2.00 2.50 2.51 2.52 no32bit<BR>
+noupdate<BR>
+KBCategory: kbprg kbbuglist<BR>
+KBSubCategory: MfcVBX<BR>
+Keywords            : kb16bitonly kbbuglist kbprg<BR>
+Technology          : kbMfc<BR>
+Version             : 1.00 1.50 1.51 1.52<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

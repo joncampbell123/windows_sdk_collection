@@ -1,0 +1,620 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Analyzing and Avoiding Deadlocks in SQL Server </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q169960">
+<META NAME="KBModify" CONTENT="1997/06/18">
+<META NAME="KBCreate" CONTENT="1997/06/12">
+<META NAME="Keywords" CONTENT="kbusage SSrvLock">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  Microsoft SQL Server maintains transactional integrity and database consistency by using locks. SQL Server version 6.5 optionally uses row- level locking for insert operations and uses page-level locking for other operations. As with any relational...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAXB,QACI,QA28,QATJ,QA9N,QAA8,QABT,QBD2,QAC1,QBWA,QA5V,QAY4,QAKD,QAJQ,QAI4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Analyzing and Avoiding Deadlocks in SQL Server</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q169960</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server version 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Microsoft SQL Server maintains transactional integrity and database
+consistency by using locks. SQL Server version 6.5 optionally uses row-
+level locking for insert operations and uses page-level locking for other
+operations. As with any relational database system, locking may lead to
+deadlocks between users.
+<P>
+For example, suppose User1 (or Connection1) has a lock on data item "A" and
+wants a lock on data item "B." User2 has a lock on data item "B" and now
+wants a lock on data item "A." In this SQL Server scenario, either User1 or
+User2 will be a deadlock victim, and the other user will be granted the
+requested lock.
+<P>
+In SQL Server, the application developer can decide which connection will
+be the candidate for deadlock victim by using SET DEADLOCK_PRIORITY. If the
+developer does not designate a priority for deadlocks, SQL Server selects
+the deadlock victim by choosing the process that completes the circular
+chain of locks.
+<P>
+Database application systems may behave differently when ported from one
+relational database to another, based on the implementation of the
+relational database system. One of the areas to look for behavioral changes
+is locking. This article explains how to analyze the deadlocks in SQL
+Server and the techniques you can use to avoid them.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+This article emphasizes using the output of trace flag T1204 to analyze
+deadlocks. When trace flag T1204 is set, SQL Server prints information
+about the deadlock when it occurs. To use this trace flag, use the
+following command at a command prompt to start SQL Server:
+<P>
+<PRE>   sqlservr -c -T1204
+
+</PRE>The trace results are sent to the console window, unless you set trace flag
+T3605, which sends the trace output to the error log.
+<P>
+Deadlocks can occur when two connections update tables in opposite order.
+For example, one connection inserts into table "example1" first and then
+into "example2," while another connection inserts into table "example2"
+first and then into "example1" within a transaction. An example scenario is
+useful to illustrate how to avoid deadlocks.
+<P>
+The following are the SQL statements used to create the table used for this
+example:
+<P>
+<PRE>   create table example1 (column1 int, column2 char(20), column3 char(50))
+   go
+   create table example2 (column1 int, column2 char(20), column3 char(50))
+   go
+
+   declare @lvar int
+   select @lvar = 0
+   while @lvar &lt; 500
+   begin
+   insert into example1 values (@lvar, 'AAA', 'CCC')
+   insert into example2 values (@lvar, 'AAA', 'CCC')
+   select @lvar = @lvar + 1
+   end
+   go
+
+   create unique clustered index ex1ind1 on example1 (column1, column2)
+   with fill factor = 90, PAD_INDEX
+   go
+
+   create unique clustered index ex2ind1 on example2 (column1, column2)
+   with fill factor = 90, PAD_INDEX
+   go
+
+</PRE><h3>Example 1: Table Insertions in Opposite Order</h3>
+ 
+<P>
+In this example, two tables were inserted in opposite order and a deadlock
+occurred. Deadlocks can also occur when two or more connections perform
+updates or deletes on tables in opposite order.
+<P>
+<PRE>   Connection1 &gt; BEGIN TRANSACTION
+   Connection2 &gt; BEGIN TRANSACTION
+   Connection1 &gt; INSERT INTO example1 VALUES (100, 'AAAA', 'CCC')
+   Connection2 &gt; INSERT INTO example2 VALUES (200, 'AAAB', 'CCC')
+   Connection2 &gt; INSERT INTO example1 VALUES (200, 'AAAB', 'CCC')
+
+</PRE>At this point, Connection1 may block Connection2 because the row
+Connection2 is inserting may be on the same page where Connection1 has
+already inserted a row and is holding a lock.
+<P>
+Connection1 &gt; INSERT INTO example2 VALUES (100, 'AAAA', 'CCC')
+<P>
+At this point, Connection2 may block Connection1, because the row
+Connection1 is inserting may be on the same page where Connection2 has
+already inserted a row and is holding a lock. This causes a deadlock.
+<P>
+The following is the output for trace flag 1204 when the deadlock occurred:
+<P>
+<PRE>97/04/20 11:51:57.88 spid13   *** DEADLOCK DETECTED with spid 14 ***
+   spid 13 requesting EX_PAGE (waittype 0x8005), blocked by:
+     EX_PAGE: spid 14, dbid 6, page 0x188, table example2, indid 0x1
+     pcurcmd INSERT(0xc3), input buffer: INSERT INTO example2 VALUES (100,
+   'AAAA', 'CCC')
+   spid 14 waiting for EX_PAGE (waittype 0x8005), blocked by:
+     EX_PAGE: spid 13, dbid 6, page 0x180, table example1, indid 0x1
+     pcurcmd INSERT(0xc3), input buffer: INSERT INTO example1 VALUES (200,
+   'AAAB', 'CCC')
+   VICTIM: spid 13, pstat 0x0000 , cputime 30
+
+</PRE>Each line of the deadlock trace can tell users more about a deadlock.
+Connection1 is spid 13 and Connection2 is spid 14 (you can determine the
+spid associated with a connection by using the sp_who system stored
+procedure).
+<P>
+<PRE>   &gt;&gt; 97/04/20 11:51:57.88 spid13   *** DEADLOCK DETECTED with spid 14 ***
+   The deadlock was detected between spid 13 and spid 14.
+   &gt;&gt; spid 13 requesting EX_PAGE (waittype 0x8005), blocked by:
+   &gt;&gt;   EX_PAGE: spid 14, dbid 6, page 0x188, table example2, indid 0x1
+   &gt;&gt;   pcurcmd INSERT(0xc3), input buffer: INSERT INTO example2 VALUES
+   (100, 'AAAA', 'CCC')
+
+</PRE>Spid 13 was requesting EX_PAGE lock and was blocked by spid 14, which
+already has EX_PAGE lock for page 0x188 on table example2 in dbid 6. The
+lock is held on the page belonging to clustered index.
+<P>
+<PRE>      Indid Value         Description
+</PRE> 
+<P>
+<PRE>         0                Data page if there is no clustered index, or the
+                          leaf page of a clustered index if there is one
+         1                Non-leaf page of the clustered index page
+       255                Text/image page
+    Any other value       Non-clustered secondary index
+
+</PRE>The current command executed by spid 13 is an INSERT and the trace gives
+part of the input buffer.
+<P>
+<PRE>   &gt;&gt; spid 14 waiting for EX_PAGE (waittype 0x8005), blocked by:
+   &gt;&gt;   EX_PAGE: spid 13, dbid 6, page 0x180, table example1, indid 0x1
+   &gt;&gt;   pcurcmd INSERT(0xc3), input buffer: INSERT INTO example1 VALUES
+   (200, 'AAAB', 'CCC')
+
+</PRE>Spid 14 is waiting for EX_PAGE lock and is being blocked by spid 13, which
+already holds EX_PAGE lock on the same page.
+<P>
+<PRE>   &gt;&gt; VICTIM: spid 13, pstat 0x0000 , cputime 30
+   SQL Server has chosen spid 13 as the deadlock victim.
+
+</PRE>The following is an explanation of what the various locks mean in the
+trace:
+<P>
+SH_INT and EX_INT
+Intent locks that are taken on a higher-level item (for example, a table)
+before lower-level locks (for example, a page) can be taken, because the
+lock manager is unaware of the relationship between different types of
+items (in this case, pages and tables). If an EX_INT lock was not taken on
+the table before taking EX_PAG locks on the pages, another user could take
+an EX_TAB lock on the same table and the lock manager would not know that a
+conflict existed. Currently, SQL Server has intent locks only on tables.
+There are two kinds of intent locks: shared (SH_INT) and exclusive (EX_INT)
+locks.
+<P>
+EX_PAGE
+This is an exclusive page lock that is taken when a page is updated due to
+a DELETE, UPDATE, or INSERT statement with insert row-level locking (IRL)
+disabled.
+<P>
+UP_PAGE
+This is an update page lock that is taken in place of a shared-page lock
+when a page is scanned and the optimizer knows that the page will be
+updated (or the UPDLOCK hint is used).
+<P>
+PR_EXT, NX_EXT, UPD_EXT, and EX_EXT
+These locks are taken when allocating or deallocating disk space. UPD_EXT
+is taken when allocating or deallocating a page from an existing extent and
+the others are used when allocating or deallocating entire extents.
+<P>
+IX_PAGE and LN_PAGE
+These are IRL locks. IX_PAGE is an intent-to-do-row-locking lock on a page.
+LN_PAGE is taken when a page on which IRL is being done needs to be split.
+<P>
+RLOCK and XRLOCK
+These short-term locks are taken when traversing an index b-tree. There are
+two types of this kind of lock: shared (RLOCK) and exclusive (XRLOCK).
+Shared locks are taken during scan, while exclusive locks are taken on
+index pages during an update.
+<P>
+EX_TAB
+This is an exclusive table lock that occurs when the SQL Server optimizer
+determines that a table scan is the most efficient way to solve an update
+query (for example, when there are no indexes on a table). EX_TAB locks
+also appear when you lock the table with TABLOCKX hint or when SQL Server
+escalates the page locks on a table to a table lock.
+<P>
+SH_TAB
+This is a shared table lock that is used when the optimizer assumes that
+most of the table will be scanned (or page locking escalates) or the
+TABLOCK hint is used.
+<P>
+The previous deadlock example can be avoided if the two connections update
+tables in the following sequence:
+<P>
+<PRE>   Connection1 &gt; BEGIN TRANSACTION
+   Connection2 &gt; BEGIN TRANSACTION
+   Connection1 &gt; INSERT INTO example1 VALUES (100, 'AAAA', 'CCC')
+   Connection2 &gt; INSERT INTO example1 VALUES (200, 'AAAB', 'CCC')
+   Connection2 &gt; INSERT INTO example2 VALUES (200, 'AAAB', 'CCC')
+   Connection1 &gt; INSERT INTO example2 VALUES (100, 'AAAA', 'CCC')
+
+</PRE><h3>Example 2: Insertions to Different Parts of the Same Table</h3>
+ 
+<P>
+This deadlock can also occur when two connections insert into different
+parts of the same table in opposite order when rows share pages. For
+example:
+<P>
+<PRE>   Connection1 &gt; BEGIN TRANSACTION
+   Connection2 &gt; BEGIN TRANSACTION
+   Connection1 &gt; INSERT INTO example1 VALUES (100, 'AAAA', 'CCC')
+   Connection2 &gt; INSERT INTO example1 VALUES (400, 'AAAB', 'CCC')
+   Connection1 &gt; INSERT INTO example1 VALUES (400, 'AAAA', 'CCC')
+
+</PRE>In this example table, there is a clustered index on the first column of
+the example1 table. Rows with the same values for the first column will
+tend to fall on the same page. In the example, the second row inserted by
+Connection1 will probably fall on the same page as the first row inserted
+by Connection2, because they both have a clustered index value of 400. This
+causes Connection2 to block Connection1.
+<P>
+<PRE>   Connection2 &gt; INSERT INTO example1 VALUES (100, 'AAAB', 'CCC')
+
+</PRE>Now Connection2 may also be blocked by Connection1, leading to a deadlock.
+The following is the deadlock trace:
+<P>
+<PRE>   97/04/20 12:56:01.40 spid16   *** DEADLOCK DETECTED with spid 15 ***
+   spid 16 requesting EX_PAGE (waittype 0x8005), blocked by:
+     EX_PAGE: spid 15, dbid 6, page 0x2c5, table example1, indid 0
+     pcurcmd INSERT(0xc3), input buffer: INSERT INTO example1 VALUES (100,
+   'AAAB', 'CCC')
+   spid 15 waiting for EX_PAGE (waittype 0x8005), blocked by:
+     EX_PAGE: spid 16, dbid 6, page 0x8bd, table example1, indid 0
+     pcurcmd INSERT(0xc3), input buffer: INSERT INTO example1 VALUES (400,
+   'AAAA', 'CCC')
+   VICTIM: spid 16, pstat 0x0000 , cputime 130
+
+</PRE>The spid 16 request for EX_PAGE lock for page 0x2c5 is blocked by spid 15,
+which already holds EX_PAGE lock for page 0x2c5 after it did the first
+insert. And spid 15 also got blocked by spid 16 on waiting for a EX_PAGE
+lock for page 0x8db leading to deadlock.
+<P>
+This deadlock can be avoided by using the following command to enable IRL
+for table example1:
+<P>
+<PRE>   sp_tableoption 'example1', 'insert row lock', true
+
+</PRE><h3>Example 3: Insertions Using IRL</h3>
+ 
+<P>
+IRL allows two or more users to share a page when they do only insert
+operations, which often results in better throughput. However, enabling IRL
+will not always reduce deadlocks. In some cases, IRL may introduce
+deadlocks.
+<P>
+<PRE>   Connection1 &gt; BEGIN TRANSACTION
+   Connection2 &gt; BEGIN TRANSACTION
+   Connection1 &gt; INSERT INTO example1 VALUES (100, 'AAAA', 'CCC')
+   Connection2 &gt; INSERT INTO example1 VALUES (105, 'AAAB', 'CCC')
+
+</PRE>With IRL enabled, both connections will hold an IX_PAGE lock on the page
+containing the two new rows. If IRL was disabled, Connection1 would have
+acquired an EX_PAGE lock, and Connection2 would have been blocked
+immediately.
+<P>
+<PRE>   Connection2 &gt; UPDATE example1 SET column3 = 'CCCB' where column1 = 105
+   and column2 = 'AAAB'
+
+</PRE>At this point, Connection2 needs an exclusive page lock to do an UPDATE
+statement, which is incompatible with Connection1's IX_PAGE lock.
+Therefore, Connection2 will wait.
+<P>
+<PRE>   Connection1 &gt; UPDATE example1 SET column3 = 'CCCA' where column1 = 100
+   and column2 = 'AAAA'
+
+</PRE>Now Connection1 may be blocked by Connection2, leading to a deadlock. The
+following is the deadlock trace:
+<P>
+<PRE>   97/04/20 15:13:50.07 spid17   *** DEADLOCK DETECTED with spid 18 ***
+   spid 17 requesting UP_PAGE (waittype 0x8007), blocked by:
+     IX_PAGE: spid 18, dbid 6, page 0x2c5, table example1, indid 0
+     pcurcmd UPDATE(0xc5), input buffer: UPDATE example1 SET column3 =
+   'CCCA' where column1 = 100 and column2 = 'AAAA'
+   spid 18 waiting for UP_PAGE (waittype 0x8007), blocked by:
+     IX_PAGE: spid 17, dbid 6, page 0x2c5, table example1, indid 0
+     pcurcmd UPDATE(0xc5), input buffer: UPDATE example1 SET column3 =
+   'CCCB' where column1 = 105 and column2 = 'AAAB'
+   VICTIM: spid 17, pstat 0x0000 , cputime 20
+
+</PRE>Spid 17 (connection one) is waiting for an UP_PAGE lock, which is the first
+step to getting an exclusive page lock. It is being blocked by spid 18,
+which holds IX_PAGE lock on page 0x2c5. Spid 18 is waiting for UP_PAGE lock
+on the same page, and is being blocked by IX_PAGE lock held by spid 17.
+This leads to a deadlock because IX_PAGE lock is sharable, whereas UP_LOCK
+is not. During the first inserts, both the spids got IX_PAGE lock on the
+same page, and later they tried to upgrade the lock to UP_PAGE lock, which
+is not possible because UP_PAGE lock is exclusive.
+<P>
+The one way to avoid the deadlock is to insert the updated value directly
+into the table instead of inserting and then updating the row in the same
+transaction. If this is not possible, using the following command to
+disable IRL will help to avoid deadlock:
+<P>
+<PRE>   sp_tableoption 'example1', 'insert row lock', false
+
+</PRE><h3>Example 4: Insertions to Rows on the Same Page</h3>
+ 
+<P>
+A deadlock may also result when the rows the two spids are working on are
+different but belong to the same page.
+<P>
+<PRE>   Connection1 &gt; BEGIN TRANSACTION
+   Connection2 &gt; BEGIN TRANSACTION
+   Connection1 &gt; INSERT INTO example1 VALUES (100, 'AAAA', 'CCC')
+   Connection2 &gt; INSERT INTO example1 VALUES (400, 'AAAB', 'CCC')
+   Connection1 &gt; UPDATE example1 SET column3 = 'CCCA' where column1 = 405
+   and column2 = 'AAAA'
+
+</PRE>At this point, Connection1 may be blocked by Connection2. This situation
+may occur because Connection1 wants to update a row in a page where
+Connection2 has already inserted a row.
+<P>
+<PRE>   Connection2 &gt; UPDATE example1 SET column3 = 'CCCB' where column1 = 105
+   and column2 = 'AAAB'
+
+</PRE>At this point, Connection2 may also be blocked by Connection1, which will
+lead to a deadlock. This situation may occur when Connection2 wants to
+update a row in a page where Connection1 has inserted a row. The following
+is the deadlock trace:
+<P>
+<PRE>   97/04/20 15:48:21.18 spid20   *** DEADLOCK DETECTED with spid 19 ***
+   spid 20 requesting UP_PAGE (waittype 0x8007), blocked by:
+     EX_PAGE: spid 19, dbid 6, page 0x2c4, table example1, indid 0
+     pcurcmd UPDATE(0xc5), input buffer: UPDATE example1 SET column3 =
+   'CCCB' where column1 = 105 and column2 = 'AAAB'
+   spid 19 waiting for UP_PAGE (waittype 0x8007), blocked by:
+     EX_PAGE: spid 20, dbid 6, page 0xc48, table example1, indid 0
+     pcurcmd UPDATE(0xc5), input buffer: UPDATE example1 SET column3 =
+   'CCCA' where column1 = 405 and column2 = 'AAAA'
+   VICTIM: spid 20, pstat 0x0000 , cputime 60
+
+</PRE>This deadlock can be avoided by spreading out the rows over different
+pages. The one method to do this is to re-create the clustered index on
+this table with a large fill factor. The following is a statement that
+creates a clustered index with a fill factor of 50 percent:
+<P>
+<PRE>   create unique clustered index ex1ind1 on example1 (column1, column2)
+   with fill factor = 50, PAD_INDEX
+
+</PRE>This statement creates the clustered index leaving half of the pages empty,
+including the non-leaf levels of the clustered index (because of the
+PAD_INDEX option). The table occupies double the actual size, and the
+number of rows per page are half of what they were.
+<P>
+The fill factor is not maintained on a table; the table is re-organized
+with the specified fill factor only during index creation time. Over time,
+the rows per page will change from the fill factor specified during index
+creation. When this occurs, it may be a good idea to re-create the
+clustered index with the desired fill factor.
+<P>
+Another solution to avoid the previous deadlock situation is to pad the
+table with dummy columns (for example, dummy1 char(255)). This increases
+the size of the row and leads to fewer rows per page (as few as one row per
+page). Because this type of padding is maintained over time, you do not
+need to re-create the clustered index to maintain the padding (though you
+may want to re-create the clustered index for other reasons). The
+disadvantage of this technique is that storage space is wasted on dummy
+fields.
+<P>
+<P><h3>Example 5: Padding Rows</h3>
+ 
+<P>
+Padding rows leads to fewer rows per page (hence fewer deadlocks), but it
+will not completely eliminate deadlocks.
+<P>
+In this example table, example1 is padded to occupy one row per page. The
+following are the statements used to create the table for this example:
+<P>
+<PRE>   create table example1 (column1 int, column2 char(20), column3 char(50),
+   dummy_column4 char (255), dummy_column5 char (255), dummy_column6 char
+   (255))
+   go
+
+   create unique index ex1ind5 on example1 (column3, column2, column1,
+   dummy_column4, dummy_column5, dummy_column6) with fill factor = 85
+   go
+
+   Connection1 &gt; BEGIN TRANSACTION
+   Connection2 &gt; BEGIN TRANSACTION
+   Connection1 &gt; INSERT INTO example1 VALUES (100, 'AAAA', 'CCC', ' ', ' ',
+   ' ', ' ')
+   Connection2 &gt; INSERT INTO example1 VALUES (400, 'AAAB', 'CCC', ' ', ' ',
+   ' ', ' ')
+   Connection1 &gt; UPDATE example1 SET column3 = 'CCCA' where column1 = 401
+   and column2 = 'AAAA'
+
+</PRE>At this point, Connection1 is blocked by Connection2 while updating the
+row. Because SQL Server must maintain page-chain pointers, it locks the
+previous page, the next page, and the page that is being updated. Because
+Connection2 holds a lock on the previous page, Connection1 must wait until
+Connection2 commits the transaction.
+<P>
+<PRE>   Connection2 &gt; UPDATE example1 SET column3 = 'CCCB' where column1 = 101
+   and column2 = 'AAAB'
+
+</PRE>At this point, Connection2 is blocked by Connection1 because it must lock
+the previous page, which is currently locked by Connection1. The result is
+a deadlock. The following is the deadlock trace:
+<P>
+<PRE>   spid 20 requesting UP_PAGE (waittype 0x8007), blocked by:
+     EX_PAGE: spid 19, dbid 6, page 0x12b5, table example1, indid 0
+     pcurcmd UPDATE(0xc5), input buffer: UPDATE example1 SET column3 =
+   'CCCB' where column1 = 101 and column2 = 'AAAB'
+   spid 19 waiting for UP_PAGE (waittype 0x8007), blocked by:
+     EX_PAGE: spid 20, dbid 6, page 0x1531, table example1, indid 0
+     pcurcmd UPDATE(0xc5), input buffer: UPDATE example1 SET column3 =
+   'CCCA' where column1 = 401 and column2 = 'AAAA'
+   VICTIM: spid 20, pstat 0x0000 , cputime 300
+
+</PRE>This deadlock can be avoided by inserting dummy rows between the rows that
+are being inserted, updated, or deleted. For example, if Connection1 works
+(inserts, updates, or deletes) with row pk = 1 and Connection2 works with
+row pk = 5, inserting a row between these two rows (such as a row
+containing pk = 3) will avoid deadlocks. This method also increases the
+size of the table, but may be the best solution for those queue tables
+critical to the application.
+<P>
+<P><h3>Example 6: Nonclustered Indexes</h3>
+ 
+<P>
+In some cases, non-clustered secondary indexes may introduce deadlocks. In
+this example, the maintenance of the secondary index introduces deadlock.
+<P>
+The following is the statement used to create the secondary index used in
+this example:
+<P>
+<PRE>   create index ex1ind2 on example1 (column3) with fill factor = 90,
+   PAD_INDEX
+
+   Connection1 &gt; BEGIN TRANSACTION
+   Connection2 &gt; BEGIN TRANSACTION
+   Connection1 &gt; INSERT INTO example1 VALUES (100, 'AAAA', 'CCBA', ' ', '
+   ', ' ', ' ')
+   Connection2 &gt; INSERT INTO example1 VALUES (300, 'AAAB', 'CCCZ', ' ', '
+   ', ' ', ' ')
+   Connection2 &gt; UPDATE example1 SET column3 = 'CCBA' where column1 = 105
+
+</PRE>At this point, Connection2 may be blocked by Connection1 because
+Connection1 may be holding a lock on the secondary non-clustered index page
+where Connection2 needs to update.
+<P>
+<PRE>   Connection1 &gt; UPDATE example1 SET column3 = 'CCCZ' where column1 = 305
+
+</PRE>At this point, Connection1 may be blocked by Connection2, resulting in a
+deadlock. This situation can happen when Connection1 is waiting for a lock
+to update the non-clustered secondary index where Connection2 has already
+inserted and holds a lock on that page. The following is the deadlock trace
+for this deadlock example:
+<P>
+<PRE>   97/04/20 19:05:38.75 spid11   *** DEADLOCK DETECTED with spid 12 ***
+   spid 11 requesting EX_PAGE (waittype 0x8005), blocked by:
+     EX_PAGE: spid 12, dbid 6, page 0x112f, table example1, indid 0x2
+     pcurcmd UPDATE(0xc5), input buffer: UPDATE example1 SET column3 =
+   'CCCZ' where column1 = 305
+   spid 12 waiting for EX_PAGE (waittype 0x8005), blocked by:
+     EX_PAGE: spid 11, dbid 6, page 0x1108, table example1, indid 0x2
+     pcurcmd UPDATE(0xc5), input buffer: UPDATE example1 SET column3 =
+   'CCBA' where column1 = 105
+   VICTIM: spid 11, pstat 0x0000 , cputime 50
+
+</PRE>This deadlock can be avoided by dropping the secondary index. It is not
+possible to pad the index to contain one row per page, so this situation
+can be avoided only by eliminating the non-clustered secondary index or by
+modifying the application.
+<P>
+Deadlocks may occur with more than two connections, in which case the
+deadlock trace lists the spids involved in the deadlock and also the
+conflicting locks. Deadlocks may occur with RLOCK and XRLOCK locks, which
+are acquired during index traversing. Deadlocks may also occur because of
+extent locks (PR_EXT, NX_EXT, UPD_EXT &amp; EX_EXT).
+<P>
+For additional information about analyzing deadlocks, you can enable the
+following trace flags:
+<P>
+T1200
+Prints all of the lock request/release information when it occurs, whether
+a deadlock is involved or not. This is expensive in terms of performance,
+but it can be useful for analysis.
+<P>
+T1206
+Prints all of the locks held by participating spids in the deadlock.
+<P>
+T1208
+Prints the host name and program name supplied by the client. This can help
+identify a client involved in a deadlock, assuming the client specifies a
+unique value for each connection.
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : kbusage SSrvLock<BR>
+Version             : 6.5<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

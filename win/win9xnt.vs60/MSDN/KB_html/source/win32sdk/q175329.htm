@@ -1,0 +1,367 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Implement a RegRestoreKey() Function for Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q175329">
+<META NAME="KBModify" CONTENT="1997/10/20">
+<META NAME="KBCreate" CONTENT="1997/10/17">
+<META NAME="Keywords" CONTENT="BseRegistry">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article demonstrates how to implement a RegRestoreKey() function under Windows 95. This process involves several steps that require that you delete both the descendant subkeys and their values before you add the new subkeys and values.  MORE I...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAKD,QAUD,QAEF,QAI4,QBCT,QAGC,QAGB,QAC2,QDKD,QALW,QDL9,QBWO,QBWN,QAKC,QBBI V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Implement a RegRestoreKey() Function for Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 20, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q175329</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article demonstrates how to implement a RegRestoreKey() function under
+Windows 95. This process involves several steps that require that you
+delete both the descendant subkeys and their values before you add the new
+subkeys and values.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Step 1: Initialization</h3>
+ 
+<P>
+To avoid a conflict between two applications that are trying to restore to
+the same registry key, use a mutex to prevent a second restore from
+occurring before the first one is completed.
+<P>
+<PRE>   hMutex = CreateMutex( NULL, TRUE, REG_RESTORE);
+   if ( !hMutex )
+     return GetLastError();
+
+   if (GetLastError() == ERROR_ALREADY_EXISTS)
+   {
+     if ((lRet=WaitForSingleObject(hMutex, INFINITE)) != WAIT_OBJECT_0)
+         return lRet;
+   }
+
+</PRE><h3>Step 2: Delete Key Values</h3>
+ 
+<P>
+First you must delete the specified key's values. To do this, you must
+first enumerate the key values using RegEnumValue() and then delete them
+using RegDeleteValue().
+<P>
+<PRE>   for (;;)
+   {
+     cbValue = REGSTR_MAX_VALUE_LENGTH;        // reset value length
+     // remove this keys old values
+     lRet  = RegEnumValue(hStartKey,   // handle of key to query
+                0,     // index of value to query
+                szValue,  // address of buffer for value string
+                &amp;cbValue, // address for size of value buffer
+                NULL,     // reserved
+                NULL,     // address of buffer for type code
+                NULL,     // address of buffer for value data
+                NULL     // address for size of data buffer
+            );
+
+     if ( ERROR_NO_MORE_ITEMS == lRet ) // all values deleted
+     {
+            lRet = ERROR_SUCCESS;
+            break;
+     }
+     else if ( ERROR_SUCCESS == lRet )
+     {
+        if ((lRet = RegDeleteValue(
+                              hStartKey,  // handle of key
+                              szValue     // address of value name
+                              )) != ERROR_SUCCESS)
+                return lRet;
+     }
+     else
+       return lRet;
+   }  // end for loop
+
+
+</PRE><h3>Step 3: Delete Subkeys</h3>
+ 
+<P>
+After you have deleted the current values you must delete the specified
+key's subkeys. Do this by enumerating the subkeys using RegEnumKeyEx and
+then deleting them using RegDeleteKey. In Windows 95, this deletes the
+current subkeys and all descendant subkeys. After you have completed the
+deletion, you can add the new subkeys and values.
+<P>
+<PRE>   // delete all subkeys
+   for(;;)
+   {
+
+       dwSubKeyLength = MAX_PATH;
+       lRet=RegEnumKeyEx(
+                   hStartKey,
+                   0,
+                   szSubKey,
+                       &amp;dwSubKeyLength,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL
+                        );
+        if(lRet == ERROR_NO_MORE_ITEMS)
+        {
+            lRet = ERROR_SUCCESS;
+            break;
+        }
+        else if(lRet == ERROR_SUCCESS)
+        {
+          if((lRet = RegDeleteKey(hStartKey, szSubKey)) != ERROR_SUCCESS)
+              return lRet;
+        }
+        else
+            return lRet;
+   }  // end for loop
+
+
+</PRE><h3>Step 4: Restore New Subkeys</h3>
+ 
+<P>
+To add the new values and subkeys, use RegLoadKey to duplicate and load the
+registry hive into the registry. Once the hive has been loaded, all values
+and subkeys are enumerated and copied to the specified restore key.
+<P>
+<PRE>   // Load new hive
+   lRet = RegLoadKey(HKEY_USERS, "TEMP_HIVE", szNewHive );
+
+   DWORD RegCreateTree(HKEY hTree, HKEY hReplacement)
+   {
+     DWORD   cdwClass, dwSubKeyLength, dwDisposition, dwKeyIndex = 0;
+     LPTSTR  pSubKey = NULL;
+     TCHAR   szSubKey[REGSTR_MAX_VALUE_LENGTH]; // this should be dynamic.
+     TCHAR   szClass[REGSTR_MAX_VALUE_LENGTH]; // this should be dynamic.
+     HKEY    hNewKey, hKey;
+     DWORD   lRet;
+
+     for(;;)
+     {
+       dwSubKeyLength = REGSTR_MAX_VALUE_LENGTH;
+       cdwClass = REGSTR_MAX_VALUE_LENGTH;
+       lRet=RegEnumKeyEx(
+                   hReplacement,
+                   dwKeyIndex,
+                   szSubKey,
+                   &amp;dwSubKeyLength,
+                   NULL,
+                   szClass,
+                   &amp;cdwClass,
+                   NULL
+                   );
+       if(lRet == ERROR_NO_MORE_ITEMS)
+       {
+          lRet = ERROR_SUCCESS;
+          break;
+       }
+       else if(lRet == ERROR_SUCCESS)
+       {
+          if ((lRet=RegCreateKeyEx(hTree, szSubKey,0, szClass,
+                      REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL,
+                      &amp;hNewKey, &amp;dwDisposition)) != ERROR_SUCCESS )
+                break;
+          else  // add key values and recurse
+          {
+            if ((lRet=RegCreateValues( hReplacement, szSubKey, hNewKey))
+                    != ERROR_SUCCESS)
+            {
+                CloseHandle(hNewKey);
+                break;
+            }
+            if ( (lRet=RegOpenKeyEx(hReplacement, szSubKey, 0,
+                              KEY_ALL_ACCESS, &amp;hKey )) == ERROR_SUCCESS )
+            {
+                lRet=RegCreateTree(hNewKey, hKey);
+                CloseHandle(hKey);
+                CloseHandle(hNewKey);
+                if ( lRet != ERROR_SUCCESS )
+                        break;
+             }
+             else
+             {
+                CloseHandle(hNewKey);
+                break;
+             }
+          }
+       }
+       else
+         break;
+       ++dwKeyIndex;
+     } // end for loop
+    return lRet;
+   }  // end RegCreateTree function
+
+   DWORD RegCreateValues(HKEY hReplacement, LPCTSTR lpSubKey, HKEY hNewKey)
+   {
+     DWORD    cbValue, dwSubKeyIndex=0, dwType, cdwBuf;
+     DWORD    dwValues, cbMaxValueData, i;
+     LPTSTR   pSubKey = NULL;
+     TCHAR    szValue[REGSTR_MAX_VALUE_LENGTH]; // this should be dynamic.
+     HKEY     hKey;
+     DWORD    lRet = ERROR_SUCCESS;
+     LPBYTE   pBuf;
+
+     if ((lRet=RegOpenKeyEx(hReplacement, lpSubKey, 0,
+                    KEY_ALL_ACCESS, &amp;hKey )) == ERROR_SUCCESS)
+     {
+        if ((lRet=RegQueryInfoKey (hKey, NULL, NULL, NULL, NULL, NULL,
+                       NULL, &amp;dwValues,NULL, &amp;cbMaxValueData,
+                       NULL, NULL)) == ERROR_SUCCESS)
+        {
+            if ( dwValues )
+            {
+                if ((pBuf=HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+                              cbMaxValueData )))
+                {
+                    for (i = 0; i &lt; dwValues ; i++)
+                    {
+                       //  get values to create
+                       cbValue = REGSTR_MAX_VALUE_LENGTH;
+                       cdwBuf = cbMaxValueData;
+                       lRet = RegEnumValue(
+                                hKey,     // handle of key to query
+                                i,        // index of value to query
+                                szValue,  // buffer for value string
+                                &amp;cbValue, // address for size of buffer
+                                NULL,     // reserved
+                                &amp;dwType,  // buffer address for type code
+                                pBuf,   // address of buffer for value data
+                                &amp;cdwBuf   // address for size of buffer
+                                );
+
+                        if ( ERROR_SUCCESS == lRet )
+                        {
+                            if( (lRet=RegSetValueEx(hNewKey, szValue, 0,
+                                       dwType, (CONST BYTE *)pBuf,
+                                       cdwBuf))!= ERROR_SUCCESS)
+                                break;
+                        }
+                        else
+                            break;
+
+                    }  // for loop
+                }
+                HeapFree(GetProcessHeap(), 0, pBuf);
+            }
+        }
+        CloseHandle(hKey);
+     }
+     return lRet;
+   }  // end of RegCreateValues function
+
+
+</PRE><h3>Step 5: Clean Up</h3>
+ 
+<P>
+When all operations have been completed, the registry hive that was loaded
+is unloaded and the mutex is released to allow other restores to begin.
+<P>
+<PRE>   // UnLoad user hive
+   lRet = RegUnLoadKey(HKEY_USERS, "TEMP_HIVE");
+   ReleaseMutex(hMutex);
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: win95 regedit<BR>
+Keywords          : BseRegistry<BR>
+Platform          : Win95<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 20, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

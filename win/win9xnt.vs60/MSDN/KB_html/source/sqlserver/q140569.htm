@@ -1,0 +1,372 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Improve DBCC Performance on SQL Server </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q140569">
+<META NAME="KBModify" CONTENT="1997/04/03">
+<META NAME="KBCreate" CONTENT="1995/12/03">
+<META NAME="Keywords" CONTENT="SSrvBCP kbhowto kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The DBCC (DataBase Consistency Checker) utilities are a collection of programs used to verify integrity of a SQL Server database. They are conceptually similar to file system checking programs such as CHKDSK in MS- DOS, Windows 95, and Windows NT, ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABI,QABH,QA28,QATJ,QBWS,QAU3,QAMR,QAZV,QAFH,QACE,QABM,QA26,QATL,QATK,QBWA V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Improve DBCC Performance on SQL Server</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 3, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q140569</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 4.2x and 6.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The DBCC (DataBase Consistency Checker) utilities are a collection of
+programs used to verify integrity of a SQL Server database. They are
+conceptually similar to file system checking programs such as CHKDSK in MS-
+DOS, Windows 95, and Windows NT, and fsck in UNIX. Like file system
+checking programs, DBCC can take a significant amount of time to run on
+large data sets. This article discusses ways to improve DBCC performance.
+References to 6.0 also apply to 6.5 unless otherwise noted.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Overview of DBCC</h3>
+ 
+<P>
+Most file systems and database systems provide integrity checking
+utilities to periodically verify data structure consistency. For example
+the Rdb Management Utility (RMU) performs functions similar to DBCC on the
+Oracle Rdb database.
+<P>
+Integrity checking utilities generally have a long running time when used
+on large data sets, and DBCC is no different. However there are several
+actions which can maximize the performance and minimize the impact of
+DBCC.
+<P>
+First, a review of the DBCC utilities most commonly used for integrity
+checking: NEWALLOC and CHECKTABLE/CHECKDB. CHECKDB performs the same
+checks as CHECKTABLE, but for each table in the database in succession.
+<P>
+NEWALLOC checks the integrity of all table and index page chains, and
+checks that each page is correctly allocated. It checks the integrity of
+all extent chains in the database, and verifies that each chain is
+correctly linked. NEWALLOC also checks for object ID consistency between
+the page, the extent, and sysindexes. In general, NEWALLOC checks things
+at
+a page and inter-page level.
+<P>
+CHECKTABLE/CHECKDB by contrast spends most of its time checking things at
+an intra-page level. In addition to checking the page chain, it checks
+that
+indexes are in properly sorted order, that the data information inside
+each
+page is reasonable, that page offsets are reasonable, that the sysindexes
+entries for the table are correct, and that the data row count equals the
+leaf row count for non-clustered indexes.
+<P>
+DBCC NEWALLOC and CHECKDB perform largely complementary checks and should
+generally both be run to get a comprehensive check of the database.
+<P>
+By necessity DBCC is I/O intensive. For NEWALLOC, running time will be
+roughly proportional to the database space in use. This is because most of
+NEWALLOC's time is spent doing sequential reads. Time for this will scale
+linearly with the size of the database. For this same reason NEWALLOC can
+be significantly faster on version 6.0 because the parallel read-ahead
+facility increases the scanning rate.
+<P>
+Running time for CHECKDB is more dependant on the number of indexes in the
+database and number of rows per table, so the time cannot be predicted by
+the database size alone. Version 6.0 uses parallel threads for CHECKTABLE,
+one to check each index. When combined with the 6.0 read-ahead facility,
+on
+computers with sufficient memory, CHECKTABLE/CHECKDB can be significantly
+faster on 6.0 than on 4.2. The amount of memory needed to ensure this
+would
+be approximately the amount where the SQL page cache (visible with dbcc
+memusage) is larger than the largest individual table in the database. On
+computers with less memory than this, you may want to experiment with
+disabling read ahead for the CHECKTABLE/CHECKDB session by using trace
+flag
+653. You can disable parallel CHECKTABLE by using trace flag 2508. Setting
+the sp_configure "RA worker threads" parameter to 0 disables both read
+ahead and parallel CHECKTABLE. See the version 6.0 online documentation
+for
+details on how to use trace flags.
+for
+<P>
+Tests indicate that SQL Server 6.0 can run DBCC NEWALLOC on a 2 GB
+database
+in less than 30 minutes, when running on a typical industry standard
+symmetric multiprocessor (SMP) platform.
+<P>
+As for concurrency impact of DBCC, NEWALLOC and CHECKDB are both online
+checks in that the database can be in use while they run. There is
+concurrency impact, but in many cases this is acceptable. NEWALLOC impact
+is primarily the I/O and CPU load from the check. In addition to the I/O
+and CPU load, CHECKDB places a shared table lock on each table while it's
+being checked. While allowing SELECTs, this will prevent modification
+of the table until CHECKDB moves on to the next table in the database. The
+share lock is necessary to achieve a reliable check.
+<P>
+It is usually best to run NEWALLOC when update activity in the database is
+at a minimum, since there is a possibility of spurious errors caused by in-
+progress changes during the check.
+<P>
+<P><h3>Specific Steps to Minimize DBCC Impact and Increase Performance</h3>
+ 
+<P>
+General Advice:
+
+<OL><P><LI>Because DBCC is I/O-intensive, use hardware with plenty of I/O
+</OL>capacity.
+<PRE>   One good way to increase I/O capacity is by placing the database on a
+   large RAID disk array, using as many physical drives as possible.
+
+</PRE><P><LI>Use hardware with plenty of RAM. The ideal case would be sufficient RAM
+   such that the largest table can be contained in the SQL Server page
+   cache. This is especially important on version 6.0 where it will allow
+   full utilization of parallel index checking and read ahead.
+
+<P><LI>Ideally you should run DBCC NEWALLOC, CHECKDB, CHECKCATALOG, and
+</OL>TEXTALL
+<PRE>   (if you have text/image data) in conjunction with your database dumps.
+   This verifies the state of the database at the time of the dump.
+   However, if time does not permit all of these checks, the best single
+   check to run is NEWALLOC. It is typically faster than CHECKDB, and
+   provides a good overall check of the database. It is better to run
+   NEWALLOC alone than to run no checks at all.
+
+</PRE><P><LI>If your database has a nightly interval where update activity is low,
+   rather than setting the database to single-user mode for NEWALLOC, just
+   run it and watch for any errors. On the optimistic principal that most
+   of the time the low activity will not cause spurious errors, you would
+   only then need to schedule a NEWALLOC in single-user mode when you see
+   errors.
+<P>
+   NOTE: 6.5 Service Pack 2 NEWALLOC has been enhanced to avoid most
+   spurious errors when running in multi-user mode. It is likely  that you
+   can avoid the need to place the database in single-user mode for
+   NEWALLOC simply by running 6.5 Service Pack 2 or later. See the
+   6.5 Service Pack 2 readme file for details.
+
+<P><LI>Although it is best to run both NEWALLOC and CHECKDB together, if
+   circumstances require it (say the database is extremely large) you
+</OL>could
+<PRE>   consider running NEWALLOC as the more frequent check, owing to the non-
+   blocking nature and quicker running time it provides. Then on a less-
+   frequent basis, supplement this with CHECKDB.
+
+</PRE><P><LI>Run CHECKDB with the NOINDEX option. The most time-consuming aspect of
+   CHECKDB is checking non-clustered indexes. These checks can be bypassed
+   with this syntax. For example:
+<P>
+<P><PRE>      DBCC CHECKDB(MYDB, NOINDEX)
+</PRE>
+<P><LI>Run DBCC on a "hot backup" server. Sites with close to 24x7 uptime
+   requirements often have a hot backup computer on which transaction logs
+   are loaded frequently. Otherwise, a failure on the main server would
+   preclude 24x7 availability. If you have a hot backup computer, it's
+   possible to run DBCC on that computer without impacting the main
+</OL>server.
+<PRE>   A DBCC run on the backup computer is just as valid and effective a test
+   as when run on the main server. If you do not have a hot backup server,
+   the combined benefits of the safety net it provides plus the DBCC
+   solution can be strong arguments for getting one.
+
+</PRE></OL>How to Run CHECKTABLE While In Production:
+<P>
+Sometimes you may need to check a specific table or its indexes. On large
+memory computers, there is a technique that can sometimes allow this with
+very little concurrency impact, even while the computer is at modest
+production activity levels. It basically consists of pre-loading the page
+cache with the table and index contents using a non-blocking SELECT with
+the NOLOCK optimizer hint, then checking a single index at a time to
+minimize the time the table is share locked. In some cases, it's possible
+to check a 200 MB table in less than 60 seconds using this technique. The
+following are the steps needed to achieve this:
+
+<OL><P><LI>Verify activity level on the computer is modest. This will help ensure
+   that pre-loaded cache pages are not stolen by concurrent requests while
+   DBCC runs. Here is a good query to help check this. Run it several
+</OL>times
+<PRE>   and observe what queries are active.
+
+      SELECT SPID, STATUS, HOSTNAME, PROGRAM_NAME, CMD, BLOCKED
+      FROM MASTER..SYSPROCESSES
+      WHERE STATUS &lt;&gt; 'SLEEPING'
+
+</PRE><P><LI>Verify the table and indexes you want to check will fit into available
+   page cache by comparing the table and index size to the page cache
+</OL>size.
+<PRE>   Table and index size in 2048-byte pages can be seen by issuing this
+   query, where TAB1 represents your table name:
+
+      SELECT NAME, INDID, DPAGES
+      FROM SYSINDEXES
+      WHERE ID=OBJECT_ID("TAB1")
+
+   Execute DBCC MEMUSAGE and inspect the size of the returned "Page Cache"
+   value. Only if the sum of your table and index size is less than the
+   page cache size is it possible to use this technique. Ideally, page
+   cache should be significantly larger to allow servicing of other
+   requests during execution of DBCC, without depleting the cache holding
+   the table being checked.
+
+</PRE><P><LI>Pre-load the page cache by issuing SELECTs that return no results,
+</OL>using
+<PRE>   NOLOCK and INDEX optimizer hints to ensure a non-blocking SELECT and
+   that each index is covered. This could take several minutes, depending
+   on table size and computer I/O bandwidth.
+
+      select * from tab1 (nolock index=0) where key_id &lt; 0
+      select * from tab1 (nolock index=1) where key_id &lt; 0
+      select * from tab1 (nolock index=2) where key_id &lt; 0
+
+</PRE><P><LI>While the above query runs, use PerfMon to watch I/O vs. CPU activity.
+   Watch all instances of the "% Disk Time" counter of the "LogicalDisk"
+   object. Also watch the "% Total Processor Time" counter of the "System"
+   object. To see valid disk performance information, you must have
+   previously turned on the Windows NT DISKPERF setting by issuing
+   "diskperf -Y" from a command prompt. See the Windows NT documentation
+   for more details.
+<P>
+   After all the data is pre-loaded, you can usually re-scan the entire
+   table with one of the above commands within a few seconds, during which
+   CPU should be high and I/O almost 0.  Do this to verify the data is
+   still in cache.
+
+<P><LI>Run DBCC CHECKTABLE on a single index of the table at a time. During
+   this interval, a share lock will block attempts to update the table,
+</OL>but
+<PRE>   (depending on the computer speed and table size) CHECKTABLE will finish
+   checking a single index within 30 seconds to two minutes. For example:
+
+      DBCC CHECKTABLE(TAB1, 2)
+
+   Then proceed and check the other indexes on the table.
+
+</PRE><P><LI>While CHECKTABLE is running, watch closely for any blocking you may be
+   causing. If you miscalculate and CHECKTABLE causes more blocking than
+   you anticipate, you can usually abort CHECKTABLE using the Transact-SQL
+   KILL command. Here is a good query to watch the amount of blocking:
+<P>
+<P><PRE>      SELECT SPID, STATUS, HOSTNAME, PROGRAM_NAME, CMD, BLOCKED
+      FROM MASTER..SYSPROCESSES
+      WHERE BLOCKED &gt; 0
+</PRE><P>
+</OL>Conclusion:
+<P>
+Integrity checking programs for file systems or databases tend to have
+long
+running times when applied to large data sets. Performance of SQL Server
+6.0 DBCC has been significantly improved via read ahead and parallel index
+checking. When SQL Server 6.0 is run on an adequately equipped platform,
+and the techniques mentioned in this article are used, it is usually
+possible to minimize the impact of DBCC to a reasonable level. Specific
+techniques include running only the necessary DBCC utilities,
+understanding
+the concurrency impact of each utility and hence when during the day it
+can
+be run, running DBCC on a "hot backup" server, and pre-loading the page
+cache prior to checking a specific table.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 6.00 sql6 winnt check chk DBCC performance
+<P>
+
+Keywords            : SSrvBCP kbhowto kbusage<BR>
+Version             : 4.2x 6.00<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 3, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

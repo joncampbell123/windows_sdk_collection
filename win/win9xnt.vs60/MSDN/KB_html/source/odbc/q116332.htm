@@ -1,0 +1,215 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Floats May Be Rounded Up Using ODBC SQL Server Driver </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q116332">
+<META NAME="KBModify" CONTENT="1996/09/09">
+<META NAME="KBCreate" CONTENT="1994/06/16">
+<META NAME="Keywords" CONTENT="kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; odbc">
+<META NAME="Description" CONTENT="  Using SQL Server ODBC driver and SQL Server and if ODBC prepared execution is used, certain floating point values may be incorrectly converted. NOTE: Microsoft Access and Microsoft Visual Basic commonly use the ODBC prepared execution.  For example...">
+<META NAME="Product" CONTENT="ODBC">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAVW,QAVX,QA5V,QA9E,QA9N,QACI,QABM,QAY2,QAOI,QAKD,QA2Q,QBS0,QBVV,QAXB,QAG2 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Floats May Be Rounded Up Using ODBC SQL Server Driver</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 9, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q116332</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Open Database Connectivity, version 1.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Using SQL Server ODBC driver and SQL Server and if ODBC prepared execution
+is used, certain floating point values may be incorrectly converted. NOTE:
+Microsoft Access and Microsoft Visual Basic commonly use the ODBC prepared
+execution.
+<P>
+For example, consider a SQL Server table with a float column. When an ODBC
+application successfully executes an insert into that table with the float
+column value = 2.9 using prepared execution. However, when a query to get
+the rows with the float values equal to 2.9 is executed, no rows are
+returned from SQL Server. The following query is an example:
+<P>
+<PRE>   CREATE TABLE  test(col1 float)
+
+   INSERT into test VALUES(2.9)
+
+   SELECT col1 FROM test WHERE col1=2.9
+
+</PRE>However, the following query shows the row with col1=2.9
+<P>
+<PRE>   SELECT * FROM test
+
+</PRE>This does not happen when the insert is done from a DB-Library (DB-Lib)
+client tool, or if direct, non-prepared execution is used. For the SQL
+Server driver, if the users do not have CREATE PROC permission, direct, non-
+prepared execution is used.
+<P>
+In case of Microsoft Access and Visual Basic, the behavior is exhibited by
+doing the insert into either an attached table or by creating the dynaset,
+followed by running the query to retrieve the records where float column
+equals the value inserted.
+<P>
+For example,
+<P>
+<PRE>   Dim db As Database
+   Dim ds As Dynaset
+
+   Set ds = db.CreateDynaset("SELECT * FROM test")
+   ds.AddNew
+   ds.Fields("col1") = 2.9
+   ds.Update
+
+</PRE>Then a query which checks for equality of the float column to the value
+inserted does not show the record inserted above, whereas a non-qualified
+query shows the record. For example, the recordset for the ds1 dynaset does
+not show the record inserted, whereas ds2 dynaset will.
+<P>
+<PRE>   Set ds1 = db.CreateDynaset("SELECT * FROM test WHERE col1=2.9")
+
+   Set ds2 = db.CreateDynaset("SELECT * FROM test")
+
+</PRE>For an ODBC application writer, the following steps will produce the
+behavior:
+<P>
+<PRE>   //Prepared execution to update the table
+   SQLPrepare: INSERT INTO test VALUES (?)
+
+   //Set parameters for the above prepared stmt
+   SQLSetParam:
+
+  //Execute the previously prepared stmt
+  //and verify that it returned SQL_SUCCESS
+   SQLExecute:
+
+   //Execute the following query
+   SQLExecDirect: SELECT * FROM test WHERE col1=2.9
+
+</PRE>And then retrieve the result to see that the record inserted above does not
+show up. However, executing the following shows the record inserted above:
+<P>
+<PRE>   //Execute the following query
+   SQLExecDirect: SELECT * FROM test
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+The difference in behavior is because in the case of prepared execution,
+the ODBC driver is doing the conversion to float; whereas in the case of
+non-prepared execution and DB-Lib client tools, SQL Server is doing the
+conversion.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+To workaround this problem, you can do an explicit convert on the SQL
+Server using a statement similar to the following:
+<P>
+<PRE>   UPDATE test SET f= (CONVERT(FLOAT, CONVERT(VARCHAR, col1)))
+
+</PRE>You can also do the same thing within a trigger to automatically update the
+value for all new records inserted.
+<P>
+Please note that this problem does not occur using pass-through
+mechanism since in that case, the conversion is done by SQL Server.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbusage<BR>
+KBSubcategory:
+<P>
+
+Additional reference words: 1.01.2807 VB DBLibrary stored procedure
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 9, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

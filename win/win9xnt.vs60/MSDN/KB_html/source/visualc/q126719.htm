@@ -1,0 +1,226 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: CTL3D Cannot Be Used with Shared MFC DLL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q126719">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1995/02/28">
+<META NAME="Keywords" CONTENT="kb16bitonly kbcode kbprb kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The CTL3D documentation  Adding 3-D Effects to Controls  indicates that you should not use CTL3D with the DLL version of the Microsoft Foundation Classes (MFC). If you try to use CTL3D with the MFC DLL, one of the following symptoms may occur:   - ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAYL,QAOE,QAUD,QA7O,QABO,QAMN,QAB5,QAJQ,QAB9,QAJH,QBVV,QAGQ,QADX,QALW,QDL9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: CTL3D Cannot Be Used with Shared MFC DLL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q126719</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50 1.51
+WINDOWS
+kbprg kbcode kbprb
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   Microsoft Visual C++ for Windows, versions 1.00, 1.50, and 1.51
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The CTL3D documentation "Adding 3-D Effects to Controls" indicates that you
+should not use CTL3D with the DLL version of the Microsoft Foundation
+Classes (MFC). If you try to use CTL3D with the MFC DLL, one of the
+following symptoms may occur:
+
+<UL><LI>Applications that don't register CTL3D have 3-D effects added to all or
+   some of the controls.
+
+<LI>Applications may crash when the application that registered the CTL3D
+   terminates.
+
+<LI>Debug versions of applications fail an assertion in
+   CWnd::GetSuperWndProcAddr().
+<P>
+</UL><h2>CAUSE</h2>
+ 
+<P>
+MFC versions 2.x rely on every control of a certain type having the same
+window procedure, which is not the case with CTL3D. The window procedure
+changes depending on whether the control has been subclassed or not.
+<P>
+The problem is that MFC uses a static variable per class to remember the
+previous window procedure when it subclasses a window that is newly created
+or one that is being subclassed with CWnd::SubclassWindow. This static
+variable is returned by the virtual function CWnd::GetSuperWndProcAddr().
+If the static is already non-zero and is different from the window
+procedure that the new window had before subclassing occurred,
+GetSuperWndProcAddr() will assert.
+<P>
+In release builds, the MFC DLL is shared by multiple applications, so every
+control of a certain type used by all the MFC applications that use the MFC
+DLL use the same window procedure. However, if the control is subclassed,
+the window procedure being used may belong to one of the applications. If
+this application terminates, controls in other applications will suddenly
+have an invalid window procedure. Also, if one application uses CTL3D but
+others do not, the applications that do not use CTL3D may reference the
+CTL3D window procedure anyway.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To work around this behavior, you must override GetSuperWndProcAddr for any
+windows you intend to subclass that may also be subclassed by CTL3D. In
+your override, return a pointer to a class member variable that holds the
+subclassed window procedure for the object's associated window.
+<P>
+For example, if you want to subclass a ComboBox that may also be subclassed
+by CTL3D, perform these steps:
+
+<OL><P><LI>Derive a class from CComboBox.
+
+<P><LI>Add a member variable, m_lpfnSuper, to the class.
+
+<P><LI>Override GetSuperWndProcAddr for the class and return &amp;m_lpfnSuper.
+<P>
+</OL>The class definition will look like this:
+<P>
+<PRE>   // combo3d.h
+
+   class C3dComboBox : public CComboBox
+   {
+   public:
+      virtual WNDPROC* GetSuperWndProcAddr();
+      WNDPROC m_lpfnSuper;
+   };
+
+</PRE></OL>The source file for the class will look like this:
+<P>
+<PRE>   // combo3d.cpp
+
+   #include "combo3d.h"
+
+   WNDPROC* C3dComboBox::GetSuperWndProcAddr()
+   {
+      return &amp;m_lpfnSuper;
+   }
+
+</PRE>Now it is safe to subclass and create from this new class, even if CTL3D
+subclasses the control.
+<P>
+You should do this same procedure for all the control classes you subclass.
+If you also turn CTL3D effects off for selected dialogs, you should follow
+this procedure for the CDialog class as well.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+MFC 3.0, included with Visual C++ version 2.0, is designed differently. It
+corrects this problem by adding the member variable m_pfnSuper to the CWnd
+class. CWnd::GetSuperWndProcAddr() returns the address of this member
+variable, instead of returning the address of a static member variable.
+With this change to MFC, it is no longer necessary to override
+GetSuperWndProcAddr() for every CWnd-derived class.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00 1.50 1.51 2.00 2.50 2.51<BR>
+KBCategory: kbprg kbcode kbprb<BR>
+KBSubCategory: MfcUI<BR>
+Keywords            : kb16bitonly kbcode kbprb kbprg<BR>
+Technology          : kbMfc<BR>
+Version             : 1.00 1.50 1.51<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

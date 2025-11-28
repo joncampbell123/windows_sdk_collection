@@ -1,0 +1,310 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How To Create Hard Symbolic Links in Windows NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q153181">
+<META NAME="KBModify" CONTENT="1996/12/16">
+<META NAME="KBCreate" CONTENT="1996/07/01">
+<META NAME="Keywords" CONTENT="kbprg kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Windows NT supports hard symbolic links on NTFS disk volumes for Posix compatibility. This article describes how to use the two programmatic approaches that exist for creating hard symbolic links in Windows NT:  1. Write a Posix application that us...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QAUD,QA8T,QAE2,QAX3,QABE,QBXA,QAI4,QA7T,QALG,QAGI,QAAD,QAH4,QAKC,QAG8 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How To Create Hard Symbolic Links in Windows NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 16, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q153181</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API)
+   included with Microsoft Windows NT, versions 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Windows NT supports hard symbolic links on NTFS disk volumes for Posix
+compatibility. This article describes how to use the two programmatic
+approaches that exist for creating hard symbolic links in Windows NT:
+
+<OL><P><LI>Write a Posix application that uses the link() call. Use the Posix
+   development files included with the Win32 SDK to build a Posix
+   application.
+
+<P><LI>Use the Win32 BackupWrite() function to construct a hard symbolic link.
+<P>
+</OL>Hard symbolic links and the files they reference must reside on the same
+NTFS volume; a link cannot reference a file on another volume. That is, a
+link cannot span multiple volumes.
+<P>
+<PRE> MORE INFORMATION
+</PRE></OL> 
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/*++
+
+</PRE>Copyright (c) 1996  Microsoft Corporation
+<P>
+Module Name:
+<P>
+<PRE>   ln.c
+
+</PRE>Abstract:
+<P>
+This module illustrates how to use the Win32 BackupWrite() API to
+create hard symbolic links.
+<P>
+NOTE: The new link filename path must be supplied to the BackupWrite()
+Win32 API call in Unicode.
+<P>
+--*/
+<P>
+#ifndef UNICODE
+<PRE>#define UNICODE
+#define _UNICODE
+</PRE>#endif
+<P>
+<PRE>#include &lt;windows.h&gt;
+#include &lt;stdio.h&gt;
+
+#define RTN_OK 0
+#define RTN_USAGE 1
+#define RTN_ERROR 13
+
+</PRE>int
+__cdecl
+wmain(
+<PRE>    int argc,
+    wchar_t *argv[]
+    )
+</PRE>{
+<PRE>    LPTSTR FileSource;
+    WCHAR FileLink[ MAX_PATH + 1 ];
+    LPWSTR FilePart;
+
+    HANDLE hFileSource;
+
+    WIN32_STREAM_ID StreamId;
+    DWORD dwBytesWritten;
+    LPVOID lpContext;
+    DWORD cbPathLen;
+    DWORD StreamHeaderSize;
+
+    BOOL bSuccess;
+
+    if(argc != 3) {
+        printf("Usage: %ls &lt;existing_source_file&gt; &lt;link_file&gt;\n",
+            argv[0]);
+        return RTN_USAGE;
+    }
+
+    FileSource = argv[1];
+
+    //
+    // open existing file that we link to
+    //
+
+    hFileSource = CreateFile(
+        FileSource,
+        FILE_WRITE_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL, // sa
+        OPEN_EXISTING,
+        0,
+        NULL
+        );
+
+    if(hFileSource == INVALID_HANDLE_VALUE) {
+        printf("CreateFile (source) error! (rc=%lu)\n", GetLastError());
+        return RTN_ERROR;
+    }
+
+    //
+    // validate and sanitize supplied link path and use the result
+    // the full path MUST be Unicode for BackupWrite
+    //
+
+    cbPathLen = GetFullPathNameW( argv[2], MAX_PATH, FileLink, &amp;FilePart
+</PRE>);
+<P>
+<PRE>    if(cbPathLen == 0) {
+        printf("GetFullPathName error! (rc=%lu)\n", GetLastError());
+        return RTN_ERROR;
+    }
+
+    cbPathLen = (cbPathLen + 1) * sizeof(WCHAR); // adjust for byte
+</PRE>count
+<P>
+<PRE>    //
+    // it might also be a good idea to verify the existence of the link,
+    // (and possibly bail), as the file specified in FileLink will be
+    // overwritten if it already exists
+    //
+
+    //
+    // prepare and write the WIN32_STREAM_ID out
+    //
+
+    lpContext = NULL;
+
+    StreamId.dwStreamId = BACKUP_LINK;
+    StreamId.dwStreamAttributes = 0;
+    StreamId.dwStreamNameSize = 0;
+    StreamId.Size.HighPart = 0;
+    StreamId.Size.LowPart = cbPathLen;
+
+    //
+    // compute length of variable size WIN32_STREAM_ID
+    //
+
+    StreamHeaderSize = (LPBYTE)&amp;StreamId.cStreamName - (LPBYTE)&amp;
+        StreamId+ StreamId.dwStreamNameSize ;
+
+    bSuccess = BackupWrite(
+        hFileSource,
+        (LPBYTE)&amp;StreamId,  // buffer to write
+        StreamHeaderSize,   // number of bytes to write
+        &amp;dwBytesWritten,
+        FALSE,              // don't abort yet
+        FALSE,              // don't process security
+        &amp;lpContext
+        );
+
+    if(bSuccess) {
+
+        //
+        // write out the buffer containing the path
+        //
+
+        bSuccess = BackupWrite(
+            hFileSource,
+            (LPBYTE)FileLink,   // buffer to write
+            cbPathLen,          // number of bytes to write
+            &amp;dwBytesWritten,
+            FALSE,              // don't abort yet
+            FALSE,              // don't process security
+            &amp;lpContext
+            );
+
+        //
+        // free context
+        //
+
+        BackupWrite(
+            hFileSource,
+            NULL,               // buffer to write
+            0,                  // number of bytes to write
+            &amp;dwBytesWritten,
+            TRUE,               // abort
+            FALSE,              // don't process security
+            &amp;lpContext
+            );
+    }
+
+    CloseHandle( hFileSource );
+
+    if(!bSuccess) {
+        printf("BackupWrite error! (rc=%lu)\n", GetLastError());
+        return RTN_ERROR;
+    }
+
+    return RTN_OK;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbhowto<BR>
+KBSubcategory: BseFileIo BseMisc CodeSam<BR>
+Additional reference words: 3.51 4.00 ln link symbolic
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 16, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

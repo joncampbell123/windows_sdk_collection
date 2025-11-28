@@ -1,0 +1,275 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: SQLPrepare and Temporary Stored Procedures in SQL Server </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q151536">
+<META NAME="KBModify" CONTENT="1997/04/08">
+<META NAME="KBCreate" CONTENT="1996/05/23">
+<META NAME="Keywords" CONTENT="kbprg kbusage SSrvProg SSrvStProc">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article explains the circumstances under which a temporary stored procedure is created when the autocommit mode is turned off and SQLPrepare is called.  MORE INFORMATION  SQLPrepare is used to obtain better performance when the same SQL statem...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QAB9,QBF0,QA9E,QAVX,QAVW,QAY5,QAPN,QBXR,QAY2,QAU3,QAMR,QAJQ,QBVV,QA2Q V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: SQLPrepare and Temporary Stored Procedures in SQL Server</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 8, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q151536</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 &amp; 6.5
+<LI>Microsoft Open Database Connectivity
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article explains the circumstances under which a temporary stored
+procedure is created when the autocommit mode is turned off and SQLPrepare
+is called.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+SQLPrepare is used to obtain better performance when the same SQL
+statement, with or without the same data, is executed repeatedly. In
+Microsoft SQL Server 6.5, it is implemented by creating a temporary stored
+procedure.
+<P>
+The Microsoft SQL Server driver can be configured to generate stored
+procedures to support the ODBC SQLPrepare statement. SQL Server version
+6.0 introduced temporary stored procedures, which are now used by the ODBC
+driver when it creates its procedures for prepared statements. For more
+information on how these procedures use the TEMPDB in SQL Server and when
+the server cleans them up, refer to the following Microsoft Knowledge Base
+article:
+<P>
+INF: SQL Server 6.0 ODBC Driver Changes Tempdb Usage
+ID: <B><A href="../sqlserver/q135532.htm">Q135532</A></B>
+<P>
+In the following discussion, it is assumed that you are using the
+SQLSetConnectOption API to set the SQL_USE_PROCEDURE_FOR_PREPARE option to
+SQL_UP_ON or SQL_UP_ON_DROP. When you use the ODBC Administrator to
+configure a SQL Server data source, the check box 'Generate Stored
+Procedure for Prepared Statement' represents SQL_UP_ON or SQL_UP_OFF
+depending on whether it is selected or cleared respectively. In order for
+the driver to generate a stored procedure, leave this option selected
+(default).
+<P>
+Consider a scenario where there are two or more statement handles on a SQL
+Server 6.5 connection and autocommit mode is turned off on that connection.
+Assume that you want to use the above statement handles to prepare
+different SQL statements. Only the first SQLPrepare in the sequence will
+generate a temporary stored procedure when there is no user-defined
+transaction pending. Subsequent SQLPrepare calls using the other statement
+handles will not generate temporary stored procedures.
+<P>
+For example:
+<P>
+<PRE>/**************************************************************************
+</PRE>*************************************/
+<P>
+In ISQL/W:
+<P>
+CREATE TABLE test(Col1 char (10) NULL ,Col2 char (10) NULL)
+<P>
+Insert into test values ('Hello','Subba')
+<P>
+ODBC C program:
+<P>
+HENV henv;
+HDBC hdbc;
+HSTMT hstmt1,hstmt2;
+<P>
+UCHAR Dsn[ ] = "MySQLServer";
+UCHAR Uid[ ]  = "sa";
+UCHAR Pwd[] = "yourpwd";
+UCHAR *szCol1="Hello", *szCol2 = "Subba";
+<P>
+<PRE>SWORD cbDSN = 11, cbUid = 2; cbPwd = 7;   //these are lenghts of datasource
+</PRE>name, user id, and password
+SDWORD pcbVal1 = SQL_NTS, pcbVal2 = SQL_NTS;
+<P>
+SQLAllocEnv(&amp;henv);
+SQLAllocConnect(henv, &amp;hdbc);
+SQLSetConnectOption(hdbc, SQL_USE_PROCEDURE_FOR_PREPARE ,SQL_UP_ON_DROP)
+SQLSetConnectOption(hdbc, SQL_AUTOCOMMIT,SQL_AUTOCOMMIT_OFF);
+SQLConnect(hdbc, Dsn, cbDSN, Uid, cbUid, Pwd, cbPwd);
+<P>
+SQLAllocStmt(hdbc, &amp;hstmt1);
+SQLAllocStmt(hdbc, &amp;hstmt2);
+<P>
+SQLPrepare(hstmt1,(UCHAR *)"select * from test where Col1 = ?", SQL_NTS);
+SQLBindParameter(hstmt1, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 10, 0,
+szCol1, sizeof(szCol1), &amp;pcbVal1);
+<PRE>SQLExecute(hstmt1);        /* this will create a temporary stored
+</PRE>procedure*/
+<P>
+SQLPrepare(hstmt2,(UCHAR *)"select * from test where Col2 = ?", SQL_NTS);
+SQLBindParameter(hstmt2, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 10, 0,
+szCol2, sizeof(szCol2), &amp;pcbVal2);
+<PRE>SQLExecute(hstmt2);     /* Does not create temporary stored procedure*/
+
+</PRE>SQLTransact(henv, hdbc, SQL_COMMIT);
+<P>
+<PRE>/**************************************************************************
+</PRE>*************************************/
+<P>
+To create a stored procedure, temporary or permanent, SQL Server obtains
+locks on some of the system tables.
+<P>
+The SQLExecute on hstmt1 does create the temporary stored procedure because
+there is no transaction active at that time. On the SQL Server, the
+implicit transaction started from creating the above procedure is
+immediately committed to prevent locks on system tables.
+<P>
+The second SQLExecute (hstmt2), however, does not create a temporary stored
+procedure because there is already a user defined transaction active (from
+the first SQLExecute). Creating a procedure for the second SQLExecute at
+this time would cause locks on system tables which would be held until the
+user commits or rolls back the transaction. This is bound to be a potential
+performance problem, so not creating a procedure for the second SQLExecute
+is by design.
+<P>
+Going to a 6.0 SQL Server is similar except that the create procedure can
+not appear in an active transaction, so only the 1st execution can create
+the procedure.
+<P>
+The implication of the above behavior is that calling SQLExecute on hstmt1
+repeatedly would give you a better performance because of the temporary
+stored procedure created. On the other hand, SQLExecute on hstmt2 would be
+identical to SQLExecDirect as far as performance is concerned due to the
+lack of a stored procedure. Applications can, however, workaround this
+behavior by keeping transactions short. For example, the following
+modifications to the above code would facilitate the generation of a stored
+procedure for the SQLExecute on hstmt2. For simplicity, the variable
+declaration is omitted here.
+<P>
+<PRE>/**************************************************************************
+</PRE>*************************************/
+SQLAllocEnv(&amp;henv);
+SQLAllocConnect(henv, &amp;hdbc);
+SQLSetConnectOption(hdbc, SQL_USE_PROCEDURE_FOR_PREPARE ,SQL_UP_ON_DROP)
+SQLSetConnectOption(hdbc, SQL_AUTOCOMMIT,SQL_AUTOCOMMIT_OFF);
+SQLConnect(hdbc, Dsn, cbDSN, Uid, cbUid, Pwd, cbPwd);
+<P>
+SQLAllocStmt(hdbc, &amp;hstmt1);
+SQLAllocStmt(hdbc, &amp;hstmt2);
+<P>
+SQLPrepare(hstmt1,(UCHAR *)"select * from test where Col1 = ?", SQL_NTS);
+SQLBindParameter(hstmt1, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 10, 0,
+szCol1, sizeof(szCol1), &amp;pcbVal1);
+<PRE>SQLExecute(hstmt1);              /* this will create a temporary stored
+</PRE>procedure*/
+<PRE>SQLTransact(henv, hdbc, SQL_COMMIT);   /*commit the first transaction */
+
+</PRE>SQLPrepare(hstmt2,(UCHAR *)"select * from beers where Col2 = ?", SQL_NTS);
+SQLBindParameter(hstmt2, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 10, 0,
+szCol2, sizeof(szCol2), &amp;pcbVal2);
+<PRE>SQLExecute(hstmt2);           /* creates a temporary stored procedure*/
+SQLTransact(henv, hdbc, SQL_COMMIT);   /*commit the second transaction */
+/**************************************************************************
+</PRE>*************************************/
+<P>
+With the above modification, you can call both SQLExecutes repeatedly and
+gain good performance. Note that the transaction commit behavior of this
+second sample is different from in the first sample. Also, if you can
+leave the autocommit mode on, which is the default connection option,
+temporary stored procedures will be created for all the prepared
+statements.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: MFC RDO VB<BR>
+Keywords            : kbprg kbusage SSrvProg SSrvStProc<BR>
+Version             : 2.65.0201 6.0 6.5<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 8, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

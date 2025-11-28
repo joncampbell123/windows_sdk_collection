@@ -1,0 +1,230 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>TN3270/E Server Service Incorrectly Handles Courtesy Acks </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q152164">
+<META NAME="KBModify" CONTENT="1997/04/17">
+<META NAME="KBCreate" CONTENT="1996/06/05">
+<META NAME="Keywords" CONTENT="kbbug2.11.sp1 kbfix2.11.sp2 kbnetwork ntnetserv">
+<META NAME="KBArea" CONTENT="Support; KB; sna">
+<META NAME="Description" CONTENT="  When you use a client that supports TN3270/E, the client connection may drop abnormally.  CAUSE =====  The TN3270/E Service may improperly handle acknowledgments between SNA Server and a TN3270E client, causing the SNA Server to report an invalid s...">
+<META NAME="Product" CONTENT="SNA Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QARL,QACK,QAH6,QAKC,QAYY,QAB7,QBC6,QAAP,QAEF,QAA7,QDO3,QAG8,QAD7,QAY2,QAH7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>TN3270/E Server Service Incorrectly Handles Courtesy Acks</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q152164</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SNA Server for Windows NT, version 2.11 Service Pack 1
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When you use a client that supports TN3270/E, the client connection may
+drop abnormally.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The TN3270/E Service may improperly handle acknowledgments between SNA
+Server and a TN3270E client, causing the SNA Server to report an invalid
+sequence number error to the TN3270/E Service. This error results in a
+dropped TN3270E client session.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Made a change to the TN3270E Server Service to not treat the RUI_WRITE as
+an implicit acknowledgment.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in Microsoft SNA Server
+version 2.11 Service Pack 1.
+This problem was corrected in the latest Microsoft SNA Server 2.11 U.S.
+Service Pack. For information on obtaining the service pack, query on the
+following word in the Microsoft Knowledge Base (without the spaces):
+<P>
+<PRE>   S E R V P A C K
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+The Way TN3270 (Not TN3270E) Clients Get Acknowledged by the TN3270/E
+Server Service
+ 
+<P>
+RUI applications, such as the TN3270/E Server service, are required to send
+courtesy acknowledgments for RQE data, so that the node can clear out its
+internal correlation table.
+<P>
+When the TN3270 Server is connected to a TN3270 client, the SNA Server
+Service issues a courtesy acknowledgment for each RU of data it receives
+from the SNA host just as soon as it has passed the data on to the TN3270
+client.
+<P>
+<P><h3>The Way TN3270/E Clients Get Acknowledged by the TN3270/E Server Service</h3>
+ 
+<P>
+When the TN3270 Server is connected to a TN3270/E client, acknowledgments
+are done differently. In TN3270E (unlike TN3270), data is passed to the
+TN3270E client with a flag specifying whether the data is RQD or RQE. The
+TN3270E terms for these are ALWAYS-RESPONSE and ERROR-RESPONSE. In order
+to match up responses from the TN3270E client, there is also a sequence
+number on each data message between the server and the client. This
+sequence number does not match the SNA sequence number in the SNF
+field (as defined by the IBM SNA Formats Guide).
+<P>
+Therefore, the effect of this is that the TN3270E Server cannot immediately
+send a courtesy acknowledgment for each RU of data it receives from the
+node, because the TN3270E client might, at some later time, send a negative
+response to the data, and the server is supposed to pass this negative
+response on to the SNA host. Therefore, the TN3270E Server has to keep its
+own correlation table---mapping TN3270E sequence numbers to SNA sequence
+numbers, just in case a TN3270E client decides to send a negative response
+to an ERROR-RESPONSE message. This correlation table has a fixed number of
+entries, and whenever this table begins to fill up the TN3270 Server clears
+out some of it (but only the oldest messages), and sends a courtesy
+acknowledgment at that point for the messages it is removing from the
+table.
+<P>
+The following diagram illustrates the message flow of the problem:
+<P>
+<PRE>TN3270E client              TN3270E Service               SNA Server
+</PRE> 
+<PRE>                                                          &lt;- RUI_READ Data
+                                                          (RQE, SNF=001E)
+
+                            &lt;- RUI_READ OK (Data,
+                            RQE, SNF=001E)
+
+                            &lt;- Data (RQE, SNF=001E)
+
+</PRE>RUI_WRITE (Courtesy ACK, -&gt;
+SNF=001E). See Note 1.
+<P>
+<PRE>                            Data (ACK, SNF=001E) -&gt;
+
+                            Implicit ACK (SNF=001E).   -&gt;
+                            See Note 2.
+                                                          &lt;- Error (Invalid
+                                                          Sequence Number)
+
+                            &lt;- Error (Invalid Sequence Number)
+
+</PRE>Notes:
+
+<UL><LI>This is an RUI_WRITE and is treated as a courtesy ack for the
+   RUI_READ that was received earlier. You can find out which data is
+   being acknowledged by looking at the snf field, and matching it up with
+   the snf field for the previous RUI_READ (001E).
+
+<LI>The TN3270E Server's algorithm does not take a crucial fact into
+   account. This fact is that the node treats inbound data (that is, data
+   from an TN3270E emulator) as an implicit courtesy acknowledgment for any
+   outbound data it has previously passed to the emulator. In this case,
+   there has been an exchange of outbound and inbound data (from the
+   TN3270E emulator), and by the time that the TN3270E Server issues a
+   courtesy acknowledgment to the SNA Server Service then the message for
+   which it is sending the acknowledgment has already been implicitly
+   acknowledged by some inbound data (RUI_WRITE).  This causes the error
+   which causes the session to end.
+<P></UL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: prodsna<BR>
+Keywords            : kbbug2.11.sp1 kbfix2.11.sp2 kbnetwork ntnetserv<BR>
+Version             : 2.11.sp1<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

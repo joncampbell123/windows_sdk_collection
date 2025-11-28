@@ -1,0 +1,229 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Changing Password in User Manager Does Not Permit Logon </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q140967">
+<META NAME="KBModify" CONTENT="1997/05/20">
+<META NAME="KBCreate" CONTENT="1995/12/07">
+<META NAME="Keywords" CONTENT="kbbug4.00 kbfix4.00 kbfix4.00.sp3 ntsecurity NTSrvWkst kbnetwork kbbuglist kbfixlist">
+<META NAME="KBArea" CONTENT="Support; KB; winnt, crossnet, iis">
+<META NAME="Description" CONTENT="  After you change a user's password in User Manager, logon attempts by this user using the new password may fail with the following error dialog being displayed:     The system could not log you on. Make sure your user name and domain    are correct...">
+<META NAME="Product" CONTENT="Windows NT">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAWK,QAGU,QAI5,QABI,QBVV,QA9A,QAR4,QAH5,QBW7,QAGI,QAKP,QBWP,QAAP,QBW3,QAUD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Changing Password in User Manager Does Not Permit Logon</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 20, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q140967</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows NT Workstation versions 3.51 and 4.0
+<LI>Microsoft Windows NT Server versions 3.51 and 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+After you change a user's password in User Manager, logon attempts by this
+user using the new password may fail with the following error dialog being
+displayed:
+<P>
+<PRE>   The system could not log you on. Make sure your user name and domain
+   are correct, then type your password again. Letters in passwords must
+   be typed using the correct case. Make sure that Caps Lock is not
+   accidentally on.
+
+</PRE>If the old password is known, you can still log on using the old password.
+<P>
+This condition persists for a period of time, then corrects itself. After
+a while, logon attempts succeed if the new password is used, and fail if
+the old password is used, as expected.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This error occurs when the following conditions apply:
+
+<UL><LI>"User Must Change Password At Next Logon" was checked when the password
+   was changed in User Manager (this option becomes checked by default when
+   changing the passwords of users who are not Administrators.)
+
+<LI>The workstation authenticates with a Backup Domain Controller (rather
+   than the Primary Domain Controller) before the new password has been
+   replicated from the PDC to the authenticating BDC.
+<P>
+   In this situation the BDC does not recognize the new password and refers
+   the logon request to the PDC. The PDC recognizes the new password, but
+   returns a status of 0xC0000224 (STATUS_PASSWORD_MUST_CHANGE).
+<P>
+   This indicates a valid logon, but the BDC was incorrectly treating this
+   as a failed logon and erroneously returning a status of 0xC000006A
+   (STATUS_BAD_PASSWORD) back to the workstation.
+<P>
+</UL><h2>MORE INFORMATION</h2>
+ 
+<P>
+During startup, a workstation establishes a secure channel with a Domain
+Controller for the purposes of logon validation. The secure channel may be
+established with any Domain Controller (the PDC or any BDC.) Once the
+secure channel is established with a domain controller, it stays connected
+to the same domain controller until the workstation is shut down and
+restarted. If there are many BDCs, the secure channel will most likely be
+with a BDC rather than the PDC.
+<P>
+When a user's password is changed via User Manager, the password change is
+recorded on the PDC only. The change is not replicated immediately to the
+BDCs. The change is only replicated at the next scheduled replication time
+or when an administrator manually requests synchronization of one or more
+BDCs, or the entire domain, from User Manager.
+<P>
+Prior to replication, the BDC is unaware of the new password so if a logon
+is attempted with the new password the BDC treats it as a bad password. The
+BDC does not reject the bad password immediately. Instead it passes the
+logon request to the PDC, on the assumption that the password is a new
+password known to the PDC but not yet been replicated to the BDC.
+<P>
+When "User Must Change Password At Next Logon" is in effect, the PDC
+returns a status of 0xC0000224 (STATUS_PASSWORD_MUST_CHANGE) to the BDC.
+This indicates a successful logon. However, in response to this status, the
+BDC was erroneously returning a status of 0xC000006A (STATUS_BAD_PASSWORD)
+back to the workstation.
+<P>
+If the logon with the new password succeeds and the logon with the old
+password fails, this is most likely due to SAM database synchronization
+occurring automatically while trying to reproduce the problem. Check the
+System event log on the BDC for recent NETLOGON events number 5715. This
+indicates successful partial synchronization of the SAM database, including
+the new password, which masks the problem. If this is the case, run the
+sequence again before the next automatic synchronization occurs.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Use one of the following to resolve this problem:
+
+<UL><LI>Synchronize the entire domain using Server Manager.
+
+<LI>Synchronize the appropriate BDC with the PDC using Server Manager.
+
+<LI>Wait for the password change to be replicated automatically.
+
+<LI>Apply the Hotfix described below to all Domain Controllers.
+<P>
+</UL>The Hotfix modifies the BDC's status handling code to pass a PDC status of
+0xC0000224 (STATUS_PASSWORD_MUST_CHANGE) through to the workstation that
+submitted the logon request. The workstation then recognizes a successful
+logon and prompts the user to change their password.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in Windows NT version 4.0.
+This problem was corrected in the latest Microsoft Windows NT 4.0 U.S. Service
+Pack. For information on obtaining the service pack, query on the following word
+in the Microsoft Knowledge Base (without the spaces):
+<P>
+<PRE>   S E R V P A C K
+
+</PRE>Microsoft has confirmed this to be a problem in Windows NT version 3.51. A
+supported fix is now available, but is not fully regression-tested and
+should be applied only to systems experiencing this specific problem.
+Unless you are severely impacted by this specific problem, Microsoft
+recommends that you wait for the next Service Pack that contains this fix.
+Contact Microsoft Product Support Services for more information.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: prodnt 3.51 4.00<BR>
+Keywords          : kbbug4.00 kbfix4.00 kbfix4.00.sp3 ntsecurity NTSrvWkst kbnetwork kbbuglist kbfixlist<BR>
+Version           : 3.51 4.0<BR>
+Platform          : winnt<BR>
+Solution Type     : kbservicepack<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 20, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

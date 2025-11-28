@@ -1,0 +1,267 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Launching OLE Servers from ISAPI Extensions </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q156223">
+<META NAME="KBModify" CONTENT="1997/08/21">
+<META NAME="KBCreate" CONTENT="1996/09/19">
+<META NAME="Keywords" CONTENT="IISAPI LeTwoArc">
+<META NAME="KBArea" CONTENT="Support; KB; ISAPI">
+<META NAME="Description" CONTENT="  An OLE server that is an EXE must include the IUSR_computername Internet guest account in its launch and access security permissions before it can be launched by an ISAPI extension DLL. In addition, if the server is an EXE server that is not a Win3...">
+<META NAME="Product" CONTENT="ISAPI">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWS,QAI5,QBG2,QBVV,QAGI,QAK7,QAGU,QAAD,QA9Q,QBWG,QBBI,QA7K,QABI,QBVX,QAOG V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Launching OLE Servers from ISAPI Extensions</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 21, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q156223</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE libraries included with:
+<P><PRE>    - Microsoft Windows NT 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+An OLE server that is an EXE must include the IUSR_computername Internet
+guest account in its launch and access security permissions before it can
+be launched by an ISAPI extension DLL. In addition, if the server is an EXE
+server that is not a Win32 service, it must be configured to run under a
+specific user account using the RunAs registry value.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Adding Launch and Access Permissions</h3>
+ 
+<P>
+In NT 4.0, EXE OLE servers use activation security to specify the security
+contexts of clients that can activate the server. The server specifies this
+by using the HKEY_CLASSES_ROOT\AppID\{...}\LaunchPermission &amp;
+AccessPermission keys or by defaulting to the default activation security
+for all servers on a machine specified by the
+HKEY_LOCAL_MACHINE\Software\Microsoft\OLE\DefaultLaunchPermission and
+DefaultAccessPermission keys. The values of these keys can be set using the
+DCOMCNFG.EXE graphical utility included in NT 4.0. Activation security is
+automatically applied by the Service Control Manager of a particular
+machine. Upon receipt of a request to activate an object from a client
+running in a different security context, the Service Control Manager checks
+the request against the Access Control List (ACL) specified by the above
+keys and will fail the activation if the client's security identifier is
+not in the ACL.
+<P>
+The Internet Information Service (IIS) runs in the LocalSystem account.
+However, the IIS thread that executes an ISAPI extension DLL impersonates
+the IUSR_computername account, which is an Internet guest account created
+when IIS is installed. The default launch and access permissions of OLE
+servers do not give IUSR_computername permission to launch the server. As a
+consequence, a CoCreateInstance call from an ISAPI extension DLL will fail
+with E_ACCESSDENIED.
+<P>
+This problem can be solved by adding the IUSR_computername to the OLE
+server's launch and access permissions using the DCOMCNFG.EXE utility.
+<P>
+IUSR_computername need not be added to the launch and access permissions
+of inproc OLE servers. For inproc OLE servers, make sure that SYSTEM is
+listed in the DefaultAccessPermissions, and CoCreateInstance will
+succeed.
+<P>
+For example, use the following steps to add to the Default Launch and
+Activation permissions:
+
+<OL><P><LI>Launch DCOMCNFG.EXE, which can be found in the system32 directory of
+   the Windows NT 4.0 installation.
+
+<P><LI>Click the Default Security tab.
+
+<P><LI>Click the Edit Default button in the Default Launch Permissions
+   group.
+
+<P><LI>Click the Add button in the Registry Value Permissions dialog.
+
+<P><LI>Click the computer name from the “List Names From” combo box.
+
+<P><LI>Click the Show Users button.
+
+<P><LI>Select and add the IUSR_computername Internet Guest Account. For
+   example, add IUSR_FOO, where FOO is the machine name. Click OK to get
+   out of the dialogs, and then click Apply.
+
+<P><LI>Similarly, add IUSR_computername to the Default Access Permissions.
+<P>
+</OL>The above process grants permission to launch all OLE servers.
+Permission can also be granted to launch individual servers by selecting
+the Applications tab in DCOMCNFG and selecting the server from the list of
+servers, and by using the Properties button and the Security tab to add to
+the permissions of an individual server.
+<P>
+<P><h3>Preventing USER32 Window Station/Desktop Failure</h3>
+ 
+<P>
+When IIS calls OleInitialize, OLE will cache the window station and desktop
+that are connected to the IIS process in the LocalSystem account. The IIS
+thread that executes the ISAPI extension DLL impersonates the
+IUSR_computername account. When the extension DLL calls CoCreateInstance to
+create an EXE server (which is not a service and is not marked with RunAs
+in the registry), OLE will call CreateProcess to create the server and will
+pass the cached window station and desktop in the STARTUPINFO parameter.
+The server will be run in the client's security context (IUSR_computername)
+because it is not a service and not marked with RunAs. The launched server
+will cause the following USER32 error:
+<P>
+<PRE>   "Initialization of the dynamic linked library USER32.DLL failed. The
+   process is terminating abnormally".
+
+</PRE></OL>CoCreateInstance will then fail with CO_E_SERVER_EXEC_FAILURE. The error
+occurs because the server is running in the IUSR_computername account
+and therefore cannot connect to the window station and desktop of the IIS
+process in the LocalSystem account. This USER32 failure will not occur
+for inprocess servers because the server runs in the IIS process and
+USER32 has already been initialized when the IIS process started.
+<P>
+This problem can be solved by configuring the server using the RunAs
+registry value to run under a user account. This can be “Interactive
+User” if an interactive user will be logged on, or can be a specific user
+account if an interactive user will not be logged on. If “Interactive
+User” is specified, the server will run in the interactive user's
+account and will connect to the interactive desktop. If a specific user
+account is specified, the server will run in that account and connect to
+its own window station and desktop. As a consequence, the USER32 error
+will not occur.
+<P>
+For example, use the following steps to configure a server to run under
+a user account:
+
+<OL><P><LI>Run DCOMCNFG.EXE.
+
+<P><LI>Click the Applications tab, and then click the server.
+
+<P><LI>Click the Properties button, and then click the Identity tab.
+
+<P><LI>Select “The interactive user” if an interactive user will be logged
+   on when the server is launched, or select “This user” and specify a user
+   if an interactive user will not be logged on when the server is
+   launched. This will add a RunAs registry entry under the APPID key of
+   the server.
+
+<P><LI>Make sure that the specified user is given launch and access
+   permissions to the server.
+<P>
+</OL>DCOMCNFG will even allow adding the RunAs named value to old OLE servers
+that did not provide an APPID key. It creates an APPID key for these
+servers.
+<P>
+Another solution to this USER32 problem is to call RevertToSelf before
+calling CoCreateInstance in the ISAPI extension. The thread will revert
+from the IUSR_computername account to the LocalSystem account and the
+launched server will run in the LocalSystem account. The USER32 error
+will not occur because the server will be able to connect to the window
+station and desktop of the IIS process, which also runs in the
+LocalSystem account. However, running a server in LocalSystem has a
+couple of problems:
+
+<OL><P><LI>LocalSystem is a highly-privileged account, and running a server in it
+   may give it more privileges than may be acceptable to you.
+
+<P><LI>The server will not be able to call to another machine using any
+   secure communications mechanism, including DCOM, because LocalSystem
+   does not have network rights. Consequently, the first solution is
+   recommended.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: OLE OLEISAPI COM DCOM<BR>
+Keywords          : IISAPI LeTwoArc<BR>
+Technology        : kbInetDev kbole<BR>
+Version           : 4.0<BR>
+Platform          : NT WINDOWS<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 21, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

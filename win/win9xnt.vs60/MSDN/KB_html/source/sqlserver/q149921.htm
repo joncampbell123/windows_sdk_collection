@@ -1,0 +1,254 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: ODBC ANSI Upgrade Changes From SQL Server 6.0 to 6.5 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q149921">
+<META NAME="KBModify" CONTENT="1997/04/08">
+<META NAME="KBCreate" CONTENT="1996/04/16">
+<META NAME="Keywords" CONTENT="kbinterop kbsetup odbc SSrvInst">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article discusses changes in behavior that are introduced when you upgrade from Microsoft SQL Server version 6.0 and its associated Microsoft ODBC drivers to SQL Server 6.5 and its associated Microsoft driver. If you are using non-Microsoft OD...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QAU9,QBXS,QA9E,QAUD,QAY2,QAGI,QAKD,QABA,QBAO,QAY5,QAS1,QAL3,QBV8,QABI V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: ODBC ANSI Upgrade Changes From SQL Server 6.0 to 6.5</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 8, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q149921</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+<LI>Microsoft Open Database Connectivity
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article discusses changes in behavior that are introduced when you
+upgrade from Microsoft SQL Server version 6.0 and its associated Microsoft
+ODBC drivers to SQL Server 6.5 and its associated Microsoft driver. If you
+are using non-Microsoft ODBC drivers, consult the documentation from your
+driver vendor.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When a version 2.65.0201 or later ODBC driver connects to a 6.50 or later
+SQL Server, it sets the following options with SQL Server:
+<P>
+<PRE>   SET TEXTSIZE 2147483647
+   SET ANSI_DEFAULTS ON
+   SET CURSOR_CLOSE_ON_COMMIT OFF
+   SET IMPLICIT_TRANSACTIONS OFF
+
+</PRE>The net effect of setting these options is that when the 2.65.0201 or later
+drivers are connected with a version 6.50 or later server, they will
+operate with three ANSI options turned on that were not turned on in
+earlier environments. The settings that will cause changes in behavior from
+those observed in the SQL Server 6.0 drivers are listed below. Additional
+information on their effects can be found in the SQL Server 6.5 "Books
+Online" section "What's New In 6.5," Part 4, What's New for Transact-SQL,
+Statements and Functions, Set Statement.
+<P>
+Also note that these behaviors will not show up in DB-library based
+applications such as ISQL/w, Enterprise Manager, isql, and so forth, unless
+the user has also issued the settings listed above.
+<P>
+SET ANSI_NULLS ON
+<P>
+With this setting active, SQL statements cannot use the = or &lt;&gt; operators
+to compare for nulls; they must use IS NULL or IS NOT NULL. For example, in
+the following ISQL/w script:
+<P>
+create table TestNull (cola int NOT NULL, colb char(3) NULL)
+go
+insert into TestNull values (1,'aaa')
+insert into TestNull(cola) values (2)
+go
+SET ANSI_NULLS OFF
+go
+select * from TestNull where colb = NULL
+go
+SET ANSI_NULLS ON
+go
+select * from TestNull where colb = NULL
+go
+<P>
+the first select returns one row with colb = NULL, the second select
+returns no rows. This can also affect commands in stored procedures if
+their WHERE clauses attempt = or &lt;&gt; comparisons using parameters passed in
+with null values. See the What's New section in the SQL Server 6.5 "Books
+Online" for further information.
+<P>
+SET ANSI_PADDING ON
+<P>
+When enabled, the ANSI_PADDING causes varchar and varbinary values to be
+padded with spaces or nulls. It also affects fixed-length datatypes such as
+<PRE>char or int. If the user specifies that columns of fixed-length datatypes
+</PRE>(char, int, tinyint, smallint) can be NULL, ANSI_PADDING causes these
+columns to be padded in the event of a null value.
+<P>
+If a table is created while ANSI_PADDING is enabled, the table column will
+exhibit the padding behavior. Disabling ANSI_PADDING has no effect on
+existing columns.
+<P>
+SET ANSI_WARNINGS ON
+<P>
+This setting will cause the Microsoft ODBC driver to generate messages in
+new conditions. One condition is that if an aggregate function encounters
+nulls it will generate a warning. For example, the following command
+referencing the table created above:
+<P>
+<PRE>   SQLExecDirect(hstmt,
+                 "select max(colb) from TestNull)",
+                 SQL_NTS);
+
+</PRE>will return SQL_SUCCESS_WITH_INFO and a call to SQLError will return:
+<P>
+<PRE>   szSqlState = "01003", *pfNativeError = 8153,
+   szErrorMsg="[Microsoft][ODBC SQL Server Driver][SQL Server]
+               Warning, null value eliminated from aggregate."
+
+</PRE>Another example is that an insert or update that attempts to put in a value
+whose length is larger than that allowed by the column will fail, whereas
+with ANSI_WARNINGS set off, the operation would go in after truncating the
+data. For example, with the TestNull table defined above and the 6.5
+driver, the following:
+<P>
+<PRE>   SQLExecDirect(hstmt,
+                 "insert into TestNull values (3, 'abcd')",
+                 SQL_NTS);
+
+</PRE>will return SQL_ERROR, and call to SQLError until it returns
+SQL_NO_DATA_FOUND will return:
+<P>
+<PRE>   szSqlState = "22001", *pfNativeError = 8152,
+   szErrorMsg="[Microsoft][ODBC SQL Server Driver][SQL Server]
+               Column 'colb' of table 'pubs.dbo.TestNull' cannot
+               accept 4 bytes (3 max)."
+   szSqlState = "01000", *pfNativeError = 3621,
+   szErrorMsg="[Microsoft][ODBC SQL Server Driver][SQL Server]
+               Command has been aborted."
+
+</PRE>The 2.65.0240 driver that comes with SQL Server 6.5 Service Pack 2 adds the
+ability to control these ANSI settings. With this driver, you have several
+options for controlling these settings:
+
+<OL><P><LI>The data source dialog box has a new check box that is displayed after
+   you click the options button. The name of the new check box is
+<PRE>   'Use ANSI Nulls, Padding, and Warnings'. If the check box is on the
+   driver will use these three options, if it is off the driver will not
+   use them.
+
+</PRE><P><LI>You can specify the keywords 'AnsiNPW=YES' or 'AnsiNPW=NO' on a call to
+   SQLConfigDataSource when configuring a data source for the 2.65.0240
+   driver.
+
+<P><LI>An application can specify the keywords 'AnsiNPW=YES' or
+<PRE>   'AnsiNPW=NO' on a call to SQLDriverConnect when connecting
+   through the 2.65.0240 driver.
+
+</PRE><P><LI>An application can call SQLSetConnectOption prior to connecting
+   as follows (assuming the programmer has copied over the file
+   odbcss.h from the Service Pack 2 directory):
+<P>
+<P><PRE>      SQLSetConnectOption(hstmt,SQL_COPT_SS_ANSI_NPW,SQL_AD_ON);
+</PRE><P>
+</OL>-or-
+<P>
+<PRE>      SQLSetConnectOption(hstmt,SQL_COPT_SS_ANSI_NPW,SQL_AD_OFF);
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:<BR>
+Keywords            : kbinterop kbsetup odbc SSrvInst<BR>
+Version             : 2.65.0201 6.5<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 8, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

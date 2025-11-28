@@ -1,0 +1,217 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Using References with va_* Macros from stdarg.h </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q119394">
+<META NAME="KBModify" CONTENT="1997/07/31">
+<META NAME="KBCreate" CONTENT="1994/08/15">
+<META NAME="Keywords" CONTENT="CRTIss">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  In Microsoft C++, if you use functions that accept a variable number of arguments, you may encounter problems when trying to use the va_* family of functions to access the parameters if the second parameter used for the va_start macro is a referenc...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QAHE,QBFY,QA4Q,QAYL,QAML,QAPN,QAKP,QAB3,QBF9,QAY2,QAL3,QAHH,QAGI,QAC2 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Using References with va_* Macros from stdarg.h</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 31, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q119394</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The C Run-time (CRT) included with:
+   - Microsoft C/C++ for MS-DOS, version 7.0
+   - Microsoft Visual C++ for Windows, versions 1.0, 1.5
+   - Microsoft Visual C++ 32-bit Edition, versions 1.0, 2.0, 2.1, 4.0, 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+In Microsoft C++, if you use functions that accept a variable number of
+arguments, you may encounter problems when trying to use the va_* family of
+functions to access the parameters if the second parameter used for the
+va_start macro is a reference type.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This problem is caused by the way that the va_start macro is defined and
+the way that the C++ language handles taking the address of a reference.
+Applying the "address of" operator to a reference type results in a pointer
+to the object that is being referred to. The va_start macro takes the
+address of the last named parameter to locate subsequent parameters. When
+the last named parameter is a reference, this causes problems because the
+macro is no longer referring to the current call stack but whatever follows
+the object being referred to, which could be a previous call stack or a
+global memory object.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+The workaround is to redefine the va_start macro to use inline assembly to
+subvert the C++ language.
+<P>
+NOTE: This solution is not portable and will require changing if you intend
+your source code to be used on non-Intel platforms.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The va_start macro is used in conjunction with the va_arg macro to "walk"
+the stack to get the parameters passed to the variable argument list. The
+va_start macro is defined as follows:
+<P>
+<PRE>   #define va_start(ap,v)  ( ap = (va_list)&amp;v + _INTSIZEOF(v) )
+
+</PRE>where va_list is defined as a char * on Intel platforms. The macro
+parameter "ap" is of type va_list. The problem arises from taking the
+address of the second parameter, "v", if v is a reference type. The net
+result of this macro being expanded is that ap is supposed to point to the
+first of the variable parameters. Casting v to a non-reference type
+intuitively seems like the logical solution, but because the result of a
+cast is not an l-value, the compiler returns an error message.
+<P>
+NOTE: The only way to get an l-value from a cast is to cast the value to a
+reference type, which results in the same problem.
+<P>
+<P><h3>Sample Code</h3>
+ 
+The sample code below demonstrates a solution for this problem:
+<P>
+<PRE>   /* Compile options needed:  none
+   */
+
+   #include &lt;stdio.h&gt;
+   #include &lt;stdarg.h&gt;
+
+   // Uncomment the following lines to work-around the problem:
+   //
+   // #ifdef va_start
+   // #undef va_start
+   //
+   // #ifdef _WIN32
+   // #define va_start(ap,v) {int var= _INTSIZEOF(v); \
+   //                __asm lea eax,v __asm add eax,var __asm mov ap,eax \
+   //                }
+   // #else
+   // #define va_start(ap,v) { int var=_INTSIZEOF(v);\
+   //                __asm lea ax,v __asm add ax,var __asm mov ap,ax\
+   //                }
+   // #endif
+   // #endif
+
+   void numprint( int &amp;first ... )
+   {
+     va_list ap;
+
+     va_start( ap, first );
+     printf("%d\n", first );
+     int ival = va_arg( ap, int );
+     printf("%d\n", ival );
+     double dval = va_arg( ap, double );
+     printf( "%.2f\n", dval );
+     va_end(ap);
+   }
+
+   void main()
+   {
+     int i=100,j=1000;
+     float f=999.99;
+
+     numprint( i,j,f );
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: ellipsis<BR>
+Keywords          : CRTIss<BR>
+Version           : 7.0 1.0 1.5 2.0 2.1 4.0 5.0<BR>
+Platform          : MS-DOS NT WINDOWS<BR>
+Issue type        : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 31, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

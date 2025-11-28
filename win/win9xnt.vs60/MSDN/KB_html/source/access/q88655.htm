@@ -1,0 +1,255 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC1x: How Microsoft Access 1.x Uses SQL Server Connections </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q88655 ">
+<META NAME="KBModify" CONTENT="1997/05/20">
+<META NAME="KBCreate" CONTENT="1992/08/30">
+<META NAME="Keywords" CONTENT="kbusage OdbcOthr">
+<META NAME="KBArea" CONTENT="Support; KB; access, convert, crossnet, dbweb, odbc, winprint, setup, vbapp, office, officevba">
+<META NAME="Description" CONTENT="  This article describes how Microsoft Access uses connections to SQL Server and how application developers can minimize the use of these connections.  This article assumes the you are highly knowledgeable about the low- level interaction between app...">
+<META NAME="Product" CONTENT="Access">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA1S,QAI5,QBG2,QDN9,QACF,QBVV,QALM,QAYY,QBVX,QAAW,QABM,QAJQ,QA4F,QA2O,QAY4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC1x: How Microsoft Access 1.x Uses SQL Server Connections</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 20, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q88655 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access versions 1.0, 1.1
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes how Microsoft Access uses connections to SQL Server
+and how application developers can minimize the use of these connections.
+<P>
+This article assumes the you are highly knowledgeable about the low-
+level interaction between applications and SQL Server.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The conventional application that accesses a server does it in a simple
+single-tasking manner, requiring a single connection to the server.
+Microsoft Access, however, is not a typical conventional server front-end.
+Many of its features, including updatable views (dynasets), joins between
+local and server data, execution of complex expressions that the server
+may not be able to handle, and seamless transition from one server to
+another, require Microsoft Access to obtain more connections than a
+conventional front-end.
+<P>
+Although some servers, such as Microsoft SQL Server, are not stingy giving
+out connections, there are other servers that place strict limits on the
+number of connections an application can open. (In some installations, SQL
+Server also places absolute restrictions on connections.) When designing
+applications for the more restrictive servers, it is important to
+understand how Microsoft Access uses connections.
+<P>
+Connections are opened by Microsoft Access when it needs to execute a
+query on the server (which it must do to build dynasets or static views),
+obtain the data in a dynaset, or update data on the server. These
+connections can be categorized into two types: connections needed to build
+the working set and connections needed to service dynasets.
+<P>
+Both types of views available in Microsoft Access (static views and
+dynasets) are built by executing a query (called a "local" query to
+differentiate it from other types of queries discussed in this article).
+This local query processes Microsoft Access and foreign ISAM data (both
+locally and file server based) and remote server data, and pulls it into a
+temporary table that represents the view. To build static views, the
+actual data is stored in the temporary table, whereas to build dynasets,
+pointers to the actual data are stored.
+<P>
+When server data is included in the local query, execution of the query
+involves asking the server (or servers) for data, which is done by opening
+connections and sending queries to the server. Each query sent to the
+server requires that a connection be opened. If more than one query is to
+be sent to the server, a single connection could be used and the queries
+executed serially. However, this would typically require the user to wait
+for all of the server queries to complete before any data would appear.
+Therefore, Microsoft Access executes the server queries in parallel,
+requiring a connection for each.
+<P>
+The number of queries sent to a server may not be entirely obvious.
+Much of the time, access to all of the remote base tables will be combined
+into a single query, if all of the base tables reside on the same server.
+In the worst case, each server base table referenced by the local query
+will require a connection. There are several factors that could compel
+Microsoft Access to split a local query into several server queries:
+
+<UL><LI>If server data is joined to data from other sources (that is,
+   local, foreign ISAM, and other servers), the Microsoft Access
+   optimizer may decide that it is more efficient not to combine
+   references to two tables on the same server into a single query.
+   For example, if the Customers and Order Items tables are on a server
+   and the Orders table is in a local Microsoft Access database, then it
+   is likely that the optimizer will decide to ask for the Customers and
+   Order Items tables separately, rather than asking for the cross-product
+   of the two, to join to the Orders table. As you can tell from this
+   example, this is unlikely to happen in a real scenario.
+
+<LI>If an expression involved in the query cannot be executed on the
+   server (either because the server does not support it or because the
+   semantics provided by the server differ greatly from those provided
+   by Microsoft Access), the expression will be executed locally. An
+   extreme example of this is a local query with a restriction that calls
+   a user-defined function. Although this may not require separating
+   remote tables into separate server queries, it will if the
+   expression that is not executable on the server is somehow involved
+   with the join between the two tables. Note that in Microsoft Access,
+   expressions containing a conjunction that can be executed on the
+   server will be executed locally in their entirety. These
+   expressions are not split to execute part locally and part on the
+   server.
+
+<LI>The parameters used to attach tables on the same server to a Microsoft
+   Access database differ. For example, if two tables are in different
+   databases, or if they are being accessed using different user names
+   and passwords, then separate connections will be required to
+   execute a local query referencing both of them.
+<P>
+   Connections opened in the execution of a local query will be kept
+   open until the working set containing the queries is closed.
+<P>
+   Connections are also opened in support of dynasets. But, unlike the
+   server queries sent during the execution of a local query, the
+   queries sent to the server in support of a dynaset are executed
+   entirely and very quickly. This is because they are used to fill
+   portions of the dynaset with data (given the pointers to the data
+   provided by the local query), and to do updates to the server.
+   Therefore, Microsoft Access opens only one connection per attached
+   server, provided that the link attachment information is the same
+   for each server tables.
+<P>
+</UL>As a result of the above rules, when Microsoft Access executes a query, it
+typically requires only one (for a static view) or two (for a dynaset)
+connection. This does not represent an extravagant use of server
+connections, but good applications could involve the execution of many
+Microsoft Access queries that could occupy many server connections very
+quickly. There are some steps the designer can take to minimize the use
+of connections:
+
+<UL><LI>Reduce the number of queries required by the application. Each
+   form, subform, data sheet, report, and list box requires a query,
+   and each of these queries that accesses server data will require at
+   least one or two connections. Close forms, data sheets, and reports
+   as soon as they are no longer needed. Also, bring server data to a
+   local database where practical, especially for filling list boxes.
+
+<LI>Avoid queries that join server data to local data to server data,
+   as described above. These types of queries will most likely be
+   executed using a connection for each server table.
+
+<LI>Avoid expressions that must be executed locally when joining server
+   data together. Each of the tables involved with such a join
+   expression, or that is restricted by a WHERE clause containing such
+   an expression, will need to be executed locally. It should be noted
+   that separating expressions into separate query objects will not
+   help alleviate this problem, because the optimizer combines all
+   query objects in a single query before execution for efficiency.
+
+<LI>Use static working sets when seeing other users' changes, or when
+   making changes yourself is not required. This will avoid the
+   connections needed to support dynasets.
+<P>
+</UL>With an understanding of how Microsoft Access uses connections, and with
+prudent application design, you should not run out of server connections.
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : kbusage OdbcOthr<BR>
+Version             : 1.0 1.1<BR>
+Platform            : WINDOWS<BR>
+Hardware            : x86<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 20, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

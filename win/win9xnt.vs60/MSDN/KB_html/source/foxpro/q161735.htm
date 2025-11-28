@@ -1,0 +1,251 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Saving the Viewing Order of Nodes in a TreeView </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q161735">
+<META NAME="KBModify" CONTENT="1997/02/10">
+<META NAME="KBCreate" CONTENT="1997/01/03">
+<META NAME="Keywords" CONTENT="kbother kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  The sample BldTree.scx, located in the Vfp\Samples\Solution\Ole folder, is an example of how to use the TreeView Control. It allows you to add nodes to the TreeView and then save and restore the Nodes from a table. The algorithm that the sample use...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUR,QAU7,QDI1,QAZZ,QACI,QAPF,QBWS,QADK,QBXS,QA7O,QAUD,QAGY,QAJQ,QAFI,QADZ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Saving the Viewing Order of Nodes in a TreeView</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q161735</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual FoxPro for Windows, version 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The sample BldTree.scx, located in the Vfp\Samples\Solution\Ole folder, is
+an example of how to use the TreeView Control. It allows you to add nodes
+to the TreeView and then save and restore the Nodes from a table. The
+algorithm that the sample uses saves all of the Nodes by index order.
+Because of this, it does not restore the Nodes in the same order if you
+added nodes using "Previous" for the Relationship. This article shows an
+algorithm that lets you save the Nodes in viewing order so that they can be
+restored in the same order.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+This article uses the BldTree.scx as a starting point. It will have you add
+two new command buttons to the form: one to add Nodes to the TreeView
+Control and a second to save the Nodes in viewing order to a table.
+<P>
+The BldTree.scx can be found in the Vfp\Samples\Solution\Ole folder.
+<P>
+For this article, set the above folder as the default by entering the
+following command in the Command window.
+<P>
+<PRE>   SET DEFAULT TO SYS(2004)+'SAMPLES\SOLUTION\OLE'
+
+</PRE><P><LI>Open the BldTree.scx in the Form Designer.
+
+<P><LI>Add two new command buttons to the form. (You may have to change the
+   size of the form to do this.)
+
+<P><LI>Change the caption of the first new command button to "Add Previous"
+   (without the quotes).
+
+<P><LI>Place the following code in the Click event:
+<P>
+<P><PRE>      o = THISFORM.oleTree
+      IF !ISNULL(o.SelectedItem)
+<PRE></PRE>        o.Nodes.Add(o.SelectedItem.Key, 3, THISFORM.NewKey(), "previous",0)
+      ENDIF
+
+</PRE><P><LI>Change the caption of the second new command button to "Save by View
+   Order" (without the quotes).
+
+<P><LI>Place the following code in the Click event:
+<P>
+<P><PRE>       LOCAL loNodes, lcParent, lcDBFName, lcOldAlias, lcOldSafety, liIndex
+       LOCAL liTmp
+       #DEFINE WARNING_LOC "Continuing will destroy all data in the " + ;
+<PRE></PRE>          "table and create a new table with three fields." + CHR(13) + ;
+          "Do you want to continue?"
+       #DEFINE WARN_LOC "Warning"
+
+       lcOldAlias = ALIAS()
+       lcOldSafety = SET("SAFETY")
+       lcDBFName = GETFILE("dbf")
+
+       IF EMPTY(lcDBFName) &amp;&amp; User chose Cancel
+         RETURN
+       ENDIF
+
+       IF FILE(lcDBFName)
+         IF THISFORM.OpenDBF(lcDBFName, .T.) AND ;
+           THISFORM.VerifyTableStructure() AND ;
+           MESSAGEBOX(WARNING_LOC,48+256+4,WARN_LOC) = 6
+                SET SAFETY OFF
+                ZAP
+                SET SAFETY &amp;lcOldSafety
+         ELSE
+                RETURN
+         ENDIF
+       ELSE
+         CREATE TABLE (lcDBFName) ;
+             (Key c(4), Parent c(4), Text c(60))
+       ENDIF
+
+       loNodes = THISFORM.oleTree.Nodes
+       FOR i = 1 to loNodes.Count
+          IF ISNULL(loNodes.Item(i).Parent)
+            liIndex = loNodes.Item(i).FirstSibling.Index
+            liTmp = liIndex
+            EXIT
+          ENDIF
+       NEXT
+
+       lcParent = "0_"  &amp;&amp;Root
+       INSERT INTO (lcDBFName) VALUES ;
+      (loNodes.Item(liIndex).key, ;
+           lcParent, ;
+           loNodes.Item(liIndex).Text)
+
+       DO WHILE liIndex &lt;&gt; loNodes.Item(liTmp).LastSibling.Index
+          INSERT INTO (lcDBFName) VALUES ;
+             (loNodes.Item(liIndex).Next.key, ;
+             lcParent, ;
+             loNodes.Item(liIndex).Next.Text)
+             liIndex = loNodes.Item(liIndex).Next.Index
+       ENDDO
+
+       FOR i = 1 TO loNodes.Count
+          IF loNodes.Item(i).Children &gt; 0
+             liIndex = loNodes.Item(i).Child.Index
+             liTmp = liIndex
+             INSERT INTO (lcDBFName) VALUES ;
+                (loNodes.Item(liIndex).key, ;
+                loNodes.Item(liIndex).Parent.Key, ;
+                loNodes.Item(liIndex).Text)
+             DO WHILE liIndex &lt;&gt; loNodes.Item(liTmp).LastSibling.Index
+                INSERT INTO (lcDBFName) VALUES ;
+                   (loNodes.Item(liIndex).Next.key, ;
+                   loNodes.Item(liIndex).Next.Parent.Key, ;
+                   loNodes.Item(liIndex).Next.Text)
+                   liIndex = loNodes.Item(liIndex).Next.Index
+             ENDDO
+          ENDIF
+       NEXT
+
+       USE
+
+</PRE><P><LI>Save the form as Vfp\Samples\Solution\Ole\Treebld2.scx
+
+<P><LI>Run the Form and create a tree by clicking New Root twice. Select the
+   last node in the TreeView control, and then click Add Previous.
+
+<P><LI>Click Save DBF to save a table named OldSave.dbf. Then click Save By
+   View Order to save a table named NewSave.dbf.
+
+<P><LI>Click Clear, and then click Load DBF to load OldSave.dbf.
+
+<P><LI>Repeat step 10 using NewSave.dbf.
+<P>
+</OL>You will see that the OldSave.dbf loaded the Node added with the Add
+Previous button to the bottom of the TreeView Control. But the NewSave.dbf
+had the Node added with the Add Previous button in the correct position.
+<P>
+(c) Microsoft Corporation 1997, All Rights Reserved.
+Contributions by Brian Combs, Microsoft Corporation
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbother kbhowto<BR>
+KBSubcategory: FxotherSample vfoxwin<BR>
+Additional reference words: 5.00 ActiveX<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

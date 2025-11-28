@@ -1,0 +1,232 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Use the SYS(3052) Function to Avoid Scrolling Error </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q138613">
+<META NAME="KBModify" CONTENT="1995/10/27">
+<META NAME="KBCreate" CONTENT="1995/10/24">
+<META NAME="Keywords" CONTENT="kbnetwork kbprg kbcode kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  The SYS(3052) function helps prevent the scrolling error message  Record Not Available, please wait  by specifying whether or not Visual FoxPro uses the SET REPROCESS settings when attempting to lock an index or a memo file. This article explains h...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA5V,QATJ,QA28,QAGB,QAY5,QAB4,QABT,QAEV,QACI,QBVV,QA9N,QA8T,QARL,QAB9,QAA8 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Use the SYS(3052) Function to Avoid Scrolling Error</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 27, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q138613</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual FoxPro for Windows, version 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The SYS(3052) function helps prevent the scrolling error message "Record
+Not Available, please wait" by specifying whether or not Visual FoxPro uses
+the SET REPROCESS settings when attempting to lock an index or a memo file.
+This article explains how to use the SYS(3052) function in multiuser
+applications.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The "Record not available, please wait" message is displayed when a table
+is updated but the index or memo file cannot be locked. There is not a way
+to escape or cancel this warning message until the contention has been
+resolved. By modifying the locking order of files, the SYS(3052) function
+can help suppress the scrolling message.
+<P>
+Currently, for performance optimization, Visual FoxPro performs record
+locks on a table and file locks on a memo and index file in the following
+order:
+<P>
+<PRE>   Lock table record
+   Write table record
+   Lock memo file
+   Write memo file
+   Lock index file
+   Write index file
+
+</PRE>When the index and memo attributes of the SYS(3052) function are set to
+True (.T.), the locking and updating order is as follows:
+<P>
+<PRE>   Lock table record
+   Lock memo file
+   Lock index file
+   Write table record
+   Write memo file
+   Write index file
+
+</PRE>As a result of using the SYS(3052) function, the scrolling "Record not
+available, please wait" message is less likely to occur. If this message is
+displayed, an abnormal shutdown would cause less discrepancy because
+neither the table nor the memo or index files have been updated.
+<P>
+The following example illustrates how to use the SYS(3052) function. To run
+it:
+
+<OL><P><LI>Copy and paste the two sample programs into two program files,
+   Server.prg and Client.prg.
+
+<P><LI>Start two instances of Visual FoxPro and run Server.prg.
+
+<P><LI>When the programs have run, issue an END TRANSACTION command in the
+   instance of Visual FoxPro that ran Server.prg.
+<P>
+</OL><h3>Sample Programs</h3>
+ 
+<P>
+*:*************************************************************************
+*:*: Procedure File Server.prg
+*:*************************************************************************
+*:   SERVER
+<PRE>   SET SAFETY OFF
+   SET EXCLUSIVE OFF
+
+   CLOSE DATA ALL
+   IF FILE('TSTSRVER.dbc')
+       DELETE DATA TSTSRVER DELETETABLES
+   ENDIF
+
+   =SYS(3052,1,.T.)
+   =SYS(3052,2,.T.)
+
+   CREATE DATA TSTSRVER  &amp;&amp; Creates a database and a table
+   CREATE TABLE xxx (dbkey i PRIMARY KEY, field2 c(5), field3 m)
+
+   INSERT INTO xxx VALUES (1, 'aaaaa', 'long string 1')
+   INSERT INTO xxx VALUES (2, 'bbbbb', 'long string 2')
+   INSERT INTO xxx VALUES (3, 'ccccc', 'long string 3')
+   INSERT INTO xxx VALUES (4, 'ddddd', 'long string 4')
+   INSERT INTO xxx VALUES (5, 'eeeee', 'long string 5')
+
+   CLOSE DATA ALL
+   OPEN DATA TSTSRVER SHARED
+   =MESSAGEBOX('Start the Client program on the second instance now.')
+   USE xxx SHARED  &amp;&amp; Executes after the Client program is started
+
+   BEGIN TRANSACTION
+   GOTO 2
+   REPLACE field3 WITH 'Changed String'
+   SKIP
+   ?'Return to client and press ok.'
+
+</PRE></OL>*:*************************************************************************
+*: Procedure File Client.prg
+*:*************************************************************************
+*: CLIENT
+<PRE>   SET SAFETY OFF
+   SET EXCLUSIVE OFF
+   CLOSE DATA ALL
+
+   =SYS(3052,1,.T.)  &amp;&amp; Changes the lock and write order
+   =SYS(3052,2,.T.)
+
+   USE XXX SHARED
+   =MESSAGEBOX('Switch to server and press OK')
+
+   GOTO 1
+   REPLACE field3 WITH 'Changed String from client'
+   SKIP
+
+</PRE>When these programs are run, the message "Attempting To Lock. Press Cancel"
+is displayed. When you press the ESC key, the error "Record is in Use by
+another user" appears, or your ON ERROR routine is triggered.
+<P>
+If you change the settings of SYS(3052) to false (.F.) in Client.prg, the
+scrolling message "Record not available, please wait" is displayed.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 VFoxWin rlock flock locking<BR>
+KBCategory: kbnetwork kbprg kbcode kbhowto<BR>
+KBSubcategory: FxprgMultiuser<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 27, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

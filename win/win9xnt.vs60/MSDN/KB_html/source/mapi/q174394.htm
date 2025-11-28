@@ -1,0 +1,606 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: IAdrBook::OpenEntry() Fails on Outlook Contacts </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q174394">
+<META NAME="KBModify" CONTENT="1997/09/26">
+<META NAME="KBCreate" CONTENT="1997/09/26">
+<META NAME="Keywords" CONTENT="kbcode EMAPI MAPIIAB">
+<META NAME="KBArea" CONTENT="Support; KB; mapi">
+<META NAME="Description" CONTENT="  If you attempt to use the PR_ENTRYID property for Outlook Contacts returned by IAdrBook::Address(), IAdrBook::OpenEntry() will fail with the error code MAPI_E_UNKNOWN_ENTRYID.  RESOLUTION  This problem does not occur when selecting addresses from t...">
+<META NAME="Product" CONTENT="mapi">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAI4,QAAP,QAB4,QAD7,QBE7,QBE6,QAH4,QAKP,QAUD,QAGI,QAC2,QBUP,QDOL,QAD2,QBVO V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: IAdrBook::OpenEntry() Fails on Outlook Contacts</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q174394</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Extended Messaging Application Programming Interface (MAPI), version 1.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+If you attempt to use the PR_ENTRYID property for Outlook Contacts returned
+by IAdrBook::Address(), IAdrBook::OpenEntry() will fail with the error code
+MAPI_E_UNKNOWN_ENTRYID.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+This problem does not occur when selecting addresses from the Exchange
+Global Address List or the Personal Address Book.
+<P>
+The only available workaround at this time is to use these steps after
+calling IAdrBook::Address() and before calling IAdrBook::OpenEntry():
+
+<OL><P><LI>Create a message (if one has not already been created).
+
+<P><LI>Call IMessage::ModifyRecipients() with the ADRLIST structure returned
+   from IAdrBook::Address.
+
+<P><LI>Call IMessage::GetRecipientsTable().
+
+<P><LI>Call HrQueryAllRows() or IMAPITable::QueryRows() to retrieve the rows
+   of the table and have access to the entry IDs of the recipients.
+<P>
+</OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following code both reproduces the problem and demonstrates the
+workaround described in the Resolution section of this article.
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+
+<OL><P><LI>Create a Console Application containing a program with code shown below
+   step 3.
+
+<P><LI>Add Mapi32.lib to the "Object/Library modules" text box in the Link tab
+   of the Project Settings dialog box.
+
+<P><LI>Compile, link, and run the application. When prompted to choose
+   recipients, be sure to select some recipients from your Outlook Address
+   Book in order to reproduce the problem.
+<P>
+</OL><h3>Sample Code</h3>
+ 
+<P>
+<PRE>    #include &lt;mapiutil.h&gt;
+    #include &lt;stdio.h&gt;
+
+    void _FreeRowSet( LPSRowSet );
+    HRESULT OpenDefStore( LPMAPISESSION, LPMDB* );
+
+    void main ( void )
+    {
+      printf ( "**** Begin program ****\r\n" );
+
+      HRESULT       hResult    = 0;
+      LPMAPISESSION lpSession  = NULL;
+      LPMDB         lpMsgStore = NULL;
+      LPMAPIFOLDER  lpInbox    = NULL;
+      LPADRBOOK     lpAdrBook  = NULL;
+      LPADRLIST     lpadrlist  = NULL;
+
+      printf ( "1. Initializing MAPI..." );
+      {
+        if ( FAILED(hResult = MAPIInitialize( NULL )))
+        {
+           printf ( " FAILED with error: %X\r\n", hResult );
+           goto error;
+        }
+        else
+           printf ( " OK\r\n" );
+      }
+
+      printf ( "2. Logging on...");
+      {
+        ULONG       ulFlags     = 0;
+
+        ulFlags = ulFlags | MAPI_LOGON_UI | MAPI_NO_MAIL |
+                  MAPI_EXTENDED | MAPI_NEW_SESSION;
+
+        if( FAILED(hResult = MAPILogonEx( 0, NULL,
+                       NULL, ulFlags,
+                       (LPMAPISESSION FAR *) &amp;lpSession )))
+        {
+          printf ( " FAILED with error: %X\r\n", hResult );
+          goto error;
+        }
+        else
+          printf ( " OK\r\n" );
+      }
+
+      printf ("3. Opening Address Book...");
+      {
+        if( FAILED(hResult = lpSession-&gt;OpenAddressBook( 0,
+                                    NULL, 0, &amp;lpAdrBook )))
+        {
+          printf ( " FAILED with error: %X\r\n", hResult );
+          goto error;
+        }
+        else
+          printf ( " OK\r\n" );
+      }
+
+      printf ("4. Display AddressBook dialog box with one well..." );
+      {
+        LPSTR    rglpszDestTitles[1];
+        ULONG    rgulDestComps[1];
+        ULONG    ulFlags           = 0;
+        ULONG    ulUIParam         = 0;
+
+        ulFlags = ulFlags | DIALOG_MODAL;
+
+        rglpszDestTitles[0]        = "To";
+        rgulDestComps[0]           = MAPI_TO;
+
+        ADRPARM  adrparm;
+        adrparm.cbABContEntryID    = 0;
+        adrparm.lpABContEntryID    = NULL;
+        adrparm.ulFlags            = ulFlags;
+        adrparm.lpReserved         = NULL;
+        adrparm.ulHelpContext      = 0;
+        adrparm.lpszHelpFileName   = NULL;
+        adrparm.lpfnABSDI          = NULL;
+        adrparm.lpfnDismiss        = NULL;
+        adrparm.lpvDismissContext  = NULL;
+        adrparm.lpszCaption        = "MAPI ITP tests Address 1";
+        adrparm.lpszNewEntryTitle  = "For this test dialog";
+        adrparm.lpszDestWellsTitle = "Selected Recipients:";
+        adrparm.cDestFields        = 1;
+        adrparm.nDestFieldFocus    = 0;
+        adrparm.lppszDestTitles    = rglpszDestTitles;
+        adrparm.lpulDestComps      = rgulDestComps;
+        adrparm.lpContRestriction  = NULL;
+        adrparm.lpHierRestriction  = NULL;
+
+        if( FAILED(hResult = lpAdrBook-&gt;Address( &amp;ulUIParam,
+                                        &amp;adrparm, &amp;lpadrlist )))
+        {
+          printf ( " FAILED with error: %X\r\n", hResult );
+          goto error;
+        }
+        else
+          printf ( " OK\r\n" );
+      }
+
+      if (!lpadrlist)
+        goto error;
+
+      printf ( "5. Getting Entry IDs and opening each " );
+      printf ( "ADRENTRY...\r\n" );
+      {
+        ULONG   cEntry   = 0;
+        ULONG   cProp   = 0;
+
+        for(cEntry=0; cEntry&lt;lpadrlist-&gt;cEntries; cEntry++)
+        {
+          for(cProp=0;
+              cProp &lt; lpadrlist-&gt;aEntries[cEntry].cValues;
+              cProp++)
+          {
+            printf ( "   &gt;Name: " );
+            if( lpadrlist-&gt;aEntries[cEntry].rgPropVals[cProp].ulPropTag
+                == PR_DISPLAY_NAME )
+            {
+              printf (
+               lpadrlist-&gt;aEntries[cEntry].rgPropVals[cProp].Value.LPSZ
+                     );
+              printf ( " ...\r\n" );
+              break;
+            }
+          }
+
+          printf ( "    --&gt;Find EntryID " );
+
+          LPSPropValue lpsPropVal = NULL;
+          lpsPropVal = PpropFindProp (
+                           lpadrlist-&gt;aEntries[cEntry].rgPropVals,
+                           lpadrlist-&gt;aEntries[cEntry].cValues,
+                           PR_ENTRYID );
+
+          if (NULL == lpsPropVal)
+            printf ( " FAILED\r\n " );
+          else
+            printf ( " OK ... \r\n" );
+
+          printf ( "    --&gt;OpenEntry " );
+          {
+            ULONG       ulObjType       = 0;
+            LPMAPIPROP  lpEntry         = NULL;
+            ULONG       ulFlags         = 0;
+            ulFlags = ulFlags | MAPI_BEST_ACCESS;
+
+            if( FAILED(hResult =
+                lpAdrBook-&gt;OpenEntry(lpsPropVal-&gt;Value.bin.cb,
+                         (LPENTRYID)lpsPropVal-&gt;Value.bin.lpb,
+                         NULL, ulFlags, &amp;ulObjType,
+                         (LPUNKNOWN*)&amp;lpEntry)))
+              printf ( " FAILED with error: %X\r\n", hResult );
+            else
+            {
+              printf ( " OK\r\n" );
+              lpEntry-&gt;Release();
+            }
+          }
+
+          if (lpsPropVal)
+            MAPIFreeBuffer(lpsPropVal);
+        }
+
+        printf ( "6. Opening Default Message Store ... " );
+        {
+          if (FAILED(hResult = OpenDefStore(lpSession, &amp;lpMsgStore)))
+          {
+            printf ( " FAILED with error: %X\r\n", hResult );
+            goto error;
+          }
+          else
+            printf ( " OK\r\n" );
+        }
+
+        printf ( "7a. Get Receive Folder... " );
+        {
+          SBinary sbInboxEID = {0, NULL};
+          ULONG         ulObjType   = 0;
+
+          if (FAILED(hResult =
+              lpMsgStore-&gt;GetReceiveFolder("IPM.Note", 0,
+                          &amp;sbInboxEID.cb,
+                          (LPENTRYID *) &amp;sbInboxEID.lpb, NULL)))
+          {
+            printf ( " FAILED with error: %X\r\n", hResult );
+            goto error;
+          }
+          else
+            printf ( " OK\r\n" );
+
+          printf ( "7b. OpenEntry on Inbox[ASCII 133] " );
+          if (FAILED(hResult =
+              lpSession-&gt;OpenEntry(sbInboxEID.cb,
+                         (LPENTRYID) sbInboxEID.lpb, NULL,
+                         MAPI_MODIFY, &amp;ulObjType,
+                         (LPUNKNOWN *) &amp;lpInbox)))
+            printf ( " FAILED with error: %X\r\n", hResult);
+          else
+            printf ( "    Open Inbox OK\r\n", hResult);
+
+          if (sbInboxEID.cb)
+            MAPIFreeBuffer(sbInboxEID.lpb);
+
+          if (!lpInbox)
+            goto error;
+        }
+
+        printf ( "8. Creating Message... " );
+        {
+          LPMESSAGE lpMsg = NULL;
+
+          if (FAILED(hResult =
+              lpInbox-&gt;CreateMessage(NULL, 0, &amp;lpMsg)))
+            printf ( " FAILED with error: %X\r\n", hResult);
+          else
+            printf ( " OK\r\n" );
+
+
+          if (lpMsg)
+          {
+            printf ( "9. Modify Recipients... " );
+            if (FAILED(hResult =
+                lpMsg-&gt;ModifyRecipients(MODRECIP_ADD, lpadrlist)))
+              printf( " FAILED with error: %X\r\n", hResult);
+            else
+            {
+              printf( " OK\r\n");
+
+              printf ( "10. Get Recipient table... " );
+              LPMAPITABLE lpRecips = NULL;
+              if (FAILED(hResult =
+                  lpMsg-&gt;GetRecipientTable(0, &amp;lpRecips)))
+                printf ( " FAILED with error: %X\r\n", hResult);
+              else
+              {
+                printf ( " OK\r\n" );
+
+                printf ( "11. GetRowCount... " );
+                LPSRowSet lpsRowSet = NULL;
+                ULONG     uRowCnt   = 0;
+
+                if (FAILED(hResult =
+                    lpRecips-&gt;GetRowCount(0, &amp;uRowCnt)))
+                  printf (" FAILED with error: %X\r\n", hResult);
+                else
+                  printf (" OK with Count: %u\r\n", uRowCnt );
+
+                printf ("13. Getting Entry IDs/OpenEntry...\r\n");
+                for (ULONG uRows=0; uRows &lt; uRowCnt; uRows++)
+                {
+                  printf ( "   &gt;QueryRows... " );
+                  if (FAILED(hResult =
+                    lpRecips-&gt;QueryRows( (ULONG)1, 0, &amp;lpsRowSet)))
+                  printf (" FAILED with error: %X\r\n", hResult);
+                else
+                {
+                  printf (" OK\r\n" );
+
+                  LPSPropValue lpsPropVal1 = NULL;
+                  lpsPropVal1 = PpropFindProp (
+                                  lpsRowSet-&gt;aRow[0].lpProps,
+                                  lpsRowSet-&gt;aRow[0].cValues,
+                                  PR_DISPLAY_NAME );
+                  if (NULL != lpsPropVal1)
+                  {
+                    printf( "   --&gt;Name: " );
+                    printf( lpsPropVal1-&gt;Value.LPSZ );
+                    printf( "\r\n" );
+                  }
+
+                  printf ( "   -----&gt;Find EntryID..." );
+                  LPSPropValue lpsPropVal = NULL;
+                  lpsPropVal = PpropFindProp (
+                                  lpsRowSet-&gt;aRow[0].lpProps,
+                                  lpsRowSet-&gt;aRow[0].cValues,
+                                  PR_ENTRYID );
+
+                  if (NULL == lpsPropVal)
+                      printf ( " FAILED\r\n" );
+                    else
+                    {
+                      printf ( " OK \r\n" );
+
+                      ULONG       ulObjType       = 0;
+                      LPMAPIPROP  lpEntry         = NULL;
+                      ULONG       ulFlags         = 0;
+                      ulFlags = ulFlags | MAPI_BEST_ACCESS;
+
+                      printf ( "   -----&gt;OpenEntry...");
+                      if ( FAILED(hResult =
+                          lpAdrBook-&gt;OpenEntry(
+                                 lpsPropVal-&gt;Value.bin.cb,
+                                 (LPENTRYID)lpsPropVal-&gt;Value.bin.lpb,
+                                 NULL, ulFlags, &amp;ulObjType,
+                                 (LPUNKNOWN*)&amp;lpEntry)))
+                        printf ( " FAILED with error: %X\r\n",
+                                hResult );
+                      else
+                      {
+                        printf ( " OK\r\n" );
+                        lpEntry-&gt;Release();
+                      }
+
+                      MAPIFreeBuffer(lpsPropVal);
+                    }
+
+                    MAPIFreeBuffer(lpsRowSet);
+                  }
+                }
+
+                lpRecips-&gt;Release();
+              }
+
+            }
+            lpMsg-&gt;Release();
+          }
+
+        }
+
+      }
+
+      error:
+        if (lpInbox)
+          lpInbox-&gt;Release();
+
+        if (lpMsgStore)
+        {
+           ULONG uflags = 0;
+           lpMsgStore-&gt;StoreLogoff(&amp;uflags);
+           lpMsgStore-&gt;Release();
+        }
+
+        if (lpadrlist)
+          _FreeRowSet((LPSRowSet) lpadrlist);
+
+        if (lpAdrBook)
+          lpAdrBook-&gt;Release();
+
+        if (lpSession)
+        {
+          lpSession-&gt;Logoff(0,0,0);
+          lpSession-&gt;Release();
+        }
+
+        printf ( "***** END PROGRAM *****\r\n" );
+
+      return;
+    }
+
+    void _FreeRowSet( LPSRowSet lpRows )
+    {
+      ULONG cRows;
+
+      if ( !lpRows )
+        return;
+
+      for( cRows = 0; cRows &lt; lpRows-&gt;cRows; ++cRows )
+      {
+        MAPIFreeBuffer( lpRows-&gt;aRow[cRows].lpProps );
+      }
+
+      MAPIFreeBuffer( lpRows );
+    }
+
+    HRESULT OpenDefStore(LPMAPISESSION m_pSess, LPMDB *m_pMDB)
+    {
+      LPMAPITABLE         pStoresTbl = NULL;
+      LPSRowSet           pRow       = NULL;
+      SBinary             sbEID      = {0,NULL};
+      static SRestriction sres;
+      SPropValue          spv;
+      HRESULT             hRes;
+
+      static SizedSPropTagArray(2,sptCols) =
+                        {2,PR_ENTRYID,PR_DEFAULT_STORE};
+
+      if (FAILED(hRes = m_pSess -&gt; GetMsgStoresTable(0, &amp;pStoresTbl)))
+      {
+        goto Quit;
+      }
+
+      sres.rt = RES_PROPERTY;
+      sres.res.resProperty.relop = RELOP_EQ;
+      sres.res.resProperty.ulPropTag = PR_DEFAULT_STORE;
+      sres.res.resProperty.lpProp = &amp;spv;
+
+      spv.ulPropTag = PR_DEFAULT_STORE;
+      spv.Value.b   = TRUE;
+
+      if (FAILED(hRes = HrQueryAllRows(pStoresTbl,
+                              (LPSPropTagArray) &amp;sptCols,
+                              &amp;sres, NULL, 0, &amp;pRow)))
+        goto Quit;
+
+      if (pRow                    &amp;&amp;
+          pRow -&gt; cRows           &amp;&amp;
+          pRow -&gt; aRow[0].cValues &amp;&amp;
+          PR_ENTRYID == pRow -&gt; aRow[0].lpProps[0].ulPropTag)
+        sbEID  = pRow -&gt; aRow[0].lpProps[0].Value.bin;
+
+      else
+      {
+        hRes = MAPI_E_NOT_FOUND;
+        goto Quit;
+      }
+
+      if (FAILED(hRes =
+          m_pSess -&gt; OpenMsgStore(0, sbEID.cb,
+                                  (LPENTRYID)sbEID.lpb,
+                                  NULL, MDB_WRITE, m_pMDB)))
+        goto Quit;
+
+      Quit:
+        FreeProws(pRow);
+
+        if (pStoresTbl)
+          pStoresTbl -&gt; Release();
+
+      return hRes;
+    }
+
+</PRE></OL><h2>REFERENCES</h2>
+ 
+<P>
+Excerpts of code were used from the following samples:
+
+<UL><LI>Abview.cli (available from the Microsoft ftp site at
+   <B><A href="ftp://ftp.microsoft.com/developr/mapi/samples/mfcapps/mfcapps.zip)">ftp://ftp.microsoft.com/developr/mapi/samples/mfcapps/mfcapps.zip).</A></B>
+
+<LI>HelloMAPI (from the Companion CD of the book Inside MAPI)
+<P>
+</UL> 
+<PRE>Keywords          : kbcode EMAPI MAPIIAB
+Version           : WINDOWS:1.0
+Platform          : WINDOWS
+Issue type        : kbbug</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

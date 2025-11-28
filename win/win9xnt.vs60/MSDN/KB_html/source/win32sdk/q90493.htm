@@ -1,0 +1,310 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How To Determine Whether an Application is Console or GUI </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q90493 ">
+<META NAME="KBModify" CONTENT="1996/12/16">
+<META NAME="KBCreate" CONTENT="1992/10/15">
+<META NAME="Keywords" CONTENT="kbprg kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  In order to determine whether an application is console or GUI, you must parse the EXEheader. The header contains a field called 'Subsystem'. This field determines both the subsystem the application is to run under and the type of interface it requ...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGB,QDL9,QBWO,QBWN,QALG,QAGX,QAP2,QAFV,QBFN,QAAP,QADK,QBWQ,QAJH,QAB4,QAFK V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How To Determine Whether an Application is Console or GUI</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 16, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q90493 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.1, 3.5, 3.51, 4.0
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In order to determine whether an application is console or GUI, you must
+parse the EXEheader. The header contains a field called 'Subsystem'. This
+field determines both the subsystem the application is to run under and the
+type of interface it requires. The values consist of:
+<P>
+<PRE>   IMAGE_SUBSYSTEM_NATIVE               1
+   IMAGE_SUBSYSTEM_WINDOWS_GUI          2
+   IMAGE_SUBSYSTEM_WINDOWS_CUI          3
+   IMAGE_SUBSYSTEM_OS2_CUI              5
+   IMAGE_SUBSYSTEM_POSIX_CUI            7
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>#include &lt;windows.h&gt;
+#include &lt;winnt.h&gt;
+
+</PRE>VOID  main(int, char **);
+DWORD AbsoluteSeek(HANDLE, DWORD);
+VOID  ReadBytes(HANDLE, LPVOID, DWORD);
+VOID  WriteBytes(HANDLE, LPVOID, DWORD);
+VOID  CopySection(HANDLE, HANDLE, DWORD);
+<P>
+<PRE>#define XFER_BUFFER_SIZE 2048
+
+</PRE>VOID
+main(int argc, char *argv[])
+{
+<PRE>    HANDLE hImage;
+
+    DWORD  bytes;
+    DWORD  iSection;
+    DWORD  SectionOffset;
+    DWORD  CoffHeaderOffset;
+    DWORD  MoreDosHeader[16];
+
+    ULONG  ntSignature;
+
+    IMAGE_DOS_HEADER      image_dos_header;
+    IMAGE_FILE_HEADER     image_file_header;
+    IMAGE_OPTIONAL_HEADER image_optional_header;
+    IMAGE_SECTION_HEADER  image_section_header;
+
+    if (argc != 2)
+    {
+        printf("USAGE: %s program_file_name\n", argv[1]);
+        exit(1);
+    }
+
+    /*
+     *  Open the reference file.
+     */
+    hImage = CreateFile(argv[1],
+                        GENERIC_READ,
+                        FILE_SHARE_READ,
+                        NULL,
+                        OPEN_EXISTING,
+                        FILE_ATTRIBUTE_NORMAL,
+                        NULL);
+
+    if (INVALID_HANDLE_VALUE == hImage)
+    {
+        printf("Could not open %s, error %lu\n", argv[1], GetLastError());
+        exit(1);
+    }
+
+    /*
+     *  Read the MS-DOS image header.
+     */
+    ReadBytes(hImage,
+              &amp;image_dos_header,
+              sizeof(IMAGE_DOS_HEADER));
+
+    if (IMAGE_DOS_SIGNATURE != image_dos_header.e_magic)
+    {
+        printf("Sorry, I do not understand this file.\n");
+        exit(1);
+    }
+
+    /*
+     *  Read more MS-DOS header.       */
+    ReadBytes(hImage,
+              MoreDosHeader,
+              sizeof(MoreDosHeader));
+
+    /*
+     *  Get actual COFF header.
+     */
+    CoffHeaderOffset = AbsoluteSeek(hImage, image_dos_header.e_lfanew) +
+                       sizeof(ULONG);
+
+    ReadBytes (hImage, &amp;ntSignature, sizeof(ULONG));
+
+    if (IMAGE_NT_SIGNATURE != ntSignature)
+    {
+     printf("Missing NT signature. Unknown file type.\n");
+     exit(1);
+    }
+
+    SectionOffset = CoffHeaderOffset + IMAGE_SIZEOF_FILE_HEADER +
+                    IMAGE_SIZEOF_NT_OPTIONAL_HEADER;
+
+    ReadBytes(hImage,
+              &amp;image_file_header,
+              IMAGE_SIZEOF_FILE_HEADER);
+
+    /*
+     *  Read optional header.
+     */
+    ReadBytes(hImage,
+              &amp;image_optional_header,
+              IMAGE_SIZEOF_NT_OPTIONAL_HEADER);
+
+    switch (image_optional_header.Subsystem)
+    {
+    case IMAGE_SUBSYSTEM_UNKNOWN:
+        printf("Type is unknown.\n");
+        break;
+
+    case IMAGE_SUBSYSTEM_NATIVE:
+        printf("Type is native.\n");
+        break;
+
+    case IMAGE_SUBSYSTEM_WINDOWS_GUI:
+        printf("Type is Windows GUI.\n");
+        break;
+
+    case IMAGE_SUBSYSTEM_WINDOWS_CUI:
+        printf("Type is Windows CUI.\n");
+        break;
+
+    case IMAGE_SUBSYSTEM_OS2_CUI:
+        printf("Type is OS/2 CUI.\n");
+        break;
+
+    case IMAGE_SUBSYSTEM_POSIX_CUI:
+        printf("Type is POSIX CUI.\n");
+        break;
+
+    default:
+        printf("Unknown type %u.\n", image_optional_header.Subsystem);
+        break;
+    }
+</PRE>}
+<P>
+DWORD
+AbsoluteSeek(HANDLE hFile,
+<PRE>             DWORD  offset)
+{
+    DWORD newOffset;
+
+    if ((newOffset = SetFilePointer(hFile,
+                                    offset,
+                                    NULL,
+                                    FILE_BEGIN)) == 0xFFFFFFFF)
+    {
+        printf("SetFilePointer failed, error %lu.\n", GetLastError());
+        exit(1);
+    }
+
+    return newOffset;
+</PRE>}
+<P>
+VOID
+ReadBytes(HANDLE hFile,
+<PRE>          LPVOID buffer,
+          DWORD  size)
+{
+    DWORD bytes;
+
+    if (!ReadFile(hFile,
+                  buffer,
+                  size,
+                  &amp;bytes,
+                  NULL))
+    {
+        printf("ReadFile failed, error %lu.\n", GetLastError());
+        exit(1);
+    }
+    else if (size != bytes)
+    {
+        printf("Read the wrong number of bytes, expected %lu, got %lu.\n",
+               size, bytes);
+        exit(1);
+    }
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbhowto<BR>
+KBSubcategory: BseMisc<BR>
+Additional reference words: 3.10 3.50 3.51 4.00 95<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 16, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,267 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Modify Printer Settings by Using SetPrinter </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q140285">
+<META NAME="KBModify" CONTENT="1997/04/24">
+<META NAME="KBCreate" CONTENT="1995/11/28">
+<META NAME="Keywords" CONTENT="GdiPrn kbcode kbgraphic">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  SetPrinter is a new API for Windows 95 and Windows NT that allows applications to change various printer attributes. However, as the code in this article demonstrates, a certain amount of preparation is necessary in order to call SetPrinter correct...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBCF,QAHE,QAOX,QBWP,QAGB,QBXN,QAGI,QAI4,QAJZ,QABI,QACT,QBXS,QBAO,QABA,QDOL V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Modify Printer Settings by Using SetPrinter</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 24, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q140285</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) versions 3.5,
+   3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+SetPrinter is a new API for Windows 95 and Windows NT that allows
+applications to change various printer attributes. However, as the code in
+this article demonstrates, a certain amount of preparation is necessary in
+order to call SetPrinter correctly.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The parameters to SetPrinter() are as follows:
+<P>
+<P><h3>hPrinter</h3>
+ 
+<P>
+The first parameter is a handle to the printer whose settings are to be
+changed. This should be retrieved from OpenPrinter().
+<P>
+<P><h3>dwLevel</h3>
+ 
+<P>
+The second parameter specifies the structure of the data being passed to
+SetPrinter(). For Windows 95, this can be 0, 2, 3, 4, or 5. For Windows NT,
+this can be 0, 2, or 3. These numbers correspond to the data type
+(PRINTER_INFO_n) passed via the third parameter.
+<P>
+<P><h3>lpbPrinter</h3>
+ 
+<P>
+The third parameter is a PRINTER_INFO_n structure where n corresponds to
+the number in the second parameter. This structure can cause confusion
+because it isn't simply a buffer of the size of the structure. These
+structures contain device-independent information but are immediately
+followed in memory by some variable amount of device-dependent information,
+which is given by the device driver. Therefore, a little work is involved
+to determine how big this buffer should be. This is achieved by calling
+GetPrinter(), which will set pcbNeeded to the total size needed.
+<P>
+Also, the buffer typically has a large amount of device-independent and
+device-dependent information in it. Your application is not going to know
+or care about the values in most of these structure members. So, when you
+make the changes in which you are interested, you must plug in the correct
+values for all of these other pieces of data. These other pieces of data
+are set when you call GetPrinter() a second time.
+<P>
+<P><h3>dwCommand</h3>
+ 
+<P>
+The fourth parameter is used to pause printing, resume printing, or
+clear all print jobs. This is typically not used at the same time as
+lpbPrinter is used. This article is not concerned with setting the printer
+state, so the sample code sets this parameter to zero.
+<P>
+<P><h3>About DEVMODE</h3>
+ 
+<P>
+Often, an element of the DEVMODE structure pointed to by pDevMode will be
+modified (instead of an element of PRINTER_INFO_n). When this is the case,
+the pDevMode-&gt;dmFields flags will tell the application which fields can be
+changed. Because this is given to you by GetPrinter(), you can check the
+dmFields flag before attempting the change.
+<P>
+Also, because modifying fields in the device-independent part of DEVMODE
+may also effect changes in the device-dependent part, you need to call
+DocumentProperties() before calling SetPrinter() in order to make a
+consistent DEVMODE structure for SetPrinter().
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   HGLOBAL hGlobal = NULL;
+   HANDLE hPrinter = NULL;
+   DWORD dwNeeded = 0;
+   PRINTER_INFO_2 *pi2 = NULL;
+   PRINTER_DEFAULTS pd;
+   BOOL bFlag;
+   LONG lFlag;
+
+   /* Open printer handle (in Windows NT, you need full-access because you
+      will eventually use SetPrinter) */
+
+   ZeroMemory(&amp;pd, sizeof(pd));
+   pd.DesiredAccess = PRINTER_ALL_ACCESS;
+   bFlag = OpenPrinter("My Printer", &amp;hPrinter, &amp;pd);
+   if (!bFlag || (hPrinter== NULL))
+      goto ABORT;
+
+   /* The first GetPrinter() tells you how big the buffer should be in
+      order to hold all of PRINTER_INFO_2. Note that this usually returns
+      as FALSE, which only means that the buffer (the third parameter) was
+      not filled in. You don't want it filled in here. */
+
+   GetPrinter(hPrinter, 2, 0, 0, &amp;dwNeeded);
+   if (dwNeeded == 0)
+      goto ABORT;
+
+   /* Allocate enough space for PRINTER_INFO_2. */
+
+   hGlobal = GlobalAlloc(GHND, dwNeeded);
+   if (hGlobal == NULL)
+      goto ABORT;
+   pi2 = (PRINTER_INFO_2 *)GlobalLock(hGlobal);
+   if (pi2 == NULL)
+      goto ABORT;
+
+   /* The second GetPrinter() fills in all the current settings, so all you
+      need to do is modify what you'r interested in. */
+
+   bFlag = GetPrinter(hPrinter, 2, (LPBYTE)pi2, dwNeeded, &amp;dwNeeded);
+   if (!bFlag)
+      goto ABORT;
+
+   /* Set orientation to Landscape mode if the driver supports it. */
+
+   if ((pi2-&gt;pDevMode != NULL) &amp;&amp; (pi2-&gt;pDevMode-&gt;dmFields &amp;
+                                   DM_ORIENTATION))
+   {
+      /* Change the devmode. */
+      pi2-&gt;pDevMode-&gt;dmOrientation = DMORIENT_LANDSCAPE;
+
+      /* Make sure the driver-dependent part of devmode is updated as
+         necessary. */
+      lFlag = DocumentProperties(hwnd, hPrinter,
+               "My Printer",
+               pi2-&gt;pDevMode, pi2-&gt;pDevMode,
+               DM_IN_BUFFER | DM_OUT_BUFFER);
+      if (lFlag != IDOK)
+         goto ABORT;
+
+      /* Update printer information. */
+      bFlag = SetPrinter(hPrinter, 2, (LPBYTE)pi2, 0);
+      if (!bFlag)
+         /* The driver supported the change, but it wasn't allowed due to
+            some other reason (probably lack of permission). */
+         goto ABORT;
+   }
+   else
+      /* The driver doesn't support changing this. */
+      goto ABORT;
+
+   /* Clean up. */
+   ABORT:   if (pi2 != NULL)
+         GlobalUnlock(hGlobal);
+      if (hGlobal != NULL)
+         GlobalFree(hGlobal);
+      if (hPrinter != NULL)
+         ClosePrinter(hPrinter);
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: print settings<BR>
+Keywords            : GdiPrn kbcode kbgraphic<BR>
+Version             : 3.5 3.51 4.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 24, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

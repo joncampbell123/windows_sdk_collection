@@ -1,0 +1,216 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Convert Dialog Doesn't Appear for OLE Object in MS Excel </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q135765">
+<META NAME="KBModify" CONTENT="1998/02/17">
+<META NAME="KBCreate" CONTENT="1995/08/27">
+<META NAME="Keywords" CONTENT="MfcOLE">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When the Edit|        |Convert... menu item is selected for an OLE object that is embedded within a Microsoft Excel document, the Convert dialog box does not appear.  CAUSE =====  Microsoft Excel displays the Convert dialog for an object only if Wr...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAPN,QBVP,QAW6,QAY5,QAIF,QA9Q,QAUR,QANH,QDNG,QBVV,QA01,QAH4,QDL9,QBWQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Convert Dialog Doesn't Appear for OLE Object in MS Excel</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 17, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q135765</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.5, 1.51, 1.52, 1.52b
+    - Microsoft Visual C++, 32-bit Edition, versions 2.0, 2.1, 2.2,
+      4.0, 4.1, 5.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When the Edit|&lt;Object&gt;|Convert... menu item is selected for an OLE object
+that is embedded within a Microsoft Excel document, the Convert dialog box
+does not appear.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+Microsoft Excel displays the Convert dialog for an object only if
+WriteFmtUserTypeStg has been used to write out a clipboard format and
+user-readable name for the contents of the object. The MFC libraries do not
+call this function when creating or saving OLE objects.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Call WriteFmtUserTypeStg in the Serialize method of your server's document
+class.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+WriteFmtUserTypeStg should be called as part of your server's
+implementation of IPersistStorage::InitNew and IPersistStorage::Save. By
+default, MFC OLE server applications do not call WriteFmtUserTypeStg in
+their implementation of IPersistStorage::InitNew and IPersistStorage::Save.
+One simple way to achieve this functionality in an MFC application is to
+make the call to WriteFmtUserTypeStg in the Serialize method of the
+server's document class.
+<P>
+<P><h3>Steps to Add a Call to WriteFmtUserTypeStg</h3>
+ 
+
+<OL><P><LI>Provide a private clipboard format for your object.
+<P>
+   WriteFmtUserTypeStg serializes a clipboard format and user-readable name
+   for the contents of an object to its storage. The HIERSVR sample shows
+   how to provide a private clipboard format for your object if you do not
+   already have one.
+
+<P><LI>Add the DoWriteFmtUserTypeStg helper function to your document class.
+<P>
+   This helper function is used to encapsulate retrieving the clipboard
+   format and user-readable name when calling WriteFmtUserTypeStg. The code
+   in the "Sample Code" section of this article shows how to implement this
+   function for the HIERSVR sample.
+
+<P><LI>Modify the server document's Serialize() method and add a call to the
+   DoWriteFmtUserTypeStg helper function, as shown in the following sample
+   code.
+<P>
+</OL><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   void CServerDoc::DoWriteFmtUserTypeStg(LPSTORAGE lpStorage)
+   {
+      LPOLEOBJECT lpObject = (LPOLEOBJECT)GetInterface(&amp;IID_IOleObject);
+      ASSERT(lpObject != NULL);
+      CLSID clsid;
+      lpObject-&gt;GetUserClassID(&amp;clsid);
+   
+      LPTSTR pszUserType = NULL;
+      OleRegGetUserType(clsid, USERCLASSTYPE_FULL, (LPOLESTR
+   *)&amp;pszUserType);
+   
+      if (pszUserType)
+      {
+         WriteClassStg(lpStorage, clsid);
+         WriteFmtUserTypeStg(lpStorage, m_cfPrivate,
+   (LPOLESTR)pszUserType);
+         CoTaskMemFree(pszUserType);
+      }
+   }
+   
+   void CServerDoc::Serialize(CArchive&amp; ar)
+   {
+     ASSERT(m_pRoot != NULL);
+   
+     if(IsEmbedded() &amp;&amp; ar.IsStoring())
+     {
+       ASSERT(m_lpRootStg != NULL);
+       DoWriteFmtUserTypeStg(m_lpRootStg);
+     }
+   
+     SerializeFontInfo(ar);
+     m_pRoot-&gt;Serialize(ar);
+   }
+</PRE></OL> 
+<PRE>Keywords          : MfcOLE
+Technology        : kbMfc kbole
+Version           : WINDOWS:1.5,1.51,1.52,1.52b;Winnet:2.0,2.1,2.2,4.0,4.1,5.0
+Platform          : NT WINDOWS
+Issue type        : kbprb</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 17, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

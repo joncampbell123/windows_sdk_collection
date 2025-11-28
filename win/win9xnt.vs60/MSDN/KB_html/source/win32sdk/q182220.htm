@@ -1,0 +1,244 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: MMC Samples/Tutorials Does Not Work on Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q182220">
+<META NAME="KBModify" CONTENT="1998/03/10">
+<META NAME="KBCreate" CONTENT="1998/03/09">
+<META NAME="Keywords" CONTENT="kbMmc">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The Microsoft Management Console SnapIn samples do not execute on Windows 95 when they are compiled using the UNICODE switch. Snap-Ins compiled as UNICODE-only do not register themselves properly on Windows 95. Windows 95 does not support UNICODE. ...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QATX,QDL9,QBWQ,QBWO,QBWN,QBVV,QAPF,QATZ,QATY,QACJ,QAKR,QAKJ,QAH6,QAHE,QDNF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: MMC Samples/Tutorials Does Not Work on Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 10, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q182220</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Management Console, version 1.0 on the following platform:
+<P><PRE>    - Windows 95
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The Microsoft Management Console SnapIn samples do not execute on Windows
+95 when they are compiled using the UNICODE switch. Snap-Ins compiled as
+UNICODE-only do not register themselves properly on Windows 95. Windows 95
+does not support UNICODE. Therefore, the samples must be modified to
+support ANSI strings when calling Win32 APIs.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The Registry APIs on Windows 95 do not support UNICODE strings.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+You can modify the samples to allow them to run on Windows 95 using ANSI
+strings. To do this:
+
+<OL><P><LI>In the DllRegisterServer and DllUnregisterServer functions, change the
+   way the string constants are declared. Use the _T("") macro to define
+   the string constants sent the Reg* APIs. For example:
+<P>
+<P><PRE>      nErr = RegOpenKey( HKEY_LOCAL_MACHINE,
+<PRE></PRE>                         L"Software\\Microsoft\\MMC\\SnapIns",
+                         &amp;hMmcParentKey);
+
+   Should be changed to:
+
+      nErr = RegOpenKey( HKEY_LOCAL_MACHINE,
+                         _T("Software\\Microsoft\\MMC\\SnapIns"),
+                         &amp;hMmcParentKey);
+
+   The _T("") macro will be expanded to the appropriate string constant
+   based on the UNICODE switch.
+
+</PRE><P><LI>In the DisplayError function, change it to accept and use LPTSTR
+   string types.
+
+<P><LI>Change all references to ATLTRACE to use the _T("") macro to define text
+   constants. To find these references, use the Find In Files command from
+   the Edit menu and then click each entry in the Find In Files list.
+   Several of the .cpp files use this macro to display trace messages in
+   the results window of Visual C++.
+
+<P><LI>In the CDataObject constructor, calls are made to
+   RegisterClipboardFormat. The standard definitions in the MMC.h file
+   define all of the clipboard format strings in UNICODE. These strings
+   must be converted to ASCIIZ strings when the UNICODE switch is turned
+   off. You can use conditional compilation to insure that the strings
+   passed to RegisterClipboardFormat are the correct type. The
+   CDataObject::CDataObject function was changed to read as follows:
+<P>
+<P><PRE>      // These are the clipboard formats that you must supply at a minimum.
+      // MMC.h actually defined these. You can make up your own to use for
+      // other reasons. You don't need any others at this time.
+      //
+      // For ANSI, convert the format labels to ANSI if UNICODE
+      // is not defined.
+      // Leave them alone if they are OK.
+      //
+      #ifndef UNICODE
+<PRE></PRE>         //
+         // If you are building an ANSI project, the
+         // RegisterClipboardFormat strings must be ANSI.  From the MMC
+         // headers, the strings are UNICODE and they must be converted to
+         // ANSI in order to register them properly.
+         //
+         // Use conditional compilation to get the job done.
+         //
+         char buffer[256];
+         wcstombs( buffer, CF_SNAPIN_INTERNAL,
+                   wcslen(CF_SNAPIN_INTERNAL)+1);
+         s_cfInternal    = RegisterClipboardFormat((LPCSTR)buffer);
+         wcstombs( buffer, CCF_DISPLAY_NAME, wcslen(CCF_DISPLAY_NAME)+1);
+         s_cfDisplayName = RegisterClipboardFormat((LPCSTR)buffer);
+         wcstombs( buffer, CCF_NODETYPE, wcslen(CCF_NODETYPE)+1);
+         s_cfNodeType    = RegisterClipboardFormat((LPCSTR)buffer);
+         wcstombs( buffer, CCF_SNAPIN_CLASSID,
+                   wcslen(CCF_SNAPIN_CLASSID)+1);
+         s_cfSnapinClsid = RegisterClipboardFormat((LPCSTR)buffer);
+      #else
+         //
+         // UNICODE is defined, the clipboard formats will be OK.
+
+         //
+         s_cfInternal = RegisterClipboardFormat( CF_SNAPIN_INTERNAL);
+         s_cfDisplayName = RegisterClipboardFormat(CCF_DISPLAY_NAME);
+         s_cfNodeType    = RegisterClipboardFormat(CCF_NODETYPE);
+         s_cfSnapinClsid = RegisterClipboardFormat(CCF_SNAPIN_CLASSID);
+      #endif
+
+</PRE><P><LI>As a general rule, use LPTSTR to define the strings pointers used in
+   Win32 API calls. Use the _T("") macro for all text constants.
+
+<P><LI>Use OLESTR inside the SnapIn. Microsoft Management Console expects
+   UNICODE strings and will perform conversions as necessary.
+<P>
+</OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft is researching this problem and will post new information here in
+the Microsoft Knowledge Base and <B><A href="http://www.microsoft.com/management">http://www.microsoft.com/management</A></B> as it
+becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Microsoft Management Console is a user interface framework. Microsoft
+Management Console does not provide any additional APIs to assist in
+administering users, machines, or network resources from Windows 95.
+SnapIns are limited to the functionality available on the target operating
+system. When developing a SnapIn that will target both Windows NT and
+Windows 95, you need to insure that the SnapIn does not use OS specific
+methods to accomplish a task.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+Samples distributed via the ISysMgmt.exe and IBLDEnv.exe self-extracting
+zip files through the Platform SDK (<B><A href="http://www.microsoft.com/management">http://www.microsoft.com/management)</A></B>
+and Microsoft Management Console
+(<B><A href="http://www.microsoft.com/msdn/sdk/platform.htm">http://www.microsoft.com/msdn/sdk/platform.htm)</A></B> Web sites.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: MMC, mmc, samples, tutorial,<BR>
+Keywords          : kbMmc<BR>
+Version           : WINDOWS:1.0<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 10, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

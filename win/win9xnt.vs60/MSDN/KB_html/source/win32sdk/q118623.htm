@@ -1,0 +1,227 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Get the MAC Address for an Ethernet Adapter </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q118623">
+<META NAME="KBModify" CONTENT="1998/02/11">
+<META NAME="KBCreate" CONTENT="1994/07/25">
+<META NAME="Keywords" CONTENT="NtwkNetBios">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article demonstrates how to get the Media Access Control (MAC) address for an ethernet adapter programmatically by using NetBIOS, if your card is bound to NetBIOS.  MORE INFORMATION  To get the Media Access Control (MAC) address for an etherne...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAC2,QBE7,QBE6,QAH4,QAR5,QDO9,QAUD,QAKC,QBWD,QAG8,QBC6,QBW4,QDI9,QAI4,QDL9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Get the MAC Address for an Ethernet Adapter</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 11, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q118623</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) on the following
+   platforms:
+<P><PRE>    - Microsoft Windows NT versions 3.1, 3.5, 3.51
+    - Microsoft Windows 95
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article demonstrates how to get the Media Access Control (MAC) address
+for an ethernet adapter programmatically by using NetBIOS, if your card is
+bound to NetBIOS.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To get the Media Access Control (MAC) address for an ethernet adapter
+programmatically, use the Netbios() NCBASTAT command and provide a "*" as
+the name in the NCB.ncb_CallName field. This is demonstrated in the sample
+code below.
+<P>
+For machines with multiple network adapters you need to enumerate the LANA
+numbers and perform the NCBASTAT command on each. Even when you have a
+single network adapter, it is a good idea to enumerate valid LANA numbers
+first and perform the NCBASTAT on one of the valid LANA numbers. It is
+considered bad programming to hardcode the LANA number to 0.
+<P>
+In addition, other hardware and software may be assigned their own MAC
+addresses. For example, a modem can have a MAC address. Also, a RAS client
+or server can install "dummy" network adapters that correspond to a dialup
+or serial connection. Normally, these MAC addresses are randomly generated.
+If an adapter status is called on a LANA that corresponds to one of these
+adapters when no connection is present, Netbios returns error 0x34
+(NRC_ENVNOTDEF) even if a reset was previously performed.
+<P>
+With the NetBEUI and IPX transports, the same information can be obtained
+at a command prompt by using:
+<P>
+<PRE>   net config workstation
+
+</PRE>The ID given is the MAC address.
+<P>
+The following code enumerates all LANA numbers, performs a reset (NCBREST),
+and an adapter status (NCBASTAT).
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   #include &lt;windows.h&gt;
+   #include &lt;wincon.h&gt;
+   #include &lt;stdlib.h&gt;
+   #include &lt;stdio.h&gt;
+   #include &lt;time.h&gt;
+
+   typedef struct _ASTAT_
+   {
+      ADAPTER_STATUS adapt;
+      NAME_BUFFER    NameBuff [30];
+   }ASTAT, * PASTAT;
+
+   ASTAT Adapter;
+
+   void main (void)
+   {
+      NCB Ncb;
+      UCHAR uRetCode;
+      char NetName[50];
+      LANA_ENUM   lenum;
+      int      i;
+
+      memset( &amp;Ncb, 0, sizeof(Ncb) );
+      Ncb.ncb_command = NCBENUM;
+      Ncb.ncb_buffer = (UCHAR *)&amp;lenum;
+      Ncb.ncb_length = sizeof(lenum);
+      uRetCode = Netbios( &amp;Ncb );
+      printf( "The NCBENUM return code is: 0x%x \n", uRetCode );
+
+      for(i=0; i &lt; lenum.length ;i++)
+      {
+          memset( &amp;Ncb, 0, sizeof(Ncb) );
+          Ncb.ncb_command = NCBRESET;
+          Ncb.ncb_lana_num = lenum.lana[i];
+
+          uRetCode = Netbios( &amp;Ncb );
+          printf( "The NCBRESET on LANA %d return code is: 0x%x \n",
+                  lenum.lana[i], uRetCode );
+
+          memset( &amp;Ncb, 0, sizeof (Ncb) );
+          Ncb.ncb_command = NCBASTAT;
+          Ncb.ncb_lana_num = lenum.lana[i];
+
+          strcpy( Ncb.ncb_callname,  "*               " );
+          Ncb.ncb_buffer = (char *) &amp;Adapter;
+          Ncb.ncb_length = sizeof(Adapter);
+
+          uRetCode = Netbios( &amp;Ncb );
+          printf( "The NCBASTAT on LANA %d return code is: 0x%x \n",
+                  lenum.lana[i], uRetCode );
+          if ( uRetCode == 0 )
+          {
+             printf( "The Ethernet Number on LANA %d is:
+                     %02x%02x%02x%02x%02x%02x\n",
+            lenum.lana[i],
+                  Adapter.adapt.adapter_address[0],
+                  Adapter.adapt.adapter_address[1],
+                  Adapter.adapt.adapter_address[2],
+                  Adapter.adapt.adapter_address[3],
+                  Adapter.adapt.adapter_address[4],
+                  Adapter.adapt.adapter_address[5] );
+          }
+       }
+   }
+</PRE> 
+<PRE>Keywords          : NtwkNetBios
+Version           : WINNT:3.0,3.5,3.51;WIN95
+Platform          : Win95 winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 11, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

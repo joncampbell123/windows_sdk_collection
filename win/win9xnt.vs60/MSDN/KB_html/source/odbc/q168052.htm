@@ -1,0 +1,618 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: ODBC 3.0 Driver Manager and Driver Installation </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q168052">
+<META NAME="KBModify" CONTENT="1997/08/18">
+<META NAME="KBCreate" CONTENT="1997/05/05">
+<META NAME="Keywords" CONTENT="odbcAPI SSrvProg kbcode kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; odbc">
+<META NAME="Description" CONTENT="  There have been several changes to the Open Database Connectivity (ODBC) installation process from version 2.5 to version 3.0. SQLInstallDriver and SQLInstallODBC have been removed, and SQLInstallTranslator has been deprecated. These changes have m...">
+<META NAME="Product" CONTENT="ODBC">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAU9,QAA1,QDI2,QA9E,QAI4,QALW,QAGI,QAC2,QDIZ,QA9N,QDNN,QAEY,QALM,QAR5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: ODBC 3.0 Driver Manager and Driver Installation</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q168052</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Open Database Connectivity, version 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+There have been several changes to the Open Database Connectivity (ODBC)
+installation process from version 2.5 to version 3.0. SQLInstallDriver and
+SQLInstallODBC have been removed, and SQLInstallTranslator has been
+deprecated. These changes have made the Odbc.inf file unnecessary. The APIs
+below request data from, insert data, and make changes to the registry and
+the Odbc.ini and Odbcinst.ini files.
+<P>
+NOTE: These APIs do not copy files or perform any version checking
+of the drivers or driver manager. The source code included with this
+article has an example of how to perform the version checking and
+file copying, but is outside the scope of ODBC.
+
+<UL><LI>SQLInstallDriverManager retrieves the path to install the ODBC core
+   components. Also, it increments the component's usage count.
+<P>
+   The following are the ODBC Core Components:
+<P>
+<P><PRE>      Ds16gt.dll
+      Ds32gt.dll
+      Odbccp32.dll
+      Odbc32.dll
+      Odbcad32.exe
+      Odbccr32.dll
+      Odbccp32.cpl
+      Odbctrac.dll
+      Odbcint.dll
+      Odbcinst.cnt
+      Odbcinst.hlp
+      Mtxdm.dll (if you use connection pooling)
+</PRE>
+<LI>SQLInstallDriverEx installs the driver in the Odbcinst.ini file and in
+   the registry. Also, it can be used to increment a driver's usage count
+   or change a parameter of a driver.
+
+<LI>SQLConfigDriver configures the driver's setting in the Odbcinst.ini file
+   and the registry. It must be called after the call to SQLInstallDriverEx
+   to complete the driver's installation.
+
+<LI>SQLInstallTranslatorEx configures a translator if required by the
+   driver. This is not done in the sample code below, but it is very
+   similar to the SQLInstallDriverEx API.
+
+<LI>SQLConfigDataSource adds, configures, or removes a datasource from ODBC.
+<P>
+</UL>SQLInstallDriverEX, SQLInstallTranslatorEx, and SQLConfigDataSource each
+require strings of keyword pairs. Many of the ODBC keywords are described
+in Chapter 18, "Installing ODBC Components," in the Microsoft "ODBC 3.0
+Programmer's Reference, Volume 1, and SDK Guide." It is important to note
+that keyword pairs end with two "\0"s, as in the following
+SQLInstallDriverEx keyword example:
+<P>
+<PRE>   My Datasource\0Server=bottles\0Database=\0;UID=sa\0
+   PWD=\0UseProcForPrepare=Yes\0Trusted_Connection=\0AnsiNPW=Yes\0\0
+
+</PRE>You can find detailed documentation for each of these functions in the
+"ODBC 3.0 Programmers Reference, Volume 1, and SDK Guide".
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following C program illustrates a minimal application's set of
+requirements for installing the driver manager and a driver.
+<P>
+<PRE>#include &lt;windows.h&gt;
+#include &lt;sql.h&gt;
+#include &lt;sqlext.h&gt;
+#include &lt;odbcinst.h&gt;
+#include &lt;winver.h&gt;
+#include &lt;string.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;malloc.h&gt;
+#include "main.h"
+
+#define DriverName "Bogus Driver"
+#define DataSourceName "My Bogus Datasource"
+#define DriverDLL "mysql32.dll"
+
+void main()
+</PRE>{
+<PRE>   if( ! Install() )
+      printf( "ODBC Install Failed\n" );
+   printf( "The End" );
+</PRE>}
+<P>
+<PRE>/* General error handler for installer functions. */
+</PRE>BOOL ProcessErrorMessages( char * func )
+{
+WORD   iError = 1;
+<PRE>DWORD   pfErrorCode;
+char   lpszErrorMsg[301];
+</PRE>WORD   cbErrorMsgMax = 300;
+WORD   pcbErrorMsg;
+<PRE>int      rc;
+</PRE>BOOL   func_rc = FALSE;
+<P>
+<PRE>   do
+   {
+      lpszErrorMsg[0] = '\0';
+      rc = SQLInstallerError(
+         iError,
+         &amp; pfErrorCode,
+         lpszErrorMsg,
+         cbErrorMsgMax,
+         &amp; pcbErrorMsg );
+      if( rc == SQL_SUCCESS || rc == SQL_SUCCESS_WITH_INFO )
+      {
+         printf( "%s in function %s", lpszErrorMsg, func );
+         func_rc = TRUE;
+      }
+      iError++;
+   }
+   while( rc != SQL_NO_DATA );
+
+   return func_rc;
+</PRE>}
+<P>
+BOOL Install()
+{
+<PRE>char   szPath[301];
+</PRE>WORD   cbPathMax = 300;
+WORD   cbPathOut;
+BOOL   rc;
+UINT   uVersionLength = 512;
+<P>
+<PRE>   /* First, retrieve the path the driver should be installed to in
+</PRE>szPath*/
+<PRE>   if( SQLInstallDriverManager( szPath, cbPathMax, &amp; cbPathOut ) )
+   {
+      /* Now compare the version of the core component files
+      and copy them if appropriate.
+      NOTE: For the purposes of this sample code. only Odbc32.dll is
+         being copied. */
+      if( VersionCheckCopyFile( szPath, "C:\\TEMP\\ODBC", "ODBC32.DLL" ) )
+      {
+         /* Check to see if the driver is already installed. */
+         if( rc = IsMyDriverInstalled() )
+            /* If the driver is already installed,
+            increase the usage count and return. */
+            BumpUpDriverUsageCount();
+         else
+            /* If not, install the driver. */
+            rc = InstallMyDriver();
+
+         if( rc )
+            /* After the driver is installed, create
+            the new DSN. */
+            AddMyDSN();
+      }
+      else
+      {
+         ProcessErrorMessages( "SQLInstallDriverManager" );
+         return FALSE;
+      }
+   }
+   else
+   {
+      ProcessErrorMessages( "SQLInstallDriverManager" );
+      return FALSE;
+   }
+
+   return TRUE;
+</PRE>}
+<P>
+BOOL IsMyDriverInstalled()
+{
+<PRE>char   szBuf[2001];
+</PRE>WORD   cbBufMax = 2000;
+WORD   cbBufOut;
+<PRE>char *   pszBuf = szBuf;
+
+   /* Call SQLGetInstalledDrivers to retrieve an array with the
+   names of the installed drivers. */
+   if( SQLGetInstalledDrivers(
+      szBuf,
+      cbBufMax,
+      &amp; cbBufOut) )
+      if( ProcessErrorMessages( "SQLGetInstalledDrivers" ) )
+         return FALSE;
+
+   /* Now loop through the array and search for the driver
+      being installed. */
+   do
+   {
+      if( strcmp( DriverName, pszBuf ) == 0 )
+         return TRUE;
+      pszBuf = strchr( pszBuf, '\0' ) + 1;
+   }
+   while( pszBuf[1] != '\0' );
+
+   return FALSE;
+</PRE>}
+<P>
+<PRE>void BumpUpDriverUsageCount()
+</PRE>{
+<PRE>char    szDriver[300];
+char    szPathIn[301];
+char   szPathOut[301];
+</PRE>WORD   cbPathOutMax = 300;
+WORD   cbPathOut;
+<PRE>DWORD   dwUsageCount;
+
+   /* The correct format of driver keywords are:
+      "DriverName\0Driver=MyDriver.DLL\0Setup=MySetup.DLL\0\0" */
+
+   /* Also, note that the driver's setup routines can be in the
+      same DLL. */
+   sprintf( szDriver, "Bogus
+</PRE>Driver\0Driver=mysql32.dll\0Setup=mysql32.dll\0\0" );
+<P>
+<PRE>   /* Inquire about the current usage count. */
+   SQLInstallDriverEx(
+         szDriver,
+         NULL,
+         szPathIn,
+         cbPathOutMax,
+         &amp; cbPathOut,
+         ODBC_INSTALL_INQUIRY, /* this gets information about
+                    the pre-existing driver */
+         &amp; dwUsageCount );
+
+   /* Now increment the usage count. */
+   ++dwUsageCount;
+
+   /* Then call SQLInstallDriverEx with the new usage count. */
+   if( ! SQLInstallDriverEx(
+         szDriver,
+         szPathIn,
+         szPathOut,
+         cbPathOutMax,
+         &amp; cbPathOut,
+         ODBC_INSTALL_COMPLETE,
+         &amp; dwUsageCount ) )
+      ProcessErrorMessages( "SQLInstallDriverEx" );
+</PRE>}
+<P>
+BOOL InstallMyDriver()
+{
+<PRE>char    szDriver[300];
+char    szPathIn[301];
+char   szPathOut[301];
+</PRE>WORD   cbPathOutMax = 300;
+WORD   cbPathOut;
+<PRE>DWORD   dwUsageCount;
+
+   /* The correct format of driver keywords are:
+      "DriverName\0Driver=xxxxxx.DLL\0Setup=xxxxxx.DLL\0\0" */
+
+   sprintf( szDriver, "Bogus
+</PRE>Driver\0Driver=mysql32.dll\0Setup=mysql32.dll\0\0" );
+<P>
+<PRE>   /* The szDriver array is filled in before calling SQLInstallDriverEx
+   so that SQLInstallDriverEx will return where to install the driver in
+   the szPathIn */
+
+   SQLInstallDriverEx(
+         szDriver,
+         NULL,
+         szPathIn,
+         cbPathOutMax,
+         &amp; cbPathOut,
+         ODBC_INSTALL_INQUIRY,
+         &amp; dwUsageCount );
+
+   /* The correct format of driver keywords are:
+      "DriverName\0Driver=c:\winnt\system32\xxxxxx.DLL\0
+         Setup=c:\winnt\system32\xxxxxx.DLL\0\0" */
+
+   sprintf( szDriver,
+      "Bogus Driver\0Driver=%s\\mysql32.dll\0Setup=%s\\mysql32.dll\0\0",
+      szPathIn, szPathIn );
+
+   /* Compare the version of the driver and copy it if appropriate;
+      the following files are required for the SQL Server driver:
+      sqlsrv32_dll
+      dbnmpntw_dll
+      drvssrvr_hlp
+      instcat_sql
+      NOTE: For the purposes of this sample code, only Odbc32.dll is
+         being copied. */
+   if( ! VersionCheckCopyFile( szPathIn, "C:\\TEMP\\ODBC", DriverDLL ) )
+      if( ProcessErrorMessages( "SQLInstallDriverEx" ) )
+         return FALSE;
+
+   /* Call SQLInstallDriverEx to install the driver in
+      Odbcinst.ini and the registry. */
+   if( ! SQLInstallDriverEx(
+         szDriver,
+         szPathIn,
+         szPathOut,
+         cbPathOutMax,
+         &amp; cbPathOut,
+         ODBC_INSTALL_COMPLETE,
+         &amp; dwUsageCount ) )
+      if( ProcessErrorMessages( "SQLInstallDriverEx" ) )
+         return FALSE;
+
+   /* Call SQLConfigDriver to exercise the driver's setup
+   functions; some drivers have their setup routines built in,
+   and others require a seperate DLL */
+   SQLConfigDriver(
+      NULL,
+      ODBC_CONFIG_DRIVER,
+      DriverName,
+      "CPTimeout=60\0\0",
+      szPathOut,
+      cbPathOutMax,
+      &amp; cbPathOut );
+
+   return TRUE;
+</PRE>}
+<P>
+BOOL AddMyDSN()
+{
+<PRE>char   szDriver[300] = DriverName;
+char   szAttributes[400];
+
+   CreateAttributeString( szAttributes );
+
+   /* I choose to remove the DSN if it already existed */
+   SQLConfigDataSource(
+         NULL,
+         ODBC_REMOVE_SYS_DSN,
+         szDriver,
+         szAttributes );
+
+   /* then create a new DSN */
+   if( ! SQLConfigDataSource(
+         NULL,
+         ODBC_ADD_SYS_DSN,
+         szDriver,
+         szAttributes ) )
+      if( ProcessErrorMessages( "SQLConfigDataSource" ) )
+         return FALSE;
+
+   return TRUE;
+</PRE>}
+<P>
+<PRE>/*************************************************************
+</PRE>/   This function builds the keyword pair string required by
+/   SQLConfigDataSource.
+<PRE>/*************************************************************/
+void CreateAttributeString( char * pszAttributes )
+</PRE>{
+sprintf( pszAttributes,
+<PRE>   "DSN=My Bogus DS\0Server=bottles\0Database=pubs\0UID=sa\0PWD=\0
+      UseProcForPrepare=yes\0\0" );
+</PRE>}
+<P>
+<PRE>/* The following functions are not required for ODBC driver and driver
+</PRE>manager installation. They are for version checking and file copy of
+DLLs; they require NO part of the ODBC API. */
+<P>
+BOOL GetFileVersion( char * pFilePath, char * pVersion, UINT uMaxVersionLen
+)
+{
+<PRE>DWORD   dwHandle = 0;
+DWORD   dwVersionInfoSize;
+DWORD   dwError;
+PVOID   pFileInfo;
+PBYTE   pVersionInfo;
+PDWORD   pTranslation = NULL;
+</PRE>UINT   uLength = 0;
+<PRE>char   szString[512] = "";
+
+   dwVersionInfoSize = GetFileVersionInfoSize(
+      pFilePath,   /* pointer to filename string */
+      &amp; dwHandle );   /* pointer to variable to receive zero */
+   if( ! dwVersionInfoSize )
+   {
+      dwError = GetLastError();
+      return FALSE;
+   }
+
+   pFileInfo = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY,
+</PRE>dwVersionInfoSize );
+<PRE>   pVersionInfo = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY,
+</PRE>dwVersionInfoSize );
+<P>
+<PRE>   if( ! GetFileVersionInfo( pFilePath,   /* pointer to filename string */
+      ( DWORD ) dwHandle,   /* ignored */
+      dwVersionInfoSize,   /* size of buffer */
+      pFileInfo ) )    /* pointer to buffer to receive file-version info.*/
+   {
+      dwError = GetLastError();
+      HeapFree( GetProcessHeap(), 0, pFileInfo );
+      HeapFree( GetProcessHeap(), 0, pVersionInfo );
+      return FALSE;
+   }
+
+   if( ! VerQueryValue( pFileInfo,   /* address of buffer for version
+</PRE>resource */
+<PRE>      TEXT( "\\VarFileInfo\\Translation" ), /* address of value to retrieve
+*/
+      &amp; pTranslation,   /* address of buffer for version pointer */
+      &amp; uLength )   /* address of version-value length buffer */
+      )
+   {
+      dwError = GetLastError();
+      HeapFree( GetProcessHeap(), 0, pFileInfo );
+      HeapFree( GetProcessHeap(), 0, pVersionInfo );
+      return FALSE;
+   }
+
+   wsprintf( szString, "\\StringFileInfo\\%04x%04x\\FileVersion",
+      LOWORD( ( DWORD ) * pTranslation, ), HIWORD( ( DWORD ) * pTranslation
+</PRE>) );
+<P>
+<PRE>   if( ! VerQueryValue( pFileInfo,   /* address of buffer for version
+</PRE>resource */
+<PRE>      szString, /* address of value to retrieve */
+      ( PVOID * ) &amp; pVersionInfo,   /* address of buffer for version
+</PRE>pointer */
+<PRE>      &amp; uLength )   /* address of version-value length buffer */
+      )
+   {
+      dwError = GetLastError();
+      HeapFree( GetProcessHeap(), 0, pFileInfo );
+      HeapFree( GetProcessHeap(), 0, pVersionInfo );
+      return FALSE;
+   }
+
+   if( lstrlen( pVersionInfo ) &gt;= ( int ) uMaxVersionLen )
+      lstrcpyn( pVersion, pVersionInfo, uMaxVersionLen - 1 );
+   else
+      lstrcpy( pVersion, pVersionInfo );
+
+   HeapFree( GetProcessHeap(), 0, pFileInfo );
+   HeapFree( GetProcessHeap(), 0, pVersionInfo );
+
+   return TRUE;
+</PRE>}
+<P>
+BOOL CheckIfFileExists( char * szFilePath, char * szFileName )
+{
+<PRE>DWORD   nBufferLength = 300;
+char   szBuffer[300];
+LPTSTR   lpFilePart;
+DWORD   rt;
+
+   rt= SearchPath(
+      szFilePath,   // address of search path
+      szFileName,   // address of filename
+      NULL, //LPCTSTR lpExtension,   // address of extension
+      nBufferLength,   // size, in characters, of buffer
+      szBuffer,   // address of buffer for found filename
+      &amp; lpFilePart );    // address of pointer to file component
+
+   return rt;
+</PRE>}
+<P>
+<PRE>/*********************************************************************
+</PRE>/   szOldPath  is the "to path"
+/   szNewPath  is the "from path"
+/   szFileName is the name of the file in the from path
+<PRE>/*********************************************************************/
+</PRE>BOOL VersionCheckCopyFile( char * szOldPath, char * szNewPath, char *
+szFileName )
+{
+<PRE>char   szOldFile[512];
+char   szNewFile[512];
+char   szOldFileVersion[ 512 ];
+char   szNewFileVersion[ 512 ];
+</PRE>UINT   uVersionLength = 512;
+<PRE>int      rt;
+
+   if( CheckIfFileExists( szOldPath, szFileName ) )
+   {
+      sprintf( szOldFile, "%s\\%s", szOldPath, szFileName );
+
+      if( GetFileVersion( szOldFile, szOldFileVersion, uVersionLength ) )
+      {
+         sprintf( szNewFile, "%s\\%s", szNewPath, szFileName );
+
+         if( GetFileVersion( szNewFile, szNewFileVersion, uVersionLength )
+)
+         {
+            rt = strcmp( szOldFileVersion, szNewFileVersion );
+            if( rt &lt; 0 )
+               CopyFile( szNewFile, szOldFile, FALSE );
+            return TRUE;
+         }
+         else
+            return FALSE;
+      }
+      else
+         return FALSE;
+   }
+   else
+   {
+      sprintf( szOldFile, "%s\\%s", szOldPath, szFileName );
+
+      sprintf( szNewFile, "%s\\%s", szNewPath, szFileName );
+
+      CopyFile( szNewFile, szOldFile, FALSE );
+   }
+   return TRUE;
+</PRE>}
+ 
+<PRE>Keywords          : odbcAPI SSrvProg kbcode kbprg
+Version           : 3.0
+Platform          : WINDOWS
+Issue type        : kbinfo</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,385 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>SAMPLE: Dynamic Column Binding With MFC Database Classes </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q117137">
+<META NAME="KBModify" CONTENT="1997/07/18">
+<META NAME="KBCreate" CONTENT="1994/06/21">
+<META NAME="Keywords" CONTENT="kb16bitonly MfcDatabase kbcode kbfile kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The DYNCOL sample demonstrates how to dynamically determine the number, types, and names of each column in a given table and then bind these columns to dynamically allocated objects in your CRecordset derived class.  To obtain the sample, download ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAE1,QAPN,QAGX,QAW6,QDMN,QBSO,QAYY,QA5V,QAML,QAGI,QACI,QAFV,QAZV,QATX,QBXS V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>SAMPLE: Dynamic Column Binding With MFC Database Classes</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q117137</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.50
+WINDOWS
+kbprg kbfile kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+<P><PRE>    - Microsoft Visual C++ for Windows, version 1.5
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The DYNCOL sample demonstrates how to dynamically determine the number,
+types, and names of each column in a given table and then bind these
+columns to dynamically allocated objects in your CRecordset derived class.
+<P>
+To obtain the sample, download DYNCOL.EXE, a self-extracting file, from the
+Microsoft Software Library (MSL) on the following services:
+
+<UL><LI>Microsoft Download Service (MSDL)
+<P><PRE>      Dial (206) 936-6735 to connect to MSDL
+      Download <A href="http://support.microsoft.com/download/support/mslfiles/dyncol.exe">DYNCOL.EXE</A> <I>(size: 47764 bytes)</I> 
+</PRE>
+<LI>Internet (anonymous FTP)
+<P><PRE>      ftp ftp.microsoft.com
+      Change to the SOFTLIB\MSLFILES directory
+      Get <A href="http://support.microsoft.com/download/support/mslfiles/dyncol.exe">DYNCOL.EXE</A> <I>(size: 47764 bytes)</I> 
+</PRE><P>
+</UL>DYNCOL.EXE contains many files, so you will want to preserve the directory
+structure. After you download it, place it in an empty directory and
+extract the files it contains by using the -d option:
+<P>
+<PRE>   DYNCOL.EXE -d
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+DYNCOL follows the basic procedures outlined in the documentation titled,
+"Dynamically Binding Data Columns", found in Database Encyclopedia of the
+Books OnLine. However, DYNCOL has no permanent members, therefore only one
+list is generated that contains information for all the columns in the
+table. If you have a subset of columns that are always present and are
+therefore member variables of the CRecordset derived class, you will need
+to follow the instructions in the article on generating only a list of the
+columns not already bound. DYNCOL only constructs a single list and
+implements methods for performing DoFieldExchange() and DoDataExchange()
+for this list of dynamically allocated objects.
+<P>
+<P><h3>Generating the List</h3>
+ 
+<P>
+The first thing DYNCOL must do is determine how many columns are in the
+database, and of what type. To do this, the CRecordset-derived object
+(CDynaSet) contains a CColumns object to query this information. In
+CDynaSet, the Open member function has been overridden so that the column
+information can be retrieved before the base-class CRecordset::Open
+function is called to open the database. After this information has been
+accessed, a list of CColumnData objects is allocated to hold a description
+of each column in the table, plus a pointer to a storage object allocated
+for that column (to be used in the record field exchange routines).
+<P>
+BOOL CDynaSet::Open(UINT nOpenType, LPCSTR lpszSQL, DWORD dwOptions)
+{
+<PRE>  // Specify the table to look at
+  m_Columns.m_strTableNameParam = "DYNABIND_SECTION";
+
+  // Set the database to be the CDynaSet's database if one hasn't
+  // already been set (this should be the case)
+  if (m_Columns.m_pDatabase == NULL)
+    m_Columns.m_pDatabase = m_pDatabase;
+
+  // Open the recordset to get the column info
+  if (!m_Columns.Open(CRecordset::forwardOnly, NULL,
+         CRecordset::readOnly))
+    return FALSE;
+
+  // Initialize the number of fields dynamically allocated to CDynaSet
+  m_nFields = 0;
+
+  // Loop until we've seen all the columns
+  while (!m_Columns.IsEOF())
+  {
+    // Allocate a new CColumnData object for the current column
+    CColumnData *pData = new CColumnData;
+
+    // Store the colmun information
+    pData-&gt;m_nDataType = m_Columns.m_nDataType;
+    pData-&gt;m_strColumnName = m_Columns.m_strColumnName;
+
+    // Allocate an object of the appropriate type to store
+    // the coulmn data
+    switch(pData-&gt;m_nDataType)
+    {
+      case SQL_CHAR:
+        pData-&gt;m_pData = (void *)new CString;
+      break;
+
+      case SQL_SMALLINT:
+        pData-&gt;m_pData = (void *)new int;
+      break;
+
+      case SQL_TIME:    // Fall through
+      case SQL_DATE:    // Fall through
+      case SQL_TIMESTAMP:
+        pData-&gt;m_pData = (void *)new CTime;
+      break;
+
+      default:
+        break;
+    }
+
+    // Add the column descriptor to the list and
+    // increment the number of columns in the CDynaSet
+    m_pList.AddTail(pData);
+    m_nFields++;
+
+    // Get the next column's information
+    m_Columns.MoveNext();
+  }
+
+   // Free the HSTMT used to get the table info
+  RETCODE nRetCode;
+  AFX_SQL_SYNC(::SQLFreeStmt(m_Columns.m_hstmt, SQL_CLOSE));
+
+  // Return the base class if we got this far
+  return CRecordset::Open(nOpenType, lpszSQL, dwOptions);
+</PRE>}
+<P>
+<P><h3>Getting the Column Data Into the Recordset</h3>
+ 
+<P>
+Once the CColumnData list has been generated, DoFieldExchange() must
+be overridden to traverse this list and call the appropriate RFX
+routine for each CColumnData's storage object.
+<P>
+<PRE>void CDynaSet::DoFieldExchange(CFieldExchange* pFX)
+</PRE>{
+<PRE>  // Set the type of exhange; same as AppWizard generated
+  pFX-&gt;SetFieldType(CFieldExchange::outputColumn);
+
+  // Get a pointer to the first CColumnData object in the list
+  POSITION rPos = m_pList.GetHeadPosition();
+  CColumnData *pData = (CColumnData *)m_pList.GetNext(rPos);
+
+  // Loop until we've traversed all the columns
+  while (pData)
+  {
+    // Call the appropriate RFX routine for the column's type
+    switch(pData-&gt;m_nDataType)
+    {
+      case SQL_CHAR:
+           RFX_Text(pFX, pData-&gt;m_strColumnName,
+                       *((CString *)(pData-&gt;m_pData)));
+      break;
+
+      case SQL_SMALLINT:
+        RFX_Int(pFX, pData-&gt;m_strColumnName,
+                *((int *)(pData-&gt;m_pData)));
+      break;
+
+      case SQL_TIME:    // Fall through
+      case SQL_DATE:    // Fall through
+      case SQL_TIMESTAMP:
+        RFX_Date(pFX, pData-&gt;m_strColumnName,
+                   *((CTime *)(pData-&gt;m_pData)));
+      break;
+
+      default:
+        break;
+    }
+
+    // Set pData to NULL if that was the last column
+    if (rPos)
+      pData = (CColumnData *)m_pList.GetNext(rPos);
+    else
+      pData = NULL;
+  }
+</PRE>}
+<P>
+<P><h3>Getting the Recordset Data into the View</h3>
+ 
+<P>
+After getting the data into the recordset, the last thing to do is to get
+this information into the CRecordView-derived class to be displayed. In the
+case of DYNCOL, it simply uses a GRID VBX control to do a straight dump of
+the data onto the view. In order to do this, the CColumnData list must
+again be traversed. Normally an appropriate DDX routine would be called for
+each element in the list, but DYNCOL only puts the information into the
+cells of a GRID VBX control to be displayed.
+<P>
+<PRE>void CDynaView::DoDataExchange(CDataExchange* pDX)
+</PRE>{
+<PRE>   CRecordView::DoDataExchange(pDX);
+   //{{AFX_DATA_MAP(CDynaView)
+   DDX_VBControl(pDX, IDC_GRID, m_vbxGrid);
+   //}}AFX_DATA_MAP
+
+   CPtrList *pList = &amp;m_pSet-&gt;m_pList;
+
+   // Get the first element
+   POSITION rPos = pList-&gt;GetHeadPosition();
+   CColumnData *pData = (CColumnData *)pList-&gt;GetNext(rPos);
+
+   // Allocate a string buffer to be used in conversions
+   CString strBuffer;
+
+   // Set the intial row to fill in
+   int row = 1;
+
+   // Set the GRID to have the correct number of rows
+   m_vbxGrid-&gt;SetNumProperty("Rows", m_pSet-&gt;m_nFields + 1);
+
+   // Loop until we've traversed all the CColumnData objects
+   while (pData)
+      {
+        // Insert the column name in the first column and move
+        // to the second column to insert the data
+        m_vbxGrid-&gt;SetNumProperty("Row", row);
+        m_vbxGrid-&gt;SetNumProperty("Col", 1);
+        m_vbxGrid-&gt;SetStrProperty("Text", pData-&gt;m_strColumnName);
+        m_vbxGrid-&gt;SetNumProperty("Col", 2);
+
+        // Call the appropriate DDX
+        switch(pData-&gt;m_nDataType)
+        {
+          case SQL_CHAR:
+   m_vbxGrid-&gt;SetStrProperty("Text", *((CString *)(pData-&gt;m_pData)));
+          break;
+
+          case SQL_SMALLINT:
+            {
+              // Convert the int to a string
+              char *pBuffer = strBuffer.GetBuffer(32);
+              _itoa(*((int *)(pData-&gt;m_pData)), pBuffer, 10);
+            }
+            strBuffer.ReleaseBuffer();
+            m_vbxGrid-&gt;SetStrProperty("Text", strBuffer);
+          break;
+
+          case SQL_TIME:    // Fall through
+          case SQL_DATE:    // Fall through
+          case SQL_TIMESTAMP:
+            // Convert the CTime to a string
+            strBuffer = ((CTime *)(pData-&gt;m_pData))-&gt;Format( "%c" );
+            m_vbxGrid-&gt;SetStrProperty("Text", strBuffer);
+          break;
+
+          default:
+            break;
+        }
+        // Increment the row and check to see if that was our
+        // last CColumnData in the list
+        row++;
+        if (rPos)
+          pData = (CColumnData *)pList-&gt;GetNext(rPos);
+        else
+          pData = NULL;
+      }
+</PRE>}
+<P>
+The most fundamental concepts of the sample are contained within the
+CColumns and CColumnData objects. The first allows DYNCOL to determine the
+name and data type for each column in the table. With this information it
+is able to allocate a linked list of CColumnData objects. Each CColumnData
+object is a descriptor that contains the the name, type and a pointer to a
+data object of the correct type. Once this list has been constructed,
+traversal routines must be put in the DoFieldExchange() and
+DoDataExchange() routines to perform the appropriate RFX/DDX function with
+the allocated data object.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf ODBC 1.50 2.50 dynamic column bind<BR>
+KBCategory: kbprg kbfile kbcode<BR>
+KBSubcategory: MfcDatabase<BR>
+Keywords            : kb16bitonly MfcDatabase kbcode kbfile kbprg<BR>
+Technology          : kbMfc<BR>
+Version             : 1.50<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

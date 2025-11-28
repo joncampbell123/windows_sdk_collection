@@ -1,0 +1,212 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Optimizer Index Selection with Stored Procedures </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q89385 ">
+<META NAME="KBModify" CONTENT="1997/08/11">
+<META NAME="KBCreate" CONTENT="1992/09/21">
+<META NAME="Keywords" CONTENT="kbother">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  SQL Server incorporates an intelligent, cost-based query optimizer which, given a user's query, can quickly determine the best access plan for returning the data. The optimizer is invoked for every query that is sent to SQL Server, and its primary ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDMG,QAB9,QA28,QATJ,QABM,QAHE,QAJQ,QAE1,QAP2,QACF,QBW7,QAI5,QAYY,QAU3,QAMR V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Optimizer Index Selection with Stored Procedures</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 11, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q89385 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+  - Microsoft SQL Server, versions 4.2, 6.0 and 6.5
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+SQL Server incorporates an intelligent, cost-based query optimizer
+which, given a user's query, can quickly determine the best access
+plan for returning the data. The optimizer is invoked for every query
+that is sent to SQL Server, and its primary goal is to minimize
+execution time, which generally has a direct link to minimizing page
+accesses. The optimizer functions slightly differently when stored
+procedures are executed, as opposed to when ad-hoc queries are
+submitted; however, understanding these differences will help ensure
+consistent performance regardless of how the query is sent to the
+server.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When a user creates a stored procedure, a normalized form of the
+query, called the "query tree," is stored in the sysprocedures table.
+Upon first execution of this procedure, the query tree is read into
+the procedure cache and a "query plan" is created for the procedure.
+The query plan is the optimized path to the data, produced in part by
+the optimizer. As long as this plan remains in the procedure cache,
+all subsequent executions of the procedure will use the same plan.
+This point becomes very important when dealing with stored procedures
+that have queries whose WHERE clauses depend on parameters passed to
+the procedure.
+<P>
+For example, suppose a table exists with the following structure:
+<P>
+<PRE>   CREATE TABLE Member_Info
+      (member_no int,
+      l_name varchar(20),
+      f_name varchar(10),
+      group_name char(10) NULL
+      )
+
+</PRE>Assume that two indexes have been defined on this table: "C_Idx" is a
+unique, clustered index on the member_no column, and "NC_Idx1" is a
+nonunique, nonclustered index on the group_name column. For this
+example, assume the table has 10,000 rows, with member_no numbered
+consecutively from 1 to 10,000.
+<P>
+A procedure is created that accepts an input parameter and returns all
+rows in the table that have a member_no value larger than that
+parameter:
+<P>
+<PRE>   CREATE PROCEDURE GetNLargest @var1 int
+   AS
+   SELECT *
+   FROM Member_Info
+   WHERE Member_no &gt; @var1
+
+</PRE>The plan that is generated for this procedure will be based on the
+value of @var1 that was used the first time the procedure was
+executed. For example, if the procedure is executed with a parameter
+of 9900, the optimizer will choose to access the data through the
+clustered index (to verify this, execute SET SHOWPLAN ON prior to
+executing the procedure).
+<P>
+If the procedure is then executed with a parameter of 1, it will use
+the same plan, and thus access the data through the clustered index.
+Because all but the first row will need to be returned in this case,
+it would make more sense from a performance standpoint to start at the
+first page of the table and scan each row on each page, rather than
+incur the extra overhead of searching the index tree. To generate a
+new query plan for the procedure, execute the procedure using the WITH
+RECOMPILE option. This causes the optimizer to generate a new query
+plan for the procedure based on the current parameter. In general, any
+time you suspect that the query plan may not be the optimum one for
+the given parameter(s), executing the procedure using WITH RECOMPILE
+will ensure that the plan used is the most efficient one based on the
+given parameter.
+<P>
+Another factor that can affect the plan generated for a stored
+procedure is the data type the procedure's parameter is defined as. It
+is good practice to always define the parameter as the same data type
+as the column it refers to in the table. This includes user-defined
+data types: if the member_no column was defined as type "mem_type",
+and mem_type was defined as "int", the parameter to the procedure
+should be defined as type "mem_type", not "int". By doing this, the
+optimizer will know that the values it is comparing are the same type
+and will not mistakenly instruct SQL Server to convert the parameters
+when the query is executed.
+<P>
+There is one exception to the above guideline. When a column is
+defined as type "char(n) NULL", SQL Server internally represents that
+column as though it were defined as "varchar(n) NULL". Thus, there is
+a distinct difference between the types "char(n)" and "char(n) NULL".
+Given this fact, when a table has a column defined as type "char(n)
+NULL", a stored procedure parameter that will refer to that column
+should be defined as "varchar(n)" to ensure that the optimizer
+recognizes the two items as having the same data type.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 4.20 datatype<BR>
+Keywords          : kbother<BR>
+Version           : 4.2<BR>
+Platform          : OS/2<BR>
+Issue type        : kbtshoot<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 11, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

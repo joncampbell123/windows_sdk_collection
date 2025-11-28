@@ -1,0 +1,255 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Create Custom AppWizards that Generate Non-MFC Projects </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q173483">
+<META NAME="KBModify" CONTENT="1997/10/20">
+<META NAME="KBCreate" CONTENT="1997/09/05">
+<META NAME="Keywords" CONTENT="WizardIss">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Visual C++ 5.0 custom AppWizards always generates an MFC-based project initially. Now the custom AppWizards can change the essential MFC project settings for the generated project through the new automation object model of Developer Studio.  MORE I...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABA,QBAO,QAEF,QAJN,QBFY,QA56,QA55,QAH4,QARW,QDH6,QA9N,QAPN,QANJ,QAG0,QAPF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Create Custom AppWizards that Generate Non-MFC Projects</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 20, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q173483</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The AppWizard included with:
+<P><PRE>    - Microsoft Visual C++, 32-bit Editions, version 5.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Visual C++ 5.0 custom AppWizards always generates an MFC-based project
+initially. Now the custom AppWizards can change the essential MFC project
+settings for the generated project through the new automation object model
+of Developer Studio.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When a custom AppWizard generates a project, it cannot simply replace the
+automatically created .dsp project settings file. The project settings in
+the .dsp file are set by internal rules that assume all generated projects
+are MFC projects. However, Visual C++ 5.0's new object model allows custom
+AppWizards to modify tool settings such that all dependencies on MFC are
+removed from the resulting project.
+<P>
+The CCustomAppWiz class in Visual C++ 5.0 now has a virtual override called
+CustomizeProject. CustomizeProject provides the custom wizard with an
+IBuildProject interface. The Configurations method of IBuildProject
+provides an IConfiguration interface for each build configuration in the
+project. IConfiguration can add and remove settings supplied to tools such
+as the compiler. Using these methods, a custom wizard can remove settings
+that add dependencies on MFC.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+Following is an example CustomizeProject override that demonstrates the
+removal of MFC dependencies:
+<P>
+<PRE>   #import "c:\Program Files\DevStudio\SharedIDE\bin\ide\devbld.pkg"
+
+   void CNoMfcCustWizAppWiz::CustomizeProject(IBuildProject* pProject)
+   {
+   using namespace DSProjectSystem;
+
+      long lNumConfigs;
+      IConfigurationsPtr pConfigs;
+      IBuildProjectPtr pProj;
+      // Needed to convert IBuildProject to the DSProjectSystem namespace
+      pProj.Attach((DSProjectSystem::IBuildProject*)pProject, true);
+
+      pProj-&gt;get_Configurations(&amp;pConfigs);
+      pConfigs-&gt;get_Count(&amp;lNumConfigs);
+      //Get each individual configuration
+      for (long j = 1 ; j &lt; lNumConfigs+1 ; j++)
+      {
+         _bstr_t varTool;
+         _bstr_t varSwitch;
+         IConfigurationPtr pConfig;
+         _variant_t varj = j;
+
+         pConfig = pConfigs-&gt;Item(varj);
+
+         // Remove Preprocessor def for MFC DLL specifier, _AFXDLL
+         varTool   = "cl.exe";
+         varSwitch = "/D \"_AFXDLL\"";
+         pConfig-&gt;RemoveToolSettings(varTool, varSwitch, varj);
+
+         varTool   = "rc.exe";
+         varSwitch = "/d \"_AFXDLL\"";
+         pConfig-&gt;RemoveToolSettings(varTool, varSwitch, varj);
+
+         // OPTIONAL
+         // Add Libs that MFC headers would have pulled in automatically
+         // Feel free to customize this listing to your tastes
+         varTool = "link.exe";
+         varSwitch = "kernel32.lib user32.lib gdi32.lib winspool.lib "
+                     "comdlg32.lib advapi32.lib shell32.lib ole32.lib "
+                     "oleaut32.lib uuid.lib odbc32.lib odbccp32.lib";
+         pConfig-&gt;AddToolSettings(varTool, varSwitch, varj);
+      }
+   }
+
+</PRE>Note that this code sample uses features from Visual C++ 5.0's new COM
+compiler support. The #import statement imports and creates definitions for
+all of the types in the DEVBLD.PKG type library. This allows the code to
+use the COM smart pointers of the form IInterfacePtr, as well as the new
+_bstr_t and _variant_t types. All of these new types automatically clean up
+used memory and release held interface pointers when they go out of scope.
+Refer to the Visual C++ documentation for more information.
+<P>
+<P><h3>Caveats</h3>
+ 
+
+<UL><LI>Note that there is no programmatic method available for removing the
+   internal project setting that controls the "Microsoft Foundation
+   Classes" setting on the General Project Settings tab. Projects that are
+   generated by custom wizards that include the code above will still
+   appear to "Use MFC in a Shared DLL." The only way you can change this
+   setting is by making unsupported modifications to the .dsp project
+   settings file. However, this setting is only used by certain DevStudio
+   MFC user interface elements, such as Class Wizard and some MFC-based
+   component gallery components. It should have no effect on a non-MFC
+   project.
+
+<LI>Even after modifying project settings using AddToolSettings and
+   RemoveToolSettings as above, DEFAULT project settings will still remain
+   the same. If the user of a project generated by this custom AppWizard
+   opens up Project Settings and clicks Reset, the restored
+   project settings will include the removed MFC references. Again, the
+   only way to prevent this is to make unsupported changes to the generated
+   .dsp project settings file by hand after the custom AppWizard has
+   created the project.
+
+<LI>When you use RemoveToolSettings, remove only one tool setting at a time.
+   In the example above, make another call to RemoveToolSettings to remove
+   another preprocessor definition from the CL.EXE command line rather
+   than tacking the definition to be removed onto the end of the same
+   varSwitch statement. Also, keep in mind that tool settings are case-
+   sensitive, that is "/d" and "/D" are not the same thing.
+
+<LI>Unfortunately, AddToolSettings, RemoveToolSettings, and
+   AddCustomBuildStep (another IConfiguration method) operate on the entire
+   project only; they cannot make tool settings or create custom build
+   steps for a single file. For example, it is usually desirable to add a
+   custom build step for a project's IDL file to process the file using
+   MIDL and generate TLB and other necessary project files. The current
+   DevStudio object model does not support this. Custom build steps for
+   single files will have to be added by hand after the custom AppWizard
+   generates the projects.
+<P>
+</UL><h2>REFERENCES</h2>
+ 
+<P>
+Visual C++ Books Online: Visual C++; Developer Studio Environment;
+Automating Tasks in Developer Studio
+<P>
+Visual C++ Books Online: Visual C++; Visual C++ Programmer's Guide;
+Beginning Your Program; Creating a Custom AppWizard; Creating Custom
+AppWizards; Customizing the Generated Custom AppWizard Project
+<P>
+Visual C++ Books Online: Visual C++; Visual C++ Programmer's Guide; Adding
+Program Functionality; Overviews; Compiler COM Support: Overview
+ 
+<PRE>Keywords          : WizardIss
+Version           : WINNT:5.0
+Platform          : winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 20, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

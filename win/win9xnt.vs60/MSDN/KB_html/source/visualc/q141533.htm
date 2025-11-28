@@ -1,0 +1,256 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: CSyncObject::Lock Always Returns TRUE for Finite Waits </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q141533">
+<META NAME="KBModify" CONTENT="1997/09/19">
+<META NAME="KBCreate" CONTENT="1995/12/19">
+<META NAME="Keywords" CONTENT="MFCThreadIss vcbuglist400 vcfixlist410 kbbuglist kbcode kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The CSyncObject::Lock function always returns TRUE for finite values of timeout intervals. This happens even if the synchronization object is in a non-signaled state.  CAUSE =====  CSyncObject::Lock is supposed to return FALSE only when the synchro...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QABT,QALW,QAY5,QAGI,QAA8,QAW6,QAR4,QAPN,QBV8,QABO,QAJ6,QALQ,QAK7,QAB9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: CSyncObject::Lock Always Returns TRUE for Finite Waits</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 19, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q141533</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+<PRE>4.00       | 4.00
+</PRE>WINDOWS NT | WINDOWS
+kbprg kbbuglist kbfixlist kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes(MFC) included with:
+   Microsoft Visual C++, 32-bit Edition, version 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The CSyncObject::Lock function always returns TRUE for finite values of
+timeout intervals. This happens even if the synchronization object is in a
+non-signaled state.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+CSyncObject::Lock is supposed to return FALSE only when the synchronization
+object is in a non-signaled state. The current implementation of this
+function makes a call to ::WaitForSingleObject and returns FALSE only when
+::WaitForSingleObject returns WAIT_FAILED. This is incorrect.
+<P>
+::WaitForSingleObject returns WAIT_FAILED only when the call itself fails.
+When it succeeds, it can return a variety of values, with only
+WAIT_OBJECT_0 indicating that the synchronization object is in a signaled
+state.
+<P>
+CSyncObject::Lock is a virtual function that is overridden only in the case
+of CCriticalSection. Hence the problem arises if you work with a CEvent,
+CMutex, or a CSemaphore object. The problem also comes up if you work with
+the CSingleLock class and call CSingleLock::Lock. This is because
+CSingleLock::Lock calls CSyncObject::Lock through its synchronization
+object.
+<P>
+In the case of finite timeout intervals, if the object is non-signaled,
+::WaitForSingleObject returns WAIT_TIMEOUT. The CSyncObject::Lock should
+return FALSE but its current implementation returns TRUE. The return value
+from the Lock function is also TRUE when ::WaitForSingleObject returns
+WAIT_ABANDONED indicating that the thread that owned this synchronization
+object (a CMutex) terminated before releasing it.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+The easiest way to fix the problem is to derive a new class from the
+synchronization object class that is being used (CEvent, CMutex, or
+CSemaphore). The only function that needs to be overridden is the
+CSyncObject::Lock function. Because this function is virtual, if you work
+with an object of your derived class, your derived class' implementation of
+Lock will be called. The Lock function in the new class (assuming it is
+called CMyEvent) should be implemented as:
+<P>
+BOOL CMyEvent::Lock(DWORD dwTimeout)
+{
+<PRE>  if (::WaitForSingleObject(m_hObject, dwTimeout) == WAIT_OBJECT_0)
+    return TRUE;
+  else
+    return FALSE;
+</PRE>}
+<P>
+Please see the "Sample Code" section of this article for an illustration
+showing how to work around the problem. The sample code gives the
+definition of a class derived from the CEvent class and its implementation.
+<P>
+In the case of CMutex and CSemaphore, you need to proceed in the same
+manner. You need to derive new classes and override the Lock function in an
+identical fashion.
+<P>
+The correct CSyncObject::Lock :
+<P>
+BOOL CSyncObject::Lock(DWORD dwTimeout)
+{
+<PRE>  if (::WaitForSingleObject(m_hObject, dwTimeout) ==  WAIT_OBJECT_0)
+    return TRUE;
+  else
+    return FALSE;
+</PRE>}
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products
+listed at the beginning of this article. This bug was corrected in
+Visual C++ 4.1.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed: Default Options
+*/
+
+
+// The Myevent.h File
+
+</PRE>#ifndef _MY_EVENT_
+<PRE>#define _MY_EVENT_
+
+</PRE>class CMyEvent : public CEvent
+{
+<PRE>      DECLARE_DYNAMIC(CMyEvent)
+
+// Constructor
+</PRE>public:
+<PRE>      CMyEvent(BOOL bInitiallyOwn = FALSE, BOOL bManualReset = FALSE,
+               LPCTSTR lpszName = NULL,
+               LPSECURITY_ATTRIBUTES lpsaAttribute = NULL) :
+               CEvent(bInitiallyOwn, bManualReset, lpszName,
+                      lpsaAttribute)
+               { }
+
+// Operations
+</PRE>public:
+<PRE>      BOOL virtual Lock (DWORD dwTimeout = INFINITE);
+</PRE>};
+<P>
+#endif
+<P>
+<P>
+<PRE>// The Myevent.cpp File
+
+#include "stdafx.h"
+#include &lt;afxmt.h&gt;
+#include "myevent.h"
+
+</PRE>IMPLEMENT_DYNAMIC (CMyEvent, CEvent)
+<P>
+BOOL CMyEvent::Lock(DWORD dwTimeout)
+{
+<PRE>  if (::WaitForSingleObject(m_hObject, dwTimeout) ==  WAIT_OBJECT_0)
+    return TRUE;
+  else
+    return FALSE;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: CSyncObject 4.00 Lock WAIT_TIMEOUT Windows 95<BR>
+                            4.10<BR>
+KBCategory: kbprg kbbuglist kbfixlist kbcode<BR>
+KBSubcategory: MFCThreadIss vcbuglist400 vcfixlist410<BR>
+Keywords          : MFCThreadIss vcbuglist400 vcfixlist410 kbbuglist kbcode kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 4.00       | 4.00<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 19, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

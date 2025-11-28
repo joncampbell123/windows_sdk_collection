@@ -1,0 +1,349 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Use Connectable Objects in SQL-DMO </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q156434">
+<META NAME="KBModify" CONTENT="1997/04/09">
+<META NAME="KBCreate" CONTENT="1996/09/24">
+<META NAME="Keywords" CONTENT="kbprg kbusage SSrvDMO SSrvProg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The ConnectionPoint event establishes a two-way dialogue between an object and a client, and it allows you to write Component Object Model (COM) objects that are notified by OLE objects when certain events occur. SQL Server 6.5 includes several new...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAPN,QAW6,QDIU,QA3W,QAUR,QALW,QATX,QAMB,QAGI,QABM,QAI4,QBBS,QBB0,QAO4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Use Connectable Objects in SQL-DMO</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 9, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q156434</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+<P>
+SUMMARY
+ 
+<P>
+The ConnectionPoint event establishes a two-way dialogue between an object
+and a client, and it allows you to write Component Object Model (COM)
+objects that are notified by OLE objects when certain events occur. SQL
+Server 6.5 includes several new and enhanced objects and events for SQL
+Distributed Management Objects (DMO). Four of the objects (SQLServer,
+Backup, Transfer, and BulkCopy) now support the ConnectionPoint event. This
+article demonstrates the usage of SQL-DMO object Backup and BackupSink
+objects in C++.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+
+<OL><P><LI>Declare and implement a Sink Object that supports the ISQLOLEBackupSink
+   and IUNKnown interfaces.
+<P>
+</OL>class CMyBackupSink : public ISQLOLEBackupSink
+{
+<PRE>        public:
+                CMyBackupSink(){m_cRefs=0;};
+
+//*** IUnknown methods
+</PRE></OL>STDMETHOD(QueryInterface) (THIS_ REFIID riid, LPVOID *ppvObj);
+<PRE>STDMETHOD_(ULONG,AddRef) (THIS)     {return ++m_cRefs;}
+</PRE>STDMETHOD_(ULONG,Release) (THIS)
+<PRE>         {
+                  if (1 &gt;= m_cRefs) {
+                              //delete this;
+                              return 0;
+                  }
+                return --m_cRefs;
+         }
+//*** ISQLOLEBackupSink methods
+</PRE>STDMETHOD(DumpComplete) (THIS_ SQLOLE_LPCSTR strDumpComplete);
+<PRE>         STDMETHOD(PercentComplete)(THIS_ SQLOLE_LPCSTR szMessage, long
+</PRE>lPercent);
+STDMETHOD(NextVolume)(THIS_ SQLOLE_LPCSTR strNextVolume);
+<P>
+<PRE>        protected:                              //member vars.
+                ULONG                           m_cRefs;
+
+};
+
+</PRE><P><LI>Ask the Connectable Object (pSQLBackup) about its outgoing interface, by
+   using QueryInterface on IID_IConnectionPointContainer. If this fails,
+   this object does not support the outgoing interface.
+<P>
+   LPCONNECTIONPOINTCONTAINER pMyConnectionPointContainer;
+   pSQLBackup-&gt;QueryInterface(IID_IConnectionPointContainer,( LPVOID FAR*)
+   &amp;pMyConnectionPointContainer);
+
+<P><LI>Find the specific outgoing interface IID_ISQLOLEBackupSink, and retrieve
+   a pointer to the ConnectionPoint Object. If this fails, the object does
+   not support this outgoing interface.
+<P>
+   LPCONNECTIONPOINT pMyConnectionPoint;
+   pMyConnectionPointContainer-&gt;FindConnectionPoint(IID_ISQLOLEBackupSink,
+   (LPCONNECTIONPOINT FAR*) &amp;pMyConnectionPoint);
+
+<P><LI>Establish the connection between the Sink and ConnectionPoint Object.
+   Retreive a key (cookie) value for terminating the connection later.
+   If this fails, the Sink and ConnectionPoint Object do not support the
+   same interface.
+<P>
+   pMyConnectionPoint-&gt;Advise((LPUNKNOWN)pMyBackupSink, &amp;dwCookie));
+
+<P><LI>Use the Connectable Object (Backup) as usual. The object will invoke
+   methods supported by the connected outgoing interface when they are
+   appropriate (in this example, the Backup Object calls PercentComplete()
+   as a backup progress, NextVolume() when it needs to send a 'mount next
+   volume' message, and DumpComplete() when the backup completes).
+<P>
+   pSQLDatabase-&gt;Dump(pSQLBackup);
+
+<P><LI>Terminate the connection using the same connection key.
+<P>
+   pMyConnectionPoint-&gt;Unadvise(dwCookie);
+<P>
+</OL>The following is a complete code list on how to monitor the backup process
+with SQL-DMO, using the Backup and BackupSink objects. For more information
+about Connectable Objects and the ConnectionPoint Event, see "Inside OLE"
+by Kraig Brockschmidt.
+<P>
+<PRE>#define UNICODE
+#define _UNICODE
+#include &lt;windows.h&gt;
+#include &lt;initguid.h&gt;
+#include &lt;tchar.h&gt;
+#include &lt;sqloleid.h&gt;
+#include &lt;sqlole.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;olectl.h&gt;
+
+int DisplayError();
+</PRE></OL>class CMyBackupSink : public ISQLOLEBackupSink
+{
+<PRE>        public:
+                CMyBackupSink(){m_cRefs=0;};
+
+//*** IUnknown methods
+</PRE>STDMETHOD(QueryInterface) (THIS_ REFIID riid, LPVOID *ppvObj);
+<PRE>STDMETHOD_(ULONG,AddRef) (THIS)     {return ++m_cRefs;}
+</PRE>STDMETHOD_(ULONG,Release) (THIS)
+<PRE>         {
+                  if (1 &gt;= m_cRefs) {
+                              //delete this;
+                              return 0;
+                  }
+                  return --m_cRefs;
+         }
+//*** ISQLOLEBackupSink methods
+</PRE>STDMETHOD(DumpComplete) (THIS_ SQLOLE_LPCSTR strDumpComplete);
+<PRE>         STDMETHOD(PercentComplete)(THIS_ SQLOLE_LPCSTR szMessage, long
+</PRE>lPercent);
+STDMETHOD(NextVolume)(THIS_ SQLOLE_LPCSTR strNextVolume);
+<P>
+<PRE>        protected:                              //member vars.
+                ULONG                           m_cRefs;
+
+};
+</PRE>STDMETHODIMP CMyBackupSink::QueryInterface(REFIID riid, LPVOID FAR* ppvObj)
+{
+<PRE>        if (riid == IID_IUnknown || riid == IID_ISQLOLEBackupSink) {
+                AddRef();
+                *ppvObj = this;
+                return NOERROR;
+        }
+        return E_NOINTERFACE;
+}
+//Backup Sink Methords.
+</PRE>STDMETHODIMP CMyBackupSink::DumpComplete(THIS_ SQLOLE_LPCSTR szMessage)
+{
+<PRE>//Backup object calls us when backup is completed.
+   printf("Backup Completed\n");
+</PRE>return NOERROR;
+}
+<P>
+STDMETHODIMP CMyBackupSink::PercentComplete(THIS_ SQLOLE_LPCSTR szMessage,
+long lPercent)
+{
+<PRE> //Backup object calls us with new percent complete.
+   printf("%ld%s Completed\n", lPercent,"%");
+   return NOERROR;
+</PRE>}
+<P>
+STDMETHODIMP CMyBackupSink::NextVolume(THIS_ SQLOLE_LPCSTR szMessage)
+{
+<PRE>//Backup object calls us when it's ready for next volume.
+</PRE>printf("Next Volume Message: %s \n", szMessage);
+<PRE>         return NOERROR;
+}
+
+int main (void)
+</PRE>{
+<PRE>   HRESULT hr;
+   if FAILED(hr = CoInitialize (NULL))
+   {
+      _tprintf(TEXT("CoInitialize Failed\n"));
+      return (0);
+   }
+   LPSQLOLESERVER pSQLServer = NULL;
+   if FAILED(hr = CoCreateInstance(CLSID_SQLOLEServer, NULL,
+</PRE>CLSCTX_INPROC_SERVER,
+<PRE>      IID_ISQLOLEServer, (LPVOID*)&amp;pSQLServer))
+   {
+      _tprintf(TEXT("CoCreateInstance Failed\n"));
+      return (0);
+   }
+   pSQLServer-&gt;SetLoginTimeout(10);
+   if FAILED(hr = pSQLServer-&gt;Connect(TEXT(""),TEXT("sa"),TEXT("")))
+      return DisplayError();
+</PRE>LPSQLOLEBACKUP pSQLBackup = NULL;
+if FAILED(hr = CoCreateInstance(CLSID_SQLOLEBackup, NULL,
+CLSCTX_INPROC_SERVER,
+<PRE>         IID_ISQLOLEBackup, (LPVOID*)&amp;pSQLBackup))
+   {
+      _tprintf(TEXT("CoCreateInstance Failed\n"));
+      return (0);
+   }
+   LPCONNECTIONPOINTCONTAINER pMyConnectionPointContainer;
+   LPCONNECTIONPOINT pMyConnectionPoint;
+         CMyBackupSink* pMyBackupSink = new CMyBackupSink();
+   pMyBackupSink-&gt;AddRef();
+   if(!pMyBackupSink)return(0);
+   DWORD dwCookie;
+</PRE>if FAILED(pSQLBackup-&gt;QueryInterface(IID_IConnectionPointContainer,( LPVOID
+FAR*) &amp;pMyConnectionPointContainer))
+<PRE>      return DisplayError();
+</PRE>if FAILED(pMyConnectionPointContainer-
+&gt;FindConnectionPoint(IID_ISQLOLEBackupSink, (LPCONNECTIONPOINT FAR*)
+&amp;pMyConnectionPoint))
+<PRE>      return DisplayError();
+   if (S_OK!=(hr=pMyConnectionPoint-&gt;Advise((LPUNKNOWN)pMyBackupSink,
+</PRE>&amp;dwCookie)))
+<PRE>      return DisplayError();
+   if FAILED(hr=pSQLBackup-
+</PRE>&gt;SetDiskDevices(TEXT("'\\\\ocean11\\public\\test.txt'") ))
+<PRE>   return DisplayError();
+</PRE>LPSQLOLEDATABASE pSQLDatabase = NULL;
+<PRE>   if FAILED(pSQLServer-&gt;GetDatabaseByName(TEXT("pubs"),&amp;pSQLDatabase))
+      return DisplayError();
+   printf("Backup Start\n");
+   if FAILED(hr=pSQLDatabase-&gt;Dump(pSQLBackup))
+      return DisplayError();
+   pMyConnectionPoint-&gt;Unadvise(dwCookie);
+   pMyConnectionPoint-&gt;Release ();
+   pMyConnectionPointContainer-&gt;Release ();
+   pSQLBackup-&gt;Release ();
+</PRE>pSQLServer-&gt;Release ();
+<P>
+CoUninitialize ();
+<PRE>   return (0);
+</PRE>}
+<P>
+<PRE>int DisplayError()
+</PRE>{
+<PRE>   LPERRORINFO pErrorInfo=NULL;
+   GetErrorInfo(0,&amp;pErrorInfo);
+   BSTR strDescription, strSource;
+   pErrorInfo-&gt;GetDescription (&amp;strDescription);
+   pErrorInfo-&gt;GetSource(&amp;strSource);
+   _tprintf(TEXT("%s\n"),strDescription);
+   _tprintf(TEXT("%s\n"),strSource);
+   pErrorInfo-&gt;Release();
+   SysFreeString(strDescription);
+   SysFreeString(strSource);
+</PRE>return 0;
+}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:<BR>
+Keywords            : kbprg kbusage SSrvDMO SSrvProg<BR>
+Version             : 6.5<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 9, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

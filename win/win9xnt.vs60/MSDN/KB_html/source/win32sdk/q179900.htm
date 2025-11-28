@@ -1,0 +1,375 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Support Renaming of Items in the Windows Explorer Tree </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q179900">
+<META NAME="KBModify" CONTENT="1998/01/27">
+<META NAME="KBCreate" CONTENT="1998/01/26">
+<META NAME="Keywords" CONTENT="UsrShell">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  When creating a namespace extension that has multiple levels of folders, it may be necessary to allow the folders to be renamed. This article discusses how to support renaming of folders in the Windows Explorer tree. This article assumes you are al...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBIC,QAUJ,QAVI,QAUD,QAFI,QAGI,QAH6,QDL9,QBWO,QBWN,QAOG,QBWQ,QBWP,QARM,QAPF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Support Renaming of Items in the Windows Explorer Tree</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 27, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q179900</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) included with:
+   - Microsoft Windows NT 4.0
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When creating a namespace extension that has multiple levels of folders, it
+may be necessary to allow the folders to be renamed. This article discusses
+how to support renaming of folders in the Windows Explorer tree. This
+article assumes you are already familiar with development of namespace
+extensions. For more information on writing namespace extensions, see David
+Campbell's article "Extending the Windows Explorer with Name Space
+Extensions" in the July, 1996 issue of the Microsoft Systems Journal. In
+addition, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q178665.htm">Q178665</A></B>
+   TITLE     : SAMPLE: RegView.exe: Shell Namespace Extension Example
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+To support renaming of folders in the Windows Explorer tree, follow these
+steps:
+
+<OL><P><LI>Supply the SFGAO_CANRENAME attribute in response to your
+   IShellFolder::GetAttributesOf method for any folders that can be
+   renamed.
+<P>
+   Explorer will call your IShellFolder::GetAttributesOf with the PIDL of a
+   folder in your namespace. If this item can be renamed, you need to add
+   the SFGAO_CANRENAME attribute to the attributes for that item. Don't
+   forget that you can call IShellFolder::GetAttributesOf with multiple
+   PIDLs, so you must only return the attributes that apply to all items.
+   When Windows Explorer detects the SFGAO_CANRENAME attribute for the
+   selected folder in the tree, it will enable the Rename item in the File
+   menu.
+<P>
+   An example of GetAttributesOf might look something like this:
+<P>
+   STDMETHODIMP CShellFolder::GetAttributesOf(  UINT uCount,
+<PRE>                                                LPCITEMIDLIST aPidls[],
+                                                LPDWORD pdwAttribs)
+   {
+   UINT  i;
+
+   for(i = 0; i &lt; uCount; i++)
+      {
+      DWORD dwAttribs = 0;
+
+      // Is this item a folder?
+      if(IsFolder(aPidls[i]))
+         {
+         dwAttribs |= SFGAO_FOLDER;
+
+         // Does this folder item have any subfolders?
+         if(HasSubFolders(aPidls[i]))
+            dwAttribs |= SFGAO_HASSUBFOLDER;
+
+         // Can this folder be renamed?
+         if(CanRename(aPidls[i]))
+            dwAttribs |= SFGAO_CANRENAME;
+         }
+
+      /*
+      On entry, *pdwAttributes contains the attributes that are being
+      requested, so just use it as a mask.
+      */
+      *pdwAttribs &amp;= dwAttribs;
+      }
+
+   return S_OK;
+   }
+
+</PRE><P><LI>Add a rename item to the context menu in your
+   IContextMenu::QueryContextMenu.
+<P>
+   To support renaming of tree items you must also add a rename item to the
+   context menu supplied for a folder item in the tree. Windows Explorer
+   calls your IShellFolder::GetUIObjectOf with IID_IContextMenu to get the
+   IContextMenu for the folder item. When this IContextMenu's
+   QueryContextMenu method is called, you need to add a rename item to the
+   menu if CMF_CANRENAME is specified and then enable or disable the rename
+   menu item based on the item's SFGAO_CANRENAME attribute. A context menu
+   can be created for multiple items. As a result, you should disable the
+   rename menu item if the context menu is created for more than one item
+   because renaming of multiple items is generally not implemented. The
+   rename menu item can have any command identifier as long as it is unique
+   with respect to the other items in the menu. Remember that the string
+   set for the rename menu item should be localized so that various
+   languages can be supported.
+<P>
+   Following is an example of what an IContextMenu::QueryContextMenu could
+   look like. This sample code assumes that the context menu object
+   maintains a NULL-terminated list of the items that it was created for in
+   its m_aPidls member variable and a pointer to the IShellFolder that
+   created it in its m_pSFParent member variable.
+<P>
+</OL><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   #define IDM_MYRENAME 0
+   #define IDM_LAST     5
+
+   STDMETHODIMP CContextMenu::QueryContextMenu( HMENU hMenu,
+                                                UINT indexMenu,
+                                                UINT idCmdFirst,
+                                                UINT idCmdLast,
+                                                UINT uFlags)
+   {
+   if(!(CMF_DEFAULTONLY &amp; uFlags))
+      {
+      MENUITEMINFO   mii;
+
+      // Add any other menu items here.
+
+      if(uFlags &amp; CMF_CANRENAME)
+         {
+         ZeroMemory(&amp;mii, sizeof(mii));
+         mii.cbSize = sizeof(mii);
+         mii.fMask = MIIM_ID | MIIM_TYPE;
+         mii.wID = 0;
+         mii.fType = MFT_SEPARATOR;
+         InsertMenuItem(   hMenu,
+                           indexMenu++,
+                           TRUE,
+                           &amp;mii);
+
+         ZeroMemory(&amp;mii, sizeof(mii));
+         mii.cbSize = sizeof(mii);
+         mii.fMask = MIIM_ID | MIIM_TYPE | MIIM_STATE;
+         mii.wID = idCmdFirst + IDM_MYRENAME;
+         mii.fType = MFT_STRING;
+         mii.dwTypeData = TEXT("&amp;Rename");
+         mii.fState = (CanRenameItems() ? MFS_ENABLED : MFS_DISABLED);
+         InsertMenuItem(   hMenu,
+                           indexMenu++,
+                           TRUE,
+                           &amp;mii);
+         }
+
+      // Add the following menu items here.
+
+      return MAKE_HRESULT(SEVERITY_SUCCESS, 0, USHORT(IDM_LAST + 1));
+      }
+
+   return MAKE_HRESULT(SEVERITY_SUCCESS, 0, USHORT(0));
+   }
+
+   BOOL CContextMenu::CanRenameItems(void)
+   {
+   if(m_aPidls)
+      {
+      // Get the number of items assigned to this object.
+      UINT  i;
+      for(i = 0; m_aPidls[i]; i++)
+         {
+         }
+
+      // You can't rename more than one item at a time.
+      if(i &gt; 1)
+         return FALSE;
+
+      DWORD dwAttributes = SFGAO_CANRENAME;
+      m_pSFParent-&gt;GetAttributesOf(i, (LPCITEMIDLIST*)m_aPidls,
+   &amp;dwAttributes);
+
+      return dwAttributes &amp; SFGAO_CANRENAME;
+      }
+
+   return FALSE;
+   }
+
+</PRE><P><LI>Supply the "rename" verb in response to your
+   IContextMenu::GetCommandString method when GCS_VERB is specified.
+<P>
+   When an item in the menu is selected, Windows Explorer calls your
+   IContextMenu::GetCommandString with GCS_VERB with the command ID of the
+   selected menu item to determine if this menu item supports the "rename"
+   verb. It does this specifically to allow a namespace extension to
+   support renaming of items in the tree. If your GetCommandString supplies
+   the "rename" verb for the selected menu item, it places the tree item
+   into edit mode and return.
+<P>
+   If your extension is built with UNICODE defined, GCS_VERB will be
+   defined as GCS_VERBA or GCS_VERBW. There is a problem with this on some
+   platforms. Windows NT 4.0 without Internet Explorer or with Internet
+   Explorer 3.0x will always pass GCS_VERBW, even if the extension was
+   built with UNICODE defined or not. This was corrected with Internet
+   Explorer 4.0x where it calls GetCommandString with GCS_VERBW and, if
+   that fails, it then calls GetCommandString with GCS_VERBA. Windows 95
+   always passes GCS_VERBA because Windows 95 doesn't support UNICODE
+   extensions. To make sure that all platforms are supported, you should
+   handle the GCS_VERBA and GCS_VERBW cases explicitly.
+<P>
+   Also remember that the "rename" verb is not localized, so it will always
+   be the string "rename". The case of the verb is ignored when the
+   comparison is made.
+<P>
+</OL><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   An example of GetCommandString might look something like this:
+
+   STDMETHODIMP CContextMenu::GetCommandString( UINT idCommand,
+                                                UINT uFlags,
+                                                LPUINT lpReserved,
+                                                LPTSTR lpszName,
+                                                UINT uMaxNameLen)
+   {
+   HRESULT  hr = E_INVALIDARG;
+
+   switch(uFlags)
+      {
+      case GCS_VERBA:
+         switch(idCommand)
+            {
+            case IDM_MYRENAME:
+               lstrcpynA((LPSTR)lpszName, "rename", uMaxNameLen);
+               hr = NOERROR;
+               break;
+            }
+         break;
+
+      /*
+      Windows NT 4.0 with Internet Explorer 3.0x or no Internet Explorer
+      will always call this with GCS_VERBW. In this case, you need to do
+      the lstrcpyW to the pointer passed.
+      */
+      case GCS_VERBW:
+         switch(idCommand)
+            {
+            case IDM_MYRENAME:
+               lstrcpynW((LPWSTR)lpszName, L"rename", uMaxNameLen);
+               hr = NOERROR;
+               break;
+            }
+         break;
+      }
+
+   return hr;
+   }
+
+</PRE></OL>All of this only allows items in the Windows Explorer tree to enter the
+rename mode. Once it enters rename mode and the user changes the name of
+the item, Windows Explorer will call your IShellFolder::SetNameOf method
+with the new name to change the name of the item.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+Microsoft Systems Journal, July 1996, "Extending the Windows Explorer with
+Name Space Extensions," page 41, David Campbell
+<P>
+For additional information, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q178665.htm">Q178665</A></B>
+   TITLE     : SAMPLE: RegView.exe: Shell Namespace Extension Example
+</PRE> 
+<PRE>Keywords          : UsrShell
+Version           : WINDOWS:95; WINNT:4.0
+Platform          : WINDOWS winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 27, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

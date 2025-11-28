@@ -1,0 +1,330 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Video Image Corrupted If Stored on Compressed Drive </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q108289">
+<META NAME="KBModify" CONTENT="1997/07/22">
+<META NAME="KBCreate" CONTENT="1993/12/07">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  A video image stored in a file on a compressed drive is corrupted when written to video memory. If the file is stored on an uncompressed drive, it displays correctly.  CAUSE =====  If the amount of data read into a buffer from a file on a compresse...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAYS,QDK0,QAO2,QAO3,QBFY,QAGI,QAI4,QDKW,QDL7,QBW6,QBFN,QAYL,QBI8,QAYA,QA4Q V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Video Image Corrupted If Stored on Compressed Drive</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 22, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q108289</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+5.10 6.00 6.00a 7.00 | 1.00 1.50
+<PRE>MS-DOS               | WINDOWS
+</PRE>kbother kbprb
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft C for MS-DOS, versions 5.1 and 6.0
+<LI>Microsoft C/C++ for MS-DOS, version 7.0
+<LI>Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+A video image stored in a file on a compressed drive is corrupted when
+written to video memory. If the file is stored on an uncompressed drive, it
+displays correctly.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+If the amount of data read into a buffer from a file on a compressed drive
+is less than 8K then DoubleSpace uses an internal buffer for decompression.
+For larger amounts of data, however, DoubleSpace may use the user's buffer,
+which in this case is video memory, for temporary storage. DoubleSpace
+assumes that it can read back from memory the same data it writes.
+Unfortunately, video memory is write-only on some systems, which results in
+the video display becoming corrupted.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Workarounds are:
+
+<UL><LI>Move the file storing the video image to an uncompressed drive.
+<P>
+   -or-
+
+<LI>Do not read more than 8K at one time from a file on a compressed drive
+   directly into video memory. See the sample code below.
+<P>
+   -or-
+
+<LI>Call setvbuf() to increase the buffer for file stream input and output
+   to a value larger than the amount being read in. For example, in the
+   following sample code, a call is made to increase the buffer to 28,500
+   bytes.
+<P>
+</UL><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design and is a limitation of DoubleSpace. Similar
+behavior may be observed with other drive compression utilities.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+FILE1.C and FILE2.C create two data files, FILE1.DAT and FILE2.DAT. Place
+these files on a compressed drive and then run FILE3.EXE.
+<P>
+<PRE>/* FILE1. C
+   Compile options needed: /AL
+*/
+
+#include &lt;stdio.h&gt;
+#include &lt;graph.h&gt;
+#include &lt;dos.h&gt;
+
+FILE *FilePtr;        // File pointer
+char far *VidPtr;    // Pointer to video memory
+int loop1, loop2;    // Loop variables
+int k = 0,l = 10;    // Intermediate loop variables
+
+void main(void)
+</PRE>{
+<PRE>    _setvideomode( _ERESCOLOR );
+
+//  Display some rectangles and lines
+
+    for (loop1 = 0; loop1 &lt; 6 ; loop1++) {
+       for ( loop2 = 0 ; loop2 &lt; 500; loop2 +=50 )
+           _rectangle( _GBORDER, loop2, k , loop2+10 , l );
+       _moveto( 0, k+5);
+       _lineto( loop2, k+5);
+       k+=50;
+       l+=50;
+    }
+    getch();
+
+//  Set up a pointer to video memory
+
+    FP_SEG( VidPtr ) = 0xA000;
+    FP_OFF( VidPtr ) = 0x0000;
+
+//  Open a file to store the video image in
+
+    FilePtr = fopen( "file1.dat", "w+" );
+    fwrite( VidPtr, 1, 28000, FilePtr );
+    fclose ( FilePtr );
+
+    _setvideomode( _DEFAULTMODE);
+</PRE>}
+<P>
+<PRE>/* FILE2.C
+   Compile options needed: /AL
+*/
+
+#include &lt;stdio.h&gt;
+#include &lt;graph.h&gt;
+#include &lt;dos.h&gt;
+
+FILE *FilePtr;      // File pointer
+char far *VidPtr;   // Pointer to video memory
+int var1;           // Loop variable
+
+void main(void)
+</PRE>{
+<PRE>    _setvideomode( _ERESCOLOR );
+
+//  Draw some lines
+
+    for (var1 = 5 ; var1 &lt; 555; var1+=50 ) {
+      _moveto( var1, 0);
+      _lineto( var1, 300);
+    }
+    getch();
+
+//  Initialize the video pointer
+
+    FP_SEG( VidPtr ) = 0xA000;
+    FP_OFF( VidPtr ) = 0x0000;
+
+//  Open a file to store the video image
+
+    FilePtr = fopen( "file2.dat", "w+" );
+    fwrite( VidPtr, 1, 28000, FilePtr );
+    fclose ( FilePtr );
+
+    _setvideomode( _DEFAULTMODE);
+</PRE>}
+<P>
+<PRE>/* FILE3. C
+   Compile options needed: /AL
+*/
+
+#include &lt;stdio.h&gt;
+#include &lt;graph.h&gt;
+#include &lt;dos.h&gt;
+#include &lt;conio.h&gt;
+
+FILE *FilePtr;           // File pointer
+char far *VidPtr;        // Pointer to video memory
+int var;                 // Loop variable for workaround #2
+char * tmpbuf, *tmpbuf1; // Temporary buffers--se for workaround #3
+
+void main(void)
+</PRE>{
+<PRE>//  Initialize the video pointer
+
+    FP_SEG( VidPtr ) = 0xA000;
+    FP_OFF( VidPtr ) = 0x0000;
+
+    _setvideomode( _ERESCOLOR );
+
+//  Load the map mask register with a data value.
+//  For further information on this step see the "Programmer's
+//  Guide to PC &amp; PS/2 Video Systems" by Richard Wilton,
+//  published by Microsoft Press.
+
+    outp( 0x3c4,2);
+    outp( 0x3c5,1);
+
+//  Open and read FILE1.DAT into video memory
+
+    FilePtr = fopen( "file1.dat", "rb+" );
+
+/*  Uncomment for workaround #3                       */
+/*  if ((tmpbuf = (char*)malloc( 28500 )) == NULL)    */
+/*       exit(5);                                     */
+/*  setvbuf( FilePtr, tmpbuf, _IOFBF, 28500);         */
+
+    fread( VidPtr, 1 , 28000, FilePtr );
+
+/*  Replace the above fread() call with this for workaround #2 */
+/*  for (var = 0; var &lt; 28000; var+=7000) {                    */
+/*    fread( VidPtr, 1 , 7000, FilePtr );                      */
+/*    VidPtr += 7000;                                          */
+/*  }                                                          */
+
+//  Reset the video pointer
+
+    FP_OFF( VidPtr ) = 0x0000;
+
+//  Load the map mask register with a data value
+
+    outp( 0x3c4,2);
+    outp( 0x3c5,2);
+
+//  Open and read FILE2.DAT into video memory
+
+    FilePtr = fopen( "file2.dat", "rb+" );
+
+/*  Uncomment for workaround #3                       */
+/*  if ((tmpbuf1 = (char*)malloc( 28500 )) == NULL)   */
+/*       exit(5);                                     */
+/*  setvbuf( FilePtr, tmpbuf1, _IOFBF, 28500);        */
+
+    fread( VidPtr, 1 , 28000, FilePtr );
+
+/*  Replace the above fread() call with this for workaround #2 */
+/*  for (var = 0; var &lt; 28000; var+=7000) {                    */
+/*    fread( VidPtr, 1 , 7000, FilePtr );                      */
+/*    VidPtr += 7000;                                          */
+/*  }                                                          */
+
+    getch();
+    _setvideomode( _DEFAULTMODE);
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 5.10 6.00 6.00a 7.00 1.00 1.50<BR>
+KBCategory: kbprg kbprb<BR>
+KBSubcategory: VCGenIss<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 22, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

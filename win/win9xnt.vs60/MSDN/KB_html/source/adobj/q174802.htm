@@ -1,0 +1,251 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Passing a License Key to ADO in Visual C++ Using MFC-OLE </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q174802">
+<META NAME="KBModify" CONTENT="1997/10/08">
+<META NAME="KBCreate" CONTENT="1997/10/06">
+<META NAME="Keywords" CONTENT="kbcode adovc">
+<META NAME="KBArea" CONTENT="Support; KB; adobj">
+<META NAME="Description" CONTENT="  The MFC ClassWizard provides a powerful mechanism for manipulation OLE Automation servers by building MFC-based classes off a given typelib. The classes built wrap each object in the typelib by generating classes derived from COleDispatchDriver. Ho...">
+<META NAME="Product" CONTENT="adobj">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAH4,QAH6,QAI4,QAPN,QBXO,QAW6,QBFY,QA56,QA55,QAH7,QAD7,QABI,QBG2,QALW V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Passing a License Key to ADO in Visual C++ Using MFC-OLE</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 8, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q174802</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>ActiveX Data Objects (ADO), version 1.0 used with:
+   - Microsoft Visual C++, 32-bit Editions, versions 4.2, 4.2b, 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The MFC ClassWizard provides a powerful mechanism for manipulation OLE
+Automation servers by building MFC-based classes off a given typelib. The
+classes built wrap each object in the typelib by generating classes derived
+from COleDispatchDriver. However, COleDispatchDriver has no means for
+passing a license key. This article explains how to override the
+COleDispatchDriver::CreateDispatch methods to provide a license key.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Below is sample code for overriding the two versions of CreateDispatch().
+In this case, it is from sample code for passing a license key via MFC-OLE
+to the ActiveX Data Objects (ADO) Connection object; however, this is
+incidental to the code.
+<P>
+Unless noted, this code is identical to the Visual C++ 5.0 version of
+COleDIspatchDriver::CreateDispatch(). Some macros available internally to
+MFC had to be replaced. Original code has been left below, but commented
+out to demonstrate the modifications:
+<P>
+<PRE>   BOOL _Connection::CreateDispatch(REFCLSID clsid,
+                                    COleException* pError, BSTR bstrLicKey)
+   {
+      ASSERT(m_lpDispatch == NULL);
+
+      m_bAutoRelease = TRUE;  // auto-release is a good default
+
+      // create an instance of the object
+      LPUNKNOWN      lpUnknown  = NULL;
+      IClassFactory2  *pIUnknown = NULL;
+      IUnknown      *pOuter   = NULL;
+
+   //   SCODE sc = CoCreateInstance(clsid, NULL,
+   //                               CLSCTX_ALL | CLSCTX_REMOTE_SERVER,
+   //                               IID_IUnknown, (LPLP)&amp;lpUnknown);
+      SCODE sc = CoGetClassObject( clsid,
+                            CLSCTX_ALL | CLSCTX_REMOTE_SERVER,
+                            NULL,
+                            IID_IClassFactory2,
+                            (void**) &amp;pIUnknown );
+
+      if (sc == E_INVALIDARG)
+      {
+         // may not support CLSCTX_REMOTE_SERVER, so try without
+         SCODE sc = CoGetClassObject( clsid,
+                               CLSCTX_ALL &amp; ~CLSCTX_REMOTE_SERVER,
+                               NULL,
+                               IID_IClassFactory2,
+                               (void**) &amp;pIUnknown );
+
+   //      sc = CoCreateInstance(clsid, NULL,
+   //                            CLSCTX_ALL &amp; ~CLSCTX_REMOTE_SERVER,
+   //                            IID_IUnknown, (LPLP)&amp;lpUnknown);
+
+      }
+
+      if( !FAILED( sc ) )
+      {
+         sc = pIUnknown-&gt;CreateInstanceLic( pOuter,
+                                    NULL,
+                                    IID_IUnknown,
+                                    bstrLicKey,
+                                    (void**)&amp;lpUnknown );
+      }
+
+      if (FAILED(sc))
+         goto Failed;
+
+      // make sure it is running
+      sc = OleRun(lpUnknown);
+      if (FAILED(sc))
+         goto Failed;
+
+      // query for IDispatch interface
+      // m_lpDispatch = QUERYINTERFACE(lpUnknown, IDispatch);
+      if (lpUnknown-&gt;QueryInterface(IID_IDispatch,
+                                    (void**)&amp;m_lpDispatch) != S_OK)
+
+      if (m_lpDispatch == NULL)
+         goto Failed;
+
+      lpUnknown-&gt;Release();
+      ASSERT(m_lpDispatch != NULL);
+      return TRUE;
+
+   Failed:
+      // RELEASE(lpUnknown);
+      if( lpUnknown != NULL )
+      {
+         lpUnknown-&gt;Release();
+         lpUnknown = NULL;
+      }
+      if (pError != NULL)
+         pError-&gt;m_sc = sc;
+      TRACE1("Warning: CreateDispatch returning scode = %s.\n",
+         AfxGetFullScodeString(sc));
+      return FALSE;
+
+   }
+
+   BOOL _Connection::CreateDispatch(LPCTSTR lpszProgID,
+                                    COleException* pError,
+                                    BSTR bstrLicKey)
+   {
+      ASSERT(m_lpDispatch == NULL);
+
+      // map prog id to CLSID
+      CLSID clsid;
+      SCODE sc = AfxGetClassIDFromString(lpszProgID, &amp;clsid);
+      if (FAILED(sc))
+      {
+         if (pError != NULL)
+            pError-&gt;m_sc = sc;
+         return FALSE;
+      }
+
+      // create with CLSID
+      return CreateDispatch(clsid, pError, bstrLicKey);
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For additional information, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../adobj/q168122.htm">Q168122</A></B>
+   TITLE     : HOWTO: Redistributing ADO 1.0 or ADO/R 1.0 with OLE/DB 1.1
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: mfckb<BR>
+Keywords          : kbcode adovc<BR>
+Technology        : kbmfc<BR>
+Version           : WINNT:4.2,4.2b,5.0<BR>
+Platform          : winnt<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 8, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,304 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Using a Prepared Cursor in Embedded SQL for COBOL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q66750 ">
+<META NAME="KBModify" CONTENT="1997/05/05">
+<META NAME="KBCreate" CONTENT="1990/11/07">
+<META NAME="Keywords" CONTENT="kbprg SSrvCobol">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The code listed below demonstrates how to use a prepared cursor to return multiple-row result sets from Microsoft's SQL Server using an Embedded SQL for COBOL program.  For more information about cursors, see the  Microsoft Embedded SQL for COBOL P...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QAO2,QAH4,QBVV,QAUD,QA5C,QAOI,QAFR,QAI5,QAY2,QAH2,QBWS,QBE7,QBE6,QAYL V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Using a Prepared Cursor in Embedded SQL for COBOL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 5, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q66750 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft Embedded SQL version 4.2 for COBOL
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The code listed below demonstrates how to use a prepared cursor to
+return multiple-row result sets from Microsoft's SQL Server using an
+Embedded SQL for COBOL program.
+<P>
+For more information about cursors, see the "Microsoft Embedded SQL
+for COBOL Programmer's Reference."
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+In many programs, each SQL batch (that is, EXEC SQL END-EXEC) is
+precompiled into a stored procedure on a SQL server. This makes it
+impossible to run that program on any other SQL server. One way to
+work around this is to use a prepared cursor to view data. With
+prepared cursors, programs do not need to be compiled for each SQL
+server that might be used because the statement is sent to the SQL
+server as a batch at run time. However, this does require extra coding
+to connect to the SQL server.
+<P>
+The program below connects to any server that is viewable from the
+workstation and queries the master..syslogins table to view the login
+accounts for a particular database.
+<P>
+The basic structure is as follows:
+
+<OL><P><LI>Get a servername and username from the user.
+
+<P><LI>Connect to that server using execute immediate so that this will
+    not be precompiled as a stored procedure on a particular SQL
+    server, demonstrating another way around precompiled stored
+    procedures.
+
+<P><LI>Set the current connection to that server. This is used to allow
+    multiple server connections.
+
+<P><LI>Get a database name from the user to query for logins.
+
+<P><LI>Declare the cursor, naming a prepared statement to be used.
+
+<P><LI>Prepare the statement that the cursor will use with a parameter.
+    The question mark (?) denotes a parameter that will be replaced by
+    a program variable when the cursor is opened.
+
+<P><LI>Open the cursor with a program variable as the parameter.
+
+<P><LI>Fetch each row, ignoring truncated character string warnings (this
+    sets sqlcode = 1) until an error is returned (sqlcode = -1), or no
+    more rows are available (sqlcode = 100).
+
+<P><LI>Close the cursor.
+
+<P><LI>Disconnect from the server.
+<P>
+</OL><h3>Sample Code</h3>
+ 
+<P>
+<PRE>       WORKING-STORAGE SECTION.
+
+       EXEC SQL INCLUDE SQLCA END-EXEC
+
+       EXEC SQL BEGIN DECLARE SECTION END-EXEC
+       01  server-name     pic x(80).
+       01  user-name       pic x(80).
+       01  sys-suid        pic s9(4) packed-decimal.
+       01  sys-status      pic s9(4) packed-decimal.
+       01  sys-accdate     pic x(11).
+       01  sys-dbname      pic x(30).
+       01  sys-name        pic x(30).
+       01  prep            pic x(255).
+       EXEC SQL END DECLARE SECTION END-EXEC
+
+       PROCEDURE DIVISION.
+
+
+      * Connect to server, execute immediate needed because this *
+      * can't be pre-compiled into a stored procedure. *
+       display "Enter servername[.database]:" accept server-name
+       display "Enter username[.password]:" accept user-name
+       EXEC SQL
+         connect to :server-name as conn user :user-name
+       END-EXEC
+       if sqlcode not = 0
+         perform sql-error
+       end-if
+       EXEC SQL
+         set connection conn
+       END-EXEC
+       if sqlcode not = 0
+         perform sql-error
+         stop run
+       end-if
+      * Declare the cursor, prepare the select, open the cursor, *
+      * fetch results, and close the cursor. *
+       display "Enter a database:" accept sys-dbname
+       EXEC SQL
+         declare cursor-select cursor for prepared-select
+       END-EXEC
+       if sqlcode not = 0
+         perform sql-error
+       else
+      * The '?' is a parameter marker that will be replaced by a *
+      * program variable when the cursor is opened. *
+         move "select suid, status, convert(char(11),accdate), dbname,
+      -    "name from master..syslogins where dbname = ?" to prep
+         EXEC SQL
+           prepare prepared-select from :prep
+         END-EXEC
+         if sqlcode not = 0
+           perform sql-error
+         else
+           EXEC SQL
+             open cursor-select using :sys-dbname
+           END-EXEC
+           if sqlcode not = 0
+             perform sql-error
+           else
+             display spaces
+             display "suid  status  accdate      dbname
+      -              "        name"
+             display "----- ------  -----------  ----------------------
+      -              "------- ----------------------"
+
+      * When no more rows are returned, sqlcode = 0. *
+             perform fetch-rows until sqlcode &lt; 0 or sqlcode = 100
+             EXEC SQL
+             close cursor-select
+             END-EXEC
+             if sqlcode not = 0
+               perform sql-error
+             end-if
+           end-if
+         end-if
+       end-if
+       EXEC SQL
+         disconnect conn
+       END-EXEC
+       if sqlcode not = 0
+         perform sql-error
+       end-if
+       stop run.
+
+       fetch-rows.
+      * Fetch the next row from the table and display it. *
+       EXEC SQL
+         fetch cursor-select into :sys-suid, :sys-status, :sys-accdate,
+                                  :sys-dbname, :sys-name
+       END-EXEC
+      * Ignore warnings about truncation of character strings. *
+       if sqlcode = 0 or sqlcode = 1
+         display sys-suid" "sys-status"   "sys-accdate"
+                 "sys-dbname " "   sys-name
+       else
+         if sqlcode not equal 100           *&gt; 100 when no more rows
+           perform sql-error
+         end-if
+       end-if.
+
+       sql-error.
+      * SQL Server error message handler.
+      * Return codes *
+       if sqlcode not equal 1
+         display "SQL error SQLCODE=" sqlcode
+       end-if
+      * Errors *
+       if sqlcode equal -1
+         display "MESSAGE=" sqlerrmc
+         display "SQLERRD(1)="sqlerrd(1) " SQLERRD(2)="sqlerrd(2)
+       end-if
+      * Warnings *
+       if sqlcode equal 1
+         if sqlwarn0 = "W"
+           if sqlwarn1 = "W"
+             display "CHARACTER STRING TRUNCATED DURING OUTPUT BIND"
+           end-if
+           if sqlwarn2 = "W"
+             display "NULL VALUES WERE TRUNCATED"
+           end-if
+           if sqlwarn3 = "W"
+             display "# OF COLUMNS RETURNED DOESN'T MATCH # OF HVARS"
+           if sqlwarn4 = "W"
+             display "AN UPDATE OR DELETE CLAUSE DIDN'T HAVE A WHERE"
+           end-if
+         end-if
+       end-if.
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Embedded SQL for COBOL<BR>
+Keywords            : kbprg SSrvCobol<BR>
+Version             : 4.2<BR>
+Platform            : OS/2<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 5, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

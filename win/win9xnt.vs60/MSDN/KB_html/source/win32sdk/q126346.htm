@@ -1,0 +1,214 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Race Between 2 Threads Sharing a Socket Causes Problem </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q126346">
+<META NAME="KBModify" CONTENT="1995/09/29">
+<META NAME="KBCreate" CONTENT="1995/02/21">
+<META NAME="Keywords" CONTENT="kbnetwork">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Packets between the TCP, UDP, and IP layers are lost.  CAUSE =====  There appears to be a problem with a race condition between two threads that share a socket where one is closing a socket while the other tries to call recvfrom() on the same socke...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUQ,QBE7,QBE6,QAYV,QAKP,QAJQ,QAMA,QBWP,QBB0,QANE,QAML,QALZ,QAGB,QDJP,QA59 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Race Between 2 Threads Sharing a Socket Causes Problem</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 29, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q126346</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Device Development Kit (DDK) for Windows NT
+   version 3.5
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Packets between the TCP, UDP, and IP layers are lost.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+There appears to be a problem with a race condition between two threads
+that share a socket where one is closing a socket while the other tries to
+call recvfrom() on the same socket. This causes problems the next time a
+socket is bound to the same UDP port.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+The vendor should implement a workaround within the application so that
+this race condition does not occur.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the Microsoft products
+listed at the beginning of this article. We are researching this problem
+and will post new information here in the Microsoft Knowledge Base as it
+becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+This Sockets/UDP problem was discovered while testing the TX1000 NCPI
+driver for Windows NT. Here are some notes showing what appears to be
+happening:
+<P>
+<PRE>Thread 1                        Thread 2
+--------                        ---------
+</PRE>Create DGRAM socket x
+Bind socket x to:
+<PRE>        IPADDR = ANY
+        PORT = 1571
+</PRE>Create thread 2 -----------------&gt;
+<PRE>                                RecvFrom on socket x
+                                ...
+                                Packet received on x (recvfrom completes)
+                &lt;---------------signal main thread
+Process rec'd packet            wait for main thread to consume buffer
+</PRE>Signal buffer available---------&gt;
+<PRE>                                RecvFrom on socket x
+                                ...  { repeats many times }
+
+</PRE><h3>Normal Shutdown Sequence (on Last Packet)</h3>
+ 
+<P>
+<PRE>                                Packet received on x (recvfrom completes)
+                &lt;---------------signal main thread
+Process rec'd packet            wait for main thread to consume buffer
+</PRE>Signal buffer available---------&gt;
+<PRE>Application done                (1) RecvFrom on socket x
+</PRE>(2) close socket x
+<PRE>                                (3) RecvFrom fails with expected error
+                                Thread terminates
+
+</PRE>Usually, events occur in sequence (1, 2, then 3). In this normal case, the
+socket is cleared correctly, and everything works the next time the
+application runs.
+<P>
+<P><h3>Shutdown Sequence that Causes Problems (on Last Packet)</h3>
+ 
+<P>
+<PRE>                                Packet received on x (recvfrom completes)
+                &lt;---------------signal main thread
+Process rec'd packet            wait for main thread to consume buffer
+</PRE>Signal buffer available---------&gt;
+Application done
+<PRE>(1) close socket x              (2) RecvFrom on socket x
+                                (3) RecvFrom fails with expected error
+                                Thread terminates
+
+</PRE>In this case, the sequence is slightly different. The closesocket()
+function from main thread starts, but does not complete, before thread 2
+runs. While thread 1 is suspended awaiting completion of closesocket(),
+thread 2 runs and posts next recvfrom() on same socket. The closesocket()
+function completes successfully, and recvfrom() fails as in normal case.
+But the next time the application runs and binds to the same UDP port, the
+following occurs:
+
+<UL><LI>All socket calls (bind(), recvfrom()) are successful
+
+<LI>All incoming packets to that UDP port are discarded before reaching the
+   application -- recvfrom() never completes. The following command shows
+   that the "receive errors" count has been incremented once for each
+   incoming packet that was lost:
+<P>
+   netstat -s -p udp
+<P>
+</UL>The conclusion is that in this case the socket was not cleaned up properly
+due to the race condition between the closesocket() and the recvfrom()
+functions.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.50<BR>
+KBCategory: kbnetwork<BR>
+KBSubcategory: NtwkWinsock<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 29, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

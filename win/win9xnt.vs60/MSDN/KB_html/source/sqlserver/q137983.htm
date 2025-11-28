@@ -1,0 +1,239 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Troubleshoot Orphaned Connections in SQL Server </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q137983">
+<META NAME="KBModify" CONTENT="1997/07/10">
+<META NAME="KBCreate" CONTENT="1995/10/09">
+<META NAME="Keywords" CONTENT="kbusage SSrvGPF SSrvLan SSrvLock">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  When a SQL Server client disconnects from a SQL Server, the connection process should be cleared-up on the server side. If the connection processes are not cleared-up for whatever reasons, they become  orphaned  or  ghost  processes, which may use ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QARL,QABM,QBG2,QAI5,QAHE,QDL9,QBWQ,QBWO,QBWN,QDIZ,QBVV,QAGB V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Troubleshoot Orphaned Connections in SQL Server</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q137983</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 4.21 and 6.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When a SQL Server client disconnects from a SQL Server, the connection
+process should be cleared-up on the server side. If the connection
+processes are not cleared-up for whatever reasons, they become "orphaned"
+or "ghost" processes, which may use up valuable resources such as locks and
+user connections. The orphaned processes are typically caused by improper
+closing of client applications and network related problems, and the
+remedies usually require troubleshooting client applications and fine-
+tuning network configurations.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When you troubleshoot this problem, keep the following in mind:
+<P>
+* SQL Server as an application does not and should not proactively probe
+the client connection to determine its current status. The lower level IPCs
+(Inter-Process Communications) such as named pipes, IPX/SPX or TCP/IP
+sockets, are responsible for managing the client connections.
+<P>
+* An IPC typically has its own mechanism to manage the client connections.
+When client connections become non-responsive for a certain amount of time,
+typically the Windows NT Server will either detect this by sending the
+"keep alive" probes, or clear-up the connection after it idles for a
+configured amount of time.
+<P>
+* Under certain situations such as client GP-fault or hang, the client may
+still respond to server probes even if the application is already dead. In
+this case, the Windows NT server may keep this client connection
+indefinitely, as long as the client is not shut down.
+<P>
+* If a Windows NT Server does not terminate a dead connection for whatever
+reasons, SQL Server will rightfully assume this connection is still active
+and therefore will not clear it up.
+<P>
+* If the Windows NT Server has successfully terminated the connection, but
+the client process still exists on the SQL Server as indicated by sp_who,
+then it may indicate a problem with SQL Server's connection management, and
+we recommend that you work with your primary support provider to resolve
+this issue.
+<P>
+If you suspect orphaned processes exist on your SQL Server, the following
+are steps you can take to troubleshoot the problem:
+
+<OL><P><LI>Identify the orphaned processes using sp_who, which may tell you which
+   applications were associated with these processes through the host
+   names.
+
+<P><LI>After you identify these orphaned processes, you may choose to either
+   ignore them if they are not holding any locks or using many connections,
+   or kill them using the SQL Server KILL command.
+
+<P><LI>Check with the application users for any improper procedures of closing
+   applications, such as warm or cold reboot of workstations without
+   exiting the applications first. Check whether there is any history of
+   the workstation becoming unstable, such as a hang, GP-fault, and so
+   forth. Correct those improper procedures or stability problems if they
+   do exist.
+
+<P><LI>Check whether the IPC session is still active on the Windows NT Server
+   where SQL Server is running. Depending on the IPCs you are using, the
+   commands are different. For example, if you are using named pipes, the
+   command is "NET SESSION" or "NET FILES"; if it is a TCP/IP sockets
+   connection, you can use "NETSTAT" to display active TCP sessions; in
+   case of IPX/SPX, you may have to use the Performance Monitor to monitor
+   the "Connections Open" for "NWLink SPX."
+
+<P><LI>If the IPC sessions are still active on the Windows NT Server, it is
+   perfectly normal for SQL Server to keep those connection processes.
+   When Windows NT clears-up the IPC sessions, SQL Server will be notified
+   and clear-up the connection processes accordingly. You may be able to
+   adjust certain Windows NT network parameters to shorten the time period
+   that Windows NT has to wait before clearing-up the dead sessions.
+<P>
+   Again, depending on the IPCs you are using, the parameters involved are
+   very different:
+<P>
+<P><PRE>      * Named Pipes: Windows NT Server depends on the clients to initiate
+<PRE></PRE>        the "keep alive" traffic. If the client stops sending the "keep
+        alive" packets for whatever reasons, Windows NT Server will clear-
+        up the client session after waiting for a configured amount of idle
+        time. The default idle time is fifteen minutes for Windows NT 3.51,
+        and it is configured through parameter "autodisconnect" in
+        HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer
+        \Parameters of the Windows NT registry.
+
+      * TCP/IP Sockets: Windows NT Server will periodically send "keep
+        alive" packets to clients, and clients are expected to respond. If
+        for whatever reasons the client fails to respond to those packets,
+        Windows NT will clear up the TCP session after trying for a
+        configured number of times. The parameters involved are:
+        KeepAliveInterval, KeepAliveTime, and TcpMaxDataRetransmissions in
+        HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip
+        \Parameters of the Windows NT registry.
+
+      * IPX/SPX: Similar to TCP/IP, Windows NT server periodically sends
+       "keep alive" packets and clients respond. Windows NT will clear-up
+        the SPX connections if failing to receive any responses after
+        sending configured number of "keep alive" packets. The parameters
+        involved are KeepAliveCount and KeepAliveTimeout in
+        HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\NWLnkSPX
+        \Parametes of the Windows NT registry.
+
+   Please note that if the "keep alive" parameters for your IPCs are
+   configured to never timeout, Windows NT will keep the IPC sessions
+   indefinitely, even if the clients are completely shut down. In this
+   case, SQL Server will keep these client processes indefinitely as
+   well, which is expected.
+
+   For further information about the parameters, please consult your
+   Windows NT documentation or Windows NT Resource Kit. If you suspect your
+   Windows NT Server does not clear-up those sessions according to the
+   configuration parameters, you can contact your primary Windows NT
+   support provider for help.
+
+</PRE><P><LI>If the IPC session no longer exists on the Windows NT Server, but SQL
+   Server still keeps client process as shown by sp_who, you can use the
+   KILL command to clear-up the process as a temporary solution, and
+   contact your primary SQL Server support provider for further assistance.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: sql6 windows nt connectivity<BR>
+Keywords            : kbusage SSrvGPF SSrvLan SSrvLock<BR>
+Version             : 4.21 6.0<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbtshoot<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

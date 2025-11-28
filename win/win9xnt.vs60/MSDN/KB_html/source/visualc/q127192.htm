@@ -1,0 +1,254 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Draw Controls in an OLE Metafile </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q127192">
+<META NAME="KBModify" CONTENT="1998/02/17">
+<META NAME="KBCreate" CONTENT="1995/03/14">
+<META NAME="Keywords" CONTENT="MfcOLE">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  You can use controls, either directly on a CView or from a dialog template on a CFormView, in an OLE enabled MFC application. However, when the item is embedded but not active, the controls on these views will not be drawn to the Windows metafile s...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAB5,QAOE,QA7O,QAMN,QAI4,QAXQ,QAH2,QAY5,QAH4,QBVV,QBV8,QAHV,QACI,QBNK,QAA1 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Draw Controls in an OLE Metafile</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 17, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q127192</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.5, 1.51, 1.52
+    - Microsoft Visual C++, 32-bit Edition, versions 2.0, 2.1,
+      4.0, 4.1, 5,0
+      on the following platform: x86
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+You can use controls, either directly on a CView or from a dialog template
+on a CFormView, in an OLE enabled MFC application. However, when the item
+is embedded but not active, the controls on these views will not be drawn
+to the Windows metafile supplied to the COleServerItem::OnDraw() function.
+In this case, you must "draw" the controls manually into the metafile. This
+article shows you how.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The simplest way to get controls to "draw" in a metafile is to use the same
+method the VIEWEX sample uses to draw its CInputView to a printer device
+context. VIEWEX's OnPrint routine draws each control as a rectangle,
+circle, text, and so on. Override the COleServerItem::OnDraw() function and
+insert your code into it. As an example, use the COleServerItem::OnDraw()
+function listed in this article; it shows both the VIEWEX code to insert in
+the OnDraw member function and the helper function PaintChildWindows() that
+actually does the painting of each control.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed: Standard
+*/
+
+void CMyServerItem::OnDraw(CDC* pDC) // pDC is actually a metafile
+</PRE>{
+<PRE>    //BLOCK: Set up scale mode
+    {
+        CClientDC dcScreen(NULL);
+        pDC-&gt;SetMapMode(MM_ANISOTROPIC);
+        // map 1 screen logical inch to 1 printer (/output) logical inch
+        pDC-&gt;SetWindowExt(dcScreen.GetDeviceCaps(LOGPIXELSX),
+                dcScreen.GetDeviceCaps(LOGPIXELSX));
+        pDC-&gt;SetViewportExt(pDC-&gt;GetDeviceCaps(LOGPIXELSX),
+                pDC-&gt;GetDeviceCaps(LOGPIXELSX));
+    }
+    // we must also offset the window positions relative to the scroll
+    // offset
+
+    // We cheat here since some controls do not paint if they are
+    // invisible, so we temporary make set the appropriate visible bits
+    // during preview mode so the controls think they are visible even
+    // though they aren't.
+
+    HWND hWndCheatVisible = NULL;
+    if (!IsWindowVisible())
+    {
+        // walk up to the top until we find the invisible window
+        for (HWND hWnd = m_hWnd;
+            hWnd != NULL; hWnd = ::GetParent(hWnd))
+        {
+            ASSERT(hWnd != NULL);
+            DWORD dwStyle = ::GetWindowLong(hWnd, GWL_STYLE);
+            if ((dwStyle &amp; WS_VISIBLE) == 0)
+            {
+                ::SetWindowLong(hWnd, GWL_STYLE, dwStyle | WS_VISIBLE);
+                hWndCheatVisible = hWnd;
+                break;
+            }
+        }
+        ASSERT(hWndCheatVisible != NULL);
+    }
+
+    CPen pen(PS_SOLID, 1, RGB(0,0,0));  // solid black pen
+    CPen* pOldPen = pDC-&gt;SelectObject(&amp;pen);
+
+    ASSERT(pDC-&gt;GetWindowOrg() == CPoint(0,0));
+    CRect pRect = new CRect(-50,-50,600,600);
+
+    PaintChildWindows(m_hWnd, pDC, GetDeviceScrollPosition());
+    ASSERT(pDC-&gt;GetWindowOrg() == CPoint(0,0));
+    pDC-&gt;SelectObject(pOldPen);
+
+    if (hWndCheatVisible != NULL)
+        ::SetWindowLong(hWndCheatVisible, GWL_STYLE,
+            ::GetWindowLong(hWndCheatVisible, GWL_STYLE) &amp;~ WS_VISIBLE);
+}
+
+void CMyServerItem::PaintChildWindows(HWND hWndParent,
+                                      CDC* pDC, CPoint ptOffset)
+{
+    for (HWND hWndChild = ::GetTopWindow(hWndParent);
+        hWndChild != NULL;
+        hWndChild = ::GetNextWindow(hWndChild, GW_HWNDNEXT))
+    {
+        CRect rect;
+        ::GetWindowRect(hWndChild, rect);  // wnd rect in screen coords
+        ScreenToClient(&amp;rect);             // relative to this view
+
+        HDC hdcOut = pDC-&gt;m_hDC;
+</PRE>#ifdef _DEBUG
+<PRE>        CPoint pt = pDC-&gt;GetWindowOrg();
+        ASSERT(pt.x == 0 &amp;&amp; pt.y == 0);
+</PRE>#endif
+<P>
+<PRE>        DWORD dwStyle = ::GetWindowLong(hWndChild, GWL_STYLE);
+        if (dwStyle &amp; (WS_HSCROLL|WS_VSCROLL))
+        {
+            TRACE("Warning: printing control with scrollbars not
+ supported\n");
+        }
+        if (dwStyle &amp; WS_BORDER)
+        {
+            // the only case we special case - manually drawn border
+            ::Rectangle(hdcOut, rect.left, rect.top, rect.right,
+                        rect.bottom);
+            rect.InflateRect(-1,-1);        // 1 logical pixel
+        }
+
+        pDC-&gt;SaveDC();
+        {
+            CPoint pt(ptOffset.x + rect.left, ptOffset.y + rect.top);
+            pDC-&gt;LPtoDP(&amp;pt);
+            pDC-&gt;OffsetViewportOrg(pt.x, pt.y);
+                // set the viewport origin so that the window origin
+                //  can be changed by the control
+
+            // draw it using a non-virtual HDC
+            ::SendMessage(hWndChild, WM_PAINT, (WPARAM)hdcOut, 0L);
+        }
+        pDC-&gt;RestoreDC(-1);
+
+        if (::GetTopWindow(hWndChild) != NULL)
+            PaintChildWindows(hWndChild, pDC, ptOffset);
+    }
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: mfc ole inplace embed<BR>
+Keywords          : MfcOLE<BR>
+Technology        : kbole kbMfc<BR>
+Version           : WINDOWS:1.5,1.51,1.52,2.0,2.1,4.0,5.0<BR>
+Platform          : NT WINDOWS<BR>
+Hardware          : x86<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 17, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

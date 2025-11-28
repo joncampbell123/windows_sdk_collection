@@ -1,0 +1,329 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Object Creation Overview </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q104139">
+<META NAME="KBModify" CONTENT="1996/08/05">
+<META NAME="KBCreate" CONTENT="1993/09/08">
+<META NAME="Keywords" CONTENT="kbole kbprg kbwebcontent">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  The actual process of creating an OLE object can seem confusing when first learning OLE. To elucidate the object creation process, this article describes the steps taken by the OLE 2.0 libraries in response to a call to OleCreate(), with the OLEREN...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAW6,QAPN,QA9Q,QAGI,QABD,QABE,QBC9,QBC8,QANO,QBHQ,QBBS,QBF0,QAYZ,QAUR,QAIF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Object Creation Overview</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 5, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q104139</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE Libraries for Windows and Win32s, version 2.0
+<LI>Microsoft OLE Libraries, included with:
+<P><PRE>    - Microsoft Windows NT, versions 3.5 and 3.51
+    - Microsoft Windows 95
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The actual process of creating an OLE object can seem confusing when
+first learning OLE. To elucidate the object creation process, this
+article describes the steps taken by the OLE 2.0 libraries in response
+to a call to OleCreate(), with the OLERENDER_DRAW format passed as the
+renderopt parameter. This article gives a basic overview of the object
+creation process; it does not describe specific application
+programming interfaces (APIs) in detail.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Typically, the container application presents the user with a dialog
+box containing the various types of objects that can be created on a
+particular system. These object types are enumerated from the
+Registration Database--each entry in the database has a name that the
+user can understand, as well as a unique identifier for the object
+type called a CLSID.
+<P>
+The container tells OLE that it wants to create an object. At this
+point, the container gives OLE the CLSID of the desired object, a
+pointer to a child storage within the container's compound file, and a
+pointer variable for OLE to return a pointer to a requested interface
+(typically IOleObject):
+<P>
+<PRE>    Container         OLE
+   -----------    -----------
+   |OleCreate|---&gt;|         |
+   |         |    |         |
+   |         |    |         |
+   |         |    |         |
+   |         |    |         |
+   |         |    |         |
+   -----------    -----------
+
+</PRE>The OLE libraries then consult the registration database to find the
+name of the executable file associated with the CLSID:
+<P>
+<PRE>    Container         OLE
+   -----------    -----------
+   |OleCreate|---&gt;|         |
+   |         |    |         |
+   |         |    |         |
+   |         |    |         |
+   |         |    |         |
+   |         |    |         |
+   -----------    -----------
+                    |
+                    V
+                 Reg DB
+
+</PRE>The server is then started with the -Embedding flag. When the server
+parses the command line and sees the -Embedding flag, it knows that it
+is being started on behalf of OLE and should remain hidden until it is
+explicitly told to become visible. At this point, the server registers
+a pointer to its IClassFactory interface with OLE:
+<P>
+<PRE>    Container         OLE           Server
+   -----------    -----------    -----------------
+   |OleCreate|---&gt;|         |---&gt;|               |
+   |         |    |         |&lt;---| IClassFactory |
+   |         |    |         |    |               |
+   |         |    |         |    |               |
+   |         |    |         |    |               |
+   |         |    |         |    |               |
+   -----------    -----------    -----------------
+                    |
+                    V
+                 Reg DB
+
+</PRE>OLE calls the server through the IClassFactory interface and asks to
+instantiate an object, returning the pointer to the interface
+requested by the container in the creation routine:
+<P>
+<PRE>    Container         OLE           Server
+   -----------    -----------    ------------------
+   |OleCreate|---&gt;|         |---&gt;|                |
+   |         |    |         |&lt;---| IClassFactory  |
+   |         |    |         |---&gt;| -------------  |
+   |         |    |         |&lt;---|-|IOleObject |  |
+   |         |    |         |    | |IDataObject|  |
+   |         |    |         |    | |    etc    |  |
+   |         |    |         |    | -------------  |
+   -----------    -----------    ------------------
+                    |
+                    V
+                 Reg DB
+
+</PRE>OLE queries the object for the IDataObject interface, and then calls
+GetData method to fill the presentation cache with a metafile,
+device-independent bitmap (DIB), or a bitmap. Later, when the
+container asks the object to draw itself, OLE will intercept the call
+and use one of the entries in the presentation cache:
+<P>
+<PRE>    Container         OLE           Server
+   -----------    -----------    ------------------
+   |OleCreate|---&gt;|         |---&gt;|                |
+   |         |    |         |&lt;---| IClassFactory  |
+   |         |    |         |---&gt;| -------------  |
+   |         |    |         |&lt;---|-|IOleObject |  |
+   |         |    |         |    | |IDataObject|  |
+   |         |    |         |    | |    etc    |  |
+   |         |    |         |    | -------------  |
+   -----------    -----------    ------------------
+                    |      |
+                    V      v
+                Reg DB  Cache
+
+</PRE>At this point, the creation routine returns to the container. Now, the
+container will generally query the interface pointer returned for the
+IViewObject interface. The container uses the IViewObject interface to
+ask the object to notify the container (through the container's
+IAdviseSink interface) every time the object's view changes, so that
+the container can update its display. At this point, the server
+creates an advise holder to notify the object of its changes:
+<P>
+<PRE>    Container             OLE              Server
+   --------------    -------------    ------------------
+   |            |    |           |    |                |
+   |            |    |           |    | IClassFactory  |
+   |            |    |           |    | -------------  |
+   |            |---&gt;|IOleObject |-----&gt;|IOleObject |  |
+   |            |    |           |    | |IDataObject|  |
+   |            |    |           |    | |    etc    |  |
+   |            |    |           |    | -------------  |
+   |IAdviseSink |&lt;---|           |&lt;---|IOleAdviseHolder|
+   --------------    -------------    ------------------
+                        |      |
+                        V      v
+                     Reg DB  Cache
+
+</PRE>Note, the object still is not visible at this point. Now an explicit
+call to IOleObject::DoVerb() must be made with the verb OLEIVERB_SHOW.
+This tells the server to make the object visible for editing.
+<P>
+Every time the user makes a change to the object, the object calls OLE
+through the advise holder to notify the libraries that the view has
+been changed. The libraries then query the object for the new
+presentation(s) to fill the presentation cache. Then the advise sink
+of the container application is called to notify the container that
+its view is no longer up to date, and should be repainted.
+<P>
+The container then in turn tells OLE to draw the object, at which
+point the libraries render the information from the cache.
+<P>
+At some point, the user tells the server that he or she is finished
+editing the object. The server tells the container that it is now
+going away, and that the object needs to be saved into the container's
+persistent storage. The container responds by telling the object to
+save itself into a substorage of the container's compound file. The
+OLE libraries "intercept" this call and save internal state
+information, as well as the presentation cache, into streams of this
+substorage. Then, the libraries tell the object to save itself into
+the container provided substorage.
+<P>
+After saving the object, the container's compound file resembles the
+following:
+<P>
+<PRE>   ----------------
+   | Root Storage |
+   ----------------
+           |   ---------------                   * = Stream
+           |---|   object    |                   - = Storage
+           |   | sub-storage |
+           |   ---------------
+           |          |   ****************
+           |          |---*  OLE State   *
+           |          |   ****************
+           |          |   ****************
+           |          |---* Presentation *
+           |          |   ****************
+           |          |   ****************
+           |          |---* Native Data  *
+           |              ****************
+           |    ***************
+           |    *  Container  *
+           |--- *    State    *
+                * Information *
+                ***************
+
+</PRE>The container can continue to redraw the object even though the server
+application is no longer around because the object's presentation is
+stored in OLE's internal cache:
+<P>
+<PRE>    Container             OLE
+   --------------    -------------
+   |            |    |           |
+   |            |    |           |
+   |            |    |           |
+   |            |---&gt;|IOleObject |
+   |            |    |           |
+   |            |    |           |
+   |            |    |           |
+   |IAdviseSink |&lt;---|           |
+   --------------    -------------
+                        |      |
+                        V      v
+                     Reg DB  Cache
+
+</PRE>Now the user can save the document in the container application and
+exit. Upon exiting, the container queries the object for the
+IViewObject interface so the container can tell OLE to stop sending
+updates. Then the container asks the object to close.
+<P>
+If the user now reloads the document, or moves the document to another
+machine, the OLE libraries can still render the object because the
+presentation is actually stored within the container's compound file.
+When the object is reloaded, the libraries can refill the presentation
+cache from the information stored within the compound file.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.00 3.50 4.00<BR>
+KBCategory: kbole kbprg kbwebcontent<BR>
+KBSubcategory: LeTwoCdt<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 5, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,329 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Programmatically Detect RAS Installation on Workstation </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q181518">
+<META NAME="KBModify" CONTENT="1998/02/20">
+<META NAME="KBCreate" CONTENT="1998/02/20">
+<META NAME="Keywords" CONTENT="NtwkRAS">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article shows how to programmatically detect if RAS is installed on a Workstation.  The sample code included in this article takes into account that RAS might not be installed, even if a copy of the rasapi32.dll exists in the system directory....">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAA1,QDI2,QBVV,QAHE,QBSO,QALW,QBXB,QAY5,QAKR,QAH4,QAO4,QAGI,QAB4,QAAP V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Programmatically Detect RAS Installation on Workstation</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 20, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q181518</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows 95
+<LI>Microsoft Windows NT Workstation version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article shows how to programmatically detect if RAS is installed on a
+Workstation.
+<P>
+The sample code included in this article takes into account that RAS might
+not be installed, even if a copy of the rasapi32.dll exists in the system
+directory. Also a valid phone book entry and an active modem are not
+required.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+There are two parts to the code because there are two scenarios that you
+may encounter. In the first scenario, RAS is not installed and its
+corresponding dll, rasapi32.dll, is not available in the system folder. The
+way to detect this is to do a LoadLibrary() on the "rasapi32". If the
+LoadLibrary() fails then RAS is not installed.
+<P>
+If LoadLibrary() succeeds, it does not guarantee that RAS is installed.
+Rasapi32.dll and rasapi32.lib may have been copied into the corresponding
+folders without actually installing RAS. To check for this scenario, after
+loading rasapi32, call the RasDial() function asynchronously and see if it
+returns a valid error number.
+<P>
+The code below demonstrates one way to do this. The phone book entry name
+contains NULL to ensure that a valid entry name is not a requirement to run
+this sample. The first time the RasDial callback function is called with a
+successful message the waiting event is signaled so that RasHangUp will be
+called.
+<P>
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   /*
+   *   RasDialAsync.c
+   *
+   *       Usage: RasDialAsync
+   *
+   *   This is a console application sample that detects
+   *   if RAS is installed.
+   *
+   *   RasDialFunc() is the callback function for asynchronous RasDial().
+   *
+   */
+   
+   
+   #define WIN32_LEAN_AND_MEAN
+   
+   #include &lt;stdio.h&gt;
+   #include &lt;windows.h&gt;
+   #include &lt;ras.h&gt;
+   #include &lt;raserror.h&gt;
+   #include &lt;string.h&gt;
+   #include &lt;winbase.h&gt;
+   
+   
+   void WINAPI RasDialFunc(UINT unMsg,
+                           RASCONNSTATE rasconnstate,
+            DWORD dwError );
+   
+   HANDLE Event_handle; // Global event handle.
+   HINSTANCE hDLL;      // Handle to DLL.
+   FARPROC lpfnDllFunc1, lpfnDllFunc2,
+      lpfnDllFunc3, lpfnDllFunc4;  // Function pointers.
+   
+   
+   /* Begin main()... */
+   
+   int main(int argc, char*argv[])
+   {
+      RASDIALPARAMS Myrasdialparams; // Structure to store the RasDial
+                                     // parameters.
+      RASCONNSTATUS mystate;   // Buffer to receive status data.
+      HRASCONN hRasConn;       // Handle to RAS connection.
+      DWORD retval;            // Return value from a function.
+      LPCTSTR MyRasDialEvent;  // Pointer to the event name.
+      char ch;
+   
+   
+      // Create the event MyRasDialEvent, which indicates completion of
+      // RasDial().
+      Event_handle = CreateEvent(NULL, FALSE, FALSE, MyRasDialEvent);
+      if (!Event_handle)
+      {
+         printf("Error in CreateEvent - %d", GetLastError());
+         return -1;
+      }
+   
+      hDLL = LoadLibrary("rasapi32");
+      if (hDLL != NULL)
+      {
+         lpfnDllFunc1 = (FARPROC)GetProcAddress(hDLL, "RasDialA");
+         if (!lpfnDllFunc1)
+         {
+            FreeLibrary(hDLL);
+            return -1;
+         }
+   
+         lpfnDllFunc2 = (FARPROC)GetProcAddress(hDLL,
+   "RasGetConnectStatusA");
+         if (!lpfnDllFunc2)
+         {
+            FreeLibrary(hDLL);
+            return -1;
+         }
+   
+         lpfnDllFunc3 = (FARPROC)GetProcAddress(hDLL, "RasHangUpA");
+         if (!lpfnDllFunc3)
+         {
+            FreeLibrary(hDLL);
+            return -1;
+         }
+   
+         lpfnDllFunc4 = (FARPROC)GetProcAddress(hDLL,
+   "RasGetErrorStringA");
+         if (!lpfnDllFunc4)
+         {
+            FreeLibrary(hDLL);
+            return -1;
+         }
+   
+   
+         // Initialize the RASDIALPARAMS structure.
+         Myrasdialparams.dwSize =sizeof(RASDIALPARAMS);
+         lstrcpy(Myrasdialparams.szEntryName, "");
+         lstrcpy(Myrasdialparams.szPhoneNumber, "12345");
+         lstrcpy(Myrasdialparams.szCallbackNumber, "");
+         lstrcpy(Myrasdialparams.szUserName, "abcd");
+         lstrcpy(Myrasdialparams.szPassword, "xxx");
+         lstrcpy(Myrasdialparams.szDomain, "pqr");
+   
+         // Dial out asynchronously using RasDial()
+         printf("Dialing.\n");
+         hRasConn = NULL;
+   
+         retval = lpfnDllFunc1(NULL, NULL, &amp;Myrasdialparams, 0,
+   &amp;RasDialFunc, &amp;hRasConn);
+         // Check whether RasDial() succeeded
+         if (retval)
+         {
+            printf("RasDial retval = %d\n", retval);
+            return -1;
+         }
+   
+         // The connection has been established. Now break the
+         // connection.
+   
+         // Wait for the RasDial() to complete, signaled by the
+         // SetEvent().
+         retval = WaitForSingleObject(Event_handle, 30000);
+         switch (retval)
+         {
+            case WAIT_OBJECT_0: // Normal completion of RasDial
+               printf("Calling RasHangUp...\n");
+               lpfnDllFunc3(hRasConn);
+               mystate.dwSize = sizeof(RASCONNSTATUS);
+               while(TRUE)
+               {
+                  if (ERROR_INVALID_HANDLE ==
+   lpfnDllFunc2(hRasConn,&amp;mystate))
+                  break;
+                  Sleep(0);
+               }
+               break;
+            case WAIT_TIMEOUT: // RasDial timed out
+               printf("RasDial Timed out...");
+               break;
+         }
+         scanf("%c", &amp;ch);
+         return 1;
+      }
+      else
+      {
+         printf("Ras is not installed/n");
+         return 1;
+      }
+   
+   }
+   // End main().
+   
+   // Callback function RasDialFunc().
+   void WINAPI RasDialFunc(UINT unMsg,
+            RASCONNSTATE rasconnstate,
+            DWORD dwError )
+   {
+      char szRasString[256]; // Buffer for storing the error string.
+   
+       if ( dwError )  // Error occurred.
+         {
+           printf ("Error: %d - ", dwError);
+           lpfnDllFunc4( (UINT)dwError, szRasString, 256 );
+         printf("%s\n", szRasString);
+         SetEvent(Event_handle);
+         return;
+         }
+   
+       switch (rasconnstate)
+       {
+           case RASCS_OpenPort:
+               printf ("RASCS_OpenPort = %d\n", rasconnstate);
+               printf ("Opening port.\n");
+            SetEvent(Event_handle);
+          break;
+           default:
+               break;
+       } // End switch.
+   } // End RasDialFunc().
+</PRE> 
+<PRE>Keywords          : NtwkRAS
+Version           : WIN95; WINNT:4.0
+Platform          : Win95 winnt
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 20, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

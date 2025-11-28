@@ -1,0 +1,333 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>SAMPLE: CONDOC.EXE Extract Container/Document Info with MFC DAO </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q152316">
+<META NAME="KBModify" CONTENT="1997/07/10">
+<META NAME="KBCreate" CONTENT="1996/06/11">
+<META NAME="Keywords" CONTENT="kbsample MfcDAO MfcDatabase kbcode kbfile kbole kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  MFC does not currently provide methods for extracting container and document information from DAO collections. The sample, CONDOC.EXE demonstrates how to implement this extraction using MFC DAO objects and, in particular, demonstrates using DAO OLE...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA1S,QAW6,QAPN,QDKY,QAUD,QAFI,QAH4,QA3P,QDN9,QAY2,QAX0,QBVV,QAG8,QAPF,QALW V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>SAMPLE: CONDOC.EXE Extract Container/Document Info with MFC DAO</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q152316</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+4.00 4.10 4.20
+WINDOWS NT
+kbprg kbole kbfile kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   Microsoft Visual C++, 32-bit Edition, versions 4.0, 4.1, 4.2
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+MFC does not currently provide methods for extracting container and
+document information from DAO collections. The sample, CONDOC.EXE
+demonstrates how to implement this extraction using MFC DAO objects and, in
+particular, demonstrates using DAO OLE interfaces not directly available
+from the MFC DAO classes.
+<P>
+Containers provide an application-independent way for an application to
+store objects in a database. For example, Microsoft Access uses separate
+containers to store forms, reports, macros, and modules. This is in a
+format native only to Access. However, the code below shows how to see
+which containers are stored in an Access database.
+<P>
+Documents are used to store a specific instance of an application-specific
+object within a container, such as a form, a report, etc. A container can
+have more than one document collection. To repeat, Microsoft Access
+documents and containers are in a format native to Access and not available
+programatically from other products except through OLE Automation using
+Access itself.
+<P>
+The following file is available for download from the Microsoft
+Software Library:
+<P>
+<PRE> ~ <A href="http://support.microsoft.com/download/support/mslfiles/condoc.exe">Condoc.exe</A> <I>(size: 56620 bytes)</I> 
+
+</PRE>For more information about downloading files from the Microsoft Software
+Library, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../zmiscellaneous/q119591.htm">Q119591</A></B>
+   TITLE     : How to Obtain Microsoft Support Files from Online Services
+
+</PRE>NOTE: Use the -d option when running CONDOC.EXE to decompress the file and
+recreate the proper directory structure.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following code demonstrates how to extract Container and Document
+information and store it in a Tree View control:
+<P>
+<PRE>   // Command handler which performs the pertinent operations
+   /////////////////////////////////////////////////////////////////////
+   //
+   void CCONDOCView::OnGetinfoOpenMDB()
+   {
+       // Prepare the open file dialog
+       static char BASED_CODE szFilter[] = _
+                             T( "Access Database Files  (*.mdb) | *.mdb" );
+
+       CFileDialog dlg(TRUE, "mdb", NULL,
+                       OFN_HIDEREADONLY| OFN_OVERWRITEPROMPT, szFilter);
+
+       // To be retrieved by the open file dialog
+       CString strFile;
+
+       // open file dialog
+       if(dlg.DoModal() == IDOK)
+       {
+           strFile = dlg.m_ofn.lpstrFile;
+
+           if(strFile.Right(3).CompareNoCase("mdb") // verify extension
+           {
+               AfxMessageBox("File Extension error");
+               return;
+           }
+       }
+
+       // you will display the info in a tree control
+       CTreeCtrl &amp;tree = GetTreeCtrl();
+
+       // the root of all items!
+       HTREEITEM itemDatabase =    tree.InsertItem(
+                                  dlg.m_ofn.lpstrFile );
+
+       // An MFC DAO object
+       CDaoDatabase db;
+
+       // straight DAO interface pointer variables
+       ConDoctainers *pContainers=NULL;
+       ConDoctainer* pCon=NULL;
+       DAODocuments* pDocuments=NULL;
+       DAODocument* pDoc=NULL;
+
+       // To be used for iterating through the collections
+       short count;
+       short doccount;
+
+       // open the .MDB
+       try
+       {
+           db.Open( strFile );
+       }
+       catch( CDaoException* e )
+       {
+           AfxMessageBox( e-&gt;m_pErrorInfo-&gt;m_strDescription );
+           return;
+       }
+
+       // Using the DAODatabase interface pointer method contained
+       // by the MFC/DAO class CDaoDatabase, you retrieve the interface's
+       // set of collections.
+       if( FAILED( db.m_pDAODatabase-&gt;get_Containers( &amp;pContainers ) ) )
+       {
+           AfxMessageBox( "Collection not found" );
+           db.Close();
+           return;
+       }
+
+       // Once you have the set of collections, you iterate thru each
+       // individual collection, display some of its attributes,
+       // then get the document collection on the container,
+       // and iterate thru the individual documents, displaying some
+       // of the attributes of the documents.
+       // See the dbdao.h in the DAOSDK\INCLUDE for more information
+
+       try
+       {
+           // get the count property of the containers collection
+           pContainers-&gt;get_Count( &amp;count );
+
+           HTREEITEM itemContainers = tree.InsertItem( _T( "Containers" )
+                                                         , itemDatabase );
+
+           // iterate thru the containers
+           while( --count &gt; 0 )
+           {
+               // get an individual container and iterate thru its
+               //attributes
+               pContainers-&gt;get_Item( COleVariant( count, VT_I2 ),
+                                                          &amp;pCon );
+               BSTR bstr=NULL;
+
+               pCon-&gt;get_Name( &amp;bstr );
+               CString strName( ( LPCTSTR ) bstr );
+               HTREEITEM itemName = tree.InsertItem( strName,
+                                                 itemContainers );
+
+               pCon-&gt;get_Owner( &amp;bstr );
+               CString strOwner(_T("Owner: ") );
+               strOwner += (LPCTSTR) bstr;
+               HTREEITEM itemOwner = tree.InsertItem( strOwner,
+                                                    itemName );
+
+               pCon-&gt;get_UserName( &amp;bstr );
+               CString strUserName(_T("User Name: ") );
+               strUserName += (LPCTSTR) bstr;
+               HTREEITEM itemUserName = tree.InsertItem( strUserName,
+                                                           itemName );
+
+               // Now get the documents collection
+               if( FAILED ( pCon-&gt;get_Documents( &amp;pDocuments ) ) )
+               {
+                   AfxMessageBox( "Collection not found" );
+                   db.Close();
+                   return;
+               }
+
+               // Now get the number of documents contained in the
+               // container
+               pDocuments-&gt;get_Count( &amp;doccount );
+               HTREEITEM itemDocuments = tree.InsertItem(
+                                           _T( "Documents"), itemName );
+
+               // iterate thru the documents
+               while( --doccount &gt; 0 )
+               {
+                   // get an individual document and iterate thru
+                   // some of its attributes.
+                   pDocuments-&gt;get_Item( COleVariant( doccount, VT_I2 ),
+                                                                &amp;pDoc );
+
+                   pDoc-&gt;get_Name( &amp;bstr );
+                   CString strDocName( ( LPCTSTR ) bstr );
+                   HTREEITEM itemDocName = tree.InsertItem( strDocName,
+                                                       itemDocuments );
+
+                   pDoc-&gt;get_Owner( &amp;bstr );
+                   CString strDocOwner(_T("Owner: ") );
+                   strDocOwner += (LPCTSTR) bstr;
+                   tree.InsertItem( strDocOwner, itemDocName );
+
+                   pCon-&gt;get_UserName( &amp;bstr );
+                   CString strDocUserName(_T("User Name: ") );
+                   strDocUserName += (LPCTSTR) bstr;
+                   tree.InsertItem( strDocUserName, itemDocName );
+               }
+           }
+       }
+       catch( CDaoException*  e)
+       {
+           AfxMessageBox( e-&gt;m_pErrorInfo-&gt;m_strDescription );
+           db.Close();
+           return;
+       }
+       db.Close();
+   }
+   /////////////////////////////////////////////////////////////////////
+   // END OF SAMPLE CODE
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+Microsoft Jet Database Engine Programmer's Guide, ISBN #: 1-55615-877-7.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbole kbfile kbcode<BR>
+KBSubcategory: MfcDAO MfcDatabase kbsample<BR>
+Additional reference words: 4.00 4.10 4.20 prop<BR>
+Keywords            : kbsample MfcDAO MfcDatabase kbcode kbfile kbole kbprg<BR>
+Technology          : kbMfc<BR>
+Version             : 4.00 4.10 4.20<BR>
+Platform            : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

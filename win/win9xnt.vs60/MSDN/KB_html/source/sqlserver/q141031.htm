@@ -1,0 +1,235 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Syscolumns.prec Has Incorrect Value For Some Integers </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q141031">
+<META NAME="KBModify" CONTENT="1997/05/02">
+<META NAME="KBCreate" CONTENT="1995/12/10">
+<META NAME="Keywords" CONTENT="kbbug6.00 kbenv kbsetup SSrvGen SSrvInst">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="BUG# NT: 12248 (6.00)   In a new SQL Server 6.0 installation, all columns of type INT, SMALLINT, and TINYINT that allow NULL values will have the wrong precision specified in the prec column of the syscolumns system table (syscolumns.prec). Also, aft...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QAAP,QA2Q,QAKD,QAG2,QBWS,QAA1,QAS1,QAC1,QBFY,QA4Q,QAY2,QAP2,QAE1,QBXS V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Syscolumns.prec Has Incorrect Value For Some Integers</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 2, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q141031</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.0
+</UL> 
+BUG# NT: 12248 (6.00)
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+In a new SQL Server 6.0 installation, all columns of type INT, SMALLINT,
+and TINYINT that allow NULL values will have the wrong precision specified
+in the prec column of the syscolumns system table (syscolumns.prec). Also,
+after an upgrade from SQL Server version 4.21 or 4.21a to SQL Server 6.0,
+all integer columns that allowed NULL values before the upgrade will have
+the wrong precision specified.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+To check which of your columns have a wrong precision specified after
+the installation or upgrade to version 6.0, run the following script:
+<P>
+<PRE>   set nocount on
+   go
+   use master
+   go
+   declare @db varchar(30), @msg varchar(75), @nl char(2)
+   declare c_dbnames cursor for select name from sysdatabases
+      where name &lt;&gt; 'tempdb' order by name
+   select @nl = char(10)+char(13)
+   select @msg = @nl + 'Reporting errors in syscolumns.prec for :'
+   print @msg
+   open c_dbnames
+   fetch next from c_dbnames into @db
+   while (@@fetch_status &lt;&gt; -1)
+   begin
+      if (@@fetch_status &lt;&gt; -2)
+      begin
+         select @msg = @nl + rtrim(upper(@db)) + @nl
+         print @msg
+         exec('use ' + @db + ' select tablename=object_name(c.id),
+               column=c.name, datatype=t.name, c.prec
+               from syscolumns c, systypes t
+               where c.usertype=t.usertype
+               and c.type in (56,52,48,38) and c.prec in (1,2,4)
+               order by object_name(c.id)')
+      end
+      fetch next from c_dbnames into @db
+   end
+   deallocate c_dbnames
+   go
+   set nocount off
+   go
+
+</PRE>To correct these errors, you can run the following script:
+<P>
+<PRE>   set nocount on
+   go
+   use master
+   go
+   sp_configure 'allow updates', 1
+   reconfigure with override
+   go
+   declare @db varchar(30), @msg varchar(75), @nl char(2)
+   declare c_dbnames cursor for select name from sysdatabases
+      where name &lt;&gt; 'tempdb' order by name
+   select @nl = char(10)+char(13)
+   select @msg = @nl + 'Correcting syscolumns.prec for :'
+   print @msg
+   open c_dbnames
+   fetch next from c_dbnames into @db
+   while (@@fetch_status &lt;&gt; -1)
+   begin
+      if (@@fetch_status &lt;&gt; -2)
+      begin
+         select @msg = @nl + rtrim(upper(@db))
+         print @msg
+         exec('use ' + @db + ' update syscolumns set prec = 3
+            where type in(48,38) and prec = 1')
+         exec('use ' + @db + ' update syscolumns set prec = 5
+            where type in(52,38) and prec = 2')
+         exec('use ' + @db + ' update syscolumns set prec = 10
+            where type in(56,38) and prec = 4')
+      end
+      fetch next from c_dbnames into @db
+   end
+   deallocate c_dbnames
+   go
+   sp_configure 'allow updates', 0
+   reconfigure
+   go
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in Microsoft SQL Server
+version 6.0. We are researching this problem and will post new information
+here in the Microsoft Knowledge Base as it becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+If this problem is not corrected for the MODEL database, all new databases
+will inherit this behavior for the integer columns in MODEL that allow NULL
+values. This problem does not pertain to tables created after the
+installation or upgrade, except for when you are creating a new table using
+SELECT INTO and refer to columns with an incorrect value in
+syscolumns.prec.
+<P>
+The incorrect value in syscolumns.prec does not affect the actual precision
+used for INT, SMALLINT, and TINYINT, but since this information is often
+used by client applications to size an input field, it can become necessary
+to correct this.
+<P>
+The table below shows the actual precision and the value in syscolumns.prec
+for each of the three integer datatypes as it will appear for columns
+allowing NULL values after the server is installed or upgraded.
+<P>
+<PRE>   Datatype      Actual precision       Syscolumns.prec
+   --------      ----------------       ---------------
+   INT                10                       4
+   SMALLINT            5                       2
+   TINYINT             3                       1
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: upgrade sp_columns SQLColumns<BR>
+Keywords            : kbbug6.00 kbenv kbsetup SSrvGen SSrvInst<BR>
+Version             : 6.0<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 2, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

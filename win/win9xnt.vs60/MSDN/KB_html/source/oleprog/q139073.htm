@@ -1,0 +1,228 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Fill EXCEPINFO in IDispatch Implementation </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q139073">
+<META NAME="KBModify" CONTENT="1995/11/12">
+<META NAME="KBCreate" CONTENT="1995/11/02">
+<META NAME="Keywords" CONTENT="kbprg kbcode kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  DispInvoke will fill the EXCEPINFO parameter of IDispatch::Invoke if the property or method implementation returns a failure HRESULT and uses SetErrorInfo() to provide rich error information.  MORE INFORMATION  An automation client that uses late-b...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAUD,QBCF,QAVX,QAVW,QBB3,QAHE,QAH6,QBCE,QAM3,QALW,QAD7,QAGI,QAYY,QAH7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Fill EXCEPINFO in IDispatch Implementation</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 12, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q139073</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>OLE 2.03 for Windows 3.1x
+<LI>Microsoft OLE libraries included with:
+<P>
+<P><PRE>    - Microsoft Windows NT version 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+DispInvoke will fill the EXCEPINFO parameter of IDispatch::Invoke if the
+property or method implementation returns a failure HRESULT and uses
+SetErrorInfo() to provide rich error information.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+An automation client that uses late-binding or id-binding to an automation
+server will use IDispatch::Invoke to invoke the server's property or
+method. Such a client will typically pass an EXCEPINFO structure as a
+parameter to IDispatch::Invoke to obtain rich error information on failure.
+The server will fill the EXCEPINFO structure on failure. A typical
+IDispatch::Invoke implementation in the server calls DispInvoke. Then
+DispInvoke calls the appropriate property or method implementation.
+Consequently, the property or method implementation doesn't have access to
+the EXCEPINFO parameter of IDispatch::Invoke to provide rich error
+information on failure.
+<P>
+The solution is to return a failure HRESULT from the property or method
+implementation and use SetErrorInfo in the property or method
+implementation. DispInvoke will check if the property or method returned a
+failure HRESULT. If so, it will fill the EXCEPINFO parameter using the
+information that the property or method provided with SetErrorInfo.
+<P>
+DispInvoke will not fill out the EXCEPINFO parameter if the return type
+of the property or method is not HRESULT. Therefore, this method is best
+suited for a dual interface, which requires HRESULT to be the return
+type for its methods and properties. Note that an id-binding or late-
+binding client will see the type of the parameter with the retval
+attibute as the return type.
+<P>
+For example, in the following code, the server implements IDispatch::Invoke
+in CServer::Invoke by using DispInvoke. If the client passes the DISPID of
+the Test method, DispInvoke will call CServer::Test - whose address is
+provided in the vtbl that is the first parameter of DispInvoke. Note that
+CServer::Test does not have direct access to the EXCEPINFO parameter.
+DispInvoke will fill the EXCEPINFO parameter using the information that
+CServer::Test provides using SetErrorInfo - if Test returns a failure
+HRESULT.
+<P>
+STDMETHODIMP
+CServer::Invoke(
+<PRE>      DISPID dispidMember,
+      REFIID riid,
+      LCID lcid,
+      WORD wFlags,
+      DISPPARAMS FAR* pdispparams,
+      VARIANT FAR* pvarResult,
+      EXCEPINFO FAR* pexcepinfo,
+      UINT FAR* puArgErr)
+</PRE>{
+<PRE>    return  DispInvoke(
+        this, m_ptinfo,
+        dispidMember, wFlags, pdispparams,
+        pvarResult, pexcepinfo, puArgErr);
+}
+
+</PRE>STDMETHODIMP
+CServer::Test()
+{
+<PRE>    HRESULT hr, hr2;
+    ICreateErrorInfo FAR* pcerrinfo;
+    IErrorInfo FAR* perrinfo;
+
+    hr = DoProcessing();
+    if (FAILED(hr)
+    {
+        hr2 = CreateErrorInfo(&amp;pcerrinfo);
+        if (SUCCEEDED(hr2))
+        {
+            pcerrinfo-&gt;SetGUID(...);
+            pcerrinfo-&gt;SetSource(...);
+            pcerrinfo-&gt;SetDescription(...);
+            pcerrinfo-&gt;SetHelpFile(...);
+            pcerrinfo-&gt;SetHelpContext(...);
+            hr2 = pcerrinfo-&gt;QueryInterface(IID_IErrorInfo,
+                                   (LPVOID FAR*) &amp;perrinfo);
+            if (SUCCEEDED(hr2))
+            {
+               SetErrorInfo(0, perrinfo);
+               perrinfo-&gt;Release();
+            }
+            pcerrinfo-&gt;Release();
+        }
+        return hr;
+    }
+    else return NOERROR;
+</PRE>}
+<P>
+If the property or method implementation has a return type other that
+HRESULT, it could write the rich error information to a variable that is
+accessible by the IDispatch::Invoke implementation. The IDispatch::Invoke
+implementation would copy this information to the EXCEPINFO parameter.
+Thread local storage of EXCEPINFO information should be used in a
+mutithreaded implementation. On the other hand, SetErrorInfo will work in a
+multithreaded environment and thread local storage is not required.
+Microsoft recommends the use of dual interfaces in which SetErrorInfo can
+be used to fill the EXCEPINFO structure.
+<P>
+NOTE: Documention of SetErrorInfo and related interfaces can be found in
+Chapter 10 of the OLE Programmer's Reference, Volume 2, second edition. For
+information on how to obtain the second edition of this book, please see
+the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../oleprog/q124385.htm">Q124385</A></B>
+   TITLE     : SAMPLE: OLE Automation '94 Documentation and Samples
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00<BR>
+KBCategory: kbprg kbcode kbhowto<BR>
+KBSubcategory: LeTwoAto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 12, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

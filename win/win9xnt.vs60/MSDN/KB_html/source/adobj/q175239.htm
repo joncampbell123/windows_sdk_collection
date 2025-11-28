@@ -1,0 +1,218 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: 80020009 Error When Retrieving Data from SQL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q175239">
+<META NAME="KBModify" CONTENT="1997/10/20">
+<META NAME="KBCreate" CONTENT="1997/10/16">
+<META NAME="Keywords" CONTENT="kberrmsg VIADO VIODBC">
+<META NAME="KBArea" CONTENT="Support; KB; adobj">
+<META NAME="Description" CONTENT="  The following error occurs when accessing a recordset in an Active Server Pages (ASP) file that contains  Text  or  Blob  type data from a SQL table:     Microsoft OLE DB Provider for ODBC Drivers error '80020009'  CAUSE =====  The following condit...">
+<META NAME="Product" CONTENT="adobj">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAE1,QDMN,QBR4,QBFN,QBVV,QAYY,QA7O,QA7N,QAY2,QAWG,QAML,QAAP,QAB4,QABM,QATX V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: 80020009 Error When Retrieving Data from SQL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 20, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q175239</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>ActiveX Data Objects (ADO), version 1.0
+<LI>Microsoft Active Server Pages, version 1.0
+<LI>Microsoft Visual InterDev, version 1.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The following error occurs when accessing a recordset in an Active Server
+Pages (ASP) file that contains "Text" or "Blob" type data from a SQL table:
+<P>
+<PRE>   Microsoft OLE DB Provider for ODBC Drivers error '80020009'
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+The following condition may cause the error to occur: Text/Blob fields are
+selected in an order preceding other types of fields.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+When dealing with BLOB fields from SQL Server, you need to put them to the
+right of non-BLOB columns in the resultset. To be safe, you should also
+read the columns in left-to-right order, so if you have two BLOB columns as
+the last two columns in your resultset, read the first one and then the
+second. Do not read them in the reverse order.
+<P>
+The code example below demonstrates the correct order of field selection:
+<P>
+<PRE>   &lt;HTML&gt;
+   &lt;BODY bgcolor=white&gt;
+   &lt;%
+      Set cn = Server.CreateObject("ADODB.Connection")
+      Set rs = Server.CreateObject("ADODB.Recordset")
+
+      'open the connection
+      cn.Open "&lt;Put your DSN here&gt;"
+
+      'open the recordset
+
+</PRE>Notice that the Blob field, pr_info, is last in the field order:
+<P>
+<PRE>      rs.Open "select pub_id, pr_info from pub_info", cn
+
+      While Not rs.EOF
+
+         Response.Write "&lt;P&gt;PR Info:&lt;P&gt;" &amp; rs("pr_info")
+         Response.Write "&lt;P&gt;That was the PR Info for PubID " &amp; rs("pub_id")
+            rs.MoveNext
+      Wend
+   %&gt;
+   &lt;/BODY&gt;
+   &lt;/HTML&gt;
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The reason for all of this is easily understood when you think about how
+SQL Server is sending back the data on the wire. Your client is essentially
+getting a stream of bits back and can read them sequentially off of the
+network wire. When you have columns that can be bound (that is, the values
+can be copied into local memory buffers and cached there), the driver can
+transfer data in those columns into memory buffers pretty efficiently. Once
+they are there, you can read them in any order you want. This is why you
+can read result columns in any order when all the columns are bound (not
+BLOBs).
+<P>
+However, when you include BLOB columns, the length of the column can be
+huge and data access libraries will typically not bind those kinds of
+columns since the driver will often not be able to tell exactly how big the
+BLOB is until it's all read off the wire. Libraries will also typically
+avoid caching the BLOB data since it can consume lots of memory and caching
+it both in the library and your application is a waste.
+<P>
+So if you ask the driver to return the contents of a BLOB column, it will
+typically throw away any non-bound columns that preceded the requested BLOB
+column, since it has to read that data off the wire before it can start
+reading the column you asked for. Therefore, it's always best to read from
+left-to-right in your result set since that matches the way the data is
+laid out on the wire.
+<P>
+Note that this is behavior of SQL Server. Oracle and other client/server
+DBMSs will likely do the same thing, but it's not guaranteed.
+<P>
+Of course, the best thing of all is not to use a Text column. Doing so
+causes the server to allocate column space in 2K chunks and that's a lot of
+space to store something that may only be a few words (it also takes more
+time to backup and dump the transaction log too). It's often better to
+create another table that has the PK of your existing table, a chunk number
+column, and a varchar(255) column. You break the text into as many 255
+character chunks as is needed and insert as many rows in the new table as
+there are chunks. If there is no text at all, don't insert any rows. It's a
+bit more work (not much though) and you can save a lot of room, make your
+backups go much faster and avoid lots of headaches that are inherently
+caused by working with BLOB columns.
+<P>
+ 
+<PRE>Keywords          : kberrmsg VIADO VIODBC
+Technology        : kbInetDev
+Version           : WINDOWS:1.0; WINNT:1.0
+Platform          : WINDOWS winnt
+Issue type        : kbprb</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 20, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,217 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Sending a POST HTTP Request May Cause an Access Violation </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q152365">
+<META NAME="KBModify" CONTENT="1997/10/29">
+<META NAME="KBCreate" CONTENT="1996/06/12">
+<META NAME="Keywords" CONTENT="IISAPI MfcISAPI vcbuglist410 vcfixlist420 kbbuglist kbfixlist">
+<META NAME="KBArea" CONTENT="Support; KB; ISAPI">
+<META NAME="Description" CONTENT="  When sending a POST HTTP request to an MFC ISAPI DLL, you may see an access violation occur in the debugger or get a message about a failed request from the Web browser.  CAUSE =====  There is a bug in CHttpServer::GetQuery() which is located in IS...">
+<META NAME="Product" CONTENT="ISAPI">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QALZ,QBHQ,QBXB,QAVX,QATJ,QAR4,QA1S,QAFI,QAUD,QAH4,QAA5,QBQU,QBXT,QA5V V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Sending a POST HTTP Request May Cause an Access Violation</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 29, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q152365</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   Microsoft Visual C++, 32-bit Edition, version 4.1
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When sending a POST HTTP request to an MFC ISAPI DLL, you may see an access
+violation occur in the debugger or get a message about a failed request
+from the Web browser.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+There is a bug in CHttpServer::GetQuery() which is located in ISAPI.CPP in
+the MFC source code directory (MSDEV\MFC\SRC). On line 206 of ISAPI.CPP,
+you can see the following code:
+<P>
+<PRE>   _tcscpy(lpszQuery, (LPCTSTR) pCtxt-&gt;m_pECB-&gt;lpbData);
+
+</PRE>The data pointed to by pCtxt-&gt;m_pECB-&gt;lpbData is not null-terminated. In
+fact, pCtxt-&gt;m_pECB-&gt;cbAvailable should be used to determine the number of
+bytes to copy.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To resolve this problem, change ISAPI.CPP and rebuild the MFC ISAPI
+Library.
+<P>
+First, modify ISAPI.CPP by changing the line on 206 from:
+<P>
+<PRE>   _tcscpy(lpszQuery, (LPCTSTR) pCtxt-&gt;m_pECB-&gt;lpbData);
+
+</PRE>to:
+<P>
+<PRE>   memcpy(lpszQuery, (LPCTSTR) pCtxt-&gt;m_pECB-&gt;lpbData, pCtxt-&gt;m_pECB-
+   &gt;cbAvailable);
+   lpszQuery[pCtxt-&gt;m_pECB-&gt;cbAvailable] = '\0';
+
+</PRE>The new function will look like this:
+<P>
+<PRE>      LPTSTR CHttpServer::GetQuery(CHttpServerContext* pCtxt,
+            LPTSTR lpszQuery, DWORD cbQuery)
+         {
+            DWORD cbRemaining;
+
+            //
+            // If the request is a GET, then the lpszQueryString member of
+            // the ECB contains the query string.
+            //
+            // If the request is a POST, then you have to get all of the
+            // data,both from the lpbData member, and then read the rest of
+            // the data via the ReadClient() call.
+            //
+            if (cbQuery &lt; pCtxt-&gt;m_pECB-&gt;cbTotalBytes)
+               return NULL;
+
+            memcpy(lpszQuery,
+                               (LPCTSTR) pCtxt-&gt;m_pECB-&gt;lpbData,
+                                pCtxt-&gt;m_pECB-&gt;cbAvailable);
+            lpszQuery[pCtxt-&gt;m_pECB-&gt;cbAvailable] = '\0';
+
+            if ((cbRemaining = pCtxt-&gt;m_pECB-&gt;cbTotalBytes
+                                           - pCtxt-&gt;m_pECB-&gt;cbAvailable) &gt;
+      0)
+                  {
+              pCtxt-&gt;ReadClient((LPVOID) (lpszQuery
+                                           + pCtxt-&gt;m_pECB-&gt;cbAvailable),
+                                  &amp;cbRemaining);
+                  }
+            return lpszQuery;
+         }
+
+</PRE>You can rebuild the MFC ISAPI library by using the MFCISAPI.MAK file in the
+\MSDEV\MFC\SRC directory. If the ISAPI DLL is built with MFC statically
+linked (using NAFXIS(D).LIB), you can build the MFC ISAPI library by going
+to the \MFC\SRC directory and typing:
+<P>
+<PRE>   NMAKE /f MFCISAPI.MAK DEBUG=1
+
+</PRE>Specifying DEBUG=1 will build the debug version of the library. Do not use
+"DEBUG=1" if you want to build a release build of the library.
+<P>
+If you are building your ISAPI DLL linking to the MFC DLL (using
+EAFXIS(D).LIB), you can build the MFC ISAPI library by going to the
+\MFC\SRC directory and typing:
+<P>
+<PRE>   NMAKE /f MFCISAPI.MAK DEBUG=1 DLL=2
+
+</PRE>For more information about other options you can specify on the NMAKE
+Command line, see the README.TXT file in the MSDEV\MFC\SRC directory or
+look at the MFCISAPI.MAK file.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This bug was corrected in Visual C++ 32-
+bit Edition version 4.2.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: ISAPI POST<BR>
+Keywords          : IISAPI MfcISAPI vcbuglist410 vcfixlist420 kbbuglist kbfixlist<BR>
+Technology        : kbMfc kbInetDev<BR>
+Version           : 4.1<BR>
+Platform          : NT WINDOWS<BR>
+Issue type        : kbbug<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 29, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

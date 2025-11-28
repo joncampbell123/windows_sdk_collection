@@ -1,0 +1,433 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: NDIS Miniport Does Not Return a Valid Parameter on Win95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q164460">
+<META NAME="KBModify" CONTENT="1997/08/18">
+<META NAME="KBCreate" CONTENT="1997/03/02">
+<META NAME="Keywords" CONTENT="ntddkndis kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; win32ddk">
+<META NAME="Description" CONTENT="  NdisReadConfiguration does not return a valid NDIS_CONFIGURATION_PARAMETER on Windows 95 even though it works correctly with the same miniport driver on Windows NT.  CAUSE =====  The miniport driver is written for a PCMCIA network card.  The minipo...">
+<META NAME="Product" CONTENT="Win32 DDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAHE,QABA,QBBI,QAP2,QAKD,QAU9,QBWP,QAIM,QAUD,QDIZ,QBWQ,QA2O,QDL9,QBWO,QBWN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: NDIS Miniport Does Not Return a Valid Parameter on Win95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q164460</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Device Development Kit (DDK) for Windows 95,
+   version 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+NdisReadConfiguration does not return a valid NDIS_CONFIGURATION_PARAMETER
+on Windows 95 even though it works correctly with the same miniport driver
+on Windows NT.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The miniport driver is written for a PCMCIA network card.
+<P>
+The miniport driver requires multiple resources of the same type.
+<P>
+The Windows 95 setup information file does not properly specify the
+parameters requested by the keyword parameter used in the miniport.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+During initialization an NDIS miniport driver must determine its
+configuration parameters and the resources reserved for it by the operating
+system. Windows 95 includes Plug and Play technology not available on
+Windows NT and an NDIS miniport driver is a binary compatible driver for
+both platforms. Therefore, it is necessary for developers to use platform-
+specific code or setup information file to obtain these resources. For
+situations that require platform-specific code, NdisMQueryAdapterResources
+is added to the Ndis wrapper. Windows 95 setup information files can
+specify parameter keywords to allow binary compatibility with traditional
+configuration functions.
+<P>
+Allocation of resources in Windows 95 is dynamic and can change without
+rebooting. This is particularly true for PCMCIA cards. On Windows NT, a
+setup information file specifies registry entries that are used to store
+the values of resources. These values can be edited by the user if
+necessary. On Windows 95, this is unacceptable because of the dynamic
+nature and user independence of resource allocation with respect to PCMCIA
+adapters. NdisReadConfiguration does not return valid resources for a
+PCMCIA card on Windows 95. Therefore, you must use
+NdisMQueryAdapterResources to obtain resources.
+<P>
+Miniport drivers that require multiple resources of the same type must also
+use NdisMQueryAdapterResources. For example, a PCMCIA or ISA-PNP card
+that requires two memory regions must use this function. The driver must
+rely on a device specific convention to the order of fields of the same
+type. A PCMCIA card that needs a memory window and an attribute window must
+use an order convention to its Tuple information because the
+configuration manger memory descriptor can not distinguish between these
+memory resources. To allow this, configuration manager and NDIS
+preserve order when constructing the resource list from the bus-specific
+configuration of the device.
+<P>
+Most miniport drivers obtain their resources and device specific
+configuration parameters using Ndis...Configuration functions. While the
+adapter types mentioned above must use NdisMQueryAdapterResources to obtain
+resource information, all adapters obtain device specific configuration
+parameter values using the binary compatible NDIS configuration functions.
+The setup information file can specify any number of device-specific
+parameters to be saved under the driver's registry key. The parameter
+descriptions are saved under the "Ndi\params" subkey of the device node;
+their current values are saved at the root of the driver key. The NDIS
+wrapper can read these parameters from the root of the driver key and
+report them back to the miniport driver. The user views and edits the
+parameters from the "Advanced" property sheet page for the driver provided
+by the network device installer.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+NdisMQueryAdapterResources is documented in the Windows NT DDK. It is
+available on both Windows NT and Windows 95 for a binary compatible driver.
+On the Windows NT platform, NdisMQueryAdapterResources returns
+NDIS_STATUS_NOT_SUPPORTED. This means a PCMCIA adapter miniport can use
+this function to reliably distinguish between platforms at run time.
+NdisMQueryAdapterResources is declared:
+<P>
+<PRE>   VOID
+    NdisMQueryAdapterResources(
+           OUT PNDIS_STATUS  Status,
+           IN NDIS_HANDLE  WrapperConfigurationContext,
+           OUT PNDIS_RESOURCE_LIST  ResourceList,
+           IN OUT PUINT  BufferSize
+           );
+
+</PRE>NdisMQueryAdapterResources either returns a list of hardware resources, or
+it returns NDIS_STATUS_NOT_SUPPORTED. WrapperConfigurationContext specifies
+the handle returned from MiniportInitialize. ResourceList is a caller
+allocated buffer in which this function returns a list of PCMCIA resources.
+<P>
+The same format is returned by NdisMPciAssignResources. BufferSize
+points to the size of the allocated buffer in bytes. If the allocated
+buffer is too small to contain the entire list, this function returns
+NDIS_STATUS_RESOURCES and the integer referenced by BufferSize contains the
+minimum size required.
+<P>
+The layout of the ResourceList is declared in NDIS.H in the NT DDK. Windows
+95 only reports resources of types:
+<P>
+<PRE>   CmResourceTypePort,
+   CmResourceTypeInterrupt,
+   CmResourceTypeMemory,
+   CmResourceTypeDma
+
+</PRE>Interrupts always have a share disposition of CmResourceShareShared for
+Multifunction devices. Port and Memory resources always have a share
+disposition of CmResourceShareDeviceExclusive however there is no I/O port
+trapping or memory trapping in kernel mode on Windows 95 so Multifunction
+devices are still accommodated. Dma resources always have a share
+disposition of CmResourceShareDeviceExclusive.
+<P>
+Driver parameters can be numeric (int, long, word, dword), or text (enum,
+edit). For numeric types, you can specify the minimum, maximum and,
+optionally, the interval value. For the enum type, you must specify a list
+of values and descriptions. For the edit type, you can specify maximum
+length and case. The following examples use the fictitious driver
+parameters ParamKey, EnumKey, EditKey and RescKey. Entries are displayed as
+they would appear in a setup information file.
+<P>
+<PRE>   HKR,Ndi\Params\ParamKey,ParamDesc,,"My Parameter Type"
+   HKR,Ndi\Params\ParamKey,type,,int
+   HKR,Ndi\Params\ParamKey,default,,5
+   HKR,Ndi\Params\ParamKey,min,,1
+   HKR,Ndi\Params\ParamKey,max,,32
+   HKR,Ndi\Params\ParamKey,step,,1
+   HKR,Ndi\Params\ParamKey,base,,16
+   HKR,Ndi\Params\ParamKey,flag,1,30,00,00,00
+
+   HKR,Ndi\Params\EnumKey,ParamDesc,,"My Enumerated Type"
+   HKR,Ndi\Params\EnumKey,type,,enum
+   HKR,Ndi\Params\EnumKey,default,,"0"
+   HKR,Ndi\Params\EnumKey\Enum,"0",,"Auto"
+   HKR,Ndi\Params\EnumKey\Enum,"Sexy",,"My Type"
+   HKR,Ndi\Params\EnumKey,flag,1,20,00,00,00
+
+   HKR,Ndi\Params\EditKey,ParamDesc,,"My Edit Type"
+   HKR,Ndi\Params\EditKey,type,,edit
+   HKR,Ndi\Params\EditKey,default,,"Simplify"
+   HKR,Ndi\Params\EditKey,limittext,,42
+   HKR,Ndi\Params\EditKey,uppercase,,1
+   HKR,Ndi\Params\EditKey,flag,1,20,00,00,00
+
+   HKR,Ndi\Params\RescKey,ParamDesc,,"I/O Base Address"
+   HKR,Ndi\Params\RescKey,resc,1,02,00,00,00
+
+</PRE>A driver retrieves these values by using NdisReadConfiguration. The
+NDIS_STRING Keyword would be initialized to "EnumKey" for the enumerated
+type and "ParamKey" for the integer in this example. For numeric types the
+NDIS_PARAMETER_TYPE is NdisParameterInteger or NdisParameterHexInteger;
+this depends on the numeric base outlined below. Text types require
+NdisParameterString. Notice that these setup information file entries
+describe a parameter or resource to the Network device installer instead of
+specifying a value for these parameters. Their current values are saved at
+the root of the driver key node for the network component. A binary
+compatible driver uses NdisReadConfiguration to obtain current data
+values rather than using Windows 95 specific configuration manager calls to
+obtain them.
+<P>
+HKR,Ndi\Params\PreserveCase,location,,"System\CurrentControlSet\Services\Vx
+D\NWREDIR"
+HKLM,System\CurrentControlSet\Services\VxD\NWREDIR\Ndi\Params\PreserveCase,
+ParamDesc,,"Preserve Case"
+HKLM,System\CurrentControlSet\Services\VxD\NWREDIR\Ndi\Params\PreserveCase,
+default,,"1"
+HKLM,System\CurrentControlSet\Services\VxD\NWREDIR\Ndi\Params\PreserveCase,
+type,,enum
+HKLM,System\CurrentControlSet\Services\VxD\NWREDIR\Ndi\Params\PreserveCase\
+enum,0,,"No"
+HKLM,System\CurrentControlSet\Services\VxD\NWREDIR\Ndi\Params\PreserveCase\
+enum,1,,"Yes"
+<P>
+This special case specifies another location for the Ndi parameter
+"PreserveCase". Notice that only the location entry will be found as a
+subkey of "Ndi\params" for the driver node. All other parameter entries
+are found in the "Ndi\params" subkey of the registry path specified by
+the location entry. Therefore, the data value of such a parameter can not
+be obtained using NdisReadConfiguration. A binary compatible driver will
+not try to obtain the data value of such a parameter. Location is used to
+add parameters to other network components or drivers.
+<P>
+Now let us take a closer look at each entry.
+<P>
+<PRE>..\ParamKey,ParamDesc,,"My ... Type"     PARAMDESC specifies the text
+..\EnumKey,ParamDesc,,"My ... Type"      description that will be shown
+</PRE>..\RescKey,ParamDesc,,"I/O ... Address"  in the "Advanced" property page.
+..\EditKey,ParamDesc,,"My ... Type"
+<P>
+<PRE>..\ParamKey,type,,int            Parameter TYPE can be int, long,
+..\EnumKey,type,,enum            word, dword, enum or edit. The
+..\EditKey,type,,edit            default type is edit. Use
+                                 NdisParameterInteger or
+                                 NdisParameterHexInteger for int,
+                                 Long, word and dword. Use
+                                 NdisParameterString for the text
+                                 types, edit and enum.
+
+..\ParamKey,default,,5           DEFAULT specifies the default value
+..\EnumKey,default,,"0"          The default value will not be used
+..\EditKey,default,,"Simplify"   to set an optional value. The
+                                 default value will appear in the
+                                 dialog control however it will
+                                 not be available to the driver
+                                 until the user manually sets it.
+
+..\ParamKey,optional,,1        OPTIONAL should be used only to set
+                               the optional property to true, "1".
+                               This allows the user specify the
+                               parameter "Not Present" in the
+                               property page. If a parameter is
+                               required, then the default must be
+                               used or a value must be supplied.
+
+..\ParamKey,min,,1             MIN specifies a minimum value for
+                               a numeric parameter. This property
+                               is ignored for text types.
+
+..\ParamKey,max,,32            MAX specifies a maximum value for
+                               a numeric parameter. This property
+                               is ignored for text types.
+
+..\ParamKey,step,,1            STEP specifies an increment value
+                               for numeric parameters. This
+                               property is ignored for text
+                               types.
+                               The default step is 1. Min, max
+                               and step are used to build a "spin"
+                               control on the property page.
+
+..\ParamKey,base,,16           BASE specifies the numeric base
+                               of a parameter. This property
+                               is ignored for text types. The
+                               base can be set to 10 or 16. The
+                               default base is 10. Base 16
+                               numeric parameters will be
+                               displayed in hexadecimal.
+
+</PRE>..\EnumKey\Enum,&lt;value&gt;,,&lt;description&gt;  &lt;value&gt; is saved as the data value
+<PRE>..\EnumKey\Enum,"0",,"Auto"             in the registry and is returned
+..\EnumKey\Enum,"Sexy",,"My Type"       in the NDIS_STRING argument of
+                                        NdisReadConfiguration.
+                                        &lt;description&gt; is displayed in a
+                                        dropdown listbox as the parameter
+                                        value in the property page.
+
+..\EditKey,limittext,,42        LIMITTEXT specifies the maximum
+                                string length of an edit parameter
+                                This property is ignored by
+                                numeric types.
+
+..\EditKey,uppercase,,1         UPPERCASE is used to specify that
+                                an editable string parameter must
+                                contain upper case alpha
+                                characters only. A value of 0
+                                allows mixed case strings. The
+                                default is mixed case.
+
+..\RescKey,resc,1,02,00,00,00   RESC is a dword stored in the
+                                registry in Intel byte order. It
+                                indicates the hardware resource
+                                type the parameter represents.
+                                Windows 95 recognizes 4 resources:
+                                  00 00 00 01 - Memory address
+                                  00 00 00 02 - Port I/O address
+                                  00 00 00 03 - DMA channel
+                                  00 00 00 04 - IRQ
+                                Notice that a parameter key can be
+                                a resource or specified type
+                                exclusively (not both).
+
+</PRE>..\ParamKey,flag,1,30,00,00,00  FLAG is a dword stored in the
+<PRE>..\EnumKey,flag,1,20,00,00,00   registry in Intel byte order. The
+..\EditKey,flag,1,20,00,00,00   dword specifies flags for the
+                                parameter. The flags dword is
+                                created by the bitwise OR of the
+                                following:
+                                  0x10 parameter used by NDIS2
+                                  0x20 parameter used by NDIS3
+                                  0x40 device uses IRQ 2
+                                Both NDIS2 and NDIS3 can use a
+                                parameter. Parameters used by
+                                NDIS2 will be saved in
+                                Protocol.Ini for NDIS2.
+
+</PRE>..\PreserveCase,location,,"System\CurrentControlSet\Services\VxD\NWREDIR"
+<P>
+LOCATION tells NETDI to store a parameter in some other location in the
+registry. Note that this will be the only registry keyword listed relative
+to the root of the device node. The rest of the parameter entries must be
+specified relative to the desired registry location. The relative path in
+this example would be specified in the setup information file:
+<P>
+HKLM,System\CurrentControlSet\Services\VxD\NWREDIR\Ndi\Params\PreserveCase
+<P>
+..\PreserveCase,ParamDesc,,"Preserve Case"
+..\PreserveCase,default,,"1"
+..\PreserveCase,type,,enum
+..\PreserveCase\enum,0,,"No"
+..\PreserveCase\enum,1,,"Yes"
+<P>
+These registry entries will be stored in the Ndi\params section under
+HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\VxD\NWREDIR instead of
+HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Net\nnnn like
+the rest of the parameters discussed here. Therefore the data value of this
+parameter can not be obtained using NdisReadConfiguration.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+Windows NT DDK documentation
+Windows 95 DDK documentation, "Network.Doc"
+ 
+<PRE>Keywords          : ntddkndis kbprb
+Version           : 4.0
+Platform          : WINDOWS
+Issue type        : kbprb</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,448 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC95: Using OLE Automation to Import Microsoft Exchange Message </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q162078">
+<META NAME="KBModify" CONTENT="1997/08/29">
+<META NAME="KBCreate" CONTENT="1997/01/13">
+<META NAME="Keywords" CONTENT="AutoGnrl kbinterop kbole IntpOleA">
+<META NAME="KBArea" CONTENT="Support; KB; vbapps">
+<META NAME="Description" CONTENT="  Advanced: Requires expert coding, interoperability, and multiuser skills.  Microsoft Access provides the SendObject method, which enables you to send a mail message through Microsoft Exchange. However, Microsoft Access provides no way to import mes...">
+<META NAME="Product" CONTENT="vbapps">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAEV,QA1S,QAGI,QAYC,QA7O,QA7N,QAFI,QAYY,QBXS,QAY2,QAW6,QAUJ,QAFF,QDN9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC95: Using OLE Automation to Import Microsoft Exchange Message</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 29, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q162078</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access 7.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Advanced: Requires expert coding, interoperability, and multiuser skills.
+<P>
+Microsoft Access provides the SendObject method, which enables you to send
+a mail message through Microsoft Exchange. However, Microsoft Access
+provides no way to import messages from Microsoft Exchange. This article
+demonstrates how to use OLE Automation to import messages from Microsoft
+Exchange into a Microsoft Access database.
+<P>
+This article assumes that you are familiar with Visual Basic for
+Applications and with creating Microsoft Access applications using the
+programming tools provided with Microsoft Access. For more information
+about Visual Basic for Applications, please refer to the "Building
+Applications with Microsoft Access for Windows 95" manual.
+<P>
+NOTE: This article uses Microsoft Exchange, a product which must be
+purchased and installed separately. The Microsoft Exchange component which
+ships with Windows 95 will not work with this article.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The Microsoft Exchange object model provides information stores
+(InfoStores) that may contain multiple folders. An information store may
+consist of a user's Personal Information Store (.PST file), network stores,
+and Public Folders. Each folder in an information store may contain
+multiple messages. This procedure demonstrates how to import messages from
+top level folders of a specific information store or all information
+stores.
+<P>
+To import messages from Microsoft Exchange, follow these steps:
+
+<OL><P><LI>Start Microsoft Access and create a new database.
+
+<P><LI>Create a new table with the following fields:
+<P>
+<P><PRE>      Table: Messages
+      -----------------------
+      Field Name: MessageID
+<PRE></PRE>         Data Type: Text
+         Field Size: 255
+      Field Name: InfoStore
+         Data Type: Text
+         Field Size: 255
+      Field Name: FolderName
+         Data Type: Text
+         Field Size: 255
+      Field Name: Sender
+         Data Type: Text
+         Field Size: 255
+      Field Name: To
+         Data Type: Memo
+      Field Name: CC
+         Data Type: Memo
+      Field Name: BCC
+         Data Type: Memo
+      Field Name: Subject
+         Data Type: Memo
+      Field Name: MessageText
+         Date Type: Memo
+      Field Name: DateReceived
+         Date Type: Date/Time
+      Field Name: DateSent
+         Date Type: Date/Time
+      Field Name: Importance
+         Data Type: Text
+         Field Size: 50
+
+</PRE><P><LI>Save the table as Messages.
+
+<P><LI>Create a module and type the following line in the Declarations section:
+<P>
+<P><PRE>      Option Explicit
+</PRE><P>
+<P><PRE>      Dim db As DATABASE
+      Dim rsMsg As Recordset
+</PRE>
+<P><LI>In the References box, select OLE/Messaging 1.0 Object Library, and
+   click OK.
+<P>
+   NOTE: If this object library is not available in the References list,
+   you will need to browse your Windows\System folder for the file
+   Mdisp32.tlb.
+
+<P><LI>Type the following procedures:
+<P>
+<P><PRE>    '======================================================================
+    'FUNCTION: ParseRecipients
+    '
+    ' Purpose: Check a MAPI message for a specific type of recipient and
+    ' return a semicolon delimited list of recipients. For instance, if
+    ' this function is called using the MapiTo constant, this function
+    ' will return a semicolon delimited list of all recipients on the
+    ' 'TO' line of the message.
+    '======================================================================
+</PRE><P>
+<P><PRE>    Function ParseRecipients(objMessage As Object, RecipientType As _
+<PRE></PRE>         Integer)
+     Dim RecipientCount As Long
+     Dim Recipient As Object
+     Dim ReturnString As String
+     Set Recipient = objMessage.Recipients(RecipientCount)
+     For RecipientCount = 1 To objMessage.Recipients.Count
+        If RecipientType = Recipient(RecipientCount).Type Then
+            ReturnString = ReturnString &amp; Recipient(RecipientCount).Name _
+                &amp; "; "
+        End If
+     Next
+     If Len(ReturnString) &gt; 0 Then
+        ReturnString = Left(Trim(ReturnString), Len(ReturnString) - 2)
+        ParseRecipients = ReturnString
+     Else
+        ParseRecipients = Null
+     End If
+    End Function
+
+    '======================================================================
+    'SUB: WriteMessage
+    '
+    'Purpose: Adds message information to fields in the table through the
+    'the recordset opened in the ImportMessages Sub. This procedure
+    'is called from the RetrieveMessage Sub when it is time to write
+    'information to the table.
+    '======================================================================
+
+    Sub WriteMessage(objMessage As Object, FolderName As String, _
+                 InfoStore As String)
+     Dim RetVal
+     Dim iString As String
+     iString = "Importing messages from: " &amp; InfoStore &amp; "\" &amp; FolderName _
+              &amp; "..."
+     RetVal = SysCmd(acSysCmdSetStatus, iString)
+     With rsMsg
+        .AddNew
+        !MessageID = objMessage.ID
+        !InfoStore = InfoStore
+        !FolderName = FolderName
+        !Sender = objMessage.Sender.Name
+        !To = ParseRecipients(objMessage, mapiTo)
+        !CC = ParseRecipients(objMessage, mapiCc)
+        !BCC = ParseRecipients(objMessage, mapiBcc)
+        On Error Resume Next
+        !subject = objMessage.subject
+         If Err.Number &lt;&gt; 0 Then
+            !subject = Null
+            Err.Clear
+        End If
+        !MessageText = objMessage.Text
+        If Err.Number &lt;&gt; 0 Then
+            !MessageText = Null
+            Err.Clear
+        End If
+        !DateReceived = objMessage.TimeReceived
+        If Err.Number &lt;&gt; 0 Then
+            !DateReceived = Null
+            Err.Clear
+        End If
+        !DateSent = objMessage.TimeSent
+        If Err.Number &lt;&gt; 0 Then
+            !DateSent = Null
+            Err.Clear
+        End If
+        !importance = Switch(objMessage.importance = 0, "Low", _
+            objMessage.importance = 1, "Normal", _
+            objMessage.importance = 2, "High")
+        .UPDATE
+     End With
+    End Sub
+
+    '======================================================================
+    'SUB: RetrieveMessage
+    '
+    'Purpose: Loop through the Messages collection of each Folder of the
+    'specified information store(s) and calls the WriteMessage Sub
+    'to write individual messages to the table. This procedure is
+    'called by the ImportMessages Sub.
+    '======================================================================
+
+    Sub RetrieveMessage(objInfoStore As Object, FolderName As Variant)
+     Dim objFoldersColl As Object, objFolder As Object
+     Dim objMessage As Object, objMessageColl As Object
+
+     'Set a Variable equal to the Folders Collection of the InfoStore's
+     'Top Level Folder. (RootFolder)
+     Set objFoldersColl = objInfoStore.RootFolder.Folders
+     With objFoldersColl
+        Set objFolder = .GetFirst
+
+        'Loop through each folder and determine if we're looking for a
+        'specific folder from which we're importing messages, or all
+        'folders.
+        Do While Not objFolder Is Nothing
+            If IsMissing(FolderName) Then
+                Set objMessageColl = objFolder.Messages
+                With objMessageColl
+                    Set objMessage = .GetFirst
+                    Do While Not objMessage Is Nothing
+                        Call WriteMessage(objMessage, objFolder.Name, _
+                                          objInfoStore.Name)
+                        Set objMessage = .GetNext
+                    Loop
+                End With
+                Set objFolder = .GetNext
+            Else
+                If objFolder.Name = FolderName Then
+                    Set objMessageColl = objFolder.Messages
+                    With objMessageColl
+                        Set objMessage = .GetFirst
+                        Do While Not objMessage Is Nothing
+                            Call WriteMessage(objMessage, objFolder.Name, _
+                                              objInfoStore.Name)
+                            Set objMessage = .GetNext
+                        Loop
+                    End With
+                    Exit Do
+                Else
+                    Set objFolder = .GetNext
+                End If
+            End If
+        Loop
+     End With
+    End Sub
+
+    '======================================================================
+    'SUB: ImportMessage
+    '
+    'Purpose: Opens a MAPI session through OLE automation and opens a
+    'recordset based on the Messages table. Then, this procedure
+    'checks to see if it needs to import messages from top level
+    'folders in ALL information stores, or just a specific
+    'information store. Based upon this, the procedure will call
+    'the RetrieveMessage sub for the specified information stores.
+    '======================================================================
+
+    Sub ImportMessages(Optional FolderName As Variant, _
+                   Optional InfoStoreName As Variant)
+     Dim objMapi As Object
+     Dim objFoldersColl As Object
+     Dim objInfoStore As Object
+     Dim RetVal
+
+     DoCmd.Hourglass True
+     Set db = CurrentDb
+     Set rsMsg = db.OpenRecordset("Messages", dbOpenDynaset)
+     RetVal = SysCmd(acSysCmdSetStatus, "Establishing MAPI Session...")
+     Set objMapi = CreateObject("Mapi.Session")
+     RetVal = SysCmd(acSysCmdSetStatus, "Logging on to MAPI Session...")
+
+     'In the following line, replace the ProfileName argument with a valid
+     'profile. If you omit the ProfileName argument, Microsoft Exchange
+     'will prompt you for your profile.
+
+     objMapi.Logon ProfileName:="Nancy Davolio"
+
+     'Loop through each InfoStore in the MAPI session and determine if we
+     'should read in messages from ALL InfoStores or just a specified
+     'InfoStore. InfoStores include a user's personal store files
+     '(.PST Files), Network stores, and Public Folders.
+
+     For Each objInfoStore In objMapi.InfoStores
+        If Not IsMissing(InfoStoreName) Then
+            If objInfoStore.Name = InfoStoreName Then
+                Call RetrieveMessage(objInfoStore, FolderName)
+                Exit For
+            End If
+        Else
+            Call RetrieveMessage(objInfoStore, FolderName)
+        End If
+     Next
+     objMapi.Logoff  ' Log out of the MAPI session.
+     Set objMapi = Nothing
+     db.Close  ' Close the Database.
+     Set db = Nothing
+     DoCmd.Hourglass False
+     RetVal = SysCmd(acSysCmdClearStatus)
+    End Sub
+
+</PRE></OL><h3>Usage</h3>
+ 
+<P>
+The ImportMessages procedure accepts two optional arguments, Foldername
+and InfoStoreName. This enables the user to import messages from only a
+specified folder in any information store, or messages from all top level
+folders in either in any information store.
+<P>
+To import messages from all top level folders of all information stores,
+call the procedure with no arguments:
+<P>
+<PRE>       ImportMessages
+
+</PRE>To import messages from a top level folder folder named "InBox" in all
+information stores, call the procedure with "InBox" as the FolderName
+argument and no InfoStoreName argument:
+<P>
+<PRE>       ImportMessages "InBox"
+
+</PRE>To import messages from all top level folders of an information store
+named "My Info Store," call the procedure with no FolderName argument and
+"My Info Store" as the InfoStoreName argument:
+<P>
+<PRE>       ImportMessages , "My Info Store"
+
+</PRE>To import messages from a top level folder named "InBox" from an
+information store named "My Info Store", call the procedure with "InBox"
+as the FolderName argument and "My Info Store" as the InfoStoreName
+argument:
+<P>
+<PRE>       ImportMessages "InBox", "My Info Store"
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For more information about OLE Automation, search on the phrase "OLE
+Automation," and then view "Using Microsoft Access as an OLE Automation
+Controller" using the Answer Wizard from the Microsoft Access for Windows
+95 Help menu.
+<P>
+For more information about referencing object libraries, search on the
+phrase "referencing object libraries," and then view "setting references"
+using the Answer Wizard from the Microsoft Access for Windows 95 Help menu.
+<P>
+For more information about using OLE Automation with Microsoft Exchange,
+please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../vbapps/q153311.htm">Q153311</A></B>
+   TITLE     : ACC: Using OLE Automation to Send a Microsoft Exchange
+               Message
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: mail<BR>
+Keywords          : AutoGnrl kbinterop kbole IntpOleA<BR>
+Version           : 7.0<BR>
+Platform          : WINDOWS<BR>
+Hardware          : x86<BR>
+Issue type        : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 29, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

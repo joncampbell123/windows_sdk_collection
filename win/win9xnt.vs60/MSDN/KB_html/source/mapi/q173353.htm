@@ -1,0 +1,277 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Saving a Message Attachment to File </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q173353">
+<META NAME="KBModify" CONTENT="1997/09/02">
+<META NAME="KBCreate" CONTENT="1997/09/02">
+<META NAME="Keywords" CONTENT="EMAPI">
+<META NAME="KBArea" CONTENT="Support; KB; mapi">
+<META NAME="Description" CONTENT="  The code example below demonstrates how to open an attachment and copy the contents to a file in the current directory.  MORE INFORMATION  Use the following steps to open an attachment and copy the contents to a file in the current directory:  1. O...">
+<META NAME="Product" CONTENT="mapi">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA5T,QAI4,QAH4,QAJZ,QATJ,QBWS,QAA5,QBQU,QBXB,QA9N,QA6A,QASB,QAK9,QABC,QAFV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Saving a Message Attachment to File</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 2, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q173353</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Extended Messaging Application Programming Interface (MAPI), version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The code example below demonstrates how to open an attachment and copy the
+contents to a file in the current directory.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Use the following steps to open an attachment and copy the contents to a
+file in the current directory:
+
+<OL><P><LI>Open the Attachments table, including the following columns:
+<P>
+<P><PRE>      PR_ATTACH_FILENAME and PR_ATTACH_NUM.
+</PRE>
+<P><LI>Open an attachment in the Attachments table.
+
+<P><LI>Create a file for the attachment.
+
+<P><LI>Copy the contents of the attachment to the newly created file.
+<P>
+</OL><h3>Sample Code</h3>
+ 
+<P>
+<PRE>    /* This code assumes that you already have an IMessage object,
+       pointed to by the variable pMsg.
+    */
+
+    /* You should have the following define and include lines for this
+       code to compile and link correctly:
+
+          #define USES_IID_IMAPITable
+          #define INITGUID
+
+          #include &lt;initguid.h&gt;
+          #include &lt;mapiutil.h&gt;
+    */
+
+    HRESULT WriteAttachToFile ( LPMESSAGE pMsg )
+    {
+      SizedSPropTagArray(1,g_sptMsgProps) = {1,
+                                             PR_HASATTACH};
+
+      LPSPropValue pProps = NULL;
+      HRESULT hRes = 0;
+      ULONG cVals = 0;
+
+      if (FAILED(hRes = pMsg-&gt;GetProps((LPSPropTagArray) &amp;g_sptMsgProps,
+                                       0,
+                                       &amp;cVals,
+                                       &amp;pProps)))
+        goto Quit;
+      else
+        hRes = S_OK;
+
+      if (PR_HASATTACH == pProps[0].ulPropTag &amp;&amp; pProps[0].Value.b)
+      {
+        LPMAPITABLE pAttTbl = NULL;
+        LPSRowSet pRows = NULL;
+        static SizedSPropTagArray(2,sptCols) = {2,PR_ATTACH_FILENAME,
+                                                  PR_ATTACH_NUM};
+
+        if (SUCCEEDED(hRes = pMsg -&gt; OpenProperty(PR_MESSAGE_ATTACHMENTS,
+                                                  &amp;IID_IMAPITable,
+                                                  0,
+                                                  0,
+                                                  (LPUNKNOWN *) &amp;pAttTbl)))
+        {
+
+          if (SUCCEEDED(hRes = pAttTbl -&gt; SetColumns(
+                                              (LPSPropTagArray) &amp;sptCols,
+                                              TBL_BATCH)))
+          {
+
+            if (SUCCEEDED(hRes = HrQueryAllRows(pAttTbl,
+                                              (LPSPropTagArray) &amp;sptCols,
+                                              NULL,
+                                              NULL,
+                                              0,
+                                              &amp;pRows)))
+            {
+
+              for (ULONG i = 0; i &lt; pRows -&gt; cRows; i++)
+              {
+                LPATTACH lpAttach = NULL;
+
+                // Verify we received a filename from GetProps
+                if (! PR_ATTACH_FILENAME ==
+                      pRows-&gt;aRow[i].lpProps[0].ulPropTag)
+                  break;
+
+                // Verify we received an Attachment Index from GetProps
+                if (! PR_ATTACH_NUM == pRows-&gt;aRow[i].lpProps[1].ulPropTag)
+                   break;
+
+                // Open the attachment
+                if (SUCCEEDED(hRes = pMsg-&gt;OpenAttach (
+                                  pRows-&gt;aRow[i].lpProps[1].Value.l,
+                                  NULL, MAPI_BEST_ACCESS, &amp;lpAttach)))
+                {
+                  LPSTREAM pStrmsrc = null, pStrmDest = NULL;
+                  STATSTG StatInfo;
+
+                  // Open the property of the attachment
+                  // containing the file data
+                  if (FAILED(hRes = lpAttach-&gt;OpenProperty(
+                                                 PR_ATTACH_DATA_BIN,
+                                                 (LPIID)&amp;IID_IStream,
+                                                 0,
+                                                 MAPI_MODIFY,
+                                                 (LPUNKNOWN *)&amp;pStrmSrc)))
+                     break;
+
+                   // Open an IStream interface and create the file at the
+                   // same time. This code will create the file in the
+                   // current directory.
+                   if (FAILED(hRes = OpenStreamOnFile(
+                                     MAPIAllocateBuffer,
+                                     MAPIFreeBuffer,
+                                     STGM_CREATE | STGM_READWRITE,
+                                     pRows-&gt;aRow[i].lpProps[0].Value.lpszA,
+                                     NULL,
+                                     &amp;pStrmDest)))
+                     break;
+
+                   pStrmSrc -&gt; Stat(&amp;StatInfo, STATFLAG_NONAME);
+
+                   hRes = pStrmSrc -&gt; CopyTo(pStrmDest,
+                                             StatInfo.cbSize,
+                                             NULL,
+                                             NULL);
+
+                   // Commit changes to new stream
+                   pStrmDest -&gt; Commit(0);
+
+                   // Release each of our streams
+                   pStrmDest -&gt; Release();
+                   pStrmSrc -&gt; Release();
+
+                 }
+
+                 // Release the attachment
+                 lpAttach -&gt; Release();
+              }
+            }
+          }
+        }
+
+        FreeProws(pRows);
+
+        if (pAttTbl)
+          pAttTbl -&gt; Release();
+      }
+    Quit:
+        MAPIFreeBuffer((LPVOID) pProps);
+        return hRes;
+    }
+
+</PRE></OL> 
+<PRE>Keywords          : EMAPI
+Version           : WINDOWS:1.0
+Platform          : WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 2, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

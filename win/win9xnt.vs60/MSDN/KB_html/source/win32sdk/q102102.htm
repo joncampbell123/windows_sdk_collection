@@ -1,0 +1,449 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Add an Access-Allowed ACE to a File </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q102102">
+<META NAME="KBModify" CONTENT="1997/01/21">
+<META NAME="KBCreate" CONTENT="1993/07/28">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article explains the process of adding an access-allowed (or access-denied) access control entry (ACE) to a file.  Adding an access-allowed ACE to a file's access control list (ACL) provides a means of granting or denying (using an access-deni...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QASR,QAYL,QALW,QA9N,QAV1,QAV0,QASB,QAAP,QAB4,QAAD,QAGI,QBW7,QAI5,QDIT V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Add an Access-Allowed ACE to a File</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 21, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q102102</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.5, 3.51, 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article explains the process of adding an access-allowed (or
+access-denied) access control entry (ACE) to a file.
+<P>
+Adding an access-allowed ACE to a file's access control list (ACL) provides
+a means of granting or denying (using an access-denied ACE) access to the
+file to a particular user or group. In most cases, the file's ACL will not
+have enough free space to add an additional ACE, and therefore it is
+usually necessary to create a new ACL and copy the file's existing ACEs
+over to it. Once the ACEs are copied over and the access-allowed ACE is
+also added, the new ACL can be applied to the file's security descriptor
+(SD). This process is explained in detail in the section below. Sample code
+is provided at the end of this article.
+<P>
+Access can be granted or denied to objects other than files by substituting
+GetKernelObjectSecurity(), GetUserObjectSecurity() or
+GetPrivateObjectSecurity() for GetFileSecurity().
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+At the end of this article is sample code that defines a function named
+AddAccessRights(), which adds an access-allowed ACE to the specified file
+allowing the specified access. Steps 1-17 in the comments of the sample
+code are discussed in detail below:
+
+<OL><P><LI>GetUserName() is called to retrieve the name of the currently
+    logged in user. The user name is stored in plszUserName[] array.
+
+<P><LI>LookupAccountName() is called to obtain the SID of the user
+    returned by GetUserName() in step 1. The resulting SID is stored
+    in the UserSID variable and will be used later in the
+    AddAccessAllowedACE() application programming interface (API)
+    call. The LookupAccountName() API is also providing the user's
+    domain in the plszDomain[] array. Please note that
+    LookupAccountName() returns the SID of the first user or group
+    that matches the name in plszUserName.
+<P>
+    NOTE: LookupAccountName can be a fairly expensive API because multiple
+    SAM databases may need to be queried to retrieve the desired
+    information. An alternative method to retrieve the SID is by looking
+    in the process token. For additional information, please see the
+    following article in the Microsoft Knowledge Base:
+<P>
+    ARTICLE-ID: <B><A href="../win32sdk/q111544.htm">Q111544</A></B>
+<PRE>    TITLE     : Looking Up the Current User and Domain
+
+</PRE><P><LI>GetFileSecurity() is used here to obtain a copy of the file's
+    security descriptor (SD). The file's SD is placed into the ucSDbuf
+    variable, which is declared a size of
+    65536+SECURITY_DESCRIPTOR_MIN_LENGTH for simplicity. This value
+    represents the maximum size of an SD, which ensures the SD will be
+    of sufficient size.
+
+<P><LI>Here we initialize the new security descriptor (NewSD variable) by
+    calling the InitializeSecurityDescriptor() API. Because the
+    SetFileSecurity() API requires that the security item being set is
+    contained in a SD, we create and initialize NewSD.
+
+<P><LI>Here GetSecurityDescriptorDacl() retrieves a pointer to the
+    discretionary access control list (DACL) in the SD. The pointer is
+    stored in the pACL variable.
+
+<P><LI>GetAclInformation() is called here to obtain size information on
+    the file's DACL in the form of a ACL_SIZE_INFORMATION structure.
+    This information is used when computing the size of the new DACL
+    and when copying ACEs.
+
+<P><LI>This statement computes the exact number of bytes to allocate for
+    the new DACL. The AclBytesInUse member represents the number of
+    bytes being used in the file's DACL. We add this number to the
+    size of an ACCESS_ALLOWED_ACE and the size of the user's SID.
+    Subtracting the size of a DWORD is an adjustment required to
+    obtain the exact number of bytes necessary.
+
+<P><LI>Here we allocate memory for the new ACL that will ultimately
+    contain the file's existing ACEs plus the access-allowed ACE.
+
+<P><LI>In addition to allocating the memory, it is important to
+    initialize the ACL structure as we do here.
+
+<P><LI>Here we check the bDaclPresent flag returned by
+    GetSecurityDescriptorDacl() to see if a DACL was present in the
+    file's SD. If a DACL was not present, then we skip the code that
+    copies the file's ACEs to the new DACL.
+
+<P><LI>After verifying that there is at least one ACE in the file's DACL
+    (by checking the AceCount member), we begin the loop to copy the
+    individual ACEs to the new DACL.
+
+<P><LI>Here we get a pointer to an ACE in the file's DACL by using the
+    GetAce() API.
+
+<P><LI>Now we add the ACE to the new DACL. It is important to note that
+    we pass MAXDWORD for the dwStartingAceIndex parameter of AddAce()
+    to ensure the ACE is added to the end of the DACL. The statement
+    ((PACE_HEADER)pTempAce)-&gt;AceSize provides the size of the ACE.
+
+<P><LI>Now that we have copied all the file's original ACEs over to our
+    new DACL, we add the access-allowed ACE. The dwAccessMask variable
+    will contain the access mask being granted. GENERIC_READ is an
+    example of an access mask.
+
+<P><LI>Because the SetFileSecurity() API can set a variety of security
+    information, it takes a pointer to a security descriptor. For this
+    reason, it is necessary to attach our new DACL to a temporary SD.
+    This is done by using the SetSecurityDescriptorDacl() API.
+
+<P><LI>Now that we have a SD containing the new DACL for the file, we set
+    the DACL to the file's SD by calling SetFileSecurity(). The
+    DACL_SECURITY_INFORMATION parameter indicates that we want the
+    DACL in the provided SD applied to the file's SD. Please note that
+    only the file's DACL is set, the other security information in the
+    file's SD remains unchanged.
+
+<P><LI>Here we free the memory that was allocated for the new DACL.
+<P>
+</OL>The following sample demonstrates the basic steps required to add an access-
+allowed ACE to a file's DACL. Please note that this same process can be
+used to add an access-denied ACE to a file's DACL. Because the access-
+denied ACE should appear before access-allowed ACEs, it is suggested that
+the call to AddAccessDeniedAce() precede the code that copies the existing
+ACEs to the new DACL.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>#define SD_SIZE (65536 + SECURITY_DESCRIPTOR_MIN_LENGTH)
+
+</PRE></OL>BOOL AddAccessRights(CHAR *pFileName, DWORD dwAcessMask)
+{
+<PRE>   // SID variables
+
+   UCHAR          psnuType[2048];
+   UCHAR          lpszDomain[2048];
+   DWORD          dwDomainLength = 250;
+   UCHAR          UserSID[1024];
+   DWORD          dwSIDBufSize=1024;
+
+   // User name variables
+
+   UCHAR          lpszUserName[250];
+   DWORD          dwUserNameLength = 250;
+
+   // File SD variables
+
+   UCHAR          ucSDbuf[SD_SIZE];
+   PSECURITY_DESCRIPTOR pFileSD=(PSECURITY_DESCRIPTOR)ucSDbuf;
+   DWORD          dwSDLengthNeeded;
+
+   // ACL variables
+
+   PACL           pACL;
+   BOOL           bDaclPresent;
+   BOOL           bDaclDefaulted;
+   ACL_SIZE_INFORMATION AclInfo;
+
+   // New ACL variables
+
+   PACL           pNewACL;
+   DWORD          dwNewACLSize;
+
+   // New SD variables
+
+   UCHAR                NewSD[SECURITY_DESCRIPTOR_MIN_LENGTH];
+   PSECURITY_DESCRIPTOR psdNewSD=(PSECURITY_DESCRIPTOR)NewSD;
+
+   // Temporary ACE
+
+   PVOID          pTempAce;
+   UINT           CurrentAceIndex;
+
+   // STEP 1: Get the logged on user name
+
+   if(!GetUserName(lpszUserName,&amp;dwUserNameLength))
+   {
+      printf("Error %d:GetUserName\n",GetLastError());
+      return(FALSE);
+   }
+
+   // STEP 2: Get SID for current user
+
+   if (!LookupAccountName((LPSTR) NULL,
+       lpszUserName,
+       UserSID,
+       &amp;dwSIDBufSize,
+       lpszDomain,
+       &amp;dwDomainLength,
+       (PSID_NAME_USE)psnuType))
+   {
+      printf("Error %d:LookupAccountName\n",GetLastError());
+      return(FALSE);
+   }
+
+   // STEP 3: Get security descriptor (SD) for file
+
+   if(!GetFileSecurity(pFileName,
+                 (SECURITY_INFORMATION)(DACL_SECURITY_INFORMATION),
+                 pFileSD,
+                 SD_SIZE,
+                 (LPDWORD)&amp;dwSDLengthNeeded))
+   {
+      printf("Error %d:GetFileSecurity\n",GetLastError());
+      return(FALSE);
+   }
+
+   // STEP 4: Initialize new SD
+
+   if(!InitializeSecurityDescriptor(psdNewSD,SECURITY_DESCRIPTOR_REVISION))
+   {
+      printf("Error %d:InitializeSecurityDescriptor\n",GetLastError());
+      return(FALSE);
+   }
+
+   // STEP 5: Get DACL from SD
+
+   if (!GetSecurityDescriptorDacl(pFileSD,
+                    &amp;bDaclPresent,
+                    &amp;pACL,
+                    &amp;bDaclDefaulted))
+   {
+      printf("Error %d:GetSecurityDescriptorDacl\n",GetLastError());
+      return(FALSE);
+   }
+
+   // STEP 6: Get file ACL size information
+
+   if(!GetAclInformation(pACL,&amp;AclInfo,sizeof(ACL_SIZE_INFORMATION),
+      AclSizeInformation))
+   {
+      printf("Error %d:GetAclInformation\n",GetLastError());
+      return(FALSE);
+   }
+
+   // STEP 7: Compute size needed for the new ACL
+
+   dwNewACLSize = AclInfo.AclBytesInUse +
+                  sizeof(ACCESS_ALLOWED_ACE) +
+                  GetLengthSid(UserSID) - sizeof(DWORD);
+
+   // STEP 8: Allocate memory for new ACL
+
+   pNewACL = (PACL)LocalAlloc(LPTR, dwNewACLSize);
+
+   // STEP 9: Initialize the new ACL
+
+   if(!InitializeAcl(pNewACL, dwNewACLSize, ACL_REVISION2))
+   {
+      printf("Error %d:InitializeAcl\n",GetLastError());
+      LocalFree((HLOCAL) pNewACL);
+      return(FALSE);
+   }
+
+   // STEP 10: If DACL is present, copy it to a new DACL
+
+   if(bDaclPresent)  // only copy if DACL was present
+   {
+      // STEP 11: Copy the file's ACEs to our new ACL
+
+      if(AclInfo.AceCount)
+      {
+         for(CurrentAceIndex = 0; CurrentAceIndex &lt; AclInfo.AceCount;
+            CurrentAceIndex++)
+         {
+            // STEP 12: Get an ACE
+
+            if(!GetAce(pACL,CurrentAceIndex,&amp;pTempAce))
+            {
+              printf("Error %d: GetAce\n",GetLastError());
+              LocalFree((HLOCAL) pNewACL);
+              return(FALSE);
+            }
+
+             // STEP 13: Add the ACE to the new ACL
+
+            if(!AddAce(pNewACL, ACL_REVISION, MAXDWORD, pTempAce,
+               ((PACE_HEADER)pTempAce)-&gt;AceSize))
+            {
+               printf("Error %d:AddAce\n",GetLastError());
+               LocalFree((HLOCAL) pNewACL);
+               return(FALSE);
+            }
+          }
+      }
+   }
+
+   // STEP 14: Add the access-allowed ACE to the new DACL
+
+   if(!AddAccessAllowedAce(pNewACL,ACL_REVISION2,dwAcessMask, &amp;UserSID))
+   {
+      printf("Error %d:AddAccessAllowedAce",GetLastError());
+      LocalFree((HLOCAL) pNewACL);
+      return(FALSE);
+   }
+
+   // STEP 15: Set our new DACL to the file SD
+
+   if (!SetSecurityDescriptorDacl(psdNewSD,
+                     TRUE,
+                     pNewACL,
+                     FALSE))
+   {
+      printf("Error %d:SetSecurityDescriptorDacl",GetLastError());
+      LocalFree((HLOCAL) pNewACL);
+      return(FALSE);
+   }
+
+   // STEP 16: Set the SD to the File
+
+   if (!SetFileSecurity(pFileName, DACL_SECURITY_INFORMATION,psdNewSD))
+   {
+      printf("Error %d:SetFileSecurity\n",GetLastError());
+      LocalFree((HLOCAL) pNewACL);
+      return(FALSE);
+   }
+
+   // STEP 17: Free the memory allocated for the new ACL
+
+   LocalFree((HLOCAL) pNewACL);
+   return(TRUE);
+</PRE>}
+<P>
+NOTE: Security descriptors have two possible formats: self-relative and
+absolute. GetFileSecurity() returns an SD in self-relative format, but
+SetFileSecurity() expects and absolute SD. This is one reason that the code
+must create a new SD and copy the information, instead of simply modifying
+the SD from GetFileSecurity() and passing it to SetFileSecurity(). It is
+possible to call MakeAbsoluteSD() to do the conversion, but there may not
+be enough room in the current ACL anyway, as mentioned above.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg<BR>
+KBSubcategory: BseSecurity<BR>
+Additional reference words: 3.50 3.51 4.00 GetFileSecurity<BR>
+AddAccessAllowedAce<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 21, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

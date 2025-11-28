@@ -1,0 +1,488 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Performing a Synchronous Spawn Under Win32s </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q125212">
+<META NAME="KBModify" CONTENT="1997/04/07">
+<META NAME="KBCreate" CONTENT="1995/01/22">
+<META NAME="Keywords" CONTENT="W32s W32sThunk kbcode kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Under Windows NT, you can synchronously spawn an application (that is, spawn an application and wait until the spawned application is terminated before continuing). To do so, call CreateProcess() to start the application, and pass the handle return...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAH4,QBWP,QAJH,QAI4,QALW,QAY5,QAGI,QAHE,QAB9,QAGB,QBV8,QDL9,QBWQ,QBWO V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Performing a Synchronous Spawn Under Win32s</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 7, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q125212</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.30 1.30a 1.30c
+WINDOWS
+kbprg kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32s, versions 1.30, 1.30a, 1.30c
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Under Windows NT, you can synchronously spawn an application (that is,
+spawn an application and wait until the spawned application is terminated
+before continuing). To do so, call CreateProcess() to start the
+application, and pass the handle returned to WaitForSingleObject() to wait
+for the application to terminate, or you could use the C run-time (CRT)
+function, _spawnl() with _P_WAIT from a Win32-based application. The former
+approach is shown in the sample code in the "More Information" section in
+this article.
+<P>
+However, this method does not work under Win32s. Under Win32s,
+CreateProcess() does not return the process handle for 16-bit
+Windows-based applications, only for Win32-based application. Even if it
+did, the method described in the proceeding paragraph would not work under
+Win32s because WaitForSingleObject() returns TRUE immediately under Win32s.
+<P>
+In fact, there is no 32-bit only solution for this issue. The 32-bit
+WinExec() does not return an instance handle as the 16-bit WinExec() does.
+In addition, you cannot use GetExitCodeProcess() to find the exit status
+of 16-bit Windows-based applications in order to loop on their status. It
+is a limitation that GetExitCodeProcess() returns zero for 16-bit
+Windows-based applications on both Windows NT and Win32s.
+<P>
+The solution is to create a thunk to the 16-bit side and from the 16-bit
+side, solve the problem as you would normally solve it from a Windows-based
+application. Namely, start the application with WinExec() and use one of
+the Toolhelp APIs in a test loop to determine when the application is
+terminated. Alternatively, you can use EnumWindows() to determine when the
+application is terminated. The sample code below uses the Toolhelp APIs.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Sample code to perform a synchronous spawn is given below. The code
+is divided into three source files:
+
+<UL><LI>The main application.
+<LI>The 32-bit side of the thunk.
+<LI>The 16-bit side of the thunk.
+<P>
+</UL>You can use the thunking code as is, calling SynchSpawn() in your own
+application as demonstrated in the main application below. For information
+on Universal thunks (including which header files and libraries to use),
+please see the "Win32s Programmer's Reference."
+<P>
+In all three modules, use the following header file SPAWN.H:
+<P>
+<PRE>/*** Function Prototypes ****/
+
+</PRE>DWORD APIENTRY SynchSpawn( LPCSTR lpszCmdLine, UINT nCmdShow );
+<P>
+<PRE>/*** Constants for Dispatcher ***/
+
+#define SYNCHSPAWN     1
+
+</PRE><h3>Main Application</h3>
+ 
+<P>
+This application attempts to synchronously spawn NOTEPAD under Windows NT
+and Win32s. NOTE: Under Win32s, NOTEPAD is a 16-bit application.
+<P>
+GetVersion() is used to detect the platform. Under Windows NT,
+CreateProcess() and WaitForSingleObject() perform the spawn. Under Win32s,
+the thunked routine SynchSpawn() is called.
+<P>
+<PRE>/*** Main application code ***/
+
+#include &lt;windows.h&gt;
+#include "spawn.h"
+
+void main()
+</PRE>{
+<PRE>   DWORD dwVersion;
+   STARTUPINFO si = {0};
+   PROCESS_INFORMATION pi = {0};
+
+   dwVersion = GetVersion();
+
+   if( !(dwVersion &amp; 0x80000000) )  // Windows NT
+   {
+      si.cb = sizeof(STARTUPINFO);
+      si.lpReserved = NULL;
+      si.lpReserved2 = NULL;
+      si.cbReserved2 = 0;
+      si.lpDesktop = NULL;
+      si.dwFlags = 0;
+
+      CreateProcess( NULL,
+                     "notepad",
+                     NULL,
+                     NULL,
+                     TRUE,
+                     NORMAL_PRIORITY_CLASS,
+                     NULL,
+                     NULL,
+                     &amp;si,
+                     &amp;pi );
+      WaitForSingleObject( pi.hProcess, INFINITE );
+   }
+   else if( LOBYTE(LOWORD(dwVersion)) &lt; 4 )  // Win32s
+   {
+      SynchSpawn( "notepad.exe", SW_SHOWNORMAL );
+   }
+
+   MessageBox( NULL, "Return from SynchSpawn", " ", MB_OK );
+
+</PRE>}
+<P>
+<P><h3>32-bit Side of Thunk</h3>
+ 
+<P>
+This DLL provides the 32-bit side of the thunk. If the DLL is loaded
+under Win32s, it initializes the thunk in its DllMain() by calling
+UTRegister(). The entry point SynchSpawn() packages up the arguments
+and calls the 16-bit side through the thunk.
+<P>
+<PRE>/*** Code for 32-bit side of thunk ***/
+
+#define W32SUT_32    // Needed for w32sut.h in 32-bit code
+
+#include &lt;windows.h&gt;
+#include "w32sut.h"
+#include "spawn.h"
+
+typedef BOOL (WINAPI * PUTREGISTER) ( HANDLE     hModule,
+                  LPCSTR     lpsz16BitDLL,
+                  LPCSTR     lpszInitName,
+                  LPCSTR     lpszProcName,
+                  UT32PROC * ppfn32Thunk,
+                  FARPROC    pfnUT32Callback,
+                  LPVOID     lpBuff
+                );
+
+</PRE>typedef VOID (WINAPI * PUTUNREGISTER) (HANDLE hModule);
+<P>
+typedef DWORD (APIENTRY *PUT32CBPROC) (LPVOID lpBuff, DWORD dwUserDefined);
+<P>
+<PRE>UT32PROC      pfnUTProc = NULL;
+PUTREGISTER   pUTRegister = NULL;
+</PRE>PUTUNREGISTER pUTUnRegister = NULL;
+<PRE>PUT32CBPROC   pfnUT32CBProc = NULL;
+int           cProcessesAttached = 0;
+BOOL          fWin32s = FALSE;
+HANDLE        hKernel32 = 0;
+
+/********************************************************************\
+* Function: BOOL APIENTRY DllMain(HANDLE, DWORD, LPVOID)             *
+*                                                                    *
+*  Purpose: DLL entry point. Establishes thunk.                      *
+
+</PRE>BOOL APIENTRY DllMain(HANDLE hInst, DWORD fdwReason, LPVOID lpReserved)
+{
+<PRE>   DWORD dwVersion;
+
+   if ( fdwReason == DLL_PROCESS_ATTACH )
+   {
+
+    /*
+     * Registration of UT need to be done only once for first
+     * attaching process.  At that time set the fWin32s flag
+     * to indicate if the DLL is executing under Win32s or not.
+     */
+
+      if( cProcessesAttached++ )
+      {
+         return(TRUE);         // Not the first initialization.
+      }
+
+      // Find out if we're running on Win32s
+      dwVersion = GetVersion();
+      fWin32s = (BOOL) (!(dwVersion &lt; 0x80000000))
+                        &amp;&amp; (LOBYTE(LOWORD(dwVersion)) &lt; 4);
+
+      if( !fWin32s )
+         return(TRUE);         // Win32s - no further initialization needed
+
+      hKernel32 = LoadLibrary( "Kernel32.Dll" ); // Get Kernel32.Dll handle
+
+      pUTRegister = (PUTREGISTER) GetProcAddress( hKernel32, "UTRegister"
+</PRE>);
+<P>
+<P>
+<PRE>      if( !pUTRegister )
+         return(FALSE);        // Error- Win32s, but can't find UTRegister
+
+      pUTUnRegister = (PUTUNREGISTER) GetProcAddress(hKernel32,
+                                                     "UTUnRegister");
+
+      if( !pUTUnRegister )
+         return(FALSE);        // Error- Win32s, but can't find
+</PRE>UTUnRegister
+<P>
+<P>
+<PRE>      return (*pUTRegister)( hInst,           // Spawn32.DLL module handle
+                             "SPAWN16.DLL",   // 16-bit thunk dll
+                             "UTInit",        // init routine
+              "UTProc",        // 16-bit dispatch routine
+                             &amp;pfnUTProc,      // Receives thunk address
+                             pfnUT32CBProc,   // callback function
+                             NULL );          // no shared memroy
+
+   }
+   if((fdwReason==DLL_PROCESS_DETACH)&amp;&amp;(0==--cProcessesAttached)&amp;&amp;fWin32s)
+   {
+      (*pUTUnRegister)( hInst );
+      FreeLibrary( hKernel32 );
+   }
+</PRE>} // DllMain()
+<P>
+<PRE>/********************************************************************\
+* Function: DWORD APIENTRY SynchSpawn(LPTSTR, UINT)                  *
+*                                                                    *
+* Purpose: Thunk to 16-bit code                                      *
+
+</PRE>DWORD APIENTRY SynchSpawn( LPCSTR lpszCmdLine, UINT nCmdShow )
+{
+<PRE>   DWORD Args[2];
+   PVOID Translist[2];
+
+   Args[0] = (DWORD) lpszCmdLine;
+   Args[1] = (DWORD) nCmdShow;
+
+   Translist[0] = &amp;Args[0];
+   Translist[1] = NULL;
+
+   return( (* pfnUTProc)( Args, SYNCHSPAWN, Translist) );
+</PRE>}
+<P>
+<P><h3>16-bit Side of Thunk</h3>
+ 
+<P>
+This DLL provides the 16-bit side of the thunk. The LibMain() and WEP()
+of this 16-bit DLL perform no special initialization. The UTInit()
+function is called during thunk initialization; it stores the callback
+procedure address in a global variable. The UTProc() function is called
+with a code that indicates which thunk was called as its second
+parameter. In this example, the only thunk provided is for SynchSpawn().
+The synchronous spawn is performed in the SYNCHSPAWN case of the switch
+statement in the UTProc().
+<P>
+NOTE: UTInit() and UTProc() must be exported. This can be done in the
+module definition (.DEF) file.
+<P>
+<PRE>/* Code for 16-bit side of thunk.                              */
+/* Requires linking with TOOLHELP.LIB, for ModuleFindHandle(). */
+
+</PRE>#ifndef APIENTRY
+<PRE>#define APIENTRY
+</PRE>#endif
+<PRE>#define W32SUT_16     // Needed for w32sut.h in 16-bit code
+
+#include &lt;windows.h&gt;
+#include &lt;toolhelp.h&gt;
+#include &lt;malloc.h&gt;
+#include "w32sut.h"
+#include "spawn.h"
+
+</PRE>UT16CBPROC glpfnUT16CallBack;
+<P>
+<PRE>/********************************************************************\
+* Function: LRESULT CALLBACK LibMain(HANDLE, WORD, WORD, LPSTR)      *
+*                                                                    *
+*  Purpose: DLL entry point                                          *
+
+int FAR PASCAL LibMain( HANDLE hLibInst, WORD wDataSeg,
+         WORD cbHeapSize, LPSTR lpszCmdLine)
+{
+   return (1);
+</PRE>} // LibMain()
+<P>
+<PRE>/********************************************************************\
+* Function: DWORD FAR PASCAL UTInit(UT16CBPROC, LPVOID)              *
+*                                                                    *
+*  Purpose: Universal Thunk initialization procedure                 *
+
+</PRE>DWORD FAR PASCAL UTInit( UT16CBPROC lpfnUT16CallBack, LPVOID lpBuf )
+{
+<PRE>   glpfnUT16CallBack = lpfnUT16CallBack;
+   return(1);   // Return Success
+</PRE>} // UTInit()
+<P>
+<P>
+<PRE>/********************************************************************\
+* Function: DWORD FAR PASCAL UTProc(LPVOID, DWORD)                   *
+*                                                                    *
+*  Purpose: Dispatch routine called by 32-bit UT DLL                 *
+
+</PRE>DWORD FAR PASCAL UTProc( LPVOID lpBuf, DWORD dwFunc)
+{
+<PRE>   switch (dwFunc)
+   {
+      case SYNCHSPAWN:
+      {
+          HMODULE hMod;
+          MODULEENTRY FAR *me;
+          UINT hInst;
+          LPCSTR lpszCmdLine;
+          UINT nCmdShow;
+          MSG msg;
+          BOOL again=TRUE;
+
+          /* Retrieve the command line arguments stored in buffer */
+
+          lpszCmdLine = (LPSTR) ((LPDWORD)lpBuf)[0];
+          nCmdShow = (UINT) ((LPDWORD)lpBuf)[1];
+
+          /* Start the application with WinExec() */
+
+          hInst = WinExec( lpszCmdLine, nCmdShow );
+          if( hInst &lt; 32 )
+             return 0;
+
+          /* Loop until the application is terminated. The Toolhelp API
+           * ModuleFindHandle() returns NULL when the application is
+           * terminated. NOTE: PeekMessage() is used to yield the
+           * processor; otherwise, nothing else could execute on the
+           * system.
+           * /
+
+          hMod = GetModuleHandle( lpszCmdLine );
+
+          me = (MODULEENTRY FAR *) _fcalloc( 1, sizeof(MODULEENTRY) );
+          me-&gt;dwSize = sizeof( MODULEENTRY );
+          while( NULL != ModuleFindHandle( me, hMod ) &amp;&amp; again )
+          {
+             while( PeekMessage( &amp;msg, NULL, 0, 0, PM_REMOVE ) &amp;&amp; again )
+             {
+                if(msg.message == WM_QUIT)
+                {
+                   PostQuitMessage(msg.wParam);
+                   again=FALSE;
+                }
+                TranslateMessage(&amp;msg);
+                DispatchMessage(&amp;msg);
+             }
+          }
+          return 1;
+      }
+
+   } // switch (dwFunc)
+
+   return( (DWORD)-1L ); // We should never get here.
+</PRE>} // UTProc()
+<P>
+<PRE>/********************************************************************\
+* Function: int FAR PASCAL _WEP(int)                                 *
+*                                                                    *
+*  Purpose: Windows exit procedure                                   *
+
+int FAR PASCAL _WEP( int bSystemExit )
+</PRE>{
+<PRE>   return (1);
+</PRE>} // WEP()
+<P>
+REFERENCES:
+ 
+<P>
+For more information on the limitation of the C run-time (CRT) function,
+_spawnl() with the _P_WAIT parameter under Win32s, please refer to the
+following Knowledge Base article:
+<P>
+<PRE>  ARTICLE ID: <B><A href="../visualc/q125213.htm">Q125213</A></B>
+  PRB: Spawn with _P_WAIT Returns Immediately on Win32s
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: W32s<BR>
+Additional reference words: 1.30 1.30a 1.30c win16 toolhelp<BR>
+Keywords            : W32s W32sThunk kbcode kbprg<BR>
+Version             : 1.30 1.30a 1.30c<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 7, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

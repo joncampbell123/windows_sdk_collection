@@ -1,0 +1,232 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Win16 SNA App May Hang Over SNA Win 3.x TCP/IP Sockets Interface </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q171624">
+<META NAME="KBModify" CONTENT="1997/12/03">
+<META NAME="KBCreate" CONTENT="1997/07/17">
+<META NAME="Keywords" CONTENT="prodsna snaappc snacpic snalua snaprog snawin3x kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; sna">
+<META NAME="Description" CONTENT="  A 16-bit Windows application which uses the APPC, CPIC, or LUA interfaces may hang when running over the SNA Server Windows 3.x client TCP/IP  sockets interface. This problem can occur on either WFW/Windows 3.x or  Windows 95. This problem may only...">
+<META NAME="Product" CONTENT="SNA Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QBWO,QDL9,QBWQ,QBWN,QAJH,QAIF,QBBS,QAW9,QDNT,QBE7,QBE6,QARL,QAGQ,QAY2 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Win16 SNA App May Hang Over SNA Win 3.x TCP/IP Sockets Interface</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 3, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q171624</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SNA Server version 2.0, 2.1, 2.11, 2.11 (all service packs), 
+   3.0 (all service packs)
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+A 16-bit Windows application which uses the APPC, CPIC, or LUA interfaces
+may hang when running over the SNA Server Windows 3.x client TCP/IP 
+sockets interface. This problem can occur on either WFW/Windows 3.x or 
+Windows 95. This problem may only occur when the client is configured 
+for TCP/IP sockets. The application may work correctly when the SNA Server 
+Windows 3.x client is configured to use named pipes or Netware ipx/spx.
+<P>
+There are two main scenarios where this has been observed:
+
+<OL><P><LI>If the 16-bit application isn't "peeking" on messages to all windows 
+   handles.
+</OL>2. If the Windows SNA startup call is made from a different windows
+<PRE>   process than the SNA API calls are made from.
+
+</PRE></OL>These scenarios are described in more detail below.
+<P>
+NOTE: When running on Windows NT, a 16-bit Windows application that uses
+the APPC, CPIC, or LUA interfaces can run over the SNA Server Windows NT
+client software, through the 16-to-32-bit SNA "thunking" DLL's. By using
+these thunking DLL's on the SNA Server Windows NT client software, the
+problems described in this article do not occur.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Normally, a 16-bit Windows application which uses the SNA Server 
+Windows 3.x SNA API's should function properly regardless of the LAN 
+interface used by the underlying SNA Windows 3.x client software.  
+However, the application may encounter problems when running over the 
+SNA client when configured for TCP/IP sockets because the underlying 
+architecture of the socket interface has special requirements for the 
+16-bit Windows calling application.
+<P>
+If a 16-bit Windows application fails to work on top of the SNA Windows
+client TCP/IP sockets interface, here are the possible causes.
+
+<OL><P><LI>If the 16-bit application isn't "peeking" on messages to all 
+   Window handles.
+<P>
+   Unlike named pipes and Netware IPX/SPX, the Windows 3.x TCP/IP socket
+   interface runs within the non-preemptive Windows architecture,
+   underneath the calling application. When the SNA Windows 3.x client
+   makes calls to named pipes or Netware IPX/SPX, which run outside of
+   Windows, the network i/o is accomplished with no requirements of the
+   16-bit Windows application.
+<P>
+   However, when the SNA Windows 3.x client is configured for TCP/IP 
+   sockets, the 16-bit Windows application must "peek" on messages
+   intended for any Windows handle, in order for the underlying SNA
+   client software to receive data from the TCP/IP sockets interface.
+<P>
+   So, in order for the Windows application to work over TCP/IP sockets,
+   the application's Windows message loop should be architected as 
+   follows:
+<P>
+<P><PRE>      /*  get the next message if any */
+      if ( PeekMessage ( &amp;msg, NULL, 0, 0, PM_NOREMOVE) ) {
+<PRE></PRE>         if ( msg.message = WM_QUIT )
+            return FALSE;   // let app process WM_QUIT
+         PeekMessage ( &amp;msg, NULL, 0, 0, PM_REMOVE) ;
+         TranslateMessage (&amp;msg) ;
+         DispatchMessage (&amp;msg) ;
+     }
+
+   The second parameter passed to PeekMessage(), the Window handle (hWnd),
+   must be NULL in order for the underlying TCP/IP sockets interface to 
+   receive messages on behalf of the application. 
+
+   NOTE: If an API communication layer is being developed (for example, an
+   ODBC/DRDA driver), the developer may not have control over the 
+   architecture of the calling application. If this is occurring, then the
+   following strategy can be used to function over TCP/IP sockets:
+
+   - When SNA client is running over Winsock it makes a hidden window with 
+     class name "SNA Winsock".  For the other transports, it's "SNA Server".  
+
+   - During initialization of the API communication layer, call EnumWindows 
+     and find one whose class starts with "SNA ".  
+
+   - Establish an SNA blocking hook which dispatches messages only for this 
+     window.  
+
+   - Call OpenFile (IF_EXIST) on WINSOCK.DLL.  If it exists, call LoadLibrary. 
+     If not, do not call LoadLibrary since this will put a dialog on the
+     screen if it can't find the DLL.
+
+   - Call GetProcAddress for WSAStartup and WSASetBlockingHook, and set a 
+     Winsock blocking hook that doesn't dispatch any messages.
+
+</PRE><P><LI>If the Windows SNA startup call is made from a different windows
+   process than the SNA API calls are made from.
+<P>
+   If a Windows application calls the APPC, CPIC or LUA interface, the
+   application should first call WinAPPCStartup, WinCPICStartup, or 
+   WinRUIStartup/WinSLIStartup respectively.  This startup call should be 
+   performed when the Windows process first initializes, before initiating 
+   a session over the SNA interface.
+<P>
+   A hang has been observed if a Windows 3.x application calls WinAPPCStartup 
+   from one Windows process, and then calls the APPC interface from another 
+   Windows process. Later versions of the SNA Windows 3.x client software 
+   (3.0 and later) now allow a Windows 3.x application to invoke an APPC 
+   conversation without first calling WinAPPCStartup. However, the application
+   should still call WinAPPCStartup. If an application calls WinAPPCStartup
+   from one process, and then calls APPC functions from another process,
+   the application may hang if TCP/IP sockets is being used.
+<P>
+   To correct this problem, the WinAPPCStartup call should be moved to the
+   process which is actually using the APPC interface, or the WinAPPCStartup
+   and WinAPPCCleanup calls should be removed from the Windows application.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:<BR>
+Keywords          : prodsna snaappc snacpic snalua snaprog snawin3x kbprb<BR>
+Version           : 2.0 2.1 2.11 2.11sp1 2.11sp2 3.0 3.0sp1 3.0sp2<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 3, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

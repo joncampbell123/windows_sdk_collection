@@ -1,0 +1,287 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Intercept Keyboard Input from Visual Basic </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q177992">
+<META NAME="KBModify" CONTENT="1998/03/03">
+<META NAME="KBCreate" CONTENT="1997/12/11">
+<META NAME="Keywords" CONTENT="vb5all vb5howto VBKBWinAPI">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  This article demonstrates how to intercept input from the keyboard before it reaches your Visual Basic application. Most keyboard input can be readily intercepted by a Visual Basic application by using the KeyDown event of the form or control. The ...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBS0,QAH4,QBDT,QAO4,QAY5,QAFF,QBV4,QAMA,QAPN,QADO,QA5F,QAGI,QBT6,QBWS,QABA V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Intercept Keyboard Input from Visual Basic</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 3, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q177992</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual Basic Learning, Professional, and Enterprise Editions
+   for Windows, version 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article demonstrates how to intercept input from the keyboard before
+it reaches your Visual Basic application. Most keyboard input can be
+readily intercepted by a Visual Basic application by using the KeyDown
+event of the form or control. The technique shown here allows you how to
+handle otherwise unavailable key combinations such as the TAB key or access
+key combinations.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+You can create a keyboard hook that intercepts all keyboard input directed
+to a given thread. To create this hook, you must replace the default
+KeyboardProc() function with a KeyboardProc() of your own. The AddressOf()
+construct introduced in Visual Basic 5.0 makes this possible. Within your
+KeyboardProc(), you must either pass along the keyboard input you receive
+or delete it. You cannot change the contents of the message you receive.
+<P>
+Why would you want to do this? One purpose of the keyboard hook could be to
+enforce data validation before the current control loses focus. Another
+purpose is to work around the difference in event sequence when using an
+access (or hot key) as opposed to a TAB character or mouse click.
+For additional information on this problem, please see the following
+article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../vbwin/q74905.htm">Q74905</A></B>
+   TITLE     : PRB: Access Key Causes Different Event Order than Mouse
+               Click
+
+</PRE>The next section illustrates how to create a sample application that works
+around this behavior by intercepting the access key, setting the focus, and
+then causing a mouse-click event to occur. Please note that this does not
+resolve all issues with the key order problems. For example, calling
+Message boxes from an event affects the event order as well.
+<P>
+WARNING: Failure to unhook the keyboard hook before exiting your
+application will result in errors, Invalid Page Faults, and data loss. This
+is caused by the system pointing to the your KeyboardProc() function, which
+no longer exists because it has not been notified of the change. Always
+unhook the keyboard upon exiting the application. This is especially
+important while debugging a program that uses this technique within the
+Microsoft Visual Basic 5.0 Development Environment. Clicking the End button
+or selecting End from the Run menu without unhooking will cause an Invalid
+Page Fault and close Microsoft Visual Basic without giving you a chance to
+save your code.
+<P>
+Steps to Create Sample Project
+ 
+
+<OL><P><LI>Start a new Standard EXE project in Visual Basic. Form1 is created by
+   default.
+
+<P><LI>Add a TextBox and a CommandButton to Form1. Set the TabIndex of the
+   TextBox to 0.
+
+<P><LI>Add a module to the project. From the Project menu, click Add Module.
+
+<P><LI>Copy the following code to the Code window of Module1:
+<P>
+<P><PRE>      Public Declare Function CallNextHookEx Lib "user32" _
+<PRE></PRE>         (ByVal hHook As Long, _
+         ByVal nCode As Long, _
+         ByVal wParam As Long, _
+         ByVal lParam As Long) As Long
+
+      Public Declare Function UnhookWindowsHookEx Lib "user32" _
+         (ByVal hHook As Long) As Long
+
+      Public Declare Function SetWindowsHookEx Lib "user32" _
+         Alias "SetWindowsHookExA" _
+         (ByVal idHook As Long, _
+         ByVal lpfn As Long, _
+         ByVal hmod As Long, _
+         ByVal dwThreadId As Long) As Long
+
+      Public Declare Function PostMessage Lib "user32" _
+         Alias "PostMessageA" _
+         (ByVal hwnd As Long, _
+         ByVal wMsg As Long, _
+         ByVal wParam As Long, _
+         ByVal lParam As Long) As Long
+
+      Public Const WH_KEYBOARD = 2
+      Public Const KBH_MASK = &amp;H20000000
+      Public Const WM_LBUTTONDOWN = &amp;H201
+      Public Const WM_LBUTTONUP = &amp;H202
+
+      Global hHook As Long
+
+      Public Function KeyboardProc(ByVal nCode As Long, _
+                                    ByVal wParam As Long, _
+                                    ByVal lParam As Long) As Long
+         If nCode &gt;= 0 Then
+         'Process keys you want to filter
+            If wParam = Asc("C") And (lParam And KBH_MASK) &lt;&gt; 0 Then
+               If (lParam And &amp;HC0000000) = 0 Then
+                  Form1.Command1.SetFocus
+                     Call PostMessage(Form1.Command1.hwnd, _
+                                       WM_LBUTTONDOWN, _
+                                       0, _
+                                       &amp;H20002)
+                     Call PostMessage(Form1.Command1.hwnd, _
+                                       WM_LBUTTONUP, _
+                                       0, _
+                                       &amp;H20002)
+                     KeyboardProc = 1
+                     Exit Function
+               End If
+            End If
+         End If
+         KeyboardProc = CallNextHookEx(hHook, nCode, wParam, lParam)
+      End Function
+
+</PRE><P><LI>Copy the following code to the Code window of the Form1 form:
+<P>
+<P><PRE>      Option Explicit
+</PRE><P>
+<P><PRE>      Private Sub Command1_Click()
+<PRE></PRE>         Debug.Print "Command1_Click"
+      End Sub
+
+      Private Sub Command1_GotFocus()
+         Debug.Print "Command1_GotFocus"
+      End Sub
+
+      Private Sub Form_Load()
+         hHook = SetWindowsHookEx(WH_KEYBOARD, _
+                                  AddressOf KeyboardProc, _
+                                  0&amp;, _
+                                  App.ThreadID)
+      End Sub
+
+      Private Sub Form_Unload(Cancel As Integer)
+         Call UnhookWindowsHookEx(hHook)
+      End Sub
+
+      Private Sub Text1_LostFocus()
+         Debug.Print "Text1_LostFocus"
+      End Sub
+
+</PRE><P><LI>Press the F5 key to run the program.
+<P>
+   The text box should have the focus. Click the CommandButton and note
+   the sequence of events that occur as show in the debug window:
+<P>
+<P><PRE>      Text1_LostFocus
+      Command1_GotFocus
+      Command1_Click
+</PRE><P>
+   Set the focus to the text box and press the ALT+C keys and note that the
+   same events occur.
+<P>
+</OL><h3>Notes</h3>
+ 
+<P>
+Hooks do not always behave the same way in the IDE as they do in an EXE.
+Make certain that you test your solution in an EXE before you move on to
+other parts of your project.
+<P>
+It is possible to intercept all of the keyboard input on a system, but not
+using "pure" Visual Basic. The hook must be placed in a standard DLL; while
+Visual Basic 5.0 can create OLE DLLs, it cannot create standard DLLs.
+<P>
+(c) Microsoft Corporation 1997, All Rights Reserved.
+Contributions by Arsenio Locsin, Microsoft Corporation
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: subclass<BR>
+Keywords          : vb5all vb5howto VBKBWinAPI<BR>
+Version           : WINDOWS:5.0<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 3, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

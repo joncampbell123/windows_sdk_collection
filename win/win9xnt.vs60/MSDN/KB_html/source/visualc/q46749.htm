@@ -1,0 +1,215 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Some Causes of Differences in Floating-Point Results </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q46749 ">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1989/07/07">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  This article discusses some reasons why programs might produce different floating-point results when compiled with different compiler options.  The program below produces different results when complied using     cl -AM -FPi prog.c  than when using...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAL3,QBFY,QAKC,QBC6,QAJQ,QAGN,QAG8,QAH4,QAX6,QAN2,QAAP,QANY,QAKZ,QBE7,QBE6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Some Causes of Differences in Floating-Point Results</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q46749 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+6.00 6.00a 6.00ax 7.00 | 1.00 1.50
+<PRE>MS-DOS                 | WINDOWS
+</PRE>kbtool
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft C/C++ Compiler (CL.EXE) included with:
+<P>
+<P><PRE>    - Microsoft C for MS-DOS, versions 6.0, 6.0a, and 6.0ax
+    - Microsoft C/C++ for MS-DOS, version 7.0
+    - Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article discusses some reasons why programs might produce different
+floating-point results when compiled with different compiler options.
+<P>
+The program below produces different results when complied using
+<P>
+<PRE>   cl -AM -FPi prog.c
+
+</PRE>than when using the following:
+<P>
+<PRE>   cl -AM -FPa prog.c
+
+</PRE>Part of the reason for the different results is that /FPa and /FPi generate
+math routines that don't work the same. /FPi math emulates the 80x87, to
+the point of actually converting 8-byte doubles to 10-byte internal format
+and doing the math in internal format. /FPa uses an 8-byte format for
+calculations; therefore, it is less accurate. This often accounts for
+differences in results.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Also, the second number printed in the /FPi case is smaller than DBL_MIN,
+as defined in FLOAT.H. This situation is also correct because DBL_MIN is
+the smallest possible NORMALIZED value. (Normalized means that the high-
+order bit of the mantissa is a one.)
+<P>
+"Denormals" (numbers where there are zeros in some of the high-order bits
+of the mantissa), however, can represent numbers "x" in the ranges +
+DBL_MIN &gt; x &gt; 0 and 0 &gt; x &gt; -DBL_MIN. Although this is an unusual
+situation, it is not an error. A denormal is less precise than a normalized
+number; however, a denormal is still more precise than 0 (zero) (which is
+the next best representation). By allowing use of denormal numbers, we make
+our floating-point result slightly more accurate. The alternate math
+library (/FPa) represents denormal numbers as 0 (zero).
+<P>
+Another possible cause of differences in floating-point results is the
+inclusion or omission of the /Op option. When /Op is omitted, the
+compiler may skip storing intermediate results as 64-bit objects in
+memory, leaving them instead in the 80-bit registers of the 80x87 (or
+emulator package). This increases the speed and accuracy of the
+calculation. However, this can decrease the consistency of the
+calculations because other intermediate results may have been stored
+in 64-bit objects in memory anyway. Including /Op forces all
+intermediate results to be stored in memory, giving more consistent
+results. This option is often handy in programs involving complicated
+floating-point calculations.
+<P>
+The program and its output follow:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>#include &lt;stdio.h&gt;    // START OF PROG.C
+#include &lt;float.h&gt;
+
+void main(void)
+</PRE>{
+<PRE>    double  a,b,c,prod1,prod2;
+
+    _fpreset();
+    a=9.5788979e-283;
+    b=8.050847e-1;
+    c=9.5588526e-28;
+
+    prod1=a*b;
+    printf("\n product1 = %1.15le \n",prod1);
+    prod2=c*prod1;
+    printf("\n product2 = %1.15le \n",prod2);
+
+</PRE>}  // END OF PROG.C
+<P>
+<P>
+<P><h3>Results</h3>
+ 
+<P>
+<PRE> // RESULTS OBTAINED USING CL -AM -FPi  PROG.C
+
+ product1 = 7.711824142152130e-283
+
+ product2 = 7.371619025195353e-310 // This value is less than DBL_MIN
+
+ // RESULTS OBTAINED USING CL -AM -FPa PROG.C
+
+ product1 = 7.711824142152130e-283
+
+ product2 = 0.000000000000000e+000
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.00 1.50 6.00 6.00a 6.00ax 7.00 8.00<BR>
+8.00c<BR>
+KBCategory: kbtool<BR>
+KBSubcategory: CLIss<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

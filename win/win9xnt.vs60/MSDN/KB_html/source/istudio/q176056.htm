@@ -1,0 +1,297 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: ADO/ASP Scalability FAQ </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q176056">
+<META NAME="KBModify" CONTENT="1997/12/11">
+<META NAME="KBCreate" CONTENT="1997/10/31">
+<META NAME="Keywords" CONTENT="VIADO VIMisc kbfaq">
+<META NAME="KBArea" CONTENT="Support; KB; istudio">
+<META NAME="Description" CONTENT="  This article addresses two common ActiveX Data Objects (ADO) questions regarding the proper approach to handling connections in an Active Server Pages (ASP) page:   - Why is it a good idea to open and close ADO connections within a page    instead ...">
+<META NAME="Product" CONTENT="istudio">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAI5,QBG2,QBVX,QAGU,QALQ,QAJQ,QARL,QAIW,QAAD,QBVV,QAVZ,QAK7,QAW6,QAUD,QAPN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: ADO/ASP Scalability FAQ</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 11, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q176056</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual InterDev, version 1.0
+<LI>Microsoft Active Server Pages, versions 1.0, 1.0b
+<LI>ActiveX Data Objects (ADO), version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article addresses two common ActiveX Data Objects (ADO) questions
+regarding the proper approach to handling connections in an Active Server
+Pages (ASP) page:
+
+<UL><LI>Why is it a good idea to open and close ADO connections within a page
+   instead of hanging on to them in session variables?
+
+<LI>What about users with specific connection requirements, can they use
+   connection pooling in this case?
+<P>
+</UL>Here are the key concepts touched upon to answer the above questions:
+
+<UL><LI>Description of the Web environment.
+<LI>Web site scaling and efficient use of server resources.
+<LI>Description of connection pooling.
+<P>
+</UL><h2>MORE INFORMATION</h2>
+ 
+<P>
+Question 1
+ 
+<P>
+Why are we opening/closing ADO connections within a page instead of hanging
+on to them in, let's say, session variables? That's what we do in all our
+"traditional" client/server applications (holding connections I mean) and
+that seems to be okay.
+<P>
+<P><h3>Answer 1</h3>
+ 
+<P>
+The question comes down to the fact that you are in a very different
+environment when using ASP pages than you were in the traditional
+client/server applications. And when you look at it, many large
+client/server applications did do connection pooling anyway, especially if
+they were built in modular ways. The problems with pegging down a
+connection per client are similar between the traditional client/server
+application and the Web server environment, but they are exacerbated by the
+nature of the Web server and so this becomes more of an issue in a Web
+environment.
+<P>
+In the Web server, everything is multi-threaded, and there is no concept of
+a "connection" between the Web browsing client and the server. The session
+ID is a cookie passed back and forth from browser to server (which if the
+browser does not support cookies or has that specifically turned off in
+their options, session state does not work anyway so there's one good
+reason to avoid it for database connections!). The only way a session
+becomes invalid is if the user just doesn't return to the server within the
+timeout period, or if you make some explicit call from the script to nuke
+the session. The result is there's no good way to know when the client does
+not need that connection anymore.
+<P>
+In a Web server, the entire idea is to scale like crazy. A public Web
+server could easily have 100,000 clients maintaining active sessions
+(probability increases as session timeout goes up) and while an intranet
+server may not have such a load, you would not want to do something in your
+architecture that would prohibit that possibility.
+<P>
+So first off, you can't establish a connection per client if you plan on
+scaling past a few thousand concurrent active sessions. You can take steps
+to try and avoid that type of scaling, but why? You quickly realize that
+you are a server process, and in scalability, the name of the game is
+resource conservation. You've got a ratio of 100,000 : 1 (or may be
+1,000,000 : 1) and you have to make it work. How? Resource pooling. This is
+why Microsoft Transaction Server and Internet Information Server have put
+so much energy into resource pooling. They want to scale to support a huge
+transaction load.
+<P>
+So what happens if you do not pool? You have idle connections wasting
+server and network resources. You also have some interesting threading
+issues that can occur if multiple concurrent threads end up whacking on the
+same connection (though the session ID might save you here, but it's
+conceivable that a browser could submit two concurrent requests using the
+same session ID and you could get into a world of hurt with transactions or
+with SQL Server's inability to process more than one command at a time on a
+given connection).
+<P>
+If you "open" the connection (really getting it from a pool), use it and
+"close" it again (really returning it to the pool), the connection can
+safely be handed to another thread processing a different command. If the
+server load gets light, the connection pool is trimmed back automatically
+and others using that server get better performance. If the server load
+gets heavy, the pool can grow as needed. However, you'll probably notice
+that you can support lots of clients with just a few connections. I would
+bet that you can get a really high ratio of clients (sessions) to DB
+connections if you keep your DB work focused and concentrated.
+<P>
+As I said above, anyone who has written a traditional client/server
+application that was intended to be modular (you plug in new components or
+services over time) quickly realized that connection pooling was a must.
+Since services have to be autonomous, they have to create and use
+connection. You would not want each client desktop creating 5 or 10
+connections to the database, so you make a shared ConnectionPool component.
+And that is just what the ODBC 3.0 Driver Manager is. And it's a really
+good one at that!
+<P>
+So I hope this gives you some insight on why it's really necessary. If you
+don't want to scale beyond a few thousand concurrent sessions, have lots of
+money to spend on your database server, and don't think you'll ever get
+simultaneous requests with the same session ID, then don't worry about it.
+Just throw your connection in the session object. However, I would really
+strongly suggest you just use connection pooling and get in the habit of
+doing discreet work since this is the model you use when doing Microsoft
+Transaction Server objects, and it's the model that will scale well in this
+distributed world of ours.
+<P>
+<P><h3>Question 2</h3>
+ 
+<P>
+How does connection pooling work for users with specific connection
+requirements? Pooling connections among anonymous users who are operating
+against the same data objects using similar connection semantics is nice,
+but it isn't as helpful when each user must be authenticated and should
+only have access to a limited number of data objects based on their
+identity (a messaging session comes to mind).
+<P>
+Can connection pooling be used in the latter case?
+<P>
+<P>
+<P><h3>Answer 2</h3>
+ 
+<P>
+It does take authentication into consideration, and it won't hand out a
+connection that has a different identity than the one that is being
+requested (if you submit a connection string with "UID=me;PWD=foo", it
+won't return a pooled connection that has a UID and PWD of something
+different). This also works when using integrated security in that you
+won't get a connection that was opened under a different security context
+than you are currently running under.
+<P>
+You do raise a very good question though. If you want to use an
+authenticated connection (integrated security) but want to keep the
+scalability high, how do you do it?
+<P>
+Since there is no way to change the security context of an existing open
+connection, connection pooling would only buy you the ability to reuse a
+connection that was opened on the first site hit by that user. The pool
+would keep it alive for a reasonable amount of time and if the user kept
+interacting with the site, the connection would remain live. If they user
+went away, it would eventually fall out of the pool and be closed. This
+still offers some goodness since you code as if you're doing drop/reconnect
+and the pool optimizes the case where the user comes back quickly, but
+overcomes the problem of not knowing when the user really leaves by aging
+the connection and killing it if the user doesn't return in the specified
+timeout period. You could argue that using the Session object would be a
+way of doing this too, but note that here you could have the connection
+pool timeout set differently than the session timeout, giving the user the
+ability to go to lunch and still have the session state there, but not
+tying up a connection the whole time.
+<P>
+It might be a better approach to classify users into roles like "admin,"
+"user," and "browser." Each role has a SQL Server login (UID and PWD), and
+you map the current user to that role based on their name or whatever. They
+are still authenticated by the Web server, but you don't use integrated
+security to the DB and just have three or four different login identities.
+This enables you to still have really good scaling (since the majority of
+people will fall into one or two roles), and you can also enforce certain
+security in the application logic when needed (such as, only allow me to
+see my stock option history). This of course is a bit flawed in that the
+role and extra security logic is application enforced rather than being in
+the system, but sometimes you have to do things that the system should do,
+but doesn't do well at the moment. It would be ideal if the system could
+pick a connection out of the pool and change the security context for it,
+but I don't think that's possible today.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For the latest Knowledge Base articles and other support information on
+Visual InterDev and Active Server Pages, see the following page on the
+Microsoft Technical Support site:
+<P>
+<PRE>   <B><A href="http://support.microsoft.com/support/vinterdev/">http://support.microsoft.com/support/vinterdev/</A></B>
+
+</PRE> 
+<PRE>Keywords          : VIADO VIMisc kbfaq
+Technology        : kbInetDev
+Version           : WINDOWS:1.0; WINNT:1.0,1.0b
+Platform          : WINDOWS winnt
+Issue type        : kbinfo</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 11, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

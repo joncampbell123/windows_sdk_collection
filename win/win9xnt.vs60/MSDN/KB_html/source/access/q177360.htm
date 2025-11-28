@@ -1,0 +1,277 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC: DSum Causes Rounding Error on Large Currency Fields (95/97) </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q177360">
+<META NAME="KBModify" CONTENT="1997/12/16">
+<META NAME="KBCreate" CONTENT="1997/11/25">
+<META NAME="Keywords" CONTENT="SynFnc">
+<META NAME="KBArea" CONTENT="Support; KB; access, convert, crossnet, dbweb, odbc, winprint, setup, vbapp, office, officevba">
+<META NAME="Description" CONTENT="  Moderate: Requires basic macro, coding, and interoperability skills.  Using the domain aggregate (totals) function DSum() to total a currency field may cause rounding errors for values exceeding fourteen significant digits. The same behavior occurs...">
+<META NAME="Product" CONTENT="Access">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAY5,QAB9,QA7O,QAUD,QA7N,QAPF,QBV8,QA1S,QAWH,QAKC,QDMP,QA9A,QAUM,QADP,QBC9 P1 P2 P3 P4 P5 P6 T2 P7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC: DSum Causes Rounding Error on Large Currency Fields (95/97)</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 16, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q177360</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access versions 7.0, 97
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Moderate: Requires basic macro, coding, and interoperability skills.
+<P>
+Using the domain aggregate (totals) function DSum() to total a currency
+field may cause rounding errors for values exceeding fourteen significant
+digits. The same behavior occurs when you use the aggregate Sum() function.
+<P>
+This article assumes that you are familiar with Visual Basic for
+Applications and with creating Microsoft Access applications using the
+programming tools provided with Microsoft Access. For more information
+about Visual Basic for Applications, please refer to your version of the
+"Building Applications with Microsoft Access" manual.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+If you use the Currency data type, rounding errors typically do not occur
+because Currency values are scaled integers rather than floating point
+numbers. However, the Sum() and DSum() functions store an accumulated total
+as a floating point number, which is limited to approximately 14
+significant digits. If you require all 19 digits of precision (15 to the
+left of the decimal point and 4 to the right of the decimal point), you can
+use a custom domain aggregate function. You should use the built-in Sum()
+and DSum() functions if you do not require this degree of precision.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+<P><h3>Creating the Function</h3>
+ 
+<P>
+To create a custom domain function that sums the data in a field, follow
+these steps:
+
+<OL><P><LI>Create a new module and enter the following code:
+<P>
+<P><PRE>      Function DCurSum(Expr As String, Domain As String, _
+<PRE></PRE>            Optional Criteria As Variant) As Variant
+
+         On Error GoTo Err_DCurSum
+
+         Dim rst As Recordset, curTotal As Currency, fld As Field
+         Dim db As Database, strSQL As String
+         Set db = CurrentDb
+         If IsMissing(Criteria) Then  ' No criteria provided.
+            strSQL = "Select " &amp; Expr &amp; " AS DCurSumExpr From " &amp; _
+               Domain &amp; ";"
+         Else  ' Add criteria to SQL statement.
+            strSQL = "Select " &amp; Expr &amp; " AS DCurSumExpr From " &amp; _
+               Domain &amp; " WHERE " &amp; Criteria &amp; ";"
+         End If
+         Set rst = db.OpenRecordset(strSQL, dbOpenSnapshot)
+         curTotal = 0
+         Do Until rst.EOF   ' Loop through all the records.
+            If IsNumeric(rst("DCurSumExpr")) Then _
+               curTotal = curTotal + rst("DCurSumExpr") ' Add the numbers.
+            rst.MoveNext
+         Loop
+         DCurSum = CCur(curTotal)
+
+      Exit_DCurSum:
+         Exit Function
+      Err_DCurSum:
+         DCurSum = "#Error"
+         Resume Exit_DCurSum
+      End Function
+
+</PRE><P><LI>Compile and save the module.
+
+<P><LI>To use the custom domain function, replace DSum() with DCurSum().
+   For example, in the control source of a text box, type
+<P>
+<P><PRE>      =DCurSum("[YourCurrencyField]", "[YourTable]")
+</PRE><P>
+   where YourCurrencyField is the name of the field you want to sum and
+   YourTable is the name of the table or query that contains the currency
+   field.
+<P>
+</OL><h3>Using DCurSum() with Criteria</h3>
+ 
+<P>
+You can use criteria with DCurSum() in the same way you use criteria with
+DSum(). The following example uses DCurSum() to calculate the value of the
+entire inventory of products whose CategoryID is 1.
+
+<OL><P><LI>Open the sample database Northwind.mdb, and import the module you
+   created in step 1 of "Create the Function."
+
+<P><LI>Press CTRL+G to open the Debug window.
+
+<P><LI>Type the following line in the Debug window, and then press ENTER:
+<P>
+<P><PRE>      ?DCurSum("UnitPrice * UnitsInStock","Products","CategoryID=1")
+</PRE><P>
+   Note that this expression returns the total value of the inventory of
+   products whose CategoryID is 1 to the Debug window.
+<P>
+   Note also that the first argument of the DCurSum() function can be
+   either a field name or a calculation. However, you must ensure that the
+   expression in the first argument returns a monetary value; otherwise,
+   the DCurSum() function returns a value of 0; the function tests a value
+   to see if it is numeric before adding it to the total.
+<P>
+</OL><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+
+<OL><P><LI>Start Microsoft Access and open any database.
+
+<P><LI>Create the following table and save it as tblCurrencySum:
+<P>
+<P><PRE>      Table: tblCurrencySum
+      ------------------------
+      Field Name: CurrencyTest
+<PRE></PRE>         Data Type: Currency
+
+</PRE><P><LI>Open the tblCurrencySum table and enter two records that contain the
+   following data in the CurrencyTest field:
+<P>
+<P><PRE>      $123,456,789,012,345.67
+     ($123,456,789,012,345.66)
+</PRE>
+<P><LI>Press CTRL+G to open the Debug window.
+
+<P><LI>Type the following in the Debug window, and then press ENTER:
+<P>
+<P><PRE>      ?DSum("[CurrencyTest]","[tblCurrencySum]")
+</PRE><P>
+   Note that this expression returns a value of 0.0156 to the Debug
+   window. If you use this expression in a control or field that is
+   formatted as Currency, the result appears as $0.02. The expected result
+   is $0.01.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+For more information about custom domain functions, please see the
+following articles in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../access/q103401.htm">Q103401</A></B>
+   TITLE     : ACC:How to Create Custom Domain Function Similar to DCount()
+
+   ARTICLE-ID: <B><A href="../vbapps/q146415.htm">Q146415</A></B>
+   TITLE     : ACC: Creating Functions Similar to DFirst and DLast (95/97)
+
+</PRE></OL>For more information about rounding errors, please see the following
+articles in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../vbapps/q111781.htm">Q111781</A></B>
+   TITLE     : ACC: Rounding Errors Using Floating-Point Numbers
+
+   ARTICLE-ID: <B><A href="../zmiscellaneous/q35826.htm">Q35826</A></B>
+   TITLE     : IEEE vs. Microsoft Binary Format; Rounding Issues (Complete)
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: prb incorrect wrong rounding rounded incorrectly<BR>
+off<BR>
+Keywords          : SynFnc<BR>
+Version           : WINDOWS:7.0,97<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbprb<BR>
+Solution Type     : kbworkaround<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 16, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

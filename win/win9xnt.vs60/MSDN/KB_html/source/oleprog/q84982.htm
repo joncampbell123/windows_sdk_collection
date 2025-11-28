@@ -1,0 +1,233 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Asynchronous Operations in OLE Applications </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q84982 ">
+<META NAME="KBModify" CONTENT="1995/02/17">
+<META NAME="KBCreate" CONTENT="1992/05/26">
+<META NAME="Keywords" CONTENT="kbole kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  Under OLE version 1.0, the OLE client and OLE server libraries communicate using dynamic data exchange (DDE) messages. Although this behavior will probably change in the future, the current behavior impacts the application. This article describes t...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAY5,QA9Q,QAPN,QAJH,QAW6,QAUD,QAGI,QAJZ,QAM9,QALX,QAEV,QARL,QAGB,QAA7,QAIF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Asynchronous Operations in OLE Applications</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 17, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q84982 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Under OLE version 1.0, the OLE client and OLE server libraries communicate
+using dynamic data exchange (DDE) messages. Although this behavior will
+probably change in the future, the current behavior impacts the
+application. This article describes the effects of the asynchronous DDE
+protocol on an OLE application.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Many OLE function calls, in both the OLE client and OLE server
+libraries, return the value OLE_WAIT_FOR_RELEASE to signal that the
+function initiated an asynchronous operation on a specific object,
+document, or server. While an asynchronous operation is in process, an
+application must not call any other OLE functions that affect the same
+item because only one asynchronous operation per item is supported.
+Therefore, when making a sequence of calls that relate to a single
+item, the application must wait for each operation to complete before
+calling the next.
+<P>
+Synchronizing calls in this manner is called "waiting for release" on
+the item in question. While it waits, an application must continue to
+process and dispatch messages to exchange DDE messages between the OLE
+client and OLE server libraries. The application must enter a special
+message loop to perform this processing and to repeatedly check a flag
+that indicates that the asynchronous operation is complete.
+<P>
+An OLE server application must determine when the Release method in
+OLEOBJECTVTBL, OLESERVERVTBL, or OLESERVERDOCVTBL is called. When an
+OLE function returns OLE_WAIT_FOR_RELEASE for an operation on one of
+the three items, the server must enter a message loop and check a flag
+for each message it processes. For example, the application initially
+sets the flag to FALSE and when the server calls a Release method, the
+application resets the flag to TRUE. Once the flag is TRUE, the
+application exits its message loop because the operation is complete.
+This loop is the extent of waiting in an OLE server application.
+<P>
+An OLE client can determine when an OLEOBJECT is released by watching
+for an OLE_RELEASE notification in the CallBack method. When the
+application receives this notification, it sets a flag that causes the
+message loop to exit. An OLEOBJECT is the only item in a client
+application that can be busy.
+<P>
+<P><h3>Waiting for All Objects in an OLE Client Application</h3>
+ 
+<P>
+Some operations, such as closing a file, in an OLE client application
+affect all objects in a document at the same time; waiting for each
+object individually is slow. Instead of waiting for each object in
+turn, an application can wait for all objects together. Note, however,
+that when this technique is used it is more difficult for the
+application to articulate errors for individual objects once the
+application leaves its message loop. However, for operations such as
+document close, the individual errors may not make any difference to
+the application.
+<P>
+To wait for all objects at once, maintain a special counter to count
+how many objects are released and how many objects are waiting. The
+counter is affected by the following four sets of events:
+
+<UL><LI>Before executing any operation on all objects, reset the counter to
+   zero.
+
+<LI>Increment the counter for each OLE call that returns the
+   OLE_WAIT_FOR_RELEASE value.
+
+<LI>Decrement the counter for each OLE_RELEASE notification received in
+   the CallBack method.
+
+<LI>Process and dispatch messages until the counter falls to zero, then
+   terminate the loop.
+<P>
+</UL>While an application that waits for all objects at once is somewhat
+more asynchronous during OLE operations, it can be more difficult to
+detect and to recover from specific errors. An application that waits
+for each object individually as soon as any call returns
+OLE_WAIT_FOR_RELEASE uses OLE as a more synchronous protocol. Waiting
+for all objects together is an option available to the application
+that may be advantageous. The application must take precautions to
+ensure that other OLE operations do not occur between time that the
+application increments the counter and the time the application waits.
+If the application does not take precautions, the counter may fall
+below zero.
+<P>
+<P><h3>The OLE_BUSY Return Code</h3>
+ 
+<P>
+If the OLE server related to an object is involved in a modal
+operation or an incomplete asynchronous operation, an OLE function
+call will return the value OLE_BUSY to indicate that the operation
+cannot be executed. The application can either wait for the object to
+be released or terminate the operation. Whenever a function returns an
+OLE_BUSY value, the OLE client application's CallBack method receives
+an OLE_QUERY_RETRY_BUSY notification. The value returned from CallBack
+indicates whether or not to continue the operation in response to the
+notification. When the application receives this notification, it may
+be wise to inform the user and to provide an option to wait or to
+cancel.
+<P>
+<P><h3>Debugging Asynchronous Operations</h3>
+ 
+<P>
+The process of debugging an application that performs multiple
+operations on multiple objects can be quite involved. One method to
+address this complexity is to write the application in two phases. In
+the first phase of development, the application blocks operations on
+all OLE objects when any OLE function returns OLE_WAIT_FOR_RELEASE.
+Although waiting for each object in turn will probably cause the
+application to run more slowly, the application is much easier to
+debug. Waiting for each object effectively converts OLE into a
+synchronous protocol.
+<P>
+Once the application has been debugged successfully at phase one, in
+phase two, extend the program to operate on several objects
+asynchronously. Extending the application in this manner will most
+likely improve its performance.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 1.00<BR>
+KBCategory: kbole kbprg<BR>
+KBSubcategory: LeoneCliMisc LeoneSvrMisc<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 17, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

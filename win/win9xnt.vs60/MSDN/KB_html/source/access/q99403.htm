@@ -1,0 +1,456 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC: Sending a MAPI Mail Message Using Access Basic (1.x/2.0) </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q99403 ">
+<META NAME="KBModify" CONTENT="1997/06/08">
+<META NAME="KBCreate" CONTENT="1993/05/27">
+<META NAME="Keywords" CONTENT="IntpMail kbinterop kbprg PgmApi">
+<META NAME="KBArea" CONTENT="Support; KB; access, convert, crossnet, dbweb, odbc, winprint, setup, vbapp, office, officevba">
+<META NAME="Description" CONTENT="  Advanced: Requires expert coding, interoperability, and multiuser skills.  This article demonstrates how to use the Mail Application Programming Interface (MAPI) in Access Basic to send a mail message from a form. You can send mail to one or more p...">
+<META NAME="Product" CONTENT="Access">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QATX,QAYC,QAY5,QAUD,QBT6,QBV4,QA1S,QAEV,QA4S,QA4R,QAH6,QBV8,QAB9,QAEF,QAHP V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC: Sending a MAPI Mail Message Using Access Basic (1.x/2.0)</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 8, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q99403 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access versions 1.0, 1.1, 2.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Advanced: Requires expert coding, interoperability, and multiuser skills.
+<P>
+This article demonstrates how to use the Mail Application Programming
+Interface (MAPI) in Access Basic to send a mail message from a form. You
+can send mail to one or more persons using the To and CC (carbon copy)
+fields in the example below.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+This article assumes that you are familiar with Access Basic and with
+creating Microsoft Access applications using the programming tools provided
+with Microsoft Access. For more information about Access Basic, please
+refer to the "Building Applications" manual.
+<P>
+The following procedure explains how to use this sample module:
+
+<OL><P><LI>Create new, unbound form with multiple controls for entering recipient
+   addresses and message text, for example:
+<P>
+<P><PRE>      Form: Test
+      -----------
+      Caption: TestForm
+      Text box: Subject
+<PRE></PRE>         ControlName: Subject
+      Text box: To
+         ControlName: To
+      Text box: CC
+         ControlName: CC
+      Text box: Attach
+         ControlName: Attach
+      Text box: Message
+         ControlName: Message
+      Command button: Button0
+         Caption: Send Message
+         OnPush: =Mail()
+
+   NOTE: In version 2.0, the OnPush property is called the OnClick
+   property.
+
+</PRE><P><LI>Create a new module and enter the following code:
+<P>
+   NOTE: In the following sample code, an underscore (_) is used as a
+   line continuation character for easier reading. Remove the
+   underscore from the end of the line when re-creating this code in Access
+   Basic.
+<P>
+<PRE>'*************************************************************
+   'Declarations section of the module.
+
+'*************************************************************
+
+   Option Explicit
+   Option Compare Database   'Use database order for string comparisons
+
+   Type MAPIMessage
+      Reserved As Long
+      Subject As String
+      NoteText As String
+      MessageType As String
+      DateReceived As String
+      ConversationID As String
+      Flags As Long
+      RecipCount As Long
+      FileCount As Long
+   End Type
+
+   Type MapiRecip
+      Reserved As Long
+      RecipClass As Long
+      Name As String
+      Address As String
+      EIDSize As Long
+      EntryID As String
+   End Type
+
+   Type MapiFile
+      Reserved As Long
+      Flags As Long
+      Position As Long
+      PathName As String
+      FileName As String
+      FileType As String
+   End Type
+
+   Declare Function MAPISendMail Lib "MAPI.DLL" Alias "BMAPISendMail" _
+   (ByVal Session&amp;, ByVal UIParam&amp;, Message As MAPIMessage, Recipient _
+   As MapiRecip, File As MapiFile, ByVal Flags&amp;, ByVal Reserved&amp;) As Long
+
+   Global Const SUCCESS_SUCCESS = 0
+   Global Const MAPI_TO = 1
+   Global Const MAPI_CC = 2
+   \* Global Const MAPI_BCC = 3
+
+   Global Const MAPI_LOGON_UI = &amp;H1
+
+
+'*************************************************************
+   ' End of declarations section
+
+'*************************************************************
+
+
+'*************************************************************
+   ' FUNCTION NAME: Mail
+   '
+   ' PURPOSE:
+   '   Passes information on the active forms To, Subject, CC,
+   '   Attach, and Message text boxes to the SendMail function.
+   '   It ensures that each box does not have a NULL value. It also
+   '   displays an error message if SendMail fails.
+   '   This function is called from the OnPush property of the form.
+   '
+   ' INPUT PARAMETERS:
+   '   None
+   '
+   ' RETURN
+   '   None
+
+'*************************************************************
+   Function Mail ()
+      Dim F As Form, Result
+      Set F = Screen.ActiveForm
+
+      ' Make sure user has something in the To: box
+      If IsNull(F!To) Or F!To = "" Then Exit Function
+
+      ' Make sure no Null values are in the other boxes
+      If IsNull(F!Subject) Then F!Subject = ""
+      If IsNull(F!CC) Then F!CC = ""
+      If IsNull(F!Attach) Then F!Attach = ""
+      If IsNull(F!Message) Then F!Message = ""
+
+      ' Send the message, passing information from the form
+      Result = SendMail((F!Subject), (F!To), (F!CC),_
+               (F!Attach), (F!Message))
+
+      ' Test the result for any errors
+      If Result &lt;&gt; SUCCESS_SUCCESS Then
+         MsgBox "Error sending mail: " &amp; Result, 16, "Mail"
+      Else
+         MsgBox "Message sent successfully!", 64, "Mail"
+      End If
+   End Function
+
+
+'*************************************************************
+   ' FUNCTION NAME: SendMail
+   '
+   ' PURPOSE:
+   '   This is the front-end function to the MAPISendMail function. You
+   '   pass a semicolon-delimited list of To and CC recipients, a
+   '   subject, a message, and a delimited list of file attachments.
+   '   This function prepares MapiRecip and MapiFile structures with the
+   '   data parsed from the information provided using the ParseRecord
+   '   sub. Once the structures are prepared, the MAPISendMail function
+   '   is called to send the message.
+   '
+   ' INPUT PARAMETERS:
+   '   sSubject: The text to appear in the subject line of the message
+   '   sTo:      Semicolon-delimited list of names to receive the
+   '             message
+   '   sCC:      Semicolon-delimited list of names to be CC'd
+   '   sAttach:  Semicolon-delimited list of files to attach to
+   '             the message
+   ' RETURN
+   '   SUCCESS_SUCCESS if successful, or a MAPI error if not.
+
+'*********************************************************** **
+   Function SendMail (sSubject As String, sTo As String, sCC As String, _
+                   sAttach As String, sMessage As String)
+      Dim i, cTo, cCC, cAttach          ' variables holding counts
+      Dim MAPI_Message As MAPIMessage
+
+      ' Count the number of items in each piece of the mail message
+      cTo = CountTokens(sTo, ";")
+      cCC = CountTokens(sCC, ";")
+      cAttach = CountTokens(sAttach, ";")
+
+      ' Create arrays to store the semicolon delimited mailing
+      ' .. information after it is parsed
+      ReDim rTo(0 To cTo) As String
+      ReDim rCC(0 To cCC) As String
+      ReDim rAttach(0 To cAttach) As String
+
+      ' Parse the semicolon delimited information into the arrays.
+      ParseTokens rTo(), sTo, ";"
+      ParseTokens rCC(), sCC, ";"
+      ParseTokens rAttach(), sAttach, ";"
+
+      ' Create the MAPI Recip structure to store all the To and CC
+      ' .. information to be passed to the MAPISendMail function
+      ReDim MAPI_Recip(0 To cTo + cCC  - 1) As MapiRecip
+
+      ' Setup the "TO:" recipient structures
+      For i = 0 To cTo - 1
+         MAPI_Recip(i).Name = rTo(i)
+         MAPI_Recip(i).RecipClass = MAPI_TO
+      Next i
+
+      ' Setup the "CC:" recipient structures
+      For i = 0 To cCC - 1
+         MAPI_Recip(cTo + i).Name = rCC(i)
+         MAPI_Recip(cTo + i).RecipClass = MAPI_CC
+      Next i
+
+
+      ' Create the MAPI File structure to store all the file attachment
+      ' .. information to be passed to the MAPISendMail function
+      ReDim MAPI_File(0 To cAttach) As MapiFile
+
+      ' Setup the file attachment structures
+      MAPI_Message.FileCount = cAttach
+      For i = 0 To cAttach - 1
+         MAPI_File(i).Position = -1
+         MAPI_File(i).PathName = rAttach(i)
+      Next i
+
+      ' Set the mail message fields
+      MAPI_Message.Subject = sSubject
+      MAPI_Message.NoteText = sMessage
+      MAPI_Message.RecipCount = cTo + cCC
+
+      ' Send the mail message
+      SendMail = MAPISendMail(0&amp;, 0&amp;, MAPI_Message, MAPI_Recip(0), _
+                     MAPI_File(0), MAPI_LOGON_UI, 0&amp;)
+   End Function
+
+
+'*************************************************************
+   ' FUNCTION NAME: CountTokens
+   '
+   ' PURPOSE:
+   '   Given a string of delimited items and the delimiter, the number
+   '   of tokens in the string will be returned. This function is useful
+   '   for dimensioning an array to store the delimited items prior to
+   '   calling ParseTokens.
+   '
+   ' INPUT PARAMETERS:
+   '   sSource: A delimited list of tokens
+   '   sDelim:  The delimiter used to delimit sSource
+   '
+   ' RETURN
+   '   The number of tokens in sSource, which is the number of delimiters
+   '   plus 1. If sSource is empty, 0 is returned.
+
+'*************************************************************
+   Function CountTokens (ByVal sSource As String, ByVal sDelim As String)
+      Dim iDelimPos As Integer
+      Dim iCount As Integer
+
+      ' Number of tokens = 0 if the source string is empty
+      If sSource = "" Then
+         CountTokens = 0
+
+      ' Otherwise number of tokens = number of delimiters + 1
+      Else
+         iDelimPos = InStr(1, sSource, sDelim)
+         Do Until iDelimPos = 0
+            iCount = iCount + 1
+            iDelimPos = InStr(iDelimPos + 1, sSource, sDelim)
+         Loop
+         CountTokens = iCount + 1
+      End If
+   End Function
+
+
+'*************************************************************
+   ' FUNCTION NAME: GetToken
+   '
+   ' PURPOSE:
+   '   Given a string of delimited items, the first item will be
+   '   removed from the list and returned.
+   '
+   ' INPUT PARAMETERS:
+   '   sSource: A delimited list of tokens
+   '   sDelim:  The delimiter used to delimit sSource
+   '
+   ' RETURN
+   '   sSource will have the first token removed. The function
+   '   returns the token removed from sSource.
+
+'*************************************************************
+   Function GetToken (sSource As String, ByVal sDelim As String) _
+   As String
+      Dim iDelimPos As Integer
+
+      ' Find the first delimiter
+      iDelimPos = InStr(1, sSource, sDelim)
+
+      ' If no delimiter was found, return the existing string and set
+      ' .. the source to an empty string.
+      If (iDelimPos = 0) Then
+         GetToken = Trim$(sSource)
+         sSource = ""
+
+      ' Otherwise, return everything to the left of the delimiter and
+      ' .. return the source string with it removed.
+      Else
+         GetToken = Trim$(Left$(sSource, iDelimPos - 1))
+         sSource = Mid$(sSource, iDelimPos + 1)
+      End If
+   End Function
+
+
+'*************************************************************
+   ' SUB NAME: ParseTokens
+   '
+   ' PURPOSE:
+   '   Extracts information from a delimited list of items and places
+   '   it in an array.
+   '
+   ' INPUT PARAMETERS:
+   '   Array(): A one-dimensional array of strings in which the parsed
+   '   tokens will be place
+   '   sTokens: A delimited list of tokens
+   '   sDelim:  The delimiter used to delimit sTokens
+   '
+   ' RETURN
+   '   None
+
+'*************************************************************
+   Sub ParseTokens (Array() As String, ByVal sTokens As String, ByVal _
+                    sDelim As String)
+      Dim i As Integer
+      For i = LBound(Array) To UBound(Array)
+         Array(i) = GetToken(sTokens, sDelim)
+      Next
+   End Sub
+
+</PRE></OL><h2>REFERENCES</h2>
+ 
+<P>
+Microsoft Mail "Technical Reference," Chapter 4
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: mail application programming api<BR>
+Keywords            : IntpMail kbinterop kbprg PgmApi<BR>
+Version             : 1.0 1.1 2.0<BR>
+Platform            : WINDOWS<BR>
+Hardware            : X86<BR>
+Issue type          : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 8, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

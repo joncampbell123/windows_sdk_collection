@@ -1,0 +1,252 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Working Set Size, Nonpaged Pool, and VirtualLock() </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q108449">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1993/12/12">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  This article discusses memory management issues such as working set size, nonpaged pool, and locking pages into physical memory via VirtualLock().  MORE INFORMATION  Working Set  A process's working set is the set of pages that it has currently in ...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QABN,QBXS,QAW6,QAPN,QBW6,QAJB,QBWA,QAY4,QA26,QAM1,QAKD,QAG0,QDL9,QBWQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Working Set Size, Nonpaged Pool, and VirtualLock()</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q108449</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.1 and 3.5
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article discusses memory management issues such as working set size,
+nonpaged pool, and locking pages into physical memory via VirtualLock().
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Working Set</h3>
+ 
+<P>
+A process's working set is the set of pages that it has currently in
+memory. The values for maximum working set and minimum working set are
+hard-coded in Windows NT and are thus impossible to change. There are three
+values hard-coded for the maximum working set. The value used for maximum
+working set depends on whether your machine is considered to be a small,
+medium, or large machine:
+<P>
+<PRE>   Small machine--less than 16 megabytes (MB)
+   Medium machine--between 16 MB and 20 MB
+   Large machine--greater than 20 MB
+
+</PRE>The system tries to keep about 4 MB free to reduce the paging that occurs
+when loading a new process, allocating memory, and so forth. Any free RAM
+beyond what the system requires is available for the system to use to
+increase your working set size if your process is doing a lot of paging.
+<P>
+Process pages that are paged out of your process space are moved into the
+"standby list," where they remain until sufficient free RAM is available,
+or until system memory is low and they need to be reused. If these pages
+are accessed by your process while they are still on the standby list and
+more RAM has become available, they will be "soft-faulted" back into the
+working set. This does not require any disk access, so it is very quick.
+Therefore, even though you have an upper limit to the size of your working
+set, you can still have quite a few process pages in memory that can be
+pulled back into your working set very quickly.
+<P>
+To minimize working set requirements and increase performance, use the
+Working Set Tuner, WST.EXE, to order the functions within your code. One
+way to help an application receive a larger working set is to use the
+Network application in the Control Panel to set the server configuration to
+"Maximize Throughput for Network Applications."
+<P>
+<P><h3>Nonpaged Pool</h3>
+ 
+<P>
+System memory is divided into paged pool and nonpaged pool. Paged pool can
+be paged to disk, whereas nonpaged pool is never paged to disk. In Windows
+NT 3.1, the default amount of nonpaged pool also depends on whether your
+machine is considered small, medium, or large. In other words, you will
+have X amount of nonpaged pool on a 16 MB machine, Y amount of nonpaged
+pool on a 20 MB machine, and Z amount of nonpaged pool on a machine with
+more than 20 MB (the exact values for X, Y, and Z were not made public).
+<P>
+Important system data is stored in nonpaged pool. For example, each Windows
+NT object created requires a block of nonpaged pool. In fact, it is the
+availability of nonpaged pool that determines how many processes, threads,
+and other such objects can be created. The error that you will receive if
+you have too many object handles open is:
+<P>
+<PRE>   1816 (ERROR_NOT_ENOUGH_QUOTA)
+
+</PRE>Many 3.1 applications ran into this error because of the limited amount of
+nonpaged pool. This limit were addressed in Windows NT 3.5. We found that
+
+<UL><LI>Some objects were too large
+<LI>Sharing an object caused excessive quota charges
+<LI>The quota limits were artificial and fixed
+<P>
+</UL>The resources used by each object were evaluated and many were drastically
+reduced in Windows NT 3.5.
+<P>
+In Windows NT 3.1, every time an object was shared, quota was charged for
+each shared instance. For example, if you opened a file inheritable and
+then spawn a process and have it inherit your handle table, the quota
+charged for the file object was double. Each handle pointing to an object
+cost quota. Most applications experienced this problem. Under Windows NT
+3.5, quota is only charged once per object rather than once per handle.
+<P>
+Windows NT 3.1 had a fixed quota for paged and nonpaged pool. This was
+determined by the system's memory size, or could be controlled by the
+registry. The limits were artificial. This was due to the poor design of
+quotas with respect to sharing. It was also affected by some objects lying
+about their actual resource usage. In any case, Windows NT 3.5 has revised
+this scheme.
+<P>
+The Windows NT 3.1 "Resource Kit, Volume I" documents that it is possible
+to change the amount of nonpaged pool by modifying the following registry
+entry:
+<P>
+<PRE>   HKEY_LOCAL_MACHINE\SYSTEM\
+      CurrentControlSet\
+      Control\
+      Session Manager\
+      Memory Management\
+      NonPagedPoolSize
+
+</PRE>WARNING: This modification can cause the system to crash, and therefore
+Microsoft does not recommend that this registry entry be changed.
+<P>
+Quotas can still be controlled in Windows NT 3.5 using these Windows NT 3.1
+registry values. However, this technique is now almost never needed. The
+new quota mechanism dynamically raises and lowers your quota limits as you
+bump into the limits. Before raising a limit, it coordinates this with the
+memory manager to make sure you can safely have your limit raised without
+using up all of the systems resources.
+<P>
+<P><h3>VirtualLock()</h3>
+ 
+<P>
+To lock a particular page into memory so that it cannot be swapped out to
+disk, use VirtualLock(). The documentation for VirtualLock() states the
+following:
+<P>
+<PRE>   Locking pages into memory may degrade the performance of the system by
+   reducing the available RAM and forcing the system to swap out other
+   critical pages to the paging file. There is a limit on the number of
+   pages that can be locked: 30 pages. The limit is intentionally small to
+   avoid severe performance degradation.
+
+</PRE>There is no way to raise this limit in Windows NT 3.1--it is fixed at 30
+pages (the size of your working set). The reason that you see a severe
+performance degradation when an application locks these pages is that
+Windows NT must reload all locked pages whenever there is a context switch
+to this application. Windows NT was designed to minimize page swapping, so
+it is often best to let the system handle swapping itself, unless you are
+writing a device driver that needs immediate access to memory.
+<P>
+Windows NT 3.5 allows processes to increase their working set size by using
+SetProcessWorkingSetSize(). This API is also useful to trim your minimum
+working set size if you want to run many processes at once, because each
+process has the default minimum working set size reserved, no matter how
+small the process actually is. The limit of 30 pages does not apply to
+VirtualLock() when using SetProcessWorkingSetSize().
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 3.50<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: BseMm<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

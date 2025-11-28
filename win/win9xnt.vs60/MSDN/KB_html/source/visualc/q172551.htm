@@ -1,0 +1,234 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: CInternetSession::OpenURL() Fails with File Protocol </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q172551">
+<META NAME="KBModify" CONTENT="1997/08/12">
+<META NAME="KBCreate" CONTENT="1997/08/08">
+<META NAME="Keywords" CONTENT="MfcMisc kbcode kberrmsg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  CInternetSession::OpenURL() fails if you use a URL that specifies a file that contains spaces or other unsafe characters. For example, the following will fail:     CMyInternetSession s(  );    CStdioFile* p = s.OpenURL( file://c:/temp/Text Document...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAVZ,QAUD,QBVV,QAA7,QAI4,QAGB,QAB7,QDOT,QBSO,QBFY,QA3T,QAWI,QAV1,QAV0,QAE2 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: CInternetSession::OpenURL() Fails with File Protocol</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 12, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q172551</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++, 32-bit Editions, version 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+CInternetSession::OpenURL() fails if you use a URL that specifies a file
+that contains spaces or other unsafe characters. For example, the following
+will fail:
+<P>
+<PRE>   CMyInternetSession s("");
+   CStdioFile* p = s.OpenURL("file://c:/temp/Text Document.txt");
+
+</PRE>As a result, a File Exception is thrown and the following message appears:
+<P>
+<PRE>   c:\temp\Text%20Document.txt was not found.
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+The specifications for a URL designate certain characters that must be
+escaped when they are present in a URL. The space character is one of the
+characters that must be escaped.
+<P>
+The function CInternetSession::OpenURL() calls a function that converts
+unsafe characters in the URL to their escape sequences before processing
+the URL further. If the URL is using the file protocol it creates a
+CStdioFile and returns a pointer to this object. However, CStdioFile does
+not understand the escaped path and, as a result, an exception is thrown.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+When you use the file protocol, you must not convert unsafe characters to
+their escape sequences. The following code demonstrates how to do this by
+writing a CInternetSession derived class to override OpenURL().
+<P>
+<PRE>   // class definition
+   class CMyInternetSession : CInternetSession
+   {
+   public:
+      CMyInternetSession::CMyInternetSession(LPCTSTR pstrAgent = NULL,
+         DWORD dwContext = 1, DWORD dwAccessType =
+         PRE_CONFIG_INTERNET_ACCESS, LPCTSTR pstrProxyName = NULL,
+         LPCTSTR pstrProxyBypass = NULL, DWORD dwFlags = 0);
+
+      CStdioFile* CMyInternetSession::OpenURL(LPCTSTR pstrURL,
+         DWORD dwContext = 1, DWORD dwFlags =
+         INTERNET_FLAG_TRANSFER_ASCII, LPCTSTR pstrHeaders = NULL,
+         DWORD dwHeadersLength = 0);
+   };
+
+   // CMyInternetSession constructor
+   CMyInternetSession::CMyInternetSession(LPCTSTR pstrAgent,
+      DWORD dwContext, DWORD dwAccessType, LPCTSTR pstrProxyName,
+      LPCTSTR pstrProxyBypass, DWORD dwFlags)
+   {
+      CInternetSession(pstrAgent, dwContext, dwAccessType, pstrProxyName,
+         pstrProxyBypass, dwFlags);
+   }
+
+   CStdioFile* CMyInternetSession::OpenURL(LPCTSTR pstrURL,
+      DWORD dwContext, DWORD dwFlags, LPCTSTR pstrHeaders,
+      DWORD dwHeadersLength)
+   {
+      ASSERT(pstrURL != NULL);
+      ASSERT(dwHeadersLength == 0 || pstrHeaders != NULL);
+
+      // must have TRANSFER_BINARY or TRANSFER_ASCII but not both
+      #define _AFX_TRANSFER_MASK (INTERNET_FLAG_TRANSFER_BINARY \
+         | INTERNET_FLAG_TRANSFER_ASCII)
+
+      ASSERT((dwFlags &amp; _AFX_TRANSFER_MASK) != 0);
+      ASSERT((dwFlags &amp; _AFX_TRANSFER_MASK) != _AFX_TRANSFER_MASK);
+
+      DWORD dwServiceType;
+      CString strServer;
+      CString strObject;
+      INTERNET_PORT nPort;
+
+      BOOL bParsed = AfxParseURL(pstrURL, dwServiceType,
+         strServer, strObject, nPort);
+
+      // if it turns out to be a file...
+      if (bParsed &amp;&amp; dwServiceType == AFX_INET_SERVICE_FILE)
+      {
+         CString userName;
+         CString password;
+
+         // Get the normalized file name with out converting
+         // unsafe characters to escape sequence.
+
+         AfxParseURLEx(pstrURL, dwServiceType, strServer,
+            strObject, nPort, userName, password, ICU_NO_ENCODE);
+
+         int nMode = CFile::modeRead | CFile::shareCompat;
+         if (dwFlags &amp; INTERNET_FLAG_TRANSFER_BINARY)
+            nMode |= CFile::typeBinary;
+         else
+            nMode |= CFile::typeText;
+
+         return new CStdioFile(strObject, nMode);
+      }
+
+      return CInternetSession::OpenURL(pstrURL,   dwContext, dwFlags,
+         pstrHeaders, dwHeadersLength);
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+The specification for URL's are published by The World Wide Web Consortium
+(W3C). The specifications define the escape sequences and unsafe
+characters. Its URL is:
+<P>
+<PRE>   <B><A href="http://www.w3.org/">http://www.w3.org/</A></B>
+
+</PRE>NOTE: Web links may change without notice.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 4.20b space file OpenURL filename<BR>
+Keywords          : MfcMisc kbcode kberrmsg<BR>
+Version           : WINDOWS NT:5.0<BR>
+Platform          : NT WINDOWS<BR>
+Issue type        : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 12, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

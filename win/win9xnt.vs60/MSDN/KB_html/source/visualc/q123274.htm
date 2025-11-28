@@ -1,0 +1,199 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: _AfxDispatchPushArgs Incorrectly AddRef's Invoke Argument </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q123274">
+<META NAME="KBModify" CONTENT="1997/09/18">
+<META NAME="KBCreate" CONTENT="1994/11/28">
+<META NAME="Keywords" CONTENT="kb16bitonly MfcOLE kbbuglist kbfixlist kbole">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The CCmdTarget::InvokeHelper member function uses an internal helper function _AfxDispatchPushArgs to set up the arguments to be passed eventually to IDispatch::Invoke on the OLE Automation object.  If OLE objects are passed as arguments by value, ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAHE,QAR4,QAD7,QBVV,QAW6,QAM1,QAH6,QA5E,QAUD,QAH7,QAA1,QDL9,QBWQ,QBWO V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: _AfxDispatchPushArgs Incorrectly AddRef's Invoke Argument</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q123274</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.50
+WINDOWS
+kbole kbbuglist kbfixlist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with
+<P><PRE>    - Microsoft Visual C++ for Windows, version 1.5
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The CCmdTarget::InvokeHelper member function uses an internal helper
+function _AfxDispatchPushArgs to set up the arguments to be passed
+eventually to IDispatch::Invoke on the OLE Automation object.
+<P>
+If OLE objects are passed as arguments by value, the user may see
+memory leaks due to these objects not being freed after being passed to
+_AfxDispatchPushArgs.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+When _AfxDispatchPushArgs trys to change parameters passed by reference
+into the appropriate type, an extra AddRef is performed on the object
+by the VariantChangeType API. Consequently those objects do not
+shutdown correctly.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This bug was corrected in Microsoft
+Visual C++ 1.51 for Windows.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Below is the original section followed by the fixed version of
+_AfxDispatchPushArgs responsible for changing the parameter data
+(OLEDISP1.CPP 546-559).
+<P>
+=== ORIGINAL VERSION ===
+if (vt != VT_VARIANT &amp;&amp; vt != pArg-&gt;vt)
+{
+<PRE>    VariantInit(&amp;va);
+
+    // argument is not of appropriate type, attempt to coerce it
+    //
+    // BUG: the VariantChangeType actually does an AddRef if pArg
+    // is an LPDISPATCH or LPUNKNOWN parameter
+    //
+    if (VariantChangeType(&amp;va, pArg, 0, vt) != NOERROR)
+    {
+        // argument could not be coerced
+   *puArgErr = iArg;
+   return DISP_E_TYPEMISMATCH;
+    }
+    ASSERT(va.vt == vt);
+    pArg = &amp;va;
+</PRE>}
+<P>
+=== FIXED VERSION ===
+NOTE: rgTempVars in the following code is a list of temporary VARIANT
+objects supplied, and explicitly cleaned up, by
+CCmdTarget::InvokeHelper to be used for the VariantChangeType API.
+<P>
+if (vt != VT_VARIANT &amp;&amp; vt != pArg-&gt;vt)
+{
+<PRE>    // argument is not of appropriate type, attempt to coerce it
+    LPVARIANT pArgTemp = &amp;rgTempVars[iArg];
+    ASSERT(pArgTemp-&gt;vt == VT_EMPTY);
+    SCODE sc = GetScode(VariantChangeType(pArgTemp, pArg, 0, vt));
+    if (FAILED(sc))
+    {
+        // argument could not be coerced
+        *puArgErr = iArg;
+        return sc;
+    }
+    ASSERT(pArgTemp-&gt;vt == vt);
+    pArg = pArgTemp;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.50 2.50<BR>
+KBCategory: kbole kbbuglist kbfixlist<BR>
+KBSubcategory: MfcOLE<BR>
+Keywords          : kb16bitonly MfcOLE kbbuglist kbfixlist kbole<BR>
+Technology        : kbMfc<BR>
+Version           : 1.50<BR>
+Platform          : WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

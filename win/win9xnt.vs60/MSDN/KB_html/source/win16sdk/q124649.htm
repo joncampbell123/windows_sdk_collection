@@ -1,0 +1,258 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Print a Single Line Without Formfeed </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q124649">
+<META NAME="KBModify" CONTENT="1997/07/23">
+<META NAME="KBCreate" CONTENT="1995/01/09">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="  This article shows by example how to have an application print one line at a time without a formfeed. Windows does not inherently provide this ability because it is in direct conflict with the design philosophy of a multitasking operating system.  ...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAOX,QDL9,QBXT,QBWO,QBWN,QA5V,QAIB,QALW,QAI4,QBVV,QACT,QAPF,QAGB,QADF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Print a Single Line Without Formfeed</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 23, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q124649</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+3.10
+WINDOWS
+kbprint kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   version 3.10
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article shows by example how to have an application print one line at
+a time without a formfeed. Windows does not inherently provide this ability
+because it is in direct conflict with the design philosophy of a
+multitasking operating system.
+<P>
+One method of single-line printing, including sample code, is provided
+here. This method uses the combination of the RAW.DRV sample printer driver
+and the PASSTHROUGH escape, and supports printing over a network. It has
+the following limitations:
+
+<UL><LI>This method is not conducive to shared printing. If another application
+   prints, it will assume that the printer is currently at the top of a
+   page, which may not be the case if this code is being used.
+
+<LI>This method is only compatible with dot matrix, daisywheel, or other
+   printers capable of printing a single line or single line feed. It will
+   not work with LaserJet printers that must print a page at a time.
+<P>
+</UL><h2>MORE INFORMATION</h2>
+ 
+<P>
+If you are sure no other application will use the same printer, you can
+have your application print one line at a time to a dot matrix printer
+without issuing a formfeed. Use the RAW.DRV sample printer driver and the
+PASSTHROUGH escape to accomplish this. Follow these steps:
+
+<OL><P><LI>Download RAW.DRV and place it in the \WINDOWS directory. For more
+   information about RAW.DRV, including instructions for download, please
+   see the following article in the Microsoft Knowledge Base:
+<P>
+   ARTICLE-ID: <B><A href="../win16sdk/q35708.htm">Q35708</A></B>
+<PRE>   TITLE     : SAMPLE: Using a Device Driver to Send Binary Data to Printer
+
+   Do not install this driver as the default printer driver. It is a sample
+   driver and is not intended to be used for commercial applications.
+
+</PRE><P><LI>Call the PrintLineNow function by using the following code fragment:
+<P>
+<PRE>// The Abort Procedure for printing (a generic AbortProc)
+// This procedure needs to listed be in the Exports section
+//    of the .DEF file
+</PRE></OL>BOOL CALLBACK AbortProc( HDC hDC, int Error )
+{
+<PRE>  MSG msg;
+
+  while(PeekMessage(&amp;msg, NULL, 0, 0, TRUE))
+  {
+    TranslateMessage(&amp;msg);
+    DispatchMessage(&amp;msg);
+  }
+  return TRUE;
+</PRE>}
+<P>
+<PRE>// The function that prints one line without formfeed
+</PRE>BOOL PrintLineNow( char *pData, WORD cbBytes )
+{
+<PRE>  #define   LINEBUFFER_LENGTH 80 //or dynamically alloc enough space
+  HDC       hDC;
+  char      pOutput[LINEBUFFER_LENGTH+sizeof(WORD)];
+  DOCINFO   di;
+  ABORTPROC lpfnAbortProc;
+
+  // Buffer size is LINEBUFFER_LENGTH bytes
+  if( cbBytes &gt; LINEBUFFER_LENGTH )
+     return FALSE;
+
+  // Get the DC using the RAW.DRV driver
+  if( (hDC = CreateDC( "RAW", NULL, "LPT1", NULL ) ) == NULL )
+    return FALSE;
+
+  // Set up an Abort Procedure
+  if((lpfnAbortProc = MakeProcInstance(AbortProc, hInst)) == NULL)
+    {
+      DeleteDC( hDC );
+      return FALSE;
+    }
+  if( SetAbortProc( hDC, lpfnAbortProc ) &lt;= 0 )
+    {
+      DeleteDC( hDC );
+      FreeProcInstance( lpfnAbortProc );
+      return FALSE;
+    }
+
+  // Start a Document
+  di.cbSize = sizeof( DOCINFO );
+  di.lpszDocName = "MyDoc";
+  di.lpszOutput = NULL;
+  if( StartDoc( hDC, &amp;di ) &lt;= 0 )
+    {
+      DeleteDC( hDC );
+      FreeProcInstance( lpfnAbortProc );
+      return FALSE;
+    }
+
+  // The start of a page
+  if( StartPage( hDC ) &lt;= 0 )
+    {
+      DeleteDC( hDC );
+      FreeProcInstance( lpfnAbortProc );
+      return FALSE;
+    }
+
+  // Put data in the buffer and send to the printer
+  *(WORD *)pOutput = cbBytes;
+  memcpy( &amp;(pOutput[sizeof(WORD)]), pData, cbBytes );
+  if( Escape( hDC, PASSTHROUGH, 0, pOutput, NULL ) &lt;= 0 )
+    {
+      DeleteDC( hDC );
+      FreeProcInstance( lpfnAbortProc );
+      return FALSE;
+    }
+
+  // The end of the page
+  if( EndPage( hDC ) &lt; 0 )
+    {
+      DeleteDC( hDC );
+      FreeProcInstance( lpfnAbortProc );
+      return FALSE;
+    }
+
+  // End the Document
+  if( EndDoc( hDC ) &lt; 0 )
+    {
+      DeleteDC( hDC );
+      FreeProcInstance( lpfnAbortProc );
+      return FALSE;
+    }
+
+  // Clean up
+  DeleteDC( hDC );
+  FreeProcInstance( lpfnAbortProc );
+  return TRUE;   // Success
+}
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 NEWFRAME FF Mailing Label Form Feed<BR>
+KBCategory: kbprint kbcode<BR>
+KBSubcategory: GdiPrn<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 23, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

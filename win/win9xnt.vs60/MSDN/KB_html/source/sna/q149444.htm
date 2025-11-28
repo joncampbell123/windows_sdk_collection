@@ -1,0 +1,227 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Downstream PU to DEC Server May Fail with Event 56: XID Reject </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q149444">
+<META NAME="KBModify" CONTENT="1997/03/13">
+<META NAME="KBCreate" CONTENT="1996/04/02">
+<META NAME="Keywords" CONTENT="ntprotocol kbbug2.00 kbbug2.10 kbbug2.11 kbbug3.00 kbfix2.11.sp2">
+<META NAME="KBArea" CONTENT="Support; KB; sna">
+<META NAME="Description" CONTENT="  When you try to configure Microsoft SNA server as a Downstream Physical Unit (DSPU) to an DEC SNA Peer Server, you may get an XID exchange failure resulting in the link entering a pending state and failing to activate.  The Microsoft Windows NT app...">
+<META NAME="Product" CONTENT="SNA Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA7O,QALG,QAB5,QAAP,QAOE,QAMN,QAJH,QA7N,QA3S,QAR4,QAKP,QDO3,QBXS,QAH4,QAGI V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Downstream PU to DEC Server May Fail with Event 56: XID Reject</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 13, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q149444</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+2.00 2.10 2.11
+WINDOWS
+kbnetwork kbbug2.00 kbbug2.10 kbbug2.11 kbbug3.00 kbfix2.11.sp2
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SNA Server for Windows NT, versions 2.0, 2.1, 2.11, and 3.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When you try to configure Microsoft SNA server as a Downstream Physical
+Unit (DSPU) to an DEC SNA Peer Server, you may get an XID exchange failure
+resulting in the link entering a pending state and failing to activate.
+<P>
+The Microsoft Windows NT application event log may contain an EventID 56
+with the following description referencing xxxxx as the failing
+connection:
+<P>
+<PRE>   Connection xxxxx failed: XID rejected by remote computer.
+
+</PRE>Further investigation using the SNA tracing utility may demonstrate an XID
+exchange failure in CONNECTx.TRC with the following sense code:
+<P>
+<PRE>   086F0000:- Length Error: A length field within an MS major vector is
+   invalid, or two or more length fields are incompatible.
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+There is an error in the XID3 transmitted by SNA Server version 2.11 that
+prevents it communicating over 802.2 DLC with some SNA PU 2.1 products
+that
+specifically validate the control vector in the XID.
+<P>
+The Control Vector part of the XID (byte 29 onwards for SDLC) is
+incorrectly formatted. The first part of the Product Set ID (X'10')
+Control
+Vector is a Product Identifier (X'11') MS Common Subvector of Product
+classification X'0C'. This subvector has an indicated length field of
+X'27'; however, it is only X'23' bytes long.
+<P>
+Attached is an extract from a trace (connect1.trc) of an XID exchange with
+a Digital SNA Peer Server. The Control Vectors start at byte 29 with
+<PRE>'10370=3D0'(Product Set Id). The next three bytes '27110C' indicate a
+</PRE>0x27hex length (39 decimal) byte Product Identifier Subvector. In fact
+this
+subvector is only 0x23 hex (35 decimal) byte length:
+<P>
+<PRE>    3 byte header, X'27110C'
+    8 byte Software Product Common Level '021000',
+   15 byte Software Common Product Name 'MS SNA SERVER'
+    9 byte Software Product Program Number '0000000'
+
+</PRE>The trace continues with an XID rejection from the DEC Peer Server with
+the following sense data:
+<P>
+<PRE>   '086F0000' "Length Error: A length field within an MS major vector is
+   invalid, or two or more length fields are incompatible.
+
+</PRE>The significant portion of Connect1.trc obtained by enabling Level 2
+tracing on the link service follows:
+<P>
+---------------------------------------------- 15:07:24.61
+<PRE> TR     XMIT XID CMD       REQUEST
+ TR     ---- DLC API control block at address 73618----
+ TR     000E0000 00000000 00000000 34360700      &lt;............46..&gt;
+ TR     70000000 00000000 00001C00                     &lt;p...........    &gt;
+ TR
+ TR     00043004 00000000 00000000 0E006100      &lt;..0...........a.&gt;
+ TR     CBE32201 6AE32201 00000000                   &lt;.T".jT".....    &gt;
+ TR     ---- Message data ----
+ TR     00005500 2000192C 00000000 0000             &lt;..U...,......  &gt;
+ TR     ---- Message data ----
+ TR     326105D0 00010000 B0841000 00000000      &lt;2a.......d......&gt;
+ TR     00010B70 00040400 0000007F 00103700      &lt;...p.......=7F..7.&gt;
+ TR     27110C08 04F0F2F1 F0F0F00F 06D4E240    &lt;'....021000..MS@&gt;
+ TR     E2D5C140 E2C5D9E5 C5D90908 F0F0F0F0  &lt;SNA@SERVER..0000&gt;
+ TR     F0F0F013 11031000 10F0F0F0 F0F0F0F0    &lt;000......0000000&gt;
+ TR     F0F0F0F0 F0F00E09 F4C1D7D7 D54BC3D7 &lt;000000..4APPNKCP&gt;
+ TR     F1                                                              &lt;1
+&gt;
+ TR    ---------------------------------------------- 15:07:24.61
+ TR     DIR  TIMER SET     REQUEST
+ TR     ---- DLC API control block at address 73698----
+ TR     00220000 00000000 00000000 1E000000     &lt;."..............&gt;
+ TR     70000000 00000000 00000000                     &lt;p...........    &gt;
+ TR    ---------------------------------------------- 15:07:24.62
+ TR     DIR  TIMER SET     ERROR - Command canceled by user
+ TR     ---- DLC API control block at address 73598----
+ TR     00220A00 00000000 00000000 1E000000     &lt;."..............&gt;
+ TR     70000000 00000000 00000000                     &lt;p...........    &gt;
+
+</PRE><h2>RESOLUTION</h2>
+ 
+<P>
+The SNA server component, Snacfg.dll, was incorrectly generating the data
+for the node to send and has been hotfixed to correct the problem. To
+implement the fix, the Snacfg.dll file must be applied and the SNA Server
+configuration file must be resaved using the SNA Admin program. Once
+saved,
+the SNA Server service must be stopped and started to enable the change.
+\ * #else
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in Microsoft SNA Server
+versions 2.0, 2.1, 2.11, and 3.0.
+This problem was corrected in the latest Microsoft SNA Server 2.11 U.S.
+Service Pack. For information on obtaining the service pack, query on the
+following word in the Microsoft Knowledge Base (without the spaces):
+<P>
+<PRE>   S E R V P A C K
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: prodsna 2.00 2.10 2.11 3.50 3.51<BR>
+Keywords            : ntprotocol kbbug2.00 kbbug2.10 kbbug2.11 kbbug3.00 kbfix2.11.sp2<BR>
+Version             : 2.00 2.10 2.11<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 13, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

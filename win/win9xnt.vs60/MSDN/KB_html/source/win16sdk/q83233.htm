@@ -1,0 +1,254 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>SAMPLE: Code Uses Keyboard Hook to Access Help </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q83233 ">
+<META NAME="KBModify" CONTENT="1996/02/15">
+<META NAME="KBCreate" CONTENT="1992/04/07">
+<META NAME="Keywords" CONTENT="kbprg kbfile">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="  F1CDHELP is a file in the Microsoft Software Library that demonstrates how an application can implement context sensitive help for the dialog boxes provided by the dynamic-link library (DLL) COMMDLG.DLL (the common dialog box DLL). When the user pr...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA01,QAEV,QAGI,QAYC,QAH4,QANX,QAJH,QBDT,QAUD,QBXS,QDL9,QBWO,QBWN,QAY5,QALZ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>SAMPLE: Code Uses Keyboard Hook to Access Help</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 15, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q83233 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   version 3.1
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+F1CDHELP is a file in the Microsoft Software Library that demonstrates how
+an application can implement context sensitive help for the dialog boxes
+provided by the dynamic-link library (DLL) COMMDLG.DLL (the common dialog
+box DLL). When the user presses the F1 key, the application calls Windows
+Help.
+<P>
+The recommended user interface for an application to provide access to
+Windows Help is through the F1 key. This article describes a technique that
+can be used with the common dialog box DLL to bring up context sensitive
+help for each dialog box. The sample uses the SetWindowsHookEx() function
+to set a task-specific keyboard hook, which monitors keyboard input and
+responds to the F1 key.
+<P>
+Because this application uses a task-specific hook, the hook function code
+resides in the application's .EXE file and is not required to be in a fixed
+code page in a DLL. (The filter function for each system- wide hook must be
+in a DLL.)
+<P>
+Download F1CDHELP.EXE, a self-extracting file, from the Microsoft Software
+Library (MSL) on the following services:
+
+<UL><LI>Microsoft Download Service (MSDL)
+<P><PRE>      Dial (206) 936-6735 to connect to MSDL
+      Download <A href="http://support.microsoft.com/download/support/mslfiles/f1cdhelp.exe">F1CDHELP.EXE</A> <I>(size: 32506 bytes)</I> 
+</PRE>
+<LI>Internet (anonymous FTP)
+<P><PRE>      ftp ftp.microsoft.com
+      Change to the \SOFTLIB\MSLFILES directory
+      Get <A href="http://support.microsoft.com/download/support/mslfiles/f1cdhelp.exe">F1CDHELP.EXE</A> <I>(size: 32506 bytes)</I> 
+</PRE><P>
+</UL><h2>MORE INFORMATION</h2>
+ 
+<P>
+The technique used in this article is straightforward and minimizes the
+number of global variables required. The application installs the keyboard
+hook and calls the RegisterWindowMessage() function to define a help
+message. When an application registers the help message, the common dialog
+box DLL notifies the application each time the user chooses the Help button
+in one of the common dialog boxes. The DLL sends the help message to the
+window procedure of the dialog box's parent window.
+<P>
+When the keyboard hook function detects that the F1 key is pressed, it
+posts a WM_COMMAND message to the appropriate window procedure. In the
+F1CDHELP example, the message is posted either to the main window (when no
+dialog box is displayed) or to the dialog box's window procedure. If the
+message is posted to one of the common dialog boxes, wParam is set to
+pshHelp; the application simulates choosing the Help button in the common
+dialog box. Otherwise, wParam is set to IDM_HELPCONTENTS; the application
+simulates selecting a menu item in the application.
+<P>
+The following code demonstrates installing the hook and registering
+the help message in response to a WM_CREATE message:
+<P>
+<PRE>   case WM_CREATE:
+      // Install the keyboard hook
+
+      lpfnKbrdHook = MakeProcInstance((FARPROC)KeyboardHook, ghInst);
+      ghKbrdHook = SetWindowsHookEx(WH_KEYBOARD, lpfnKbrdHook,
+                                    ghInst, GetCurrentTask());
+
+      // Register the help message. The common dialog box DLL sends this
+      // message when the user chooses the Help file in a common
+      // dialog box.
+      gwHelpMsg = RegisterWindowMessage((LPSTR)HELPMSGSTRING);
+      break;
+
+</PRE>The following code demonstrates removing the keyboard hook in response
+to a WM_DESTROY message:
+<P>
+<PRE>   case WM_DESTROY:
+      UnhookWindowsHookEx(ghKbrdHook);
+      break;
+
+</PRE>The hook function receives notification about the F1 key and posts a
+message as appropriate:
+<P>
+DWORD FAR PASCAL KeyboardHook(int iCode, WPARAM wParam, LPARAM lParam)
+{
+<PRE>   if (iCode &lt; 0 || iCode != HC_ACTION)
+      return CallNextHookEx(ghKbrdHook, iCode, wParam, lParam);
+
+   if (wParam == VK_F1)
+
+      // If this is a repeat or the key is being released, ignore it.
+      if (lParam &amp; 0x80000000 || lParam &amp; 0x40000000)
+         return CallNextHookEx(ghKbrdHook, iCode, wParam, lParam);
+      else
+      {
+         if (IsWindowEnabled(ghWnd)) // F1 pressed in main window?
+            PostMessage(ghWnd, WM_COMMAND, IDM_HELPCONTENTS, 0L);
+         else                        // F1 pressed in a dialog box
+            PostMessage(GetActiveWindow(), WM_COMMAND, pshHelp, 0L);
+      }
+
+   return CallNextHookEx(ghKbrdHook, iCode, wParam, lParam);
+</PRE>}
+<P>
+The second PostMessage() call above is executed when the user requests help
+in a specific common dialog box. This simulates choosing the Help button in
+the dialog box. Because the application registered the help message (during
+the processing of its WM_CREATE message), the common dialog box DLL will
+send the gwHelpMessage to the parent window procedure. An application can
+process this message as follows:
+<P>
+<PRE>   default:
+      if (message == gwHelpMsg)  // Help requested in a common dialog
+                                 // box
+      {
+      // The lParam points to an OPENFILENAME or a CHOOSECOLOR data
+      // structure. The application can differentiate between them by
+      // checking the structure's size, which is in the first four
+      // bytes (a DWORD) of the structure. This allows the application
+      // to display different help for each of the common dialog boxes.
+
+      dwStructSize = (DWORD)(*(LPDWORD)lParam);
+
+      switch (dwStructSize)
+         {
+         case sizeof(OPENFILENAME):
+            MessageBox((HWND)wParam, "Help requested for OpenFile",
+                       gszAppName, MB_OK);
+            break;
+
+         case sizeof(CHOOSECOLOR):
+            MessageBox((HWND)wParam, "Help requested for ChooseColor"
+                       gszAppName, MB_OK);
+            break;
+
+         default:
+            break;
+         }
+      break;
+      }
+      else // Not a help message
+         return DefWindowProc(hWnd, message, wParam, lParam);
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 softlib F1CDHELP.EXE<BR>
+KBCategory: kbprg kbfile<BR>
+KBSubcategory: UsrHks<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 15, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

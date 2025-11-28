@@ -1,0 +1,217 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Calling Screen from Another Without Jumping a READ Level </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q104054">
+<META NAME="KBModify" CONTENT="1996/04/29">
+<META NAME="KBCreate" CONTENT="1993/09/05">
+<META NAME="Keywords" CONTENT="kbprg kbprb kberrmsg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  Many FoxPro programmers want to be able to execute one screen from another. This may present problems if the READ command from the calling screen is not cleared before the next screen is executed and more than five screens are executed. The most co...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QAEF,QBFN,QAJX,QADR,QAB9,QBV8,QBJQ,QAY2,QABN,QAA8,QBVV,QAYL,QAVI,QAGB V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Calling Screen from Another Without Jumping a READ Level</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 29, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q104054</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual FoxPro for Windows, version 3.0
+<LI>Microsoft FoxPro for Windows, versions 2.5x, 2.6, 2.6a
+<LI>Microsoft FoxPro for MS-DOS, versions 2.5x, 2.6, 2.6a
+<LI>Microsoft FoxPro for Macintosh, versions 2.5x, 2.6a
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Many FoxPro programmers want to be able to execute one screen from another.
+This may present problems if the READ command from the calling screen is
+not cleared before the next screen is executed and more than five screens
+are executed. The most common error message encountered is "Too many READs
+in effect," which is the result of having more than five READS in effect,
+which is a FoxPro limit.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The most common, though incorrect, way to try to solve this problem is to
+enter something similar to the following code in the VALID clause of a push
+button on Screen1:
+<P>
+<PRE>   CLEAR READ
+   DO screen2.spr
+
+</PRE>Looking at this code, it appears that the READ command will be cleared and
+that Screen2 will then be executed. Actually, the READ command from Screen1
+stays in effect, Screen2 is executed, and the Screen1 READ command is not
+cleared until the READ command from Screen2 is cleared and control is
+returned to Screen1.
+<P>
+This behavior occurs because in order for the CLEAR READ command to be
+recognized by the current READ command, program control has to be returned
+to that READ command. In this example, the CLEAR READ command is issued and
+then program control is immediately transferred to SCREEN2.SPR; the READ
+command for Screen1 never has a chance to act on the CLEAR READ command and
+therefore Screen1's READ command is not cleared before the DO command for
+SCREEN2.SPR is issued.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+***************************************************************************
+IMPORTANT: This technique is not intended to replace a foundation READ, but
+is a way to get around the limitation of not being able to have more than
+five READs in effect at one time. Because a DO command is being executed
+from another DO command, there is a form of recursion occurring and the
+error "DO nesting too deep" will appear if the limit of 32 DO levels is
+reached.
+***************************************************************************
+<P>
+To achieve the desired behavior, issue the CLEAR READ command as done
+above, but don't issue the DO screen2.spr command until after the READ
+command has been cleared. For example:
+
+<OL><P><LI>In the Screen Builder, create a new screen.
+<P>
+   NOTE: In FoxPro for MS-DOS, choose Screen Layout from the Screen menu,
+   and change the screen type from Desktop to Window.
+
+<P><LI>Create a push button with two prompts: &lt;Screen2&gt; and &lt;Quit&gt;. Make the
+   variable "m.choice". Open the Valid code snippet and add this code:
+<P>
+<P><PRE>      IF m.choice=1
+<PRE></PRE>         tobedone="screen2.spr"
+      ENDIF
+      CLEAR READ
+
+   If the Screen2 button is chosen, TOBEDONE is set to the name of the
+   proper program file. The CLEAR READ command is issued if either button
+   is chosen. Control is returned to the READ command and it is CLEARed.
+
+</PRE><P><LI>Open the Setup code snippet and add this line of code:
+<P>
+<P><PRE>      tobedone=space(12)
+</PRE><P>
+   This variable stores the next screen to be executed.
+
+<P><LI>Open the Cleanup code snippet and add these lines of code:
+<P>
+<PRE>      IF EMPTY(PROGRAM(30))     &amp;&amp; Check if we are about to exceed the
+         IF NOT EMPTY(tobedone) &amp;&amp; 32-level DO limit. If we are, the next
+            DO (tobedone)       &amp;&amp; program isn't executed and an error
+      *                            message appears.
+         ENDIF
+      ELSE
+         WAIT WINDOW "32 DO Level Limit exceeded"
+      ENDIF
+
+   This code tests whether TOBEDONE has been assigned a value that means
+   the Screen2 button was chosen. If Screen2 was chosen, the value in
+   TOBEDONE is executed using a name expression. If the screen is exited in
+   some other fashion, that is, the ESC key or the Quit button was chosen,
+   nothing is executed.
+
+   NOTE: Make sure this is the last line in the Cleanup code.
+
+</PRE></OL>This code example never leaves the originating program, so all variables
+declared in each screen set will remain defined until you quit the original
+calling screen. The program will have to manually release the memory
+variables in the Cleanup code.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: VFoxWin 3.00  FoxDos FoxWin 2.00 2.50 2.50a<BR>
+2.50b 2.50c 2.60<BR>
+2.60a<BR>
+errmsg err msg jump<BR>
+KBCategory: kbprg kbprb kberrmsg kbcode<BR>
+KBSubcategory: FxprgMacrosub<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 29, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

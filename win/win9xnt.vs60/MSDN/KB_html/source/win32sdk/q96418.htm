@@ -1,0 +1,214 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Priority Inversion and Windows NT Scheduler </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q96418 ">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1993/03/16">
+<META NAME="Keywords" CONTENT="kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The kernel schedules a thread with the real-time process priority class ahead of every thread with another priority class (nearly all user-mode threads). Windows NT does not alter the priority of real-time threads. The system trusts that the progra...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAOY,QAUQ,QABA,QA2O,QBWP,QAL4,QBC9,QBC8,QAVQ,QANO,QBWS,QA6R V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Priority Inversion and Windows NT Scheduler</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q96418 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.1 and 3.5
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The kernel schedules a thread with the real-time process priority class
+ahead of every thread with another priority class (nearly all user-mode
+threads). Windows NT does not alter the priority of real-time threads. The
+system trusts that the programmer will avoid priority inversion. The
+remainder of this article talks about the scheduling of threads that are
+not real-time priority class and how the system solves the problem of
+priority inversion.
+<P>
+Threads are scheduled according to their priority. When the kernel is
+choosing which thread will execute on a processor, the highest dynamic
+(variable) priority thread is picked. Priority inversion occurs when two
+(or more) threads with different priorities are in contention to be
+scheduled. Consider a simple case with three threads: Thread 1 is high
+priority and becomes ready to be scheduled, while thread 2, a low-priority
+thread, is executing in a critical section. Thread 1, the high-priority
+thread, begins waiting for a shared resource from thread 2. A third thread
+has medium priority. The third thread receives all the processor time,
+because the high-priority thread (thread 1) is busy waiting for shared
+resources from the low-priority thread (thread 2). Thread 2 won't leave the
+critical section, because it isn't the highest priority thread and won't be
+scheduled.
+<P>
+The Windows NT scheduler solves this problem by randomly boosting the
+priority of threads that are ready to run (in this case the low priority
+lock-holders). The low priority threads run long enough to let go of their
+lock (exit the critical section), and the high- priority thread gets the
+lock back. If the low-priority thread doesn't get enough CPU time to free
+its lock the first time, it will get another chance on the next scheduling
+round.
+<P>
+Priority inversion is handled differently in Windows 95. If a high priority
+thread is dependent on a low priority thread which will not be allowed to
+run because a medium priority thread is getting all of the CPU time, the
+system recognizes that the high priority thread is dependent on the low
+priority thread and will boost the low priority thread's priority up to the
+priority of the high priority thread. This will allow the formerly low
+priority thread to run and unblock the high priority thread that was
+waiting on it.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Each Process has a base priority. Each thread has a base priority that is a
+function of its process base priority. A thread's base priority is settable
+to:
+
+<UL><LI>1 or 2 points above the process base
+<LI>equal to the process base
+<LI>1 or 2 points below the process base
+<P>
+</UL>Priority setting is exposed through the Win32 API. In addition to a base
+priority, all threads have a dynamic priority. The dynamic priority is
+never less than the base priority. The system raises and lowers the dynamic
+priority of a thread as needed.
+<P>
+All scheduling is done strictly by priority. The scheduler chooses the
+highest priority thread which is ready to run. On a multi-processor (MP)
+system, the highest N runnable threads run (where N is the number of
+processors). The thread priority used to make these decisions is the
+dynamic priority of the thread.
+<P>
+When a thread is scheduled, it is given a quantum of time in which to run.
+The quantum is in units of clock ticks. The system currently uses 2 units
+of quantum (10ms on r4000 and 15ms on x86).
+<P>
+When a thread is caught running during the clock interrupt, its quantum is
+decremented by one. If the quantum goes to zero and the thread's dynamic
+priority is not at the base priority, the thread's dynamic priority is
+decremented by one and the thread's quantum is replenished. If a priority
+change occurs, then the scheduler locates the highest priority thread which
+is ready to run. Otherwise, the thread is placed at the end of the run
+queue for it's priority allowing threads of equal priority to be "round
+robin" scheduled. The above is a description of what is usually called
+priority decay, or quantum and priority decay.
+<P>
+When a thread voluntarily waits (an an event, for I/O, etc), the system
+will usually raise the thread's dynamic priority when it resumes.
+Internally, each wait type has an associated priority boost. For example, a
+wait associated with disk I/O has a one point dynamic boost. A wait
+associated with a keyboard I/O has a 5 point dynamic boost. In most cases,
+this boost will raise the priority of the thread such that it can be
+scheduled very soon afterwards, if not immediately.
+<P>
+There are other circumstances under which priority will be raised. For
+example, whenever a window receives input (timer messages, mouse move
+messages, etc), an appropriate boost is given to all threads within the
+process that owns the window. This is the boost that allows a thread to
+reshape the mouse pointer when the mouse moves over a window.
+<P>
+By default, the foreground application has a base process priority that is
+one point higher than the background application. This allows the
+foreground process to be even more responsive. This can be changed by
+bringing up the System applet, selecting the Tasking button, and choosing a
+different option.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 3.50<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: BseProcThrd<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

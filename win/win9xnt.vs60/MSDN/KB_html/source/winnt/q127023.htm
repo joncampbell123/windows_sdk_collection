@@ -1,0 +1,336 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Raw SMB Requests Across Router Results in Session Termination </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q127023">
+<META NAME="KBModify" CONTENT="1997/03/18">
+<META NAME="KBCreate" CONTENT="1995/03/08">
+<META NAME="Keywords" CONTENT="kbnetwork ntbackup ntgeneral">
+<META NAME="KBArea" CONTENT="Support; KB; winnt, crossnet, iis">
+<META NAME="Description" CONTENT="  Raw SMB requests initiated by network activities (such as backing up a server), may result in an abnormal session termination when the SMB request is sent across a router. In the case of a network backup, the backup would be aborted and the followi...">
+<META NAME="Product" CONTENT="Windows NT">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QAGI,QBFY,QBJZ,QBXS,QBFN,QAY2,QAVZ,QAEV,QAL0,QAU3,QAMR,QAKD,QAI4,QAGB V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Raw SMB Requests Across Router Results in Session Termination</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q127023</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows NT Workstation version 3.5
+<LI>Microsoft Windows NT Server version 3.5
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Raw SMB requests initiated by network activities (such as backing up a
+server), may result in an abnormal session termination when the SMB request
+is sent across a router. In the case of a network backup, the backup would
+be aborted and the following error would be logged:
+<P>
+<PRE>   WARNING: "\BACKUP\HRS014C$.DAT" is a corrupt file.
+   This file cannot be verified.
+   The network disk drive has stopped responding. Backup set aborted.
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+The abnormal session termination occurs when a packet exceeding the Maximum
+MTU size is sent to the router port.
+<P>
+<PRE> When a router receives a packet that exceeds the Maximum MTU size on a
+</PRE>port, it is the routers responsibility to either:
+
+<UL><LI>Notify the sender with an ICMP Destination Unreachable message with the
+   Code field containing "Fragmentation needed and DF set"
+<P>
+   -or-
+
+<LI>Fragment the packet and forward the fragments to the appropriate
+   destination address. This is only possible if the "Data is not
+   Fragmentable" bit is not set in the packet.
+<P>
+</UL>The following traces show a Read Block Raw request that results in abnormal
+session termination because the router is not notifying the sender with an
+ICMP Destination Unreachable message.
+<P>
+<P><h3>Abnormal Termination Request From The Clients Side Of The Router</h3>
+ 
+<P>
+After the first Read Block Raw, the server never responds with the data, so
+the client's timer pops after 70 seconds and it requests that the
+connection be closed by setting the FIN bit in the IP packet.
+<P>
+<PRE>   Time  Src    Dst    Protocol Description
+   ========================================
+   0.012 COLA11 HRS014 SMB C NT create &amp; X, File = \BACKUP\HRS014C$.DAT
+   0.004 HRS014 COLA11 SMB R NT create &amp; X, FID = 0x2002
+   0.006 COLA11 HRS014 SMB C transact2 GetFsInfo
+   0.002 HRS014 COLA11 SMB R transact2
+   0.004 COLA11 HRS014 SMB C transact2 GetFileInfo, FID = 0x2002
+   0.003 HRS014 COLA11 SMB R transact2
+   0.003 COLA11 HRS014 SMB C transact2 GetFileInfo, FID = 0x2002
+   0.004 HRS014 COLA11 SMB R transact2
+   0.009 COLA11 HRS014 SMB C NT transact - Query Security Description
+   0.004 HRS014 COLA11 SMB R NT transact
+   0.011 COLA11 HRS014 SMB C read block raw, FID = 0x2002, Read 0x7000 at
+   0x0
+   0.252 COLA11 HRS014 SMB C read block raw, FID = 0x2002, Read 0x7000 at
+   0x0
+   0.003 HRS014 COLA11 TCP .A....
+   71.12 COLA11 HRS014 TCP .A...F
+   0.002 HRS014 COLA11 TCP ...R..
+
+</PRE><h3>Abnormal Termination Request From The Servers Side Of The Router</h3>
+ 
+<P>
+After the first Read Block Raw, the server responds with the data in a
+packet larger than the routers Maximum MTU size for that port. The router
+never responds with an ICMP Destination Unreachable message so the server
+never resends the data with an appropriate packet for that router port.
+After 70 seconds the client's timer pops and the client requests that the
+connection be closed by setting the FIN bit in the IP packet.
+<P>
+<PRE>   Time  Src    Dst    Protocol Description
+   ========================================
+   0.011 COLA11 HRS014 SMB C NT create &amp; X, File = \BACKUP\HRS014C$.DAT
+   0.007 HRS014 COLA11 SMB R NT create &amp; X, FID = 0x80c
+   0.004 COLA11 HRS014 SMB C transact2 GetFsInfo
+   0.003 HRS014 COLA11 SMB R transact2 GetFsInfo
+   0.004 COLA11 HRS014 SMB C transact2 GetFileInfo, FID = 0x80c
+   0.003 HRS014 COLA11 SMB R transact2 GetFileInfo
+   0.005 COLA11 HRS014 SMB C transact2 GetFileInfo, FID = 0x80c
+   0.003 HRS014 COLA11 SMB R transact2 GetFileInfo
+   0.031 COLA11 HRS014 SMB C NT transact - Query Security Description
+   0.003 HRS014 COLA11 SMB R NT transact - Query Security Description
+   0.017 COLA11 HRS014 SMB C read block raw, FID = 0x80c, Read 0x7000 at
+   0x0
+   0.078 HRS014 COLA11 NBT SS: Session Message, Len: 28672
+   0.281 COLA11 HRS014 SMB C read block raw, FID = 0x80c, Read 0x7000 at
+   0x0
+   0.001 HRS014 COLA11 TCP .A....
+   0.142 HRS014 COLA11 NBT SS: Session Message, Len: 28672
+   1.002 HRS014 COLA11 NBT SS: Session Message, Len: 28672
+   2.002 HRS014 COLA11 NBT SS: Session Message, Len: 28672
+   4.006 HRS014 COLA11 NBT SS: Session Message, Len: 28672
+   8.010 HRS014 COLA11 NBT SS: Session Message, Len: 28672
+   58.61 COLA11 HRS014 TCP .A...F
+   0.001 HRS014 COLA11 TCP ...R..
+
+</PRE><h2>WORKAROUND</h2>
+ 
+<P>
+This issue occurs on Token Ring ports in Cisco 7000 series routers with
+software version 9. The Maximum MTU size on a Cisco 7000 series Token Ring
+port is 4,464 (well below the Maximum packet size of 17K on a 16 MB Token
+Ring network). You can correct this problem on the router by reducing the
+Maximum MTU size to 4000 on the Cisco 7000 series router (software version
+9). At a Maximum MTU size of 4000, the router sends the ICMP Destination
+Unreachable messages to the sender, resolving the problem.
+<P>
+The following workarounds for the router problem impact network
+performance:
+<P>
+WARNING: Using Registry Editor incorrectly can cause serious, system-wide
+problems that may require you to reinstall Windows NT to correct them.
+Microsoft cannot guarantee that any problems resulting from the use of
+Registry Editor can be solved. Use this tool at your own risk.
+
+<UL><LI>Enable detection of "black hole" routers (routers that don't send ICMP
+   Destination Unreachable messages) on the server:
+<P>
+   1. Run Registry Editor (REGEDT32.EXE).
+<P>
+   2. From the HKEY_LOCAL_MACHINE subtree, go to the following key:
+<P>
+<PRE>         \SYSTEM\CurrentControlSet\Services\Tcpip\Parameters
+
+   3. From the Edit menu choose Add Value.
+
+   4. Add the following:
+
+      Value Name:   EnablePMTUBHDetect
+      Data Type:    REG_DWORD
+      Data:         1
+      Radix:        Hex
+
+   5. Quit Registry Editor.
+
+   6. Shutdown and restart Windows NT.
+
+   NOTE: This workaround will reduce network performance because it
+   increase the number of retransmissions performed for a given segment.
+
+</PRE><LI>Disable MTU Detection on the server:
+<P>
+   1. Run Registry Editor (REGEDT32.EXE).
+<P>
+   2. From the HKEY_LOCAL_MACHINE subtree, go to the following key:
+<P>
+<PRE>         \SYSTEM\CurrentControlSet\Services\Tcpip\Parameters
+
+   3. From the Edit menu choose Add Value.
+
+   4. Add the following:
+
+      Value Name:   EnablePMTUDiscovery
+      Data Type:    REG_DWORD
+      Data:         0
+      Radix:        Hex
+
+   5. Quit Registry Editor.
+
+   6. Shutdown and restart Windows NT.
+
+   NOTE: This workaround will reduce network performance because the server
+   can no longer attempt to eliminate fragmentation at the router.
+
+</PRE><LI>Reduce TcpWindowSize on the clients to 4K (the size of the standard
+   (TCP/IP header [40 bytes] in the Registry:
+<P>
+   1. Run Registry Editor (REGEDT32.EXE).
+<P>
+   2. From the HKEY_LOCAL_MACHINE subtree, go to the following key:
+<P>
+<PRE>         \SYSTEM\CurrentControlSet\Services\Tcpip\Parameters
+
+   3. From the Edit menu choose Add Value.
+
+   4. Add the following:
+
+      Value Name:   TCPWindowSize
+      Data Type:    REG_DWORD
+      Data:         4056
+      Radix:        Decimal
+
+   5. Quit Registry Editor.
+
+   6. Shutdown and restart Windows NT.
+
+   NOTE: This workaround will reduce network performance because it affects
+   all network activity to the client.
+
+</PRE><LI>Disable Raw SMBs on the server in the Registry:
+<P>
+   1. Run Registry Editor (REGEDT32.EXE).
+<P>
+   2. From the HKEY_LOCAL_MACHINE subtree, go to the following key:
+<P>
+<PRE>         \SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+
+   3. From the Edit menu choose Add Value.
+
+   4. Add the following:
+
+      Value Name:   EnableRaw
+      Data Type:    REG_DWORD
+      Data:         0
+      Radix:        Hex
+
+   5. Quit Registry Editor.
+
+   6. Shutdown and restart Windows NT.
+
+   NOTE: This workaround will reduce network performance on the local
+   network because the performance increase offered by Raw I\O requests
+   will no longer be available.
+
+</PRE></UL>The products included here are manufactured by vendors independent of
+Microsoft; we make no warranty, implied or otherwise, regarding these
+products' performance or reliability.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: prodnt 3.1 backup arcada megabyte<BR>
+Keywords            : kbnetwork ntbackup ntgeneral<BR>
+Version             : 3.5<BR>
+Platform            : WinNT<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

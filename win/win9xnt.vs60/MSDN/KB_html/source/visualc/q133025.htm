@@ -1,0 +1,327 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Store MFC Printer Information in a Document </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q133025">
+<META NAME="KBModify" CONTENT="1997/10/10">
+<META NAME="KBCreate" CONTENT="1995/07/23">
+<META NAME="Keywords" CONTENT="MfcPrinting kbcode kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  This article describes how to store printer information in a CDocument derived class. The printer information can then be used to configure a separate printer for each document derived from this class. This can be useful if there are multiple types...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAOX,QACT,QAYY,QAH4,QAY2,QA9N,QAW6,QASB,QAPN,QAPF,QAYV,QAJH,QABO,QBXS,QAEV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Store MFC Printer Information in a Document</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q133025</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50 1.51 1.52 | 1.00 2.00 2.10 2.20 4.00 4.10
+<PRE>WINDOWS             | WINDOWS NT
+</PRE>kbprg kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P>
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.0, 1.5, 1.51, 1.52
+    - Microsoft Visual C++ 32-bit Edition versions 1.0, 2.0, 2.1,
+      2.2, 4.0, and 4.1
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article describes how to store printer information in a CDocument
+derived class. The printer information can then be used to configure a
+separate printer for each document derived from this class. This can be
+useful if there are multiple types of documents (for example, graphs,
+bitmaps, text, and overheads) that need to be printed on different
+printers. Storing the printer information in the document ensures that the
+proper printer is used for each document type.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+There are two things that need to be considered when storing the printer
+information in the document:
+
+<UL><LI>When copying the information between the application and the
+   document, you must ensure that separate copies of this information
+   are maintained because both the application object and the document
+   free and reallocate memory for the information structures frequently.
+
+<LI>You must trap all changes to the application printer information, so
+   that consistency is maintained between it and the current document
+   object.
+<P>
+</UL>In the following sections, sample code is given for each of these
+considerations.
+<P>
+<P><h3>Copying Information</h3>
+ 
+<P>
+Below is an example of code that could be added to the CWinApp-derived
+class and CDocument-derived class to safely copy information between the
+objects. It is assumed that CMyApp is a class derived from CWinApp, CMyDoc
+is derived from CDocument, and CMyView is derived from CView. You need to
+add the function prototype for SetPrinterDeviceDefaults to the definition
+of CMyApp in the header file.
+<P>
+<PRE>   // Note: for 32-bit compilers, replace occurrences of _fmemcpy()
+   //       with memcpy() (or add windowsx.h to your include files)
+
+   void CMyApp::SetPrinterDeviceDefaults(HGLOBAL hDevNames,
+                                         HGLOBAL hDevMode)
+   {
+   // Lock the handles to the structures to get pointers
+      LPDEVNAMES pDevNames = (LPDEVNAMES)::GlobalLock(hDevNames);
+      LPDEVMODE  pDevMode  = (LPDEVMODE)::GlobalLock(hDevMode);
+
+   // Free the old printer information if it exists
+      if (m_hDevNames != NULL)
+         ::GlobalFree(m_hDevNames);
+      if (m_hDevMode != NULL)
+         ::GlobalFree(m_hDevMode);
+
+   // Allocate space for the new printer info structures
+      m_hDevNames = ::GlobalAlloc(GPTR, ::GlobalSize(hDevNames));
+      m_hDevMode = ::GlobalAlloc(GPTR, ::GlobalSize(hDevMode));
+
+   // Lock the new handles
+      LPDEVNAMES m_pDevNames = (LPDEVNAMES)::GlobalLock(m_hDevNames);
+      LPDEVMODE  m_pDevMode  = (LPDEVMODE)::GlobalLock(m_hDevMode);
+
+   // Copy the printer information into the document
+      _fmemcpy(m_pDevNames, pDevNames,
+               (size_t)::GlobalSize(hDevNames));
+      _fmemcpy(m_pDevMode, pDevMode,
+               (size_t)::GlobalSize(hDevMode));
+
+   // Unlock the handles
+      ::GlobalUnlock(hDevNames);
+      ::GlobalUnlock(hDevMode);
+
+      ::GlobalUnlock(m_hDevNames);
+      ::GlobalUnlock(m_hDevMode);
+   }
+
+</PRE>The function prototype for CMyDoc::SetPrinterDeviceDefaults() should be
+added to the class definition of CMyDoc in the header file. The following
+declarations should also be added to CMyDoc:
+<P>
+<PRE>   HGLOBAL m_hDevMode;
+   HGLOBAL m_hDevNames;
+
+   void CMyDoc::SetPrinterDeviceDefaults()
+   {
+   // Allocate the structure to store the returned printer info
+      PRINTDLG printDlg;
+
+   // Get the printer information
+      AfxGetApp()-&gt;GetPrinterDeviceDefaults(&amp;printDlg);
+
+   // Lock the handles to the structures to get pointers
+      LPDEVNAMES pDevNames =
+       (LPDEVNAMES)::GlobalLock(printDlg.hDevNames);
+      LPDEVMODE  pDevMode  = (LPDEVMODE)::GlobalLock(printDlg.hDevMode);
+
+   // Free the old printer information if it exists
+      if (m_hDevNames != NULL)
+        ::GlobalFree(m_hDevNames);
+      if (m_hDevMode != NULL)
+        ::GlobalFree(m_hDevMode);
+
+   // Allocate space for the new printer info structures
+      m_hDevNames = ::GlobalAlloc(GPTR,
+       ::GlobalSize(printDlg.hDevNames));
+      m_hDevMode = ::GlobalAlloc(GPTR, ::GlobalSize(printDlg.hDevMode));
+
+   // Lock the new handles
+      LPDEVNAMES m_pDevNames = (LPDEVNAMES)::GlobalLock(m_hDevNames);
+      LPDEVMODE  m_pDevMode  = (LPDEVMODE)::GlobalLock(m_hDevMode);
+
+   // Copy the printer information into the document
+      _fmemcpy(m_pDevNames, pDevNames,
+               (size_t)::GlobalSize(printDlg.hDevNames));
+      _fmemcpy(m_pDevMode, pDevMode,
+               (size_t)::GlobalSize(printDlg.hDevMode));
+
+   // Unlock the handles
+      ::GlobalUnlock(printDlg.hDevNames);
+      ::GlobalUnlock(printDlg.hDevMode);
+
+      ::GlobalUnlock(m_hDevNames);
+      ::GlobalUnlock(m_hDevMode);
+   }
+
+</PRE>These routines are similar. They use the same code to allocate a new block
+of memory and copy the information from one set of structures to the other.
+This ensures that no matter what the application object or document object
+does to its respective printer information, the other object is not
+affected.
+<P>
+<P><h3>Trapping All Changes</h3>
+ 
+<P>
+Below is a code example that initializes the document's information and
+traps OnFilePrint and OnFilePrintSetup. OnFilePrintPreview is not included
+here because its implementation is virtually identical to OnFilePrint.
+<P>
+Here is the modified constructor for the CDocument derived class that
+initializes the new document with the application's current printer
+information:
+<P>
+<PRE>   CMyDoc::CMyDoc()
+   {
+   // Initialize the handles to the printer information
+      m_hDevNames = NULL;
+      m_hDevMode = NULL;
+
+   // Initialize printer settings
+      SetPrinterDeviceDefaults();
+   }
+
+</PRE>The next two member functions, one from the view and the other from the
+application, guarantee that the application uses the document's printer
+information and that the document's information is updated if the user
+changes it.
+<P>
+CMyView::OnFilePrint is a message handler for the ID_FILE_PRINT message,
+and CMyApp::OnFilePrintSetup is a message handler for the
+ID_FILE_PRINT_SETUP message. The message handlers can be added using
+ClassWizard.
+<P>
+<PRE>   void CMyView::OnFilePrint()
+   {
+      CMyDoc* pDoc = GetDocument();
+
+   // Set the application's printer information
+      ((CMyApp *)AfxGetApp())-&gt;SetPrinterDeviceDefaults(
+                                     pDoc-&gt;m_hDevNames,
+                                     pDoc-&gt;m_hDevMode);
+
+      CView::OnFilePrint();
+
+   // Set the new printer information
+      pDoc-&gt;SetPrinterDeviceDefaults();
+   }
+
+   void CMyApp::OnFilePrintSetup()
+   {
+      CFrameWnd* pFrame = ((CFrameWnd *)m_pMainWnd)-&gt;GetActiveFrame();
+
+      CMyDoc* pDoc = (CMyDoc *)pFrame-&gt;GetActiveDocument();
+
+   // Set the application's printer information
+      SetPrinterDeviceDefaults(pDoc-&gt;m_hDevNames, pDoc-&gt;m_hDevMode);
+
+      CWinApp::OnFilePrintSetup();
+
+   // Set the new printer information
+      pDoc-&gt;SetPrinterDeviceDefaults();
+   }
+
+</PRE>Once these code changes are in place, each object derived from the modified
+document class stores its own printer information. Because this could lead
+to confusion for users who are used to the standard global printer
+configuration model, Microsoft recommends that you include the currently
+selected printer name as part of the document title.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.00 2.00 2.10 2.20 2.50 2.51 2.52<BR>
+3.00 3.10 4.00 4.10<BR>
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: MfcPrinting<BR>
+Keywords          : MfcPrinting kbcode kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.00 1.50 1.51 1.52 | 1.00 2.00<BR>
+Platform          : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

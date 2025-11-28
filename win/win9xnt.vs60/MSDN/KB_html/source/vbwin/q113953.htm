@@ -1,0 +1,548 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Use the Three Levels of Database Locking in VB 3.0 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q113953">
+<META NAME="KBModify" CONTENT="1995/07/19">
+<META NAME="KBCreate" CONTENT="1994/04/20">
+<META NAME="Keywords" CONTENT="kbprg kbcode kbnetwork">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  The Visual Basic 3.0  Professional Features Book 2  manual provides information on the three different locking methods that you can use to control multi-user data access in your Visual Basic applications. This information applies primarily to the w...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAB4,QA5V,QAAP,QABT,QAZV,QAPN,QBS0,QAH4,QAGU,QBXS,QAXB,QAJQ,QBWS,QAKP,QAJ6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Use the Three Levels of Database Locking in VB 3.0</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 19, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q113953</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+<P>
+- Microsoft Visual Basic programming system for Windows, version 3.0
+ 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The Visual Basic 3.0 "Professional Features Book 2" manual provides
+information on the three different locking methods that you can use to
+control multi-user data access in your Visual Basic applications. This
+information applies primarily to the way the Access engine handles locking
+for Access and ISAM databases. Notes on ODBC databases are included. This
+article contains code samples that demonstrate each method. Notes on using
+the Data Control in a multi-user situation are also included.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Each of the samples below requires the following constant declarations in
+the General Declarations section of Form1:
+<P>
+Const MB_RETRYCANCEL = 5
+Const MB_YESNO = 4
+Const IDCANCEL = 2
+Const IDNO = 7
+Const DB_DENYWRITE = &amp;H1
+<PRE>Const DB_DENYREAD   = &amp;H2
+</PRE>Const ERR_RESERVED = 3000
+Const ERR_CANT_OPEN_DB = 3051
+Const ERR_CANT_LOCK_TABLE = 3262
+Const ERR_DATA_CHANGED = 3197
+Const ERR_RECORD_LOCKED = 3260
+Const RERR_ExclusiveDBConflict = "-8194"
+<P>
+The sample programs check for possible multi-user locking conflicts at the
+appropriate places in the code, and inform the user with a message box if a
+conflict is detected. In most cases the code allows the user to retry the
+operation or cancel. Note that the error handling in the samples is only
+for the purposes of trapping locking errors, and you will need much more
+extensive error handling code in an actual application. A short explanation
+follows each sample.
+<P>
+<P><h3>Step-by-Step Example for Level 1: Database Locking</h3>
+ 
+<P>
+This first example is the most restrictive. It opens the database object
+for exclusive use, which prevents all other users from accessing that
+database while it is open.
+
+<OL><P><LI>Start a new project in Visual Basic. Form1 is created by default.
+
+<P><LI>Add a command button (Command1) and a list box (List1) to Form1.
+
+<P><LI>Add the following code to the Command1 click event procedure:
+<P>
+<PRE>Sub Command1_Click ()
+  Dim db As database
+  Dim ds As dynaset
+  Dim ret As Integer
+  Dim fSuccess As Integer
+
+  ' Attempt to open database exclusively, checking for locking conflicts.
+  fSuccess = False
+      ' Disable any previous error handler
+      ' and instead, just resume next
+  On Error Resume Next
+  While Not fSuccess
+    Err = 0
+    Set db = OpenDatabase("BIBLIO.MDB", True)
+    If Err Then
+      If Err = ERR_CANT_OPEN_DB Then
+        ret = MsgBox("Database in use by another user.", MB_RETRYCANCEL)
+        If ret = IDCANCEL Then Exit Sub
+      Else
+        MsgBox "Unexpected error" &amp; Str$(Err) &amp; " opening database."
+        Exit Sub
+      End If
+    Else
+      fSuccess = True
+    End If
+  Wend
+  On Error GoTo 0 ' disable error trapping OR place On Error statements
+                  ' pointing to a new error handler here
+  ' Once the database is open we know we are accessing the data exclusively
+  Set ds = db.CreateDynaset("Authors")
+  Do Until ds.EOF = True
+    If ds("Author") &gt; " " Then list1.AddItem ds("Author")
+    ds.MoveNext
+  Loop
+
+  ds.Close
+  db.Close
+End Sub
+
+</PRE><P><LI>From the Run menu, choose Start or press the F5 key to run the
+   program. Click the Command1 button. If another user tries to open the
+   BIBLIO.MDB database at the same time you are running the code listed
+   above, they would get an error message.
+<P>
+</OL>Note that if you are using the MS Access 2.0 Compatibility Layer, you will
+receive a reserved error if you can not open the database exclusively. In
+this case, the VB run-time error is err 3000, with the reserved error value
+-8192. To trap this error in the code above, you can modify the line:
+<P>
+<PRE>   If Err = ERR_CANT_OPEN_DB Then
+
+</PRE></OL>to read:
+<P>
+<PRE>   If Err = ERR_RESERVED And InStr(Error$, RERR_ExclusiveDBConflict) Then
+
+
+</PRE><h3>Step-by-Step Example for Level 2: Table or Dynaset Locking</h3>
+ 
+<P>
+This second example, Dynaset or Table Locking, is the most often used. It
+is less restrictive then database locking, since it allows other users to
+access other tables in the database. This method sets the DB_DENYWRITE and
+DB_DENYREAD options when opening a Dynaset object or table object. By using
+this method, you have the flexibility of locking only the records or tables
+you are working with at the time, so other records or tables can be used by
+others who are using the same database.
+<P>
+There are a number of variations at this locking level that you can access
+by changing the option settings.
+
+<OL><P><LI>Start a new project in Visual Basic. Form1 is created by default.
+
+<P><LI>Add a command button (Command1) and a list box (List1) to Form1.
+
+<P><LI>Add the following code to the Command1 click event procedure:
+<P>
+<PRE>Sub Command1_Click ()
+  Dim db As database
+  Dim ds As dynaset
+  Dim ret As Integer, fSuccess As Integer
+
+  Set db = OpenDatabase("BIBLIO.MDB")
+
+  ' Attempt to open the dynaset, checking for locking conflicts.
+  fSuccess = False
+      ' Disable any previous error handler
+      ' and instead, just resume next
+  On Error Resume Next
+  While Not fSuccess
+    Err = 0
+    Set ds = db.CreateDynaset("Authors", DB_DENYWRITE Or DB_DENYREAD)
+    If Err Then
+      If Err = ERR_CANT_LOCK_TABLE Then
+        ret = MsgBox("Table(s) in use by another user.", MB_RETRYCANCEL)
+        If ret = IDCANCEL Then Exit Sub
+      Else
+        MsgBox "Unexpected error" &amp; Str$(Err) &amp; " opening table."
+        Exit Sub
+      End If
+    Else
+      fSuccess = True
+    End If
+  Wend
+  On Error GoTo 0 ' disable error trapping OR place On Error statements
+                  ' pointing to a new error handler here
+  ' Once the dynaset is open we know we are the only one accessing the data
+  Do Until ds.EOF = True
+    list1.AddItem ds(1)
+    ds.MoveNext
+  Loop
+
+  ds.Close
+  db.Close
+End Sub
+
+</PRE><P><LI>From the Run menu, choose Start or press the F5 key to run the
+   program. Click the Command1 button. If another user tries to update
+   the Authors table when you're running the AddItem loop, they would
+   get an error message.
+<P>
+</OL>Table level locking can be performed using the OpenTable, CreateDynaset, or
+CreateSnapShot methods by passing the appropriate values as the second
+parameter to one of these functions. This method is not normally used for
+Snapshots, as they are read-only, and changes to the data will not normally
+affect a Snapshot (with the exception of memo fields - see the notes
+section at the end of this article for more information).
+<P>
+<P><h3>Step-by-Step Example for Level 3: Page Locking</h3>
+ 
+<P>
+This third example shows the Page Locking that is automatically built in to
+the database engine. That is, if you don't provide Database Locking or
+Dynaset or Table Locking, Page Locking is enforced automatically.
+<P>
+There are two different types of Page Locking when the Edit mode is
+invoked, Optimistic or Pessimistic. Pessimistic Locking is the default. In
+pessimistic locking, Visual Basic locks the page containing a record as
+soon as you use the Edit method, and it unlocks the page when you use
+Update or Rollback. Use Optimistic Locking when you want to lock a page
+only at the time you Update the data. You do this by setting the record's
+LockEdits property.
+<P>
+Page locking is enforced on a per page basis. A  page  is based on the
+number of records that can fit within one 2048 byte (or 2K) block of
+memory.
+<P>
+Since entire pages are locked, and a given page may contain more then one
+record, users need not be on the exact same record to cause a locking
+conflict. For example, if user A locks a record at the very beginning of a
+page, and user B attempts to do an Edit of another record that is also on
+that page, user B will receive a locking error.
+<P>
+The same locking scheme applies to the index pages. When the Seek method is
+used or indexes are being rebuilt, the index pages are locked on a 2K page
+basis. This can also cause locking errors, which the programmer should
+handle appropriately.
+
+<OL><P><LI>Start a new project in Visual Basic. Form1 is created by default.
+
+<P><LI>Add a command button (Command1) and a list box (List1) to Form1.
+
+<P><LI>Add the following code to the Command1 click event procedure:
+<P>
+<PRE>Sub Command1_Click ()
+  Dim db As database
+  Dim ds As dynaset
+  Dim ret As Integer, fSuccess As Integer
+
+  Set db = OpenDatabase("BIBLIO.MDB")
+  Set ds = db.CreateDynaset("Authors")
+
+  Do Until ds.EOF = True
+
+  ' Attempt to access records, checking for possible page locking conflicts
+    fSuccess = False
+      ' Disable any previous error handler
+      ' and instead, just resume next
+    On Error Resume Next
+    While Not fSuccess
+      Err = 0
+      ds.Edit
+      If Err Then
+        If Err = ERR_DATA_CHANGED Then
+          ret = MsgBox("Record has been updated. Overwrite?",
+</PRE></OL>MB_RETRYCANCEL)
+<PRE>          If ret = IDNO Then fSuccess = True
+        ElseIf Err = ERR_RECORD_LOCKED Then
+          ret = MsgBox("Record in use by another user.", MB_RETRYCANCEL)
+          If ret = IDCANCEL Then Exit Sub
+        Else
+          MsgBox "Unexpected error" &amp; Str$(Err) &amp; " editing record."
+          Exit Sub
+        End If
+      Else
+        fSuccess = True
+      End If
+    Wend
+  On Error GoTo 0    ' disable error trapping OR place On Error statements
+                     ' pointing to a new error handler here
+
+  ds("Author") = ds("Author")
+
+   ' With Optimistic locking you would check locking on Update vs. Edit
+  ds.Update
+  ds.MoveNext
+</PRE>Loop
+<P>
+<PRE>  ds.Close
+  db.Close
+End Sub
+
+</PRE><P><LI>From the Run menu, choose Start or press the F5 key to run the
+   program. Click the Command1 button. The records that are included
+   in the results set that totals up to a 2K page will be locked from
+   the other users. They will receive an error message if they try to
+   open the any record in your results set.
+<P>
+</OL>For Optimistic locking, you would want to check for locking errors on the
+Update method, rather then the Edit methods.
+<P>
+<P><h3>Multi-user Access with the Data Control</h3>
+ 
+<P>
+Using the data control is essential the same as working with the Database
+and Dynaset objects. The Data Control can use any of the three locking
+levels described above, as follows:
+
+<OL><P><LI>Database locking: Set the Exclusive property to true.
+
+<P><LI>Table locking: Set the Options property to the desired value. These
+   values are the same as those passed as the second parameter to
+   CreateDynaset.
+
+<P><LI>Page locking: This is handled in exactly the same way as a Dynaset
+   object.
+<P>
+</OL>NOTE: If you set the DatabaseName and/or RecordSource properties of a
+Data Control at design time, the Data Control will automatically attempt to
+perform the equivalent of an OpenDatabase and CreateDynaset when the form
+containing the data control is first loaded.
+<P>
+If an error occurs when the Data Control attempts to automatically open the
+Database or Dynaset, the Data Control will fire its Error event and pass in
+the appropriate run-time error value. Since no Visual Basic code is
+executing at this time, you will need to handle any possible locking
+conflicts in the Error event rather then using On Error.
+<P>
+<P><h3>Error Handling</h3>
+ 
+<P>
+There are two main run-time errors to trap for with page level locking. The
+first is error 3260 "Couldn t Update; currently locked by user  x  on
+machine  y .", which indicates that another user has the page you want to
+modify locked.
+<P>
+The second, error 3197 "Data has changed; operation stopped." indicates
+that the underlying data in the database has been changed by another user
+since the last time you retrieved that page from the physical database.
+This indicates that someone has modified the record (or some field of the
+record if you are using a Dynaset or Snapshot) that you are attempting to
+modify.
+<P>
+For example, if user A creates a Dynaset on the table Authors, and pulls in
+the first page (2k) of records from the database. User B now creates an
+identical Dynaset, retrieving the same 2k of records. If User A now updates
+the first record in the Dynaset, user B will not immediately see this
+change, since User B has already retrieved the first page of records and
+will not do so again unless he or she refreshes (recreates) the Dynaset.
+<P>
+If user B now attempts to modify the first record of the Dynaset, he or she
+will receive the "Data has changed; operation stopped" error, warning them
+that they are about to overwrite new data which they have never retrieved
+from the database. If you re-execute the operation that caused the "Data
+has changed; operation stopped" after receiving the error once, the data
+will be overwritten without the error being generated a second time.
+<P>
+NOTE: Although the AddNew method does not modify existing records, the
+page where the new record is to be added is still locked when the Update
+statement is executed to prevent two users from trying to add data at the
+same location in the database. This means that you should perform the same
+checks for locking conflicts with AddNew that you use for the Edit method.
+<P>
+<P><h3>Notes on Snapshots</h3>
+ 
+<P>
+Error 3197 "Data has changed; operation stopped." can occur for Snapshots
+which have memo fields. Since memo fields are usually quite large, the
+Access engine does not pull the entire contents of a memo field into the
+SnapShot at the time it is created; instead, a reference to the memo field
+in the database is stored in the SnapShot.
+<P>
+If the data in the memo field is changed by another user between the time a
+Snapshot is first populated (meaning that you access a given record, using
+the Move or Find methods or visit all records, using the sn.MoveLast
+method) and the time that record is revisited or made the current record
+again, the database engine will signal that your data is out of date by
+invoking run- time error 3197.
+<P>
+<P><h3>NOTE ON ODBC</h3>
+ 
+<P>
+When using external data engines such as Microsoft SQL Server, Sybase, or
+Oracle through ODBC, the locking methodology is the responsibility of the
+remote database engine. Visual Basic acts as a front-end to these database
+servers and does not control the data sharing aspects of the back-end
+database engines. In some cases, you can control how the remote server
+locks data by using backend-specific SQL statements or administrative
+options.
+<P>
+Some implications of the Access engine deferring to back-end locking
+schemes:
+
+<OL><P><LI>The setting of LockEdits has no effect on ODBC databases.
+
+<P><LI>The Exclusive parameter of the OpenDatabase method is ignored.
+
+<P><LI>The technique shown in the section "Step-by-Step Example for Level 2:
+   Table or Dynaset Locking", will fail on ODBC databases, with the error
+   "ODBC--Can't lock all records."
+
+<P><LI>It is not recommended that the programmer attempt to lock the entire
+   table or the entire database, using backend native syntax, as this can
+   be detrimental to throughput in a high-volume transaction environment.
+
+<P><LI>Incorporating sophisticated error handling to react correctly when
+   locking contention occurs is the only reliable way to allow the backend
+   database engine to operate its native locking scheme for maximum
+   throughput.
+<P>
+</OL><h3>Example Showing How to Call FreeLocks After Locking Error Occurs</h3>
+ 
+<P>
+In certain circumstances, particularly in an intense multi-user contention
+environment, the local access engine may get out of synchronization with
+the host (the VB program). When that occurs, the FreeLocks statement
+provides a way to allow the engine to 'catch up' and clear any leftover
+locks. The FreeLocks method tells the engine to perform its default idle
+processing, including freeing locks that are no longer in use but haven't
+timed out yet.
+<P>
+Below is an example showing how to call the FreeLocks method after a
+locking error occurs in a multi-user system. The following code is a sample
+of an error trapping routine that checks to see if a record is locked in a
+multi-user system:
+<P>
+<PRE>Sub EditRecord(ds as dynaset)
+
+   On Error Goto ErrLock
+   ds.lockedits = True  ' Return lock errors on Edit call, not the update.
+
+</PRE></OL>Retry:
+<PRE>   ds.Edit
+   ds.fields(0).value = "Something"
+   ds.fields(0).value = "Else"
+   ds.update
+   exit sub
+
+</PRE>ErrLock:
+<PRE>   ds.bookmark = ds.bookmark  ' Cancel the update.
+   FreeLocks
+   tm = timer
+   ' Wait 3 seconds:
+   while timer - tm &lt; 3
+      doevents
+   wend
+   resume Retry
+
+End Sub
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+The information in this article comes from the following sections in the
+"Professional Features Book 2" manual."
+
+<UL><LI>Locking Data
+<LI>Locking Databases
+<LI>Locking Tables and Dynasets
+<LI>Locking Pages
+<P>
+</UL>See Chapter 3, on page 54 and pages 87 through 91 for more information in
+<PRE> these areas.
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 multiuser<BR>
+KBCategory: kbprg kbcode kbnetwork<BR>
+KBSubcategory: APrgDataOther APrgNet<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 19, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

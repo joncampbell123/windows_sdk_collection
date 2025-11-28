@@ -1,0 +1,212 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Excel 2.20: Using Floating Point Values in a Code Resource </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q50899 ">
+<META NAME="KBModify" CONTENT="1994/10/31">
+<META NAME="KBCreate" CONTENT="1989/11/15">
+<META NAME="Keywords" CONTENT="">
+<META NAME="KBArea" CONTENT="Support; KB; excel, convert, crossnet, odbc, winprint, setup">
+<META NAME="Description" CONTENT="...">
+<META NAME="Product" CONTENT="Excel">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QAUD,QBC9,QBC8,QANO,QAKD,QAHH,QACI,QBVP,QA9N,QAYL,QAIM,QAEF,QAC2,QALW V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Excel 2.20: Using Floating Point Values in a Code Resource</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 31, 1994</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q50899 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When creating a code resource to be called from Excel 2.20, steps
+should be taken to ensure correct manipulation of floating point
+values.
+<P>
+Many compilers, such as Think's Lightspeed C, treat typed floating
+point values as string constants. To correctly execute floating point
+manipulations, the following three steps must be taken:
+
+<OL><P><LI>Any typed floating point values must be cast as an 8-byte double
+   (for example, short double in Lightspeed C).
+<P>
+   For example, in Lightspeed C, to find the product of a floating
+   point value pointed to by "a" and the number 2.5, you could use the
+   following code segment:
+<P>
+<P><PRE>      *b = *a * (short double) 2.5;
+</PRE>
+<P><LI>The A4 address must be adjusted to ensure the values are returned
+   from the correct memory location.
+<P>
+   Because the code is compiled as a resource rather than a program
+   segment, values are manipulated in Excel's memory addresses rather
+   than the code's own addresses. Because of this, the addresses for
+   the code resource must be adjusted to comply with Excel's
+   addresses.
+<P>
+   In Lightspeed C, this can be done using predefined macros from
+   SetUpA4.h, as follows:
+<P>
+   a. Insert the following as a declaration at the beginning of your
+<P><PRE>      code segment to include Lightspeed C's Setup macro library:
+</PRE><P>
+<PRE>         #include "SetUpA4.h"
+
+   b. As the first two lines of your executable code, insert the
+      following:
+
+         RememberA0();
+         SetUpA4();
+
+   c. As the last line of executable code before the return statement,
+      enter the following:
+
+         RestoreA4();
+
+   You can also do this without using existing macros by using the
+   following method:
+
+   a. Declare a long variable for temporarily storing A4:
+
+         Long A4Sav;
+
+   b. In the first two lines of executable code, swap addresses by
+      inserting the following:
+
+         asm {move.l  a4, A4Sav};
+         asm {move.l  a0, a4};
+
+   c. Restore the contents of A4 in the last line of executable code
+      before the return statement by entering the following:
+
+         asm {move.l  A4Sav, a4};
+
+</PRE><P><LI>The return value must be specified as its own variable.
+<P>
+</OL>In the case of floating point numbers, the return value must always be
+specified as its own variable within the code resource. You cannot
+return the variable assigned as a pointer to one of the passed
+addresses because Excel clears those addresses when the value is
+returned. This is done to free memory taken by the passed parameters.
+Thus, a code resource that passes three values and returns a pointer
+to a floating point value would have a minimum of four variables
+defined (one for each passed to the code resource, and a fourth for
+the value returned to Excel).
+<P>
+A sample code segment to multiply a passed value by 9 would be as
+follows:
+<P>
+<PRE>   pascal short double *main(a,b)
+         short double *a, *b;
+   {
+         long A4Sav;
+           asm {move.l  a4, A4Sav};
+           asm {move.l  a0, a4};
+           *b = *a * (short double) 3.141592654;
+           asm {move.l  A4Sav, a4};
+           return (b);
+   }
+
+</PRE></OL>Naming the resource "pi" in a file called "trig" would allow you to
+call the routine from Excel as follows:
+<P>
+<PRE>     | A
+   ----------------------------------
+   1 | =REGISTER("trig","pi","EBE")
+   2 | =CALL(A1,7.5,)
+   3 | =UNREGISTER(A1)
+   4 | =RETURN()
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbother<BR>
+KBSubcategory:
+<P>
+
+Additional reference words: 2.20<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 31, 1994</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

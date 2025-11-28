@@ -1,0 +1,354 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: No Signal is Recorded When Using MCI or waveInxxx APIs </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q159753">
+<META NAME="KBModify" CONTENT="1996/11/22">
+<META NAME="KBCreate" CONTENT="1996/11/20">
+<META NAME="Keywords" CONTENT="kbmm kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  There is no signal recorded using MCI (Media Control Interface) or waveInXXX APIs to record through the microphone.  CAUSE =====  There are three possible causes:  1. The microphone line is muted.  2. The volume of the microphone line is turned to ...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA5V,QBXT,QAIB,QAB5,QA7O,QAOE,QAMN,QAI4,QAYZ,QAEF,QACR,QABI,QAJX,QADR,QAK6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: No Signal is Recorded When Using MCI or waveInxxx APIs</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 22, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q159753</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   version 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+There is no signal recorded using MCI (Media Control Interface) or
+waveInXXX APIs to record through the microphone.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+There are three possible causes:
+
+<OL><P><LI>The microphone line is muted.
+
+<P><LI>The volume of the microphone line is turned to the minimum.
+
+<P><LI>The microphone line is not selected into the wave input destination.
+<P>
+</OL><h2>RESOLUTION</h2>
+ 
+<P>
+You need to make sure that none of the above conditions exist in your
+applications. The audio mixer API set provides a means by which each
+condition can be checked and set accordingly.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Two input lines are involved when recording from the microphone: the
+physical source line (microphone) and the logical source line (wave in).
+This recording architecture can be separated into two distinct components
+where the signals from the microphone source line feed into the wave in
+destination line. Multiple controls influence these lines.
+<P>
+The first condition is cleared through a mute control. The second condition
+through a volume control. To clear the third one, use a LIST control
+associated with the wave input line. The following Visual C++ sample code
+consists of three functions for clearing these conditions, respectively.
+Although this sample is written in Visual C++, you can move the in-line
+declarations up front and modify the Visual C++ style initialization to
+make it a C sample:
+<P>
+<PRE>void UnMute()
+</PRE></OL>{
+<PRE>   // Open the mixer device
+   HMIXER hmx;
+   mixerOpen(&amp;hmx, 0, 0, 0, 0);
+
+   // Get the line info for the wave in destination line
+   MIXERLINE mxl;
+  mxl.cbStruct = sizeof(mxl);
+  mxl.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_WAVEIN;
+  mixerGetLineInfo((HMIXEROBJ)hmx, &amp;mxl, MIXER_GETLINEINFOF_COMPONENTTYPE);
+
+   // Now find the microphone source line connected to this wave in
+   // destination
+   DWORD cConnections = mxl.cConnections;
+   for(DWORD j=0; j&lt;cConnections; j++){
+      mxl.dwSource = j;
+      mixerGetLineInfo((HMIXEROBJ)hmx, &amp;mxl, MIXER_GETLINEINFOF_SOURCE);
+      if (MIXERLINE_COMPONENTTYPE_SRC_MICROPHONE == mxl.dwComponentType)
+         break;
+   }
+   // Find a mute control, if any, of the microphone line
+   LPMIXERCONTROL pmxctrl = (LPMIXERCONTROL)malloc(sizeof MIXERCONTROL);
+   MIXERLINECONTROLS mxlctrl = {sizeof mxlctrl, mxl.dwLineID,
+      MIXERCONTROL_CONTROLTYPE_MUTE, 1, sizeof MIXERCONTROL, pmxctrl};
+   if(!mixerGetLineControls((HMIXEROBJ) hmx, &amp;mxlctrl,
+</PRE>MIXER_GETLINECONTROLSF_ONEBYTYPE)){
+<PRE>      // Found, so proceed
+      DWORD cChannels = mxl.cChannels;
+      if (MIXERCONTROL_CONTROLF_UNIFORM &amp; pmxctrl-&gt;fdwControl)
+         cChannels = 1;
+
+      LPMIXERCONTROLDETAILS_BOOLEAN pbool =
+         (LPMIXERCONTROLDETAILS_BOOLEAN) malloc(cChannels * sizeof
+</PRE>MIXERCONTROLDETAILS_BOOLEAN);
+<PRE>      MIXERCONTROLDETAILS mxcd = {sizeof(mxcd), pmxctrl-&gt;dwControlID,
+</PRE>cChannels, (HWND)0,
+<PRE>         sizeof MIXERCONTROLDETAILS_BOOLEAN, (LPVOID) pbool};
+      mixerGetControlDetails((HMIXEROBJ)hmx, &amp;mxcd,
+</PRE>MIXER_SETCONTROLDETAILSF_VALUE);
+<PRE>      // Unmute the microphone line (for both channels)
+      pbool[0].fValue = pbool[cChannels - 1].fValue = 0;
+      mixerSetControlDetails((HMIXEROBJ)hmx, &amp;mxcd,
+</PRE>MIXER_SETCONTROLDETAILSF_VALUE);
+<P>
+<PRE>    free(pmxctrl);
+    free(pbool);
+   }
+  else
+    free(pmxctrl);
+
+   mixerClose(hmx);
+</PRE>}
+<P>
+<PRE>void SetVolume()
+</PRE>{
+<PRE>   // Open the mixer device
+   HMIXER hmx;
+   mixerOpen(&amp;hmx, 0, 0, 0, 0);
+
+   // Get the line info for the wave in destination line
+   MIXERLINE mxl;
+    mxl.cbStruct = sizeof(mxl);
+    mxl.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_WAVEIN;
+    mixerGetLineInfo((HMIXEROBJ)hmx, &amp;mxl,
+</PRE>MIXER_GETLINEINFOF_COMPONENTTYPE);
+<P>
+<PRE>   // Now find the microphone source line connected to this wave in
+   // destination
+   DWORD cConnections = mxl.cConnections;
+   for(DWORD j=0; j&lt;cConnections; j++){
+      mxl.dwSource = j;
+      mixerGetLineInfo((HMIXEROBJ)hmx, &amp;mxl, MIXER_GETLINEINFOF_SOURCE);
+      if (MIXERLINE_COMPONENTTYPE_SRC_MICROPHONE == mxl.dwComponentType)
+         break;
+   }
+   // Find a volume control, if any, of the microphone line
+   LPMIXERCONTROL pmxctrl = (LPMIXERCONTROL)malloc(sizeof MIXERCONTROL);
+   MIXERLINECONTROLS mxlctrl = {sizeof mxlctrl, mxl.dwLineID,
+      MIXERCONTROL_CONTROLTYPE_VOLUME, 1, sizeof MIXERCONTROL, pmxctrl};
+   if(!mixerGetLineControls((HMIXEROBJ) hmx, &amp;mxlctrl,
+</PRE>MIXER_GETLINECONTROLSF_ONEBYTYPE)){
+<PRE>      // Found!
+      DWORD cChannels = mxl.cChannels;
+      if (MIXERCONTROL_CONTROLF_UNIFORM &amp; pmxctrl-&gt;fdwControl)
+         cChannels = 1;
+
+      LPMIXERCONTROLDETAILS_UNSIGNED pUnsigned =
+</PRE>(LPMIXERCONTROLDETAILS_UNSIGNED)
+<PRE>         malloc(cChannels * sizeof MIXERCONTROLDETAILS_UNSIGNED);
+      MIXERCONTROLDETAILS mxcd = {sizeof(mxcd), pmxctrl-&gt;dwControlID,
+</PRE>cChannels, (HWND)0,
+<PRE>         sizeof MIXERCONTROLDETAILS_UNSIGNED, (LPVOID) pUnsigned};
+      mixerGetControlDetails((HMIXEROBJ)hmx, &amp;mxcd,
+</PRE>MIXER_SETCONTROLDETAILSF_VALUE);
+<PRE>      // Set the volume to the middle  (for both channels as needed)
+      pUnsigned[0].dwValue = pUnsigned[cChannels - 1].dwValue =
+         (pmxctrl-&gt;Bounds.dwMinimum+pmxctrl-&gt;Bounds.dwMaximum)/2;
+      mixerSetControlDetails((HMIXEROBJ)hmx, &amp;mxcd,
+</PRE>MIXER_SETCONTROLDETAILSF_VALUE);
+<P>
+<PRE>    free(pmxctrl);
+    free(pUnsigned);
+   }
+  else
+    free(pmxctrl);
+   mixerClose(hmx);
+</PRE>}
+<PRE>void SelectMic()
+</PRE>{
+<PRE>   // Open the mixer device
+   HMIXER hmx;
+   mixerOpen(&amp;hmx, 0, 0, 0, 0);
+
+   // Get the line info for the wave in destination line
+   MIXERLINE mxl;
+    mxl.cbStruct      = sizeof(mxl);
+    mxl.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_WAVEIN;
+    mixerGetLineInfo((HMIXEROBJ)hmx, &amp;mxl,
+</PRE>MIXER_GETLINEINFOF_COMPONENTTYPE);
+<P>
+<PRE>   // Find a LIST control, if any, for the wave in line
+   LPMIXERCONTROL pmxctrl = (LPMIXERCONTROL)malloc(mxl.cControls * sizeof
+</PRE>MIXERCONTROL);
+<PRE>   MIXERLINECONTROLS mxlctrl = {sizeof mxlctrl, mxl.dwLineID, 0,
+      mxl.cControls, sizeof MIXERCONTROL, pmxctrl};
+   mixerGetLineControls((HMIXEROBJ) hmx, &amp;mxlctrl,
+</PRE>MIXER_GETLINECONTROLSF_ALL);
+<P>
+<PRE>   // Now walk through each control to find a type of LIST control. This
+   // can be either Mux, Single-select, Mixer or Multiple-select.
+   DWORD i;
+   for(i=0; i &lt; mxl.cControls; i++)
+      if (MIXERCONTROL_CT_CLASS_LIST == (pmxctrl[i].dwControlType
+</PRE>&amp;MIXERCONTROL_CT_CLASS_MASK))
+<PRE>         break;
+   if (i &lt; mxl.cControls) { // Found a LIST control
+      // Check if the LIST control is a Mux or Single-select type
+      BOOL bOneItemOnly = FALSE;
+      switch (pmxctrl[i].dwControlType) {
+         case MIXERCONTROL_CONTROLTYPE_MUX:
+         case MIXERCONTROL_CONTROLTYPE_SINGLESELECT:
+            bOneItemOnly = TRUE;
+      }
+
+      DWORD cChannels = mxl.cChannels, cMultipleItems = 0;
+      if (MIXERCONTROL_CONTROLF_UNIFORM &amp; pmxctrl[i].fdwControl)
+         cChannels = 1;
+      if (MIXERCONTROL_CONTROLF_MULTIPLE &amp; pmxctrl[i].fdwControl)
+         cMultipleItems = pmxctrl[i].cMultipleItems;
+
+      // Get the text description of each item
+      LPMIXERCONTROLDETAILS_LISTTEXT plisttext =
+</PRE>(LPMIXERCONTROLDETAILS_LISTTEXT)
+<PRE>         malloc(cChannels * cMultipleItems * sizeof
+</PRE>MIXERCONTROLDETAILS_LISTTEXT);
+<PRE>      MIXERCONTROLDETAILS mxcd = {sizeof(mxcd), pmxctrl[i].dwControlID,
+</PRE>cChannels,
+<PRE>         (HWND)cMultipleItems, sizeof MIXERCONTROLDETAILS_LISTTEXT,
+</PRE>(LPVOID) plisttext};
+<PRE>      mixerGetControlDetails((HMIXEROBJ)hmx, &amp;mxcd,
+</PRE>MIXER_GETCONTROLDETAILSF_LISTTEXT);
+<P>
+<PRE>      // Now get the value for each item
+      LPMIXERCONTROLDETAILS_BOOLEAN plistbool =
+</PRE>(LPMIXERCONTROLDETAILS_BOOLEAN)
+<PRE>         malloc(cChannels * cMultipleItems * sizeof
+</PRE>MIXERCONTROLDETAILS_BOOLEAN);
+<PRE>      mxcd.cbDetails = sizeof MIXERCONTROLDETAILS_BOOLEAN;
+      mxcd.paDetails = plistbool;
+      mixerGetControlDetails((HMIXEROBJ)hmx, &amp;mxcd,
+</PRE>MIXER_GETCONTROLDETAILSF_VALUE);
+<P>
+<PRE>      // Select the "Microphone" item
+      for (DWORD j=0; j&lt;cMultipleItems; j = j + cChannels)
+         if (0 == strcmp(plisttext[j].szName, "Microphone"))
+            // Select it for both left and right channels
+            plistbool[j].fValue = plistbool[j+ cChannels - 1].fValue = 1;
+         else if (bOneItemOnly)
+            // Mux or Single-select allows only one item to be selected
+            // so clear other items as necessary
+            plistbool[j].fValue = plistbool[j+ cChannels - 1].fValue = 0;
+      // Now actually set the new values in
+      mixerSetControlDetails((HMIXEROBJ)hmx, &amp;mxcd,
+</PRE>MIXER_GETCONTROLDETAILSF_VALUE);
+<P>
+<PRE>    free(pmxctrl);
+    free(plisttext);
+    free(plistbool);
+   }
+  else
+    free(pmxctrl);
+   mixerClose(hmx);
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbmm kbprb<BR>
+KBSubcategory: MMWave MMMixer<BR>
+Additional reference words: 4.00 kbdsd waveInOpen waveInAddBuffer new type<BR>
+waveaudio
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 22, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

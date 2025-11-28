@@ -1,0 +1,191 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Rolling Back Individual Rows from an INSERT Trigger </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q67303 ">
+<META NAME="KBModify" CONTENT="1997/04/25">
+<META NAME="KBCreate" CONTENT="1990/11/29">
+<META NAME="Keywords" CONTENT="kbprg SSrvProg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The following insert trigger has been defined on a table named SALES:     CREATE TRIGGER Part_check ON SALES    FOR INSERT AS    IF NOT EXISTS (SELECT * FROM Inventory inv,inserted ins                  WHERE inv.part_no = ins.part_no)   BEGIN      ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QATP,QDMF,QA9N,QACI,QA5V,QAY2,QAKC,QBVV,QAUD,QABM,QBC6,QAKD,QARR,QACM,QA2Q V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Rolling Back Individual Rows from an INSERT Trigger</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q67303 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+</PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The following insert trigger has been defined on a table named
+SALES:
+<P>
+<PRE>   CREATE TRIGGER Part_check ON SALES
+   FOR INSERT AS
+   IF NOT EXISTS (SELECT * FROM Inventory inv,inserted ins
+                 WHERE inv.part_no = ins.part_no)
+  BEGIN
+        ROLLBACK TRANSACTION
+        PRINT "Part number not found in Inventory table."
+        PRINT "-- Transaction rolled back --"
+   END
+
+</PRE>The trigger works correctly when the data is inserted one row at  a
+time.
+<P>
+There is another table called RETURNS, which is used to insert the
+rows from that table into the SALES table with the following
+command:
+<P>
+<PRE>   INSERT Sales SELECT * FROM Returns
+
+</PRE>This works correctly if there are no rows that have invalid part
+numbers. However, if there is at least one row that is valid, then
+all of the rows get inserted, including those that do not have a
+matching part number in the INVENTORY table. Instead of having all
+the rows inserted, it is desired that the invalid rows not be
+allowed.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This problem occurs because triggers get fired only once per
+transaction. For example, if a single row is inserted with the
+following command, this is treated as a single transaction:
+<P>
+<PRE>   INSERT Sales VALUES (337, "Small widgets")
+
+</PRE>The values are placed in the logical table INSERTED, and the
+trigger checks the table's values to see if they meet the
+qualifications of the trigger.
+<P>
+Now, suppose values are inserted from another table with the
+following command:
+<P>
+<PRE>   INSERT Sales SELECT * FROM Returns
+
+</PRE>This is still treated as a single transaction. The trigger does not
+get fired for each row coming in. Rather, it waits until all rows
+are in the INSERTED logical table, and then checks those values to
+see if they meet the trigger criteria. In the example above, as
+long as there is at least one row that has a part number listed in
+the INVENTORY table, the WHERE EXISTS clause is satisfied, and all
+rows from the INSERTED table are inserted into the SALES table.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+The following trigger can be used to ensure that only the
+qualifying rows get inserted:
+<P>
+<PRE>   CREATE TRIGGER Part_check ON Sales
+   FOR INSERT AS
+   DELETE Sales FROM Sales, Inserted ins
+   WHERE sales.part_no = ins.part_no
+   AND NOT EXISTS (SELECT * FROM Inventory inv
+                   WHERE inv.part_no = ins.part_no)
+
+</PRE>This trigger will allow all the rows to be inserted into the SALES
+table. Then the rows where the part number is not found in the
+INVENTORY table will be deleted.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: trigger rollback transaction<BR>
+Keywords            : kbprg SSrvProg<BR>
+Version             : 4.2<BR>
+Platform            : OS/2<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

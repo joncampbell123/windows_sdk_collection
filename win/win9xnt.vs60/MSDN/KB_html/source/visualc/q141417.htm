@@ -1,0 +1,326 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Problem Occurs During File Open on Win32s </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q141417">
+<META NAME="KBModify" CONTENT="1997/09/19">
+<META NAME="KBCreate" CONTENT="1995/12/17">
+<META NAME="Keywords" CONTENT="MfcDocView vcbuglist400 vcfixlist410 kbbuglist kbcode kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  A problem occurs on Win32s when the user tries to open a file using the standard MFC file opening procedures. This only occurs with an MFC application running under Win32s version 1.3 that uses MFC in a shared DLL (Mfc40.dll for Win32s) and the C r...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAHH,QBWS,QAH4,QAUD,QABA,QABI,QBXN,QAR4,QAGI,QAI4,QAY2,QAHG,QAO4,QAKP,QBAO V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Problem Occurs During File Open on Win32s</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 19, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q141417</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+<PRE>4.00       | 1.30
+</PRE>WINDOWS NT | WINDOWS
+kbprg kbcode kbbuglist kbfixlist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++, 32-bit Edition, version 4.0
+   when running on Win32s
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+A problem occurs on Win32s when the user tries to open a file using the
+standard MFC file opening procedures. This only occurs with an MFC
+application running under Win32s version 1.3 that uses MFC in a shared DLL
+(Mfc40.dll for Win32s) and the C runtime libraries in a DLL (Msvcrt40.dll
+for Win32s). Note that this is the default configuration for a default
+AppWizard generated application.
+<P>
+Two known symptoms are access violation and EMM386 error #06 (Invalid
+opcode). Symptoms will vary depending on the condition of the call stack.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+AfxResolveShortcut (an internal MFC function) calls SHGetFileInfo, which is
+not correctly implemented on Win32s. This happens as a result of the
+ID_FILE_OPEN command. AfxResolveShortcut is called from
+CDocManager::OpenDocumentFile, which is in turn called from
+CWinApp::OpenDocumentFile.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Derive a class from CDocManager and override the OpenDocumentFile function
+by copying the existing code and make some small changes. Because this fix
+is dependent on the internal MFC implementation, make sure you include the
+#if _MFC_VER == 0x400 statements.
+<P>
+Copy the following code into your application's .cpp file above the
+implementation of InitInstance. If you're looking at a paper copy of this
+article, note that you can find most of the code for OpenDocumentFile in
+Mfc\Src\Docmgr.cpp; rather than retyping the entire text, you could copy
+most of the code and make the change noted below:
+<P>
+#if _MFC_VER == 0x400
+<P>
+static inline BOOL IsDirSep(TCHAR ch)
+{
+<PRE>    return (ch == _T('\\') || ch == _T('/'));
+</PRE>}
+<P>
+#ifndef _MAC
+BOOL AFXAPI AfxResolveShortcut(CWnd* pWnd, LPCTSTR pszShortcutFile,
+<PRE>                                       LPTSTR pszPath, int cchPath);
+</PRE>#endif
+<P>
+<PRE>#define _countof(array) (sizeof(array)/sizeof(array[0]))
+
+</PRE>BOOL AFXAPI AfxFullPath(LPTSTR lpszPathOut, LPCTSTR lpszFileIn);
+<PRE>void AFXAPI AfxGetRoot(LPCTSTR lpszPath, CString&amp; strRoot);
+
+</PRE>class CMyDocManager : public CDocManager
+{
+public:
+<PRE>    CMyDocManager() {};
+    virtual ~CMyDocManager() {};
+    virtual CDocument* OpenDocumentFile(LPCTSTR lpszFileName);
+</PRE>};
+<P>
+CDocument* CMyDocManager::OpenDocumentFile(LPCTSTR lpszFileName)
+{
+<PRE>    // find the highest confidence
+    POSITION pos = m_templateList.GetHeadPosition();
+    CDocTemplate::Confidence bestMatch = CDocTemplate::noAttempt;
+    CDocTemplate* pBestTemplate = NULL;
+    CDocument* pOpenDocument = NULL;
+
+    TCHAR szPath[_MAX_PATH];
+    ASSERT(lstrlen(lpszFileName) &lt; _countof(szPath));
+</PRE>#ifndef _MAC
+<PRE>    TCHAR szTemp[_MAX_PATH];
+    if (lpszFileName[0] == '\"')
+        ++lpszFileName;
+    lstrcpyn(szTemp, lpszFileName, _MAX_PATH);
+    LPTSTR lpszLast = _tcsrchr(szTemp, '\"');
+    if (lpszLast != NULL)
+        *lpszLast = 0;
+    AfxFullPath(szPath, szTemp);
+    TCHAR szLinkName[_MAX_PATH];
+
+    // CHANGE: check the windows version before calling AfxResolveShortcut
+    if((BYTE)GetVersion() &gt;=4 &amp;&amp; AfxResolveShortcut(AfxGetMainWnd(),
+                                 szPath, szLinkName,_MAX_PATH))
+        lstrcpy(szPath, szLinkName);
+</PRE>#else
+<PRE>    lstrcpyn(szPath, lpszFileName, _MAX_PATH);
+    WIN32_FIND_DATA fileData;
+    HANDLE hFind = FindFirstFile(lpszFileName, &amp;fileData);
+    if (hFind != INVALID_HANDLE_VALUE)
+        VERIFY(FindClose(hFind));
+    else
+        fileData.dwFileType = 0;    // won't match any type
+</PRE>#endif
+<PRE>    while (pos != NULL)
+    {
+        CDocTemplate* pTemplate =
+                  (CDocTemplate*)m_templateList.GetNext(pos);
+        ASSERT_KINDOF(CDocTemplate, pTemplate);
+
+        CDocTemplate::Confidence match;
+        ASSERT(pOpenDocument == NULL);
+</PRE>#ifndef _MAC
+<PRE>        match = pTemplate-&gt;MatchDocType(szPath, pOpenDocument);
+</PRE>#else
+<PRE>        match = pTemplate-&gt;MatchDocType(szPath,
+                         fileData.dwFileType, pOpenDocument);
+</PRE>#endif
+<PRE>        if (match &gt; bestMatch)
+        {
+            bestMatch = match;
+            pBestTemplate = pTemplate;
+        }
+        if (match == CDocTemplate::yesAlreadyOpen)
+            break;      // stop here
+    }
+
+    if (pOpenDocument != NULL)
+    {
+        POSITION pos = pOpenDocument-&gt;GetFirstViewPosition();
+        if (pos != NULL)
+        {
+            CView* pView = pOpenDocument-&gt;GetNextView(pos);
+            // get first one
+            ASSERT_VALID(pView);
+            CFrameWnd* pFrame = pView-&gt;GetParentFrame();
+            if (pFrame != NULL)
+                pFrame-&gt;ActivateFrame();
+            else
+                TRACE0(
+                "Error: Cannot find frame for document to activate.\n");
+            CFrameWnd* pAppFrame;
+            if (pFrame !=
+                    (pAppFrame = (CFrameWnd*)AfxGetApp()-&gt;m_pMainWnd))
+            {
+                ASSERT_KINDOF(CFrameWnd, pAppFrame);
+                pAppFrame-&gt;ActivateFrame();
+            }
+        }
+        else
+        {
+            TRACE0(
+              "Error: Can not find view for document to activate.\n");
+        }
+        return pOpenDocument;
+    }
+
+    if (pBestTemplate == NULL)
+    {
+        AfxMessageBox(AFX_IDP_FAILED_TO_OPEN_DOC);
+        return NULL;
+    }
+
+    return pBestTemplate-&gt;OpenDocumentFile(szPath);
+</PRE>}
+<P>
+#endif //mfc version 4.0 workaround
+<P>
+Now, include the following three lines to the first part of your
+MyApp::InitInstance function:
+<P>
+#if _MFC_VER == 0x400
+<PRE>    m_pDocManager = new CMyDocManager;
+</PRE>#endif
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products
+listed at the beginning of this article. This bug was corrected in
+Visual C++ 4.1.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Problem</h3>
+ 
+
+<OL><P><LI>Open the scribble tutorial sample from:
+<P>
+   \Msdev\Samples\Mfc\Tutorial\Scribble\Step6\Scribble.mdb
+
+<P><LI>Open the Project Settings dialog box. In Settings For, select Win32
+   Release.
+
+<P><LI>From the Project Settings dialog box, click the general tab. From the
+   Microsoft Foundation Classes list box, select Use MFC in a shared DLL
+   (MFC40(d).DLL). Click OK to dismiss the project settings dialog box.
+
+<P><LI>Open the default configuration dialog box, and select the Release build.
+
+<P><LI>Rebuild the program.
+
+<P><LI>Run the program under Win32s.
+
+<P><LI>Create, save, and close a scribble document.
+
+<P><LI>Try to open the document you just closed. An access violation occurs.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00 4.10 1.30<BR>
+KBCategory: kbprg kbcode kbbuglist kbfixlist<BR>
+KBSubcategory: MfcDocView vcbuglist400 vcfixlist410<BR>
+Keywords          : MfcDocView vcbuglist400 vcfixlist410 kbbuglist kbcode kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 4.00       | 1.30<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 19, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

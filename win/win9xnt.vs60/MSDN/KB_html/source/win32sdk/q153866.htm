@@ -1,0 +1,191 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How To Use GSM Compression in Low-level Wave Recording </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q153866">
+<META NAME="KBModify" CONTENT="1996/07/24">
+<META NAME="KBCreate" CONTENT="1996/07/20">
+<META NAME="Keywords" CONTENT="km kbprg kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Realtime GSM recording using the low-level waveXXX API can be accomplished by filling in an appropriated struct and then calling waveInOpen() with the WAVE_MAPPER option so that the GSM format specified in the struct will be used.  MORE INFORMATION...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBCF,QDL2,QA5V,QBXN,QAGI,QAKD,QAA1,QABI,QAYS,QAPF,QAHR,QDI2,QA6L,QDMW,QDKS V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How To Use GSM Compression in Low-level Wave Recording</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 24, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q153866</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK), version 3.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Realtime GSM recording using the low-level waveXXX API can be accomplished
+by filling in an appropriated struct and then calling waveInOpen() with the
+WAVE_MAPPER option so that the GSM format specified in the struct will be
+used.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Along with the usual set of low-level waveXXX calls used in recording, and
+illustrated in such samples as DDREC, the code fragments shown below
+provide information on the steps needed to record audio compressed in the
+GSM format.
+<P>
+Either make the following definitions in one of the project's header files
+or make sure the project has a path to an existing header file, such as
+MMREG.H, with these definitions. The key points here are to define
+WAVE_FORMAT_GSM610 as a hexadecimal 31, and to set up a GSM structure that
+consists of a WAVEFORMATEX struct followed by a WORD:
+<P>
+<PRE>   #define WAVE_FORMAT_GSM610 (0x0031)
+
+   typedef struct gsm610waveformat_tag
+   {
+         WAVEFORMATEX    wfx;
+         WORD            wSamplesPerBlock;
+   } GSM610WAVEFORMAT;
+
+   typedef GSM610WAVEFORMAT FAR *LPGSM610WAVEFORMAT;
+
+</PRE>Declare a handle for memory allocation and a pointer to a GSM610WAVEFORMAT
+struct similar to the following:
+<P>
+<PRE>   HANDLE hgsmwavefmt;
+
+   LPGSM610WAVEFORMAT pgsmwavefmt;
+
+</PRE>Allocate and lock memory for the GSM610WAVEFORMAT struct similar to
+the following:
+<P>
+<PRE>   hgsmwavefmt = GlobalAlloc(GMEM_MOVEABLE,
+      (UINT)(sizeof(GSM610WAVEFORMAT)));
+   pgsmwavefmt =     (LPGSM610WAVEFORMAT)GlobalLock(hgsmwavefmt);
+
+</PRE>Fill in the GSM610WAVEFORMAT struct's members using the values shown in
+assigning data to the struct's members. The exception is that pgsmwavefmt-
+&gt;wfx.nSamplesPerSec can be a rate other than 8000, in which case
+pgsmwavefmt-&gt;wfx.nAvgBytesPerSec is computed as (pgsmwavefmt-
+&gt;wfx.nSamplesPerSec)/320*65. When using a value for pgsmwavefmt-
+&gt;wfx.nSamplesPerSec other than 8000, be sure it is a multiple of the 320
+block size, and falls within the limits supported by the sound card. For
+example, pgsmwavefmt-&gt;wfx.nSamplesPerSec = 9920 is valid because it is a
+multiple of 320 and does not fall below the minimum sampling rate of 8000
+found on many sound cards:
+<P>
+<PRE>   pgsmwavefmt-&gt;wfx.wFormatTag = WAVE_FORMAT_GSM610;
+   pgsmwavefmt-&gt;wfx.nChannels = 1;
+   pgsmwavefmt-&gt;wfx.nSamplesPerSec = 8000;
+   pgsmwavefmt-&gt;wfx.nAvgBytesPerSec = 1625;
+   pgsmwavefmt-&gt;wfx.nBlockAlign = 65;
+   pgsmwavefmt-&gt;wfx.wBitsPerSample = 0;
+   pgsmwavefmt-&gt;wfx.cbSize = 2;
+   pgsmwavefmt-&gt;wSamplesPerBlock = 320;
+
+</PRE>Call waveInOpen() with the WAVE_MAPPER option, and be sure the third
+parameter is just the address of the GSM610WAVEFORMAT struct's
+WAVEFORMATEX struct:
+<P>
+<PRE>   waveInOpen(&amp;hwavein, (UINT)WAVE_MAPPER,
+      (LPWAVEFORMATEX)&amp;(pgsmwavefmt-&gt;wfx),
+      (DWORD)(UINT)hwnd, (DWORD)NULL,     CALLBACK_WINDOW);
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.51 4.00<BR>
+KBCategory: kbmm kbprg kbhowto<BR>
+KBSubcategory: MMWave
+<P>
+
+<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 24, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

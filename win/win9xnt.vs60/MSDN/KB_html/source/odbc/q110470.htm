@@ -1,0 +1,505 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Binding SQL Results Using ODBC API From Visual Basic </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q110470">
+<META NAME="KBModify" CONTENT="1996/09/18">
+<META NAME="KBCreate" CONTENT="1994/01/23">
+<META NAME="Keywords" CONTENT="kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; odbc">
+<META NAME="Description" CONTENT="  Visual Basic developers can call Windows DLLs provided that Basic function declarations for the functions in the DLL are included in the Visual Basic project. When calling ODBC drivers from Visual Basic, there are a few considerations to keep in mi...">
+<META NAME="Product" CONTENT="ODBC">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBS0,QATX,QA4Q,QAY5,QA9E,QBW6,QACJ,QANF,QAGI,QAH6,QAB9,QAH7,QAD7,QBV8,QA5F V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Binding SQL Results Using ODBC API From Visual Basic</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 18, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q110470</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Open Database Connectivity, versions 1.0 and 2.0
+<LI>Standard and Professional Editions of Microsoft Visual Basic for
+   Windows, versions 2.0 and 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Visual Basic developers can call Windows DLLs provided that Basic function
+declarations for the functions in the DLL are included in the Visual Basic
+project. When calling ODBC drivers from Visual Basic, there are a few
+considerations to keep in mind.
+<P>
+This article discusses issues surrounding the use of the SQLBindCol ODBC
+function from Visual Basic.
+<P>
+The SQLBindCol function is used to bind a variable to a column of a result
+set. The function binds an address in memory to a column of data and
+subsequent calls to SQLFetch place the data for that column and row into
+the specified memory location.
+<P>
+It is possible to pass the address of a Visual Basic string to SQLBindCol
+but as strings may be moved in memory by VB, it is not safe to use
+SQLBindCol without first locking the memory. This article discusses using
+VB strings with SQLBindCol and calling the Windows API functions
+GlobalAlloc, GlobalLock, and hmemcpy to allocate, lock, and retrieve data
+from memory into Visual Basic strings.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+After submitting a SQL query, an ODBC application binds the results
+of that query into variables. Typically one variable is associated
+with each column in the results set. The following is the SQLBindCol
+declaration that must be used by a Visual Basic program:
+<P>
+<PRE>     function must be declared on one line!
+   Declare Function SQLBindCol Lib "odbc.dll" Alias "SqlBindCol"
+   (ByVal hstmt As Long, ByVal icol As Integer, ByVal fCType As Integer,
+   rgbValue As Any , ByVal cbValueMax As Long, pcbValue As Long)
+   As Integer
+
+</PRE>Essentially, a pointer to memory is passed to SQLBindCol. The ODBC driver
+then places data in that memory location specified by the pointer on each
+fetch. The application can then retrieve the data in the recordset by
+referencing that memory location.
+<P>
+To pass a pointer to a string from Visual Basic to a DLL, you use the ByVal
+keyword. This topic will not be discussed in this article; the following
+Knowledge Base article discusses passing strings from VB to DLLs:
+<P>
+<PRE>   Article-ID: <B><A href="../vbwin/q118643.htm">Q118643</A></B>
+   Title     : How to Pass a String or String Arrays Between VB
+               and a C DLL.
+
+</PRE>When you pass a string using ByVal to SQLBindCol (or any DLL) VB passes a
+pointer to the string. It is possible to use VB strings with SQLBindCol as
+long as you are not growing any other strings (including the text of
+controls) during the time that the strings are bound. During normal
+processing, VB will periodically reorganize its string space. This means
+that strings will be moved in memory and their address will change. As a
+result, the address you passed to SQLBindCol is no longer valid and you
+will see invalid data in your strings.
+<P>
+NOTE: This is behavior is by design for Visual Basic and is documented in
+the Control Development Kit. Microsoft does not recommend using SQLBindCol
+with Visual Basic strings and cannot guarantee that strings will not be
+moved in memory. Using SQLBindCol with VB strings will result not only in
+incorrect data but also General Protection Faults.
+<P>
+<P><h3>Calling SQLBindCol with VB Strings</h3>
+ 
+<P>
+If you choose to use VB strings with SQLBindCol the following are some of
+the rules that you must follow for SQLBindCol in your Basic code:
+
+<OL><P><LI>Do not manipulate any other strings between the call(s) to SQLBindCol
+   and SQLFreeStmt with SQL_UNBIND. A common example is during a SQLFetch
+   loop concatenating the bound variables into one long string and adding
+   it to a text box.
+
+<P><LI>When binding to strings, bind to variable-length Visual Basic
+   strings, not fixed-length strings.
+<P>
+<P><PRE>      Variable-length strings are declared thus: Dim mystr as String
+</PRE>
+<P><LI>Do not bind to arrays of strings. Arrays of strings are stored in
+   64K segments and Visual Basic may move string elements in memory to
+   recover fragmented string space. As a result, the array element that
+   a column is bound to may not be valid during a subsequent SQLFetch.
+<P>
+   As SQLExtendedFetch specifically requires binding to arrays, it is
+   recommended that you do not use SQLExtendedFetch from Visual Basic.
+
+<P><LI>Before binding variable-length strings, initialize them as the
+   following,
+<P>
+<P><PRE>      mystr = String$(255,0).
+</PRE><P>
+   This allocates a string.
+
+<P><LI>When calling SQLBindCol and binding to a string (i.e., if rgbValue
+   is going to be a string), use the Byval keyword. For instance,
+<P>
+<P><PRE>      SQLBindCol(hstmt&amp;, 1, SQL_C_CHAR, Byval mystr, cbMax&amp;,  cbVal&amp;)
+</PRE><P>
+</OL><h3>Allocating Global Memory</h3>
+ 
+<P>
+It is possible to use the Windows API function GlobalAlloc, GlobalLock, and
+hmemcpy to obtain a fixed chunk of memory, bind columns with SQLBindCol to
+this memory, and copy the data from the memory into a Visual Basic string.
+<P>
+<PRE>   GlobalAlloc: allocates a block of memory and returns a handle to that
+                memory if successful. You can allocate a chunk of
+                memory for each column you wish to bind.
+
+   GlobalLock:  locks the memory allocated with GlobalAlloc and returns a
+                pointer to the memory. You can use GlobalLock to obtain a
+                pointer which you can use with SQLBindCol.
+
+   hmemcpy:     copies memory from one address to another a specified
+                number of bytes. You can use hmemcpy to copy the bound
+                memory to a variable length string.
+
+</PRE></OL>NOTE: When finished with the memory you must call GlobalUnlock and
+GlobalFree to free the memory and the selector used by GlobalAlloc. If you
+are performing a large number of GlobalAlloc calls you should allocate
+fewer but larger chunks of memory and break them apart manually.
+<P>
+The following demonstration assumes that you have a database table created
+and populated called Customer. It also assumes that you have a data source
+already created. The structure of the Customer table is:
+<P>
+<PRE>   Field     Type         Null?
+   --------- ------------ --------
+   CustNum   int          not null
+   Company   varchar(30)  null
+   Address   varchar(30)  null
+   City      varchar(30)  null
+
+</PRE><P><LI>Start Visual Basic, or if VB is already running, create a new
+   project. Form1 is created by default.
+
+<P><LI>Add two command buttons (Command1, Command2) to Form1. Add a text
+   box (Text1) to Form1.
+
+<P><LI>Set the following properties of the controls. Text1 properties must
+   be see at design time:
+<P>
+<P><PRE>      Command1.Caption = "Log On"
+      Command2.Caption = "Execute Query"
+</PRE><P>
+<P><PRE>      Text1.MultiLine = True
+      Text1.ScrollBars = 3
+</PRE>
+<P><LI>Add the following to the &lt;general&gt; &lt;declarations&gt; section of Form1.
+   (All Declare statements must be on 1 line.):
+<P>
+</OL>Option Explicit
+<PRE>'
+' ODBC constants
+'
+</PRE></OL>Const SQL_NULL_HENV = 0
+Const SQL_NULL_HDBC = 0
+Const SQL_NULL_HSTMT = 0
+Const SQL_DRIVER_PROMPT = 2
+<P>
+Const SQL_ERROR = -1
+Const SQL_INVALID_HANDLE = -2
+Const SQL_NO_DATA_FOUND = 100
+Const SQL_SUCCESS = 0
+Const SQL_SUCCESS_WITH_INFO = 1
+<P>
+Const SQL_CHAR = 1
+Const SQL_NUMERIC = 2
+Const SQL_DECIMAL = 3
+Const SQL_INTEGER = 4
+Const SQL_SMALLINT = 5
+Const SQL_FLOAT = 6
+Const SQL_REAL = 7
+Const SQL_DOUBLE = 8
+Const SQL_VARCHAR = 12
+<P>
+Const SQL_C_CHAR = SQL_CHAR
+Const SQL_C_LONG = SQL_INTEGER
+Const SQL_C_SHORT = SQL_SMALLINT
+Const SQL_C_FLOAT = SQL_REAL
+Const SQL_C_DOUBLE = SQL_DOUBLE
+<P>
+Const SQL_CLOSE = 0
+Const SQL_DROP = 1
+Const SQL_UNBIND = 2
+Const SQL_RESET_PARAMS = 3
+<PRE>'
+' GlobalAlloc Constants
+'
+</PRE>Const GMEM_FIXED = &amp;H0
+Const GMEM_MOVEABLE = &amp;H2
+<PRE>'
+' ODBC function declarations
+'
+Declare Function SQLAllocConnect Lib "odbc.dll" (ByVal hEnv&amp;, phdbc&amp;)
+     As Integer
+Declare Function SQLAllocEnv Lib "odbc.dll" (phenv&amp;) As Integer
+Declare Function SQLAllocStmt Lib "odbc.dll" (ByVal hdbc&amp;, phstmt&amp;)
+   As Integer
+Declare Function SQLBindCol Lib "odbc.dll" (ByVal hStmt&amp;, ByVal icol%,
+   ByVal fCType%, rgbValue As Any, ByVal cbValueMax&amp;, pcbValue&amp;)
+   As Integer
+Declare Function SQLExecDirect Lib "odbc.dll" (ByVal hStmt&amp;, ByVal
+</PRE>szSqlStr$,
+<PRE>     ByVal cbSqlStr&amp;) As Integer
+Declare Function SQLDisconnect Lib "odbc.dll" (ByVal hdbc&amp;) As Integer
+Declare Function SQLDriverConnect Lib "odbc.dll" (ByVal hdbc&amp;, ByVal hWnd%,
+     ByVal szCSIn$, ByVal cbCSIn%, ByVal szCSOut$, ByVal cbCSMax%,
+</PRE>cbCSOut%,
+<PRE>     ByVal fDrvrComp%) As Integer
+Declare Function SQLFetch Lib "odbc.dll" (ByVal hStmt&amp;) As Integer
+Declare Function SQLFreeConnect Lib "odbc.dll" (ByVal hdbc&amp;) As Integer
+Declare Function SQLFreeEnv Lib "odbc.dll" (ByVal hEnv&amp;) As Integer
+Declare Function SQLFreeStmt Lib "odbc.dll" (ByVal hStmt&amp;, ByVal fOption%)
+     As Integer
+'
+' Memory function declarations
+'
+Declare Sub hMemCpy Lib "Kernel" (hpvDest As Any, hpvSource As Any,
+     ByVal cbCopy As Long)
+Declare Function GlobalAlloc Lib "Kernel" (ByVal wFlags As Integer,
+     ByVal dwBytes As Long) As Integer
+Declare Function GlobalLock Lib "Kernel" (ByVal hMem As Integer) As Long
+Declare Function GlobalUnlock Lib "Kernel" (ByVal hMem As Integer) As
+</PRE>Integer
+<PRE>Declare Function GlobalFree Lib "Kernel" (ByVal hMem As Integer) As Integer
+
+Dim hEnv As Long            ' environment handle
+Dim hConnect As Long        ' connect handle
+Dim hStmt As Long           ' statement handle
+
+Dim rc As Integer           ' return code
+
+</PRE><P><LI>Add the following code to the Click event of Command1:
+<P>
+<PRE>   Sub Command1_Click ()
+      Dim icbConnStrOut  As Integer ' connect vars
+      Dim sConnectStr    As String
+      Dim sConnectBuffer As String
+
+   ' initialize handles
+   hConnect = SQL_NULL_HDBC
+   hEnv = SQL_NULL_HENV
+   hStmt = SQL_NULL_HSTMT
+
+   ' initialize strings
+   sConnectStr = ""
+   sConnectBuffer = Space$(255)
+
+   ' allocate the environment and connect to the source
+   rc = SQLAllocEnv(hEnv)
+   rc = SQLAllocConnect(hEnv, hConnect)
+   ' the following should be all on 1 line
+   rc = SQLDriverConnect(hConnect, Me.hWnd, sConnectStr, Len(sConnectStr),
+           sConnectBuffer, Len(sConnectBuffer), icbConnStrOut,
+           SQL_DRIVER_PROMPT)
+   If rc &lt;&gt; SQL_SUCCESS And rc &lt;&gt; SQL_SUCCESS_WITH_INFO Then
+       MsgBox "Unable To Connect"
+       End
+   Else
+       MsgBox "Connected To Database"
+       Me.Command1.Enabled = False
+   End If
+
+End Sub
+
+</PRE><P><LI>Add the following code to the Click event of Command2:
+<P>
+<PRE>Sub Command2_Click ()
+    ' strings to hold column data
+    Dim sCompany As String
+    Dim sAddress As String
+    Dim sCity As String
+    ' length of column data returned
+    Dim lAddressLen As Long
+    Dim lCityLen As Long
+    Dim lCompanyLen As Long
+    ' ptrs to memory to bind to columns
+    Dim lpAddress As Long
+    Dim lpCompany As Long
+    Dim lpCity As Long
+    ' mem handles
+    Dim hMemAddress As Integer
+    Dim hMemCompany As Integer
+    Dim hMemCity As Integer
+
+    Dim sQuery As String        ' sql statement
+
+    ' Run query
+    sQuery = " select Company, Address, City From Customer "
+    rc = SQLAllocStmt(hConnect, hStmt)
+    rc = SQLExecDirect(hStmt, sQuery, Len(sQuery))
+
+    If rc = SQL_SUCCESS Or rc = SQL_SUCCESS_WITH_INFO Then
+        '
+        ' initialize string space
+        '
+        sCompany = String$(30, " ")
+        sAddress = String$(30, " ")
+        sCity = String$(30, " ")
+        Text1.Text = ""
+        '
+        ' allocate memory and get ptr to it for each column
+        '
+        hMemAddress = GlobalAlloc(GMEM_MOVEABLE, Len(sAddress))
+        lpAddress = GlobalLock(hMemAddress)
+
+        hMemCompany = GlobalAlloc(GMEM_MOVEABLE, Len(sCompany))
+        lpCompany = GlobalLock(hMemCompany)
+
+        hMemCity = GlobalAlloc(GMEM_MOVEABLE, Len(sCity))
+        lpCity = GlobalLock(hMemCity)
+        '
+        ' bind the columns to the memory we allocated. The must all be
+        ' on one line!
+        '
+        rc = SQLBindCol(hStmt, 1, SQL_C_CHAR, ByVal lpCompany, 29,
+               lCompanyLen)
+        rc = SQLBindCol(hStmt, 2, SQL_C_CHAR, ByVal lpAddress, 29,
+               lAddressLen)
+        rc = SQLBindCol(hStmt, 3, SQL_C_CHAR, ByVal lpCity, 29, lCityLen)
+        '
+        ' loop and fetch all records into memory
+        '
+        rc = SQLFetch(hStmt)
+        Do While rc = SQL_SUCCESS Or rc = SQL_SUCCESS_WITH_INFO
+            '
+            ' copy the string from memory to a VB string
+            '
+            Call hMemCpy(ByVal sCompany, ByVal lpCompany, lCompanyLen)
+            Call hMemCpy(ByVal sAddress, ByVal lpAddress, lAddressLen)
+            Call hMemCpy(ByVal sCity, ByVal lpCity, lCityLen)
+
+            Text1.Text = Trim(Text1.Text) &amp; sCompany &amp; sAddress
+            Text1.Text = Trim(Text1.Text) &amp; sCity &amp; Chr$(13) &amp; Chr$(10)
+
+            rc = SQLFetch(hStmt)
+        Loop
+        '
+        ' unbind columns and free memory
+        '
+        rc = SQLFreeStmt(hStmt, SQL_UNBIND)
+        rc = GlobalUnlock(hMemCity)
+        rc = GlobalUnlock(hMemAddress)
+        rc = GlobalUnlock(hMemCompany)
+        rc = GlobalFree(hMemCity)
+        rc = GlobalFree(hMemAddress)
+        rc = GlobalFree(hMemCompany)
+
+    Else
+
+        Text1.Text = "No Records Returned"
+
+    End If
+    '
+    ' free statement handle
+    '
+    rc = SQLFreeStmt(hStmt, SQL_CLOSE)
+
+    MsgBox "Done"
+
+End Sub
+
+</PRE><P><LI>Add the following code to the Unload event of Form1:
+<P>
+<PRE>Sub Form_Unload (Cancel As Integer)
+
+    rc = SQLDisconnect(hConnect)
+    rc = SQLFreeConnect(hConnect)
+    rc = SQLFreeEnv(hEnv)
+
+End Sub
+
+</PRE><P><LI>Save the project and run.
+<P>
+</OL><h3>Additional Considerations</h3>
+ 
+
+<OL><P><LI>Use cbcoldef appropriately. Refer to Appendix D of the
+   "Programmer s Reference" for the ODBC SDK.
+
+<P><LI>Use a LONG variable for pcbValue, and not a literal value.
+   Remember that you are passing by reference.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00<BR>
+KBCategory: kbusage<BR>
+KBSubcategory:
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 18, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

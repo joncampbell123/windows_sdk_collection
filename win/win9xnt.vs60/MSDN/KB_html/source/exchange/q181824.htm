@@ -1,0 +1,213 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>XADM: Jet Doesn't Detect Removed Page in B-tree Split Operation </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q181824">
+<META NAME="KBModify" CONTENT="1998/02/26">
+<META NAME="KBCreate" CONTENT="1998/02/26">
+<META NAME="Keywords" CONTENT="XADM kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; exchange">
+<META NAME="Description" CONTENT="  The Microsoft Exchange information store database may experience one of the following symptoms during normal operation:  During an offline defrag (ESEUTIL /D) of the database, the process stops with JET error -1601(JET_errRecordNotFound) or -1603 (...">
+<META NAME="Product" CONTENT="Exchange">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA1S,QDKY,QA5V,QAEF,QAR4,QALH,QAYY,QACI,QABI,QA9N,QBWA,QBVV,QAY5,QAM1,QBWS V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>XADM: Jet Doesn't Detect Removed Page in B-tree Split Operation</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 26, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q181824</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+<P>
+- Microsoft Exchange Server, version 5.5
+ 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The Microsoft Exchange information store database may experience one of
+the following symptoms during normal operation:
+<P>
+During an offline defrag (ESEUTIL /D) of the database, the process stops
+with JET error -1601(JET_errRecordNotFound) or -1603
+(JET_errNoCurrentRecord).
+<P>
+During normal operation, you may get a -1069 error
+(JET_errVersionStoreOutOfMemory) in the application log.
+<P>
+If you run the consistency checker (ESEUTIL /G &lt;db&gt; /V /X piped to a text
+file), it reports ERROR: corrupted LV(number) (lid changed without root).
+<P>
+The information store service (Store.exe) may access violate during normal
+operation when it encounters corrupt data.
+<P>
+<P>
+The information store process is utilizing 100 percent of the CPU time all
+consumed by one thread (there are occasions when up to three threads will
+be affected). You can view this by following these steps:
+<P>
+<PRE>   1. Start the Windows NT Performance Monitor.
+   2. From the Edit menu, click Add To Chart...
+   3. In the Object drop-down list box, select Thread.
+   4. In the Instance list box, select all values that contain "store".
+   5. Click the Add button.
+
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+When the Jet database engine goes to insert a record into the binary tree
+(b-tree), it may find a record with the same primary key that is marked for
+deletion. Because the node is just marked for deletion and has not been
+physically deleted yet, the Jet database engine "undeletes" the node and
+changes its data to that of the new record. Because the Jet database engine
+is changing the data associated with the record, the Jet database engine
+may be changing the record's size. If the record becomes too big for the
+page, the Jet database engine has to perform a b-tree split. During the
+split, the Jet database engine must release the latch on the pages in the
+tree and then re-latch them when the split is completed. In rare
+circumstances where the information store cleanup thread comes along in the
+small delta where the pages were unlatched, the information store cleanup
+thread may remove the page marked for deletion. When the Jet database
+engine tries to re-latch the pages, it does not know the record has been
+removed. As a result, the information store either stops responding (uses
+100 percent processor time in one or more threads) or corrupts the data.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Apply the fix described below. The Jet database engine has been fixed to
+detect whether the page has been removed and to take appropriate action if
+it has.
+<P>
+If you have already experienced the corruption symptoms of this problem,
+you can do the following to repair the corruption with NO loss of data and
+no need to run ISINTEG -fix:
+
+<OL><P><LI>Make sure the new Ese.dll file described below is in place
+   (\winnt\system32).
+</OL>2. Stop the information store service.
+3. Run ESEUTIL /P &lt;dbswitch&gt; /X to repair the corruption.
+4. Restart the information store service.
+<P>
+If you have not experienced any of these symptoms but want to be proactive
+and prevent this corruption from occurring, make sure the Ese.dll file is
+in place (\winnt\system32) and restart the information store service.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in Microsoft Exchange Server
+version 5.5.
+A supported fix is now available, but has not been fully regression-tested
+and should be applied only to systems experiencing this specific problem.
+Unless you are severely impacted by this specific problem, Microsoft
+recommends that you wait for the next Service Pack that contains this fix.
+Contact Microsoft Technical Support for more information.
+<P>
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+High CPU utilization or a stoppage of the information store will occur if
+there are exactly two nodes on the page being split. This is because the
+Jet database engine will try to split one record on a page, which is not
+possible.
+Data corruption will occur if there are more than two nodes on the page
+being split. This is because Jet database engine will replace the node
+immediately after the one it intended to insert to.
+ 
+<PRE>Keywords          : XADM kbusage
+Version           : 5.5
+Platform          : WINDOWS
+Issue type        : kbbug</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 26, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

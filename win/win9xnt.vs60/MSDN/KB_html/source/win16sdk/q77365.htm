@@ -1,0 +1,207 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Considerations for Programming DATA NONE DLLs </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q77365 ">
+<META NAME="KBModify" CONTENT="1997/08/12">
+<META NAME="KBCreate" CONTENT="1991/10/14">
+<META NAME="Keywords" CONTENT="kb16bitonly KrDll kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; win16sdk">
+<META NAME="Description" CONTENT="  The Windows Software Development Kit (SDK) documentation regarding dynamic-link libraries (DLLs) is not very detailed with regard to some facets of developing DLLs. In this article, some of the lesser known considerations for developing DLLs are di...">
+<META NAME="Product" CONTENT="Win16 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAYY,QAYL,QAH4,QDL9,QBWO,QBWN,QBWQ,QBVV,QBFY,QAB4,QDNN,QBHQ,QBLS,QAJH,QAI4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Considerations for Programming DATA NONE DLLs</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 12, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q77365 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) for Windows
+   versions 3.0 and 3.1
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The Windows Software Development Kit (SDK) documentation regarding
+dynamic-link libraries (DLLs) is not very detailed with regard to some
+facets of developing DLLs. In this article, some of the lesser known
+considerations for developing DLLs are discussed.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The primary reason for using a DATA NONE DLL is to ensure that the data
+segment (DS) is equal to the stack segment (SS). Many of the functions
+provided with the Microsoft C run-time libraries expect that DS == SS.
+Functions with this property have been removed from the Windows SDK DLL
+libraries. In DATA SINGLE DLLs, the DLL will use the application's SS, but
+the DLL will have its own DS. DS is then not equal to SS and the C run-time
+functions (or other functions expecting DS == SS) may not be used. In DATA
+NONE DLLs, however, the DLL uses the application's DS and SS. In
+applications, DS == SS; therefore, for a DATA NONE DLL, DS == SS.
+<P>
+While this may sound like a straightforward process, there are some
+items declared within a DLL that can create a data segment. Windows
+looks at a flag to determine if the DLL has a data segment. If DATA
+NONE has been declared, Windows will treat that DLL as a DATA NONE DLL
+whether a data segment exists or not. However, the Windows loader uses
+information from the linker to determine what segments to load, not
+how the flags are set. Therefore, data segments that do exist are
+loaded into memory.
+<P>
+When additional data segments are created, because the compiler works
+under the assumption that DS == SS, the data segments that are loaded
+are not used and waste memory.
+<P>
+When a DATA NONE DLL does have a data segment, Windows will use the
+application's DS as it should, but the offset into the data segment is
+the offset into the DLL's data segment. Writing to any variable
+declared in the DLL will overwrite data in the application's data
+segment.
+<P>
+This type of bug is often difficult to track down. When the data
+segment is built for the DLL, items are placed in the data segment
+from bottom to top. So an integer variable will take up 2 bytes on the
+bottom of the DLL's data segment. Writing to this variable will
+overwrite 2 bytes at the bottom of the calling application's data
+segment. An application's data segment normally contains thousands of
+bytes; therefore, this type of error may go unnoticed and will not
+cause a GP-fault.
+<P>
+Global variables, static variables, and static text (string literals
+such as "Hello") declared in the DLL will create new data segments for
+the DATA NONE DLL.
+<P>
+The warning message "RC: Warning RW4002: Non-discardable Segment 2 set
+to PRELOAD" is quite common when DLLs are processed by the Resource
+Compiler. However, it is not immediately obvious from the text of the
+message why this is a problem. This warning is generated when a data
+segment has been created but flags have not been defined for that
+segment (such as NONE, PRELOAD, or SINGLE). The default setting for
+these segments is PRELOAD SINGLE.
+<P>
+After ruling out all the obvious ways that a new data segment can be
+created, it is time to look deeper into the heart of the code.
+<P>
+If the DLL uses the Microsoft C run-time code, a global internal
+variable is used by the library. This variable is referenced in
+LIBENTRY.ASM by the following code:
+<P>
+<PRE>   extern __acrtused:abs
+
+</PRE>The __acrtused variable informs the linker that the C run-time code will be
+used in the DLL. If the C run-time code is not used in the DLL, this
+variable may be removed to create a true DATA NONE DLL. This is done by
+replacing the C run-time libraries (SDLLCEW, MDLLCEW, and LDLLCEW) with the
+appropriate libraries without the C run-time code (SNOCRTD, MNOCRTD, and
+LNOCRTD, respectively). Along with these libraries, the /NOE option must
+also be used. For more information on eliminating the C Run-time startup
+code, refer to Section 14.5.10.1 in the "Guide to Programming" manual of
+the Windows Software Development Kit version 3.1.
+<P>
+If the C run-time is used by the DLL, this variable must be declared
+and using the DATA SINGLE declaration is encouraged. Declaring
+__acrtused creates a data segment. However, the warning that occurs
+when this is done in a DATA NONE DLL may often be ignored.
+<P>
+DATA SINGLE is also encouraged when the DLL contains literal strings.
+<P>
+ 
+<PRE>Keywords          : kb16bitonly KrDll kbhowto
+Version           : 3.0 3.1
+Platform          : WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 12, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

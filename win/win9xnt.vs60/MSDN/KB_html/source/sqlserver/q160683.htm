@@ -1,0 +1,237 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Use Editbin to Adjust SQL Server Thread Stack Size </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q160683">
+<META NAME="KBModify" CONTENT="1997/08/26">
+<META NAME="KBCreate" CONTENT="1996/12/07">
+<META NAME="Keywords" CONTENT="SSrvErr_Log SSrvGen kbenv kbtool kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The Microsoft Binary File Editor (Editbin.exe) can be used to adjust the stack size for SQL Server threads, to allow a large memory configuration for SQL Server on computers that have 2 GB or more of physical RAM.  MORE INFORMATION  As a 32-bit ope...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QBWP,QBW6,QAUQ,QAX6,QANE,QDH9,QBWS,QBV8,QBVV,QAHE,QAC2,QBVX,QAB9,QBXS V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Use Editbin to Adjust SQL Server Thread Stack Size</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q160683</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The Microsoft Binary File Editor (Editbin.exe) can be used to adjust the
+stack size for SQL Server threads, to allow a large memory configuration
+for SQL Server on computers that have 2 GB or more of physical RAM.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+As a 32-bit operating system, Windows NT can address a maximum of 4 GB of
+virtual memory. Windows NT divides this virtual address range into 2 GB for
+user processes and another 2 GB for the system. Thus, SQL Server can
+address a maximum of 2 GB of virtual memory (or physical memory if 2 GB or
+more is present on the system).
+<P>
+If you are attempting to maximize the amount of memory allocated to SQL
+Server on a system with 2 GB or more of physical memory, you may find that
+you are not able to set the SQL Server memory parameter as high as you
+expect. For example, setting SQL Server's memory parameter to 900,000 pages
+(approximately 1.8 GB) may result in either of the following:
+
+<UL><LI>An error when starting the server:
+<P><PRE>      initdata: suballocation for buffer pages failed (x bytes requested).
+</PRE><P>
+   -or-
+
+<LI>An error when attempting to connect users:
+<P><PRE>      Not enough memory for pss allocation.
+</PRE><P>
+</UL>Both errors are written to the Windows NT event log and the SQL Server
+errorlog.
+<P>
+On initial analysis, it may seem reasonable that you should be able to
+allocate 1.8 GB to SQL Server and leave the remaining portion for the
+Windows NT system. However, by default, each thread created by SQL Server
+is assigned 1 MB of virtual stack space by Windows NT, and this is virtual
+memory that is not accounted for in the SQL Server memory configuration
+parameter value. If SQL Server is configured to use several hundred worker
+threads, a significant amount of virtual memory can be dedicated to thread
+stack space, and thus unavailable for either server startup or the dynamic
+memory allocation necessary as users connect. For example, 200 worker
+threads would consume about 200 MB of virtual memory for stack space alone.
+In reality, the bulk of the reserved virtual memory addresses are never
+used by the SQL Server threads. However, Windows NT assigns them by default
+when SQL Server creates the threads.
+<P>
+In cases where you have 2 GB or more of physical memory on the system, and
+you are attempting to use as much memory as possible for SQL Server (and
+for the SQL Server data cache), it is possible to reduce the default thread
+virtual stack size, to effectively use these memory addresses. The effect
+of reducing the stack size can be seen in increasing the amount of memory
+allocated to SQL Server (by increasing the SQL Server memory configuration
+parameter, or by simply being able to connect more users without running
+out of memory).
+<P>
+To modify the SQL Server thread stack size, you must use the Microsoft
+Binary File Editor (Editbin.exe), included with the Microsoft Visual C++
+development environment. The Editbin utility, run from the Windows NT
+command prompt, is used to modify object files, executable files, and
+dynamic-link libraries (DLLs). For more information on the Editbin utility,
+see the Microsoft Visual C++ documentation.
+<P>
+To decrease the virtual address range dedicated to each Windows NT thread
+used by SQL Server, run the following command:
+<P>
+<PRE>      EDITBIN /STACK:reserve sqlserver.exe
+
+</PRE>This option sets the size of the stack in bytes, where the reserve argument
+specifies the total stack allocation in virtual memory for each thread.
+Editbin rounds the specified value up to the nearest four bytes. Note that
+the optional commit argument is not required when adjusting the thread
+stack size for SQL Server. For example, to set the thread stack size for
+SQL Server to 64K, you would use the following command in the Mssql\Binn
+directory:
+<P>
+<PRE>      EDITBIN /STACK:65536 sqlservr.exe
+
+</PRE>Be sure to take the following points into consideration before running this
+command against Sqlservr.exe:
+
+<UL><LI>Do not run this command unless your system has 2 GB or more of physical
+   memory.
+
+<LI>You should make a backup copy of the Sqlservr.exe file before running
+   this command.
+
+<LI>You should thoroughly test your application and its interaction with SQL
+   Server to observe any performance differences, before making a change
+   to the Sqlservr.exe in production.
+<P>
+</UL>Keep in mind that the amount of thread stack space will vary from
+application to application. If you specify a stack size that is too low for
+your application, SQL Server will report stack overflow errors.
+Unfortunately, there is no easy way to estimate the amount of stack space
+necessary. Therefore, it is recommended that the stack space not be set
+below 16K. Testing has shown that this amount should be adequate for most
+applications.
+<P>
+To check the current thread stack size, you can use Dumpbin.exe utility
+(included with Microsoft Visual C++) to look at the "size of the stack
+reserve" value.
+<P>
+The following command (run from a Windows NT command prompt) provides an
+example:
+<P>
+<PRE>      DUMPBIN /headers sqlservr.exe
+
+</PRE>This command shows the following for "size of stack reserve" for
+Sqlservr.exe 6.5 Service Pack1 (Intel), under the heading OPTIONAL HEADER
+VALUES:
+<P>
+<PRE>      100000 size of stack reserve
+
+</PRE>The value is displayed in a hexadecimal format (100,000 = 1,048,576 bytes,
+or 1 MB).
+<P>
+For more information on Dumpbin, see the Microsoft Visual C++
+documentation.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:<BR>
+Keywords          : SSrvErr_Log SSrvGen kbenv kbtool kbusage<BR>
+Version           : 6.5<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

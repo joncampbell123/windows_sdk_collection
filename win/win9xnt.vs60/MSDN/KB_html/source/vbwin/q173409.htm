@@ -1,0 +1,273 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: RDOErrors Collection Always Empty When Using EXE Server </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q173409">
+<META NAME="KBModify" CONTENT="1997/09/04">
+<META NAME="KBCreate" CONTENT="1997/09/03">
+<META NAME="Keywords" CONTENT="vb5all">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  When calling an Automation server that passes your client application RDO objects, the RDOErrors collection never contains error information if the server is compiled as an ActiveX Automation EXE. RDOErrors collection will contain error information...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAW6,QBXS,QAAP,QAB4,QBG2,QANF,QAID,QAH4,QAFF,QAY2,QBS0,QAY5,QAHV,QAKP V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: RDOErrors Collection Always Empty When Using EXE Server</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 4, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q173409</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual Basic Standard and Enterprise Editions for Windows,
+   version 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When calling an Automation server that passes your client application RDO
+objects, the RDOErrors collection never contains error information if the
+server is compiled as an ActiveX Automation EXE. RDOErrors collection will
+contain error information if the server is compiled as an ActiveX
+Automation DLL.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+You are obtaining the RDOErrors collection from your application's
+RDOEngine object rather than from the server method,
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Provide a method or property on the server object from which to retrieve
+the RDOErrors collection.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When you compile a server component as a DLL, it has access to the same
+global objects that the client does. Because of this, you can inadvertently
+engage in practices that break object design principles. When you compile
+the server to an ActiveX Automation EXE, it now has its own global objects
+that are separate from the client application and object encapsulation
+cannot be violated.
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+<P>
+Create the server:
+
+<OL><P><LI>Create a new project with a MultiUse class module (named MyConnect)
+   with the following code:
+<P>
+<P><PRE>      Public Function Connect () As rdoConnection
+<PRE></PRE>        Set Connect = rdoEngine(0).OpenConnection("MyDSN",
+                      rdDriverComplete, "uid=sa;pwd=;database=pubs")
+      End Function
+   
+      Public Function Errors () As Variant
+        Set Errors = rdoErrors
+      End Function
+
+</PRE><P><LI>Add a module with the following code:
+<P>
+<PRE>      Sub Main ()
+      End Sub
+   
+</PRE></OL>3. Remove the default form.
+
+<OL><P><LI>Add a reference to Microsoft Remote Data Object.
+
+<P><LI>Set Sub Main to be the Project Startup Form.
+
+<P><LI>In the Project Options dialog, in the Compatibility tab, set Version
+   Compatibility to No Compatibility. This will enable steps 7 and 8 to
+   generate distinct server GUIDs for the EXE and DLL servers.
+
+<P><LI>Change the project type to ActiveX DLL, name to DLLConnect, compile
+   to a DLL, and save.
+
+<P><LI>Change the project type to ActiveX EXE, name to EXEConnect, compile
+   to an EXE, and save.
+<P>
+</OL>Create the client:
+
+<OL><P><LI>Create a new project with a form and three CommandButtons.
+
+<P><LI>Add a reference to Microsoft Remote Data Object, DLLConnect, and
+   EXEConnect. You will have to add the last two by using the Browse
+   feature of the References dialog.
+
+<P><LI>Add the following code:
+<P>
+<P><PRE>      Private Sub Command1_Click()
+      Dim Connector As DLLConnect.MyConnect
+      Dim Conn As rdoConnection, rs As rdoResultset, E As rdoError
+<PRE></PRE>        rdoEngine.rdoErrors.Clear
+        Set Connector = New DLLConnect.MyConnect
+        Set Conn = Connector.Connect
+        On Error Resume Next
+        Set rs = Conn.OpenResultset("THIS IS BAD SQL")
+        For Each E In rdoErrors
+          MsgBox E.Description
+        Next E
+        Conn.Close
+      End Sub
+
+      Private Sub Command2_Click()
+      Dim Connector As EXEConnect.MyConnect
+      Dim Conn As rdoConnection
+      Dim rs As rdoResultset
+      Dim E As rdoError
+        rdoEngine.rdoErrors.Clear ' required to prevent previous error
+                               ' from showing
+        Set Connector = New EXEConnect.MyConnect
+        Set Conn = Connector.Connect
+        On Error Resume Next
+        Set rs = Conn.OpenResultset("THIS IS BAD SQL")
+        For Each E In rdoErrors
+          MsgBox E.Description
+        Next E
+        Conn.Close
+      End Sub
+
+      Private Sub Command3_Click()
+      Dim Connector As EXEConnect.MyConnect
+      Dim Conn As rdoConnection
+      Dim rs As rdoResultset
+      Dim E As rdoError
+      Dim Errors As Variant
+        Set Connector = New EXEConnect.MyConnect
+        Set Conn = Connector.Connect
+        Set Errors = Connector.Errors
+        Errors.Clear
+        On Error Resume Next
+        Set rs = Conn.OpenResultset("THIS IS BAD SQL")
+        For Each E In Errors
+          MsgBox E.Description
+        Next E
+        Conn.Close
+      End Sub
+
+</PRE><P><LI>Run the program and press each of the CommandButtons in turn.
+<P>
+   Command1 and Command2 both break object programming standards because
+   they refer to the global rdoErrors collection. The code for
+   Command1_Click works (displays errors) because it runs the server as an
+   in-process component, whereas Command2 doesn't work because the server
+   is an out-of-process component and uses a different instance of
+   RDOEngine.
+   
+   Command3 works with an out-of-process component because it follows
+   object design principles and gets the errors collection from the
+   Connector object and not from the RDOEngine global object.
+<P>
+</OL>NOTE:
+
+<UL><LI>This problem can also affect ActiveX components that share DAO
+   objects or other classes that have global objects.
+
+<LI>This problem can also affect Visual Basic 4 and other 32-bit VBA
+   products.
+<P></UL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: RDO Remote OLE COM<BR>
+Keywords          : vb5all<BR>
+Technology        : OLE<BR>
+Version           : WINDOWS:5.0<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 4, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

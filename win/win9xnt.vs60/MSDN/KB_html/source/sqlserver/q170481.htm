@@ -1,0 +1,422 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Manually Remove Replication </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q170481">
+<META NAME="KBModify" CONTENT="1997/07/10">
+<META NAME="KBCreate" CONTENT="1997/06/20">
+<META NAME="Keywords" CONTENT="kbusage SSrvRep">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article explains the steps to manually remove (uninstall) replication, using stored procedures and Transact-SQL commands.  The information in this article may be useful in situations where you suspect that some elements of replication have not...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEF,QAZV,QA9N,QBWS,QAA1,QDKD,QAFO,QACI,QAB9,QANN,QANJ,QABM,QDH6,QBV8,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Manually Remove Replication</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q170481</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article explains the steps to manually remove (uninstall) replication,
+using stored procedures and Transact-SQL commands.
+<P>
+The information in this article may be useful in situations where you
+suspect that some elements of replication have not been removed correctly,
+and you want to manually remove those elements. If replication is not
+removed correctly, the transaction log of a previously published database
+may fill up because the log cannot be truncated. (See step 3 below for
+details on how to diagnose this possibility.)
+<P>
+This article may also be useful if you need to create a script or
+programmatic procedure to uninstall replication.
+<P>
+The following list is a summary of the steps necessary to manually remove
+replication. Details for each step are provided in the "MORE INFORMATION"
+section of this article.
+
+<OL><P><LI>Drop all subscriptions.
+
+<P><LI>Drop all articles and publications.
+
+<P><LI>Clear the transaction log of any "undistributed" replicated
+   transactions.
+
+<P><LI>Remove the database's published and subscribed status.
+
+<P><LI>Delete unneeded remote servers and remote logins.
+
+<P><LI>Remove a server's publisher, subscriber, and distributor status.
+
+<P><LI>Delete any remaining replication tasks.
+
+<P><LI>Delete the .sch and .tmp files in the Repldata directory.
+
+<P><LI>Drop the distribution database.
+
+<P><LI>Reset the MSlast_job_info table.
+
+<P><LI>Verify the replication registry entry.
+<P>
+</OL>You may find it easier to use SQL Enterprise Manager, when possible, to
+uninstall replication, rather than using stored procedures and Transact-SQL
+commands.
+<P>
+In SQL Server 6.5, you can use SQL Enterprise Manager to remove replication
+by clicking Replication Configuration/Uninstall Publishing on the Server
+menu. For more details, see "Uninstalling Replication" in Part 3 of the
+What's New In SQL Server 6.5 book.
+<P>
+SQL Server 6.0 does not have a replication uninstall option, but you can do
+the equivalent of steps 1 through 7 using SQL Enterprise Manager. For SQL
+Server 6.0, you will still need to do steps 8 through 11 manually. For more
+details, see "Stopping Replication" in Chapter 14 of the SQL Server 6.0
+Administrator's Companion.
+<P>
+Note that you should not use the dump and load mechanism to transfer a
+database with publications and subscriptions to a different server. (In
+this case, a "different server" means a server other than the one on which
+the database was originally published.) In many cases, the procedures in
+this article will not be sufficient to remove replication from a database
+that has been dumped from one server and loaded onto another server.
+<P>
+If you must move a published database to a different server, you should
+consider using Transfer Manager or the bulk copy program (BCP). You can
+safely use the dump and load mechanism to transfer a published database to
+a different server only if you drop all subscriptions and all publications
+in the published database before dumping the database.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Below are the steps to manually remove (uninstall) replication are
+described in detail. See the SQL Server Books Online for more information
+on the commands and stored procedures discussed below.
+<P>
+Step 1 - Drop All Subscriptions
+ 
+<P>
+You can run sp_helpsubscription in the published database to determine
+whether or not there are any subscriptions.
+<P>
+Run the command below to drop all subscriptions to all publications within
+a published database. This command must be run in each database that is
+published and has subscriptions. Running this command also deletes the
+distribution tasks associated with the subscriptions that are dropped.
+<P>
+<PRE>   sp_dropsubscription 'all', 'all', 'all'
+
+</PRE></OL>Note that sp_dropsubscriptions will only work correctly if both of the
+following conditions are true:
+
+<UL><LI>There is a distribution database installed.
+<P>
+   -and-
+
+<LI>The publishing server has correct remote server information for all
+   subscribing servers. Remote server information is defined automatically
+   when you configure replication. You can verify the remote server
+   information by running sp_helpserver.
+<P>
+</UL><h3>Step 2 - Drop All Articles and Publications</h3>
+ 
+<P>
+You can run sp_helppublication in the published database to determine
+whether or not there are any publications.
+<P>
+You can run "select * from sysarticles" in the published database to
+determine whether or not there are any articles.
+<P>
+Run the command below to drop all articles and subscriptions within a
+published database. This command must be run in each database that is
+published and has publications. Running this command will also delete the
+synchronization task associated with the publications that are dropped.
+<P>
+<PRE>   sp_droppublication 'all'
+
+</PRE>Step 3 - Clear the Transaction Log of Any "Undistributed" Replicated
+<PRE>         Transactions
+</PRE> 
+<P>
+You will not be able to truncate the transaction log as long as there are
+any replicated transactions that have not been distributed. An
+"undistributed" replicated transaction is a transaction that has been
+marked for replication in the transaction log of the published database,
+but has not been "distributed" by the log reader task.
+<P>
+You can see if there are any "undistributed" replicated transactions in a
+published database by running the following command:
+<P>
+<PRE>   dbcc opentran(&lt;published_database_name&gt;) with tableresults
+
+</PRE>If the database has at some point had replicated transactions, the above
+command will return the oldest distributed row ID ("REPL_OLD_DIST_RID") and
+the oldest non-distributed row ID ("REPL_OLD_NONDIST_RID"). If the database
+has never had any replicated transactions and there are no open
+transactions, the above command will return 0 rows.
+<P>
+If the above command does return the oldest distributed and oldest non-
+distributed row IDs, and if these row IDs are not the same, you have one or
+more undistributed replicated transactions in that database. If the row IDs
+are the same, you do not have any undistributed replicated transactions in
+the database. For more information, see the DBCC statement in the Transact-
+SQL Reference book.
+<P>
+If you have undistributed replicated transactions, run the following
+command to mark all replicated transactions as "distributed" so that you
+can truncate the log:
+<P>
+<PRE>   sp_repldone 0, 0, null, 0, 0, 1
+
+</PRE>The sp_repldone command must be run in each database that has undistributed
+replicated transactions.
+<P>
+The sp_repldone command can only be run if the database is marked as
+published. If necessary, you can temporarily mark a database as published
+by running the following command:
+<P>
+<PRE>   sp_dboption &lt;database_name&gt;, pub, true
+
+</PRE>After running sp_repldone, you can mark the database as not published by
+running the following command:
+<P>
+<PRE>   sp_dboption &lt;database_name&gt;, pub, false
+
+</PRE>You should contact your primary support provider if you continue to see
+replicated transactions in the transaction log after completing the
+procedures in this article.
+<P>
+<P><h3>Step 4 - Remove the Database's "Published" and "Subscribed" Status</h3>
+ 
+<P>
+Run sp_helpdb to verify which databases have a status of "published" or
+"subscribed."
+<P>
+Run the following command to remove the "published" status from a database.
+Running this command also deletes the log reader task for that database.
+<P>
+<PRE>   sp_dboption &lt;database_name&gt;, published, false
+
+</PRE>Run the following command to remove the "subscribed" status from a
+database:
+<P>
+<PRE>   sp_dboption &lt;database_name&gt;, subscribed, false
+
+</PRE><h3>Step 5 - Delete Unneeded Remote Servers and Remote Logins</h3>
+ 
+<P>
+Replication automatically defines remote servers and remote logins when you
+install replication. The remote servers and remote logins are necessary to
+run remote procedure calls. You may delete the remote servers and remote
+logins if they are not required for other SQL Server applications.
+<P>
+NOTE: You should not drop the local server.
+<P>
+The local server is the one that has server ID 0 when you run
+sp_helpserver. For more information on remote servers and remote users, see
+Chapter 10 in the SQL Server Administrator's Companion.
+<P>
+You can run "sp_helpserver" to see a list of remote servers. You can run
+"sp_helpremotelogin" to see a list of the remote logins. Run the following
+command to drop a remote login:
+<P>
+<PRE>   sp_droplogin remoteserver_name [, loginame [, remotename]]
+
+</PRE>Run the following command to drop a remote server:
+NOTE: Do not drop the local server. The local server has server ID 0.
+<P>
+<PRE>   sp_dropserver server_name [, droplogins]
+
+</PRE><h3>Step 6 - Remove a Server's Publisher, Subscriber, and Distributor Status</h3>
+ 
+<P>
+Run sp_helpserver to verify the status of the servers. Then run the
+following command to remove a server's publisher ("pub") status:
+<P>
+<PRE>   sp_serveroption &lt;server_name&gt;, pub, false
+
+</PRE>Run the following command to remove a server's remote publisher ("dpub")
+status:
+<P>
+<PRE>   sp_serveroption &lt;server_name&gt;, dpub, false
+
+</PRE>Run the following command to remove a server's subscriber ("sub")
+status:
+<P>
+<PRE>   sp_serveroption &lt;server_name&gt;, sub, false
+
+</PRE>Run the following command to remove a server's distributor ("dist")
+status:
+<P>
+<PRE>   sp_serveroption &lt;server_name&gt;, dist, false
+
+</PRE><h3>Step 7 - Delete Any Remaining Replication Tasks</h3>
+ 
+<P>
+Open the Manage Scheduled Tasks window in SQL Enterprise Manager by
+double-clicking the SQL Executive icon. Delete any tasks that have a type
+of "Logreader," "Distribution," or "Sync." Also delete any replication
+cleanup tasks. Cleanup tasks have a name in the following format:
+<P>
+<PRE>   &lt;publisher_server_name&gt;_&lt;subscriber_server_name&gt;_cleanup.
+
+</PRE><h3>Step 8 - Delete the .Sch and .Tmp files in the Repldata Directory</h3>
+ 
+<P>
+Delete the .sch (published table schema script) and .tmp (synchronization
+data) files in the MSSQL\Repldata directory on the distribution server.
+<P>
+<P><h3>Step 9 - Drop the Distribution Database</h3>
+ 
+<P>
+Run the following command to drop the distribution database:
+<P>
+<PRE>   drop database distribution
+
+</PRE><h3>Step 10 - Reset the MSlast_job_info Table</h3>
+ 
+<P>
+The MSlast_job_info table exists in each subscribing database and keeps
+track of the last job that was replicated to that database from each
+publishing database. The MSlast_job_info table is created by the
+distribution task after you subscribe to a publication.
+<P>
+If a subscribing database is not currently subscribed to any publishing
+databases, you can simply use the following command to drop the
+MSlast_job_info table in each subscribing database:
+<P>
+<PRE>   drop table MSlast_job_info
+
+</PRE>If the subscribing database is still subscribed to one or more publishing
+databases, you should use the following command to delete the rows in the
+MSlast_job_info table that correspond to the database(s) to which it is no
+longer subscribed:
+<P>
+<PRE>   delete MSlast_job_info
+   where publisher = '&lt;publishing_server_name&gt;'
+   and publisher_db = '&lt;publishing_database_name&gt;'
+
+</PRE><h3>Step 11 - Verify the Replication Registry Entry</h3>
+ 
+<P>
+Before you can reinstall replication, the "DistributionDB" value under the
+HKEY_LOCAL_MACHINE\Software\Microsoft\MSSQLServer\Repliction registry key
+must have a null string.
+<P>
+You can run the following command from the Master database to make the
+string null:
+<P>
+<PRE>   xp_regwrite 'HKEY_LOCAL_MACHINE',
+   'SOFTWARE\Microsoft\MSSQLServer\Replication', 'DistributionDB',
+   'REG_SZ', ''
+
+</PRE>WARNING: Using Registry Editor incorrectly can cause serious problems
+that may require you to reinstall SQL Server. Microsoft cannot guarantee
+that problems resulting from the incorrect use of Registry Editor can be
+solved. Use Registry Editor at your own risk.
+<P>
+It is also possible to change this entry with Registry Editor (Regedt32 in
+Windows NT 3.50 and Windows NT 3.51, or Regedit in Windows NT 4.0 and
+Windows 95). If you do use the Registry Editor, do not delete the
+"DistributionDB" entry itself; rather, double-click the DistributionDB
+entry and delete the string in the Edit dialog box.
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : kbusage SSrvRep<BR>
+Version             : 6.0 6.5<BR>
+Platform            : winnt<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,277 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Workaround for 512-Character Limit for SQL String </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q144743">
+<META NAME="KBModify" CONTENT="1998/02/05">
+<META NAME="KBCreate" CONTENT="1996/02/01">
+<META NAME="Keywords" CONTENT="kbinterop">
+<META NAME="KBArea" CONTENT="Support; KB; word, convert, crossnet, odbc, winprint, setup">
+<META NAME="Description" CONTENT="  By design, the maximum number of characters that can be used in an SQL string in a macro is 512. This article describes a how you can work around this limitation.  WORKAROUND  To work around this problem, use the following steps:  1. Place the text...">
+<META NAME="Product" CONTENT="Word">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA1S,QDN9,QAH4,QAIH,QBE7,QBE6,QAGB,QBW7,QAI5,QAUJ,QATX,QBWS,QDKW,QBFY,QABM V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Workaround for 512-Character Limit for SQL String</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 5, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q144743</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Word for Windows, versions 6.0, 6.0a, 6.0c
+<LI>Microsoft Word for Windows 95, version 7.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+By design, the maximum number of characters that can be used in an SQL
+string in a macro is 512. This article describes a how you can work around
+this limitation.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+To work around this problem, use the following steps:
+
+<OL><P><LI>Place the text for the SQL string in a sequential Microsoft Access file.
+
+<P><LI>Call a Microsoft Access macro that reads this file, and create a query
+   definition based on that SQL string.
+
+<P><LI>Insert the database using this query definition.
+<P>
+</OL>The following WordBasic macro and Microsoft Access module demonstrate this
+technique.
+<P>
+WARNING: ANY USE BY YOU OF THE OR MACRO CODE PROVIDED IN THIS ARTICLE IS AT
+YOUR OWN RISK. Microsoft provides this macro code "as is" without warranty
+of any kind, either express or implied, including but not limited to the
+implied warranties of merchantability and/or fitness for a particular
+purpose.
+<P>
+<P><h3>Word Macro</h3>
+ 
+<P>
+<PRE>Sub MAIN
+</PRE></OL>MySQL$ = "SELECT DISTINCTROW Categories.[Category Name], Products.[Product
+Name], Products.[Units In Stock], Products.[Units On Order],
+Suppliers.[Company Name], Suppliers.Phone, Suppliers.Fax,
+Suppliers.[Contact Name] FROM Categories INNER JOIN (Suppliers INNER JOIN
+Products ON Suppliers.[Supplier ID] = Products.[Supplier ID]) ON
+Categories.[Category ID] = Products.[Category ID] WHERE ((Not
+Suppliers.[Company Name]=" + Chr$(34) + "Zaanse Snoepfabriek" + Chr$(34) +
+") AND (Not Suppliers.Fax=" + Chr$(34) + "(1) 03.83.0.62" + Chr$(34) + ")
+AND (Not Suppliers.[Contact Name]=" + Chr$(34) + "Giovanni Giudici" +
+Chr$(34) + ")) ORDER BY Suppliers.Fax, Suppliers.[Contact Name];"
+X = InsertSQL("c:\msoffice\access\sampapps\Nwind.MDB", MySQL$)
+<PRE>End Sub
+
+</PRE>Function InsertSQL(DBtoUse$, SQLStuff$)
+<PRE>     On Error GoTo ErrHandler
+     KillAccess = 0
+     'If there are quotes in the string, convert them to XqX
+     ' to be switched back in Access.
+     x = InStr(SQLStuff$, Chr$(34))
+     While x &lt;&gt; 0
+          SQLStuff$ = Left$(SQLStuff$, x - 1) + "XqX" +
+</PRE>Mid$(SQLStuff$, X + 1)
+<PRE>          x = InStr(SQLStuff$, Chr$(34))
+     Wend
+     'Start Access if it isn't running. If Access is already running
+     ' you won't need to shut it down when your finished.
+     If Not AppIsRunning("Microsoft Access") Then
+          Shell "C:\MSOFFICE\ACCESS\MSACCESS.EXE "
+          KillAccess = 1
+     End If
+     'Open the sequential access file and insert the SQL string.
+     Open "C:\WORDSQL.TXT" For Output As #1
+     Write #1, SQLStuff$, KillAccess
+     Close #1
+     'Call Access via DDE. Run the Access macro.
+     Chan = DDEInitiate("MSACCESS", "System")
+     DDEExecute Chan, "[OpenDatabase " + DBtoUse$ + "]"
+     On Error Resume Next
+     DDEExecute Chan, "[WordQuery]"
+     DDEExecute Chan, "[CloseDatabase]"
+     DDETerminate Chan
+     On Error Goto 0
+     'Read the sequential access file to see if Access is done with it.
+     Quitting = 0
+     While Quitting = 0
+          Open "C:\WORDSQL.TXT" For Input As #1
+          Read #1, Dun$
+          If Dun$ = "You're Done" Then Quitting = - 1
+          Close #1
+          For I = 1 To 100
+          Next I
+     Wend
+     'Delete the sequential access file
+     Kill "C:\WORDSQL.TXT"
+     'Insert the database using the query definition via DDE.
+     InsertDatabase .Format = 0, .Style = 0, .LinkToSource = 0,
+.Connection = "QUERY Wordquery", .SQLStatement =      "SELECT * FROM [
+Wordquery ] ", .SQLStatement1 = "",      .PasswordDoc = "", .PasswordDot =
+"",      .DataSource = "C:\MSOFFICE\ACCESS\SAMPAPPS\NWIND.MDB",      .From
+</PRE>= "", .To = "", .IncludeFields = 1
+<PRE>     InsertSQL = 1
+     Goto TheEnd
+</PRE>ErrHandler:
+<PRE>     MsgBox "Error" + Str$(Err) + " occurred."
+     Err = 0
+</PRE>TheEnd:
+End Function' InsertSQL()
+<P>
+<P><h3>Microsoft Access Module</h3>
+ 
+<P>
+Function WordQuery () As Integer
+<P>
+Dim FileName As Variant, MyFile As Integer, MyWorkspace As WorkSpace, MyDB
+As Database, MyQuery As QueryDef, QD As Variant
+<P>
+<PRE>'Read the SQL string from the sequential access file.
+</PRE>FileName = "C:\WORDSQL.TXT"
+MyFile = FreeFile
+Open FileName For Input As MyFile  ' Open file.
+Input #MyFile, WordSQL$, KillAccess
+KillAccess = Val(KillAccess)
+Close MyFile
+<P>
+<PRE>'Convert any ossurances of XqX to quotes.
+</PRE>x = InStr(WordSQL$, "XqX")
+While x &lt;&gt; 0
+<PRE>    WordSQL$ = Left$(WordSQL$, x - 1) + Chr$(34) + Mid$(WordSQL$, x + 3)
+    x = InStr(WordSQL$, "XqX")
+</PRE>Wend
+<PRE>'Find out if a query definition named WordQuery exists. If one exists,
+' delete it.
+</PRE>Set MyWorkspace = DBEngine.Workspaces(0)
+Set MyDB = MyWorkspace.Databases(0)
+QD = -1
+For I = 0 To MyDB.QueryDefs.Count - 1
+<PRE>    If MyDB.QueryDefs(I).Name = "Wordquery" Then
+    QD = I
+    End If
+</PRE>Next I
+If QD &lt;&gt; -1 Then
+MyDB.QueryDefs.Delete "Wordquery"
+End If
+<PRE>'Create query definition based on SQL string
+</PRE>Set MyQuery = MyDB.CreateQueryDef("Wordquery", WordSQL$)
+<PRE>'Write information into sequential access file to let Word know
+' we're finished.
+</PRE>Open FileName For Output As MyFile  ' Open file.
+Write #MyFile, "You're Done"
+Close MyFile
+<PRE>'If Access wasn't running when Word called it, quit Access.
+</PRE>If KillAccess = 1 Then
+Application.Quit
+End If
+WordQuery = -1
+End Function
+<P>
+<P><h3>Access Macro Named "WordQuery"</h3>
+ 
+<P>
+<PRE>   Name     Condition     Action        Argument           Value
+   ---------------------------------------------------------------------
+                          RunCode       FunctionName:      WordQuery()
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: <BR>
+KBSubcategory:
+<P>
+
+Additional query words: 6.0<BR>
+Keywords          : kbinterop<BR>
+Version           : 6.0 6.0a 6.0c 7.0 7.0a<BR>
+Platform          : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 5, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

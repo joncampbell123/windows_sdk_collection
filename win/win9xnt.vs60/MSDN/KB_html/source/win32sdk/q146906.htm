@@ -1,0 +1,335 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How To Secure Performance Data in Windows NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q146906">
+<META NAME="KBModify" CONTENT="1996/12/20">
+<META NAME="KBCreate" CONTENT="1996/02/19">
+<META NAME="Keywords" CONTENT="kbprg kbhowto kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Windows NT provides access to a variety of performance data that collectively represents the state of the computer. This performance data is stored in the registry key HKEY_PERFORMANCE_DATA. The default configuration of Windows NT gives everyone th...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAI5,QBW7,QAY5,QAU3,QAMR,QBWP,QBWG,QAGU,QAI4,QAYY,QAAD,QAUD,QAK7,QDOL,QAPF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How To Secure Performance Data in Windows NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 20, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q146906</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) for
+   Windows NT versions 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Windows NT provides access to a variety of performance data that
+collectively represents the state of the computer. This performance data is
+stored in the registry key HKEY_PERFORMANCE_DATA. The default configuration
+of Windows NT gives everyone the ability to query this performance data,
+including remote users.
+<P>
+In some environments, you may want to restrict access to this performance
+data because some performance data may be considered sensitive. An example
+of potentially sensitive performance data is the list of running processes
+in the system. This article describes how to regulate access to this
+performance data programmatically by using the Win32 API.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The security on the following registry key dictates which users or groups
+can gain access to the performance data:
+<P>
+HKEY_LOCAL_MACHINE\
+<PRE> SOFTWARE\
+ Microsoft\
+ Windows NT\
+ CurrentVersion\
+ Perflib
+
+</PRE>In order for users to query performance data, they must have KEY_READ
+access to the above registry key. An example of reasonable security on the
+performance data would be to grant Administrators KEY_ALL_ACCESS access and
+Interactive (users logged onto the workstation interactively) KEY_READ
+access. This particular configuration would prevent non-administrator
+remote users from querying performance data.
+<P>
+Note that this operation can be performed by using the registry editor
+utility (Regedt32.exe).
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/*
+ This sample illustrates how to regulate access to the performance data
+ provided by the registry key HKEY_PERFORMANCE_DATA.
+
+ The security on the following registry key dictates which users or groups
+ can gain access to the performance data:
+
+ HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Perflib
+
+ This sample opens the registry key for WRITE_DAC access, which allows
+ for a new Dacl to be applied to the registry key.
+
+ A Dacl is then built, which grants the following users access:
+
+ Administrators are granted full control to allow for future updates to the
+ security on the key and to allow for querying performance data.
+
+ Interactively logged on users, through the well-known Interactive Sid,
+ are granted KEY_READ access, which allows for querying performance
+ data.
+
+ The new Dacl is then applied to the registry key using the
+ RegSetKeySecurity() Win32 API.
+
+ This sample relies on the import library Advapi32.lib.
+ Note that not all errors will cause an information message to be
+ displayed.
+
+ */
+
+#include &lt;windows.h&gt;
+#include &lt;stdio.h&gt;
+
+#define RTN_OK 0
+#define RTN_USAGE 1
+#define RTN_ERROR 13
+
+</PRE>int
+__cdecl
+main(
+<PRE>    void
+    )
+</PRE>{
+<PRE>    SID_IDENTIFIER_AUTHORITY sia = SECURITY_NT_AUTHORITY;
+    PSID pInteractiveSid = NULL;
+    PSID pAdministratorsSid = NULL;
+    SECURITY_DESCRIPTOR sd;
+    PACL pDacl = NULL;
+    DWORD dwAclSize;
+    HKEY hKey;
+    LONG lRetCode;
+    BOOL bSuccess = FALSE; // assume this function fails
+
+    //
+    // open the performance key for WRITE_DAC access
+    //
+    lRetCode = RegOpenKeyEx(
+        HKEY_LOCAL_MACHINE,
+       TEXT("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Perflib"),
+        0,
+        WRITE_DAC,
+        &amp;hKey
+        );
+
+    if(lRetCode != ERROR_SUCCESS) {
+        fprintf(stderr, "RegOpenKeyEx error! (rc=%lu)\n", lRetCode);
+        return RTN_ERROR;
+    }
+
+    //
+    // prepare a Sid representing any Interactively logged-on user
+    //
+    if(!AllocateAndInitializeSid(
+        &amp;sia,
+        1,
+        SECURITY_INTERACTIVE_RID,
+        0, 0, 0, 0, 0, 0, 0,
+        &amp;pInteractiveSid
+        )) goto cleanup;
+
+    //
+    // prepare a Sid representing the well-known admin group
+    //
+    if(!AllocateAndInitializeSid(
+        &amp;sia,
+        2,
+        SECURITY_BUILTIN_DOMAIN_RID,
+        DOMAIN_ALIAS_RID_ADMINS,
+        0, 0, 0, 0, 0, 0,
+        &amp;pAdministratorsSid
+        )) goto cleanup;
+
+    //
+    // compute size of new acl
+    //
+    dwAclSize = sizeof(ACL) +
+        2 * ( sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) ) +
+        GetLengthSid(pInteractiveSid) +
+        GetLengthSid(pAdministratorsSid) ;
+
+    //
+    // allocate storage for Acl
+    //
+    pDacl = (PACL)HeapAlloc(GetProcessHeap(), 0, dwAclSize);
+    if(pDacl == NULL) goto cleanup;
+
+    if(!InitializeAcl(pDacl, dwAclSize, ACL_REVISION))
+        goto cleanup;
+
+    //
+    // grant the Interactive Sid KEY_READ access to the perf key
+    //
+    if(!AddAccessAllowedAce(
+        pDacl,
+        ACL_REVISION,
+        KEY_READ,
+        pInteractiveSid
+        )) goto cleanup;
+
+    //
+    // grant the Administrators Sid GENERIC_ALL access to the perf key
+    //
+    if(!AddAccessAllowedAce(
+        pDacl,
+        ACL_REVISION,
+        KEY_ALL_ACCESS,
+        pAdministratorsSid
+        )) goto cleanup;
+
+    if(!InitializeSecurityDescriptor(&amp;sd, SECURITY_DESCRIPTOR_REVISION))
+        goto cleanup;
+
+    if(!SetSecurityDescriptorDacl(&amp;sd, TRUE, pDacl, FALSE)) {
+        fprintf(stderr, "SetSecurityDescriptorDacl error! (rc=%lu)\n",
+            GetLastError());
+        goto cleanup;
+    }
+
+    //
+    // apply the security descriptor to the registry key
+    //
+    lRetCode = RegSetKeySecurity(
+        hKey,
+        (SECURITY_INFORMATION)DACL_SECURITY_INFORMATION,
+        &amp;sd
+        );
+
+    if(lRetCode != ERROR_SUCCESS) {
+        fprintf(stderr, "RegSetKeySecurity error! (rc=%lu)\n",
+            lRetCode);
+        goto cleanup;
+    }
+
+    bSuccess = TRUE; // indicate success
+
+</PRE>cleanup:
+<P>
+<PRE>    RegCloseKey(hKey);
+    RegCloseKey(HKEY_LOCAL_MACHINE);
+
+    //
+    // free allocated resources
+    //
+    if(pDacl != NULL)
+        HeapFree(GetProcessHeap(), 0, pDacl);
+
+    if(pInteractiveSid != NULL)
+        FreeSid(pInteractiveSid);
+
+    if(pAdministratorsSid != NULL)
+        FreeSid(pAdministratorsSid);
+
+    if(!bSuccess) return RTN_ERROR;
+
+    return RTN_OK;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbhowto kbcode<BR>
+KBSubcategory: BseSecurity BseMisc CodeSam<BR>
+Additional reference words: 3.51 4.00 perfmon performance
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 20, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

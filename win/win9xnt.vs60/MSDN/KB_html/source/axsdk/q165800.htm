@@ -1,0 +1,339 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>SAMPLE: Using a URL Moniker to POST Data </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q165800">
+<META NAME="KBModify" CONTENT="1997/10/31">
+<META NAME="KBCreate" CONTENT="1997/03/25">
+<META NAME="Keywords" CONTENT="AXSDKUrlMon kbsample kbfile">
+<META NAME="KBArea" CONTENT="Support; KB; axsdk">
+<META NAME="Description" CONTENT="  Depending on the quantity of data to be transmitted in a request to an HTTP server, it may be desirable, or even necessary, to use the POST method as opposed to the GET method, which is limited to sending approximately 2K of data to the server. Thi...">
+<META NAME="Product" CONTENT="ActiveX SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ActiveX ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QALZ,QAUD,QAPN,QAYY,QAPF,QBLL,QAFZ,QAGI,QBBI,QARL,QAB5,QAGX,QAFI,QAA1,QAH4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>SAMPLE: Using a URL Moniker to POST Data</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 31, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q165800</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft ActiveX SDK, version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Depending on the quantity of data to be transmitted in a request to an HTTP
+server, it may be desirable, or even necessary, to use the POST method as
+opposed to the GET method, which is limited to sending approximately 2K of
+data to the server. This article explains the requirements for using URL
+Monikers to POST data to an HTTP server. Sample code in the form of a
+dialog-based application is also provided.
+<P>
+The following file is available for download from the Microsoft Software
+Library:
+<P>
+<PRE> ~ <A href="http://support.microsoft.com/download/support/mslfiles/postmon.exe">Postmon.exe</A> <I>(size: 42091 bytes)</I> 
+
+</PRE>For more information about downloading files from the Microsoft Software
+Library, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../zmiscellaneous/q119591.htm">Q119591</A></B>
+   TITLE     : How to Obtain Microsoft Support Files from Online Services
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+The PROGRESS sample included with the ActiveX SDK for Internet Explorer 3.x
+and the Internet Client SDK for Internet Explorer 4.0 demonstrated how to
+perform the GET method using a URL Moniker. Building upon that knowledge,
+the POSTMON sample demonstrates the modifications necessary to perform a
+POST.
+<P>
+Following is a description of the major implementation details that need to
+be accounted for when performing a POST using a URL Moniker:
+
+<OL><P><LI>In the implementation of IBindStatusCallback::GetBindInfo, specify the
+   action BINDVERB_POST as well as the data to be posted in a pointer to
+   the BINDINFO structure provided by the URL Moniker. At this time,
+   HGLOBAL is the only supported format for the data to be transmitted to
+   the server. Take special caution when posting large quantities of data
+   by checking the return values of memory allocation functions. If memory
+   is limited, these functions may fail. Also observe that the sample
+   implementation fills in the pUnkForRelease member of the STGMEDIUM data
+   structure. This allows the client to manage the data through the
+   reference count on the object that implements IBindStatusCallback. In
+   this case, the client should free the data only on final release of the
+   object that implements the callback interface:
+<P>
+<P><PRE>      STDMETHODIMP
+<PRE></PRE>         CBindStatusCallback::GetBindInfo(DWORD* pgrfBINDF,
+                                          BINDINFO* pbindInfo)
+      {
+      if (m_fRedirect &amp;&amp; BINDVERB_POST == m_dwAction)
+      {
+         // You are being redirected by the server.
+         // The method is changed to GET here so no data is posted below
+         SetStatusText(_T("Switching method to GET"));
+            m_dwAction = BINDVERB_GET;
+      }
+
+     *pgrfBINDF = BINDF_ASYNCHRONOUS | BINDF_ASYNCSTORAGE
+                         | BINDF_PULLDATA;
+     *pgrfBINDF |= BINDF_GETNEWESTVERSION
+                         | BINDF_NOWRITECACHE;
+
+      // Set up the BINDINFO data structure
+      pbindInfo-&gt;cbSize = sizeof(BINDINFO);
+      pbindInfo-&gt;dwBindVerb = m_dwAction; // here's where the action is
+      pbindInfo-&gt;szExtraInfo = NULL;
+
+      // Initialize the STGMEDIUM.
+      memset(&amp;pbindInfo-&gt;stgmedData, 0, sizeof(STGMEDIUM));
+      pbindInfo-&gt;grfBindInfoF = 0;
+      pbindInfo-&gt;szCustomVerb = NULL;
+
+      // set up action-specific members
+      switch(m_dwAction)
+      {
+      case BINDVERB_POST:
+         // only POST data when the method is POST
+         if (m_hDataToPost)
+         {
+            // Fill the STGMEDIUM with the data to post
+            // this is the only medium urlmon supports right now
+            pbindInfo-&gt;stgmedData.tymed = TYMED_HGLOBAL;
+            pbindInfo-&gt;stgmedData.hGlobal = m_hDataToPost;
+            pbindInfo-&gt;stgmedData.pUnkForRelease =
+               (LPUNKNOWN)(LPBINDSTATUSCALLBACK)this; // maintain control
+       AddRef(); // It will be freed on final release
+            // the following must be exact! GlobalSize() rounds up.
+       pbindInfo-&gt;cbstgmedData = m_cbDataToPost;
+         }
+         break;
+      case BINDVERB_GET:
+         break;
+      default:
+         return E_FAIL;
+      }
+
+</PRE><P><LI>In the case of a redirect response from the server, a URL Moniker
+   notifies the client of a redirect request through a call to
+   IBindStatusCallback::OnProgress with a status code of
+   BINDSTATUS_REDIRECTING. In this case, the client should stop posting
+   data regardless of whether the new URL would accept it. The client
+   should detect this status code in their implementation and set a
+   flag in their callback implementation and modify the behavior of
+   GetBindInfo appropriately as shown above in the m_fRedirect case. For
+   more information on redirection, see RFC 1945 referenced below.
+<P>
+   RFC 2068 referenced below contains a note that states the following:
+<P>
+   “When automatically redirecting a POST request after receiving a 301
+   status code, some existing HTTP/1.0 user agents will erroneously change
+   it into a GET request.”
+<P>
+   For compatibility with Netscape Navigator, the URL moniker performs such
+   an action.
+
+<P><LI>The client object that implements IBindStatusCallback should also
+   implement IHttpNegotiate. The following is a basic implementation of
+   this method defined in this interface. Observe that when the transaction
+   begins, in order to POST data the client must specify the
+   additional header "Content-Type: application/x-www-form-urlencoded."
+   This header indicates that the data being posted is URL-encoded form
+   data. If a different Content-Type is being posted to the server, the
+   data must be encoded according to that content-type's rules and the
+   appropriate content type header specified via
+   IHttpNegotiate::BeginningTransaction:
+<P>
+<P><PRE>      STDMETHODIMP
+      CBindStatusCallback::BeginningTransaction(LPCWSTR szURL,
+<PRE></PRE>               LPCWSTR szHeaders,
+               DWORD dwReserved,
+               LPWSTR __RPC_FAR *pszAdditionalHeaders)
+      {
+         // Here's our opportunity to add headers
+         if (!pszAdditionalHeaders)
+         {
+            return E_POINTER;
+         }
+
+         *pszAdditionalHeaders = NULL;
+
+         // This header is required when performing a POST operation
+         if (BINDVERB_POST == m_dwAction &amp;&amp; m_hDataToPost)
+         {
+            const WCHAR c_wszHeaders[] =
+               L"Content-Type: application/x-www-form-urlencoded\r\n";
+
+            LPWSTR wszAdditionalHeaders =
+                   (LPWSTR)CoTaskMemAlloc(
+                      (wcslen(c_wszHeaders)+1) *sizeof(WCHAR));
+            if (!wszAdditionalHeaders)
+            {
+               return E_OUTOFMEMORY;
+            }
+
+            wcscpy(wszAdditionalHeaders, c_wszHeaders);
+            *pszAdditionalHeaders = wszAdditionalHeaders;
+         }
+         return NOERROR;
+      }
+
+      STDMETHODIMP CBindStatusCallback::OnResponse(DWORD dwResponseCode,
+                  LPCWSTR szResponseHeaders,
+                  LPCWSTR szRequestHeaders,
+                  LPWSTR __RPC_FAR *pszAdditionalRequestHeaders)
+      {
+         if (!pszAdditionalRequestHeaders)
+         {
+            return E_POINTER;
+         }
+
+         *pszAdditionalRequestHeaders = NULL;
+
+         return NOERROR;
+      }
+
+</PRE></OL>See the instructions below on obtaining the sample. To build the sample,
+refer to the README.TXT file included in the self-extracting archive. The
+file POSTMON.CPP contains some explanation of the sample's interface.
+<P>
+To use the sample, perform the following steps:
+
+<OL><P><LI>Copy POSTMON.ASP and REDIR.ASP to a directory on an NT 4.0 server
+   running Internet Information Server (IIS) version 3.0. The directory
+   should be recognized by IIS as a virtual root with execute permission.
+
+<P><LI>Copy REDIR.HTM to the designated "Home Directory" by IIS, typically the
+   \inetpub\wwwroot subdirectory. Verify that this directory has read
+   permission.
+
+<P><LI>Build the POSTMON sample from the command line using NMAKE as described
+   in the README.TXT file. NMAKE will create POSTMON.EXE on the designated
+   output directory (in this case, POSTMON_ has been specified as the
+   output directory).
+<P>
+</OL>NOTE: This NMAKE-generated POSTMON.EXE should not be confused with the
+downloadable, self-extracting archive of this sample of the same name.
+
+<OL><P><LI>Run POSTMON_\POSTMON.EXE.
+
+<P><LI>Modify the POSTMON address textbox to specify a valid path to
+   POSTMON.ASP. Note that you must not specify a local file path because a
+   POST or a GET will only succeed if the client interacts with an HTTP
+   server.
+
+<P><LI>The default method is POST as indicated by the radio button. Click
+   submit, and observe the results.
+
+<P><LI>To test redirection, modify the POSTMON address textbox to specify a
+   valid URL to REDIR.ASP, click submit and observe the results. The
+   contents of REDIR.HTM will be displayed.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+Berners-Lee, T. RFC 1945, "The Hypertext Transfer Protocol -- HTTP/1.0"
+<P>
+Fielding, R. RFC 2068, "Hypertext Transfer Protocol -- HTTP/1.1"
+<P>
+Asynchronous Moniker Specification included with the ActiveX SDK
+ 
+<PRE>Keywords          : AXSDKUrlMon kbsample kbfile
+Version           : 1.0
+Platform          : WINDOWS
+Issue type        : kbinfo
+Solution Type     : kbfile</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 31, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

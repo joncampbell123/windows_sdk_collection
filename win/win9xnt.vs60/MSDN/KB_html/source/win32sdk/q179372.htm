@@ -1,0 +1,239 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Common File Dialog Multiple Selection File Limit </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q179372">
+<META NAME="KBModify" CONTENT="1998/01/15">
+<META NAME="KBCreate" CONTENT="1998/01/15">
+<META NAME="Keywords" CONTENT="UsrCmnDlg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  When you use the GetOpenFileName API or the MFC CFileDialog class with the OFN_ALLOWMULTISELECT flag on Windows NT 4.0, you are limited to the number of characters that will be returned in the file name buffer.  CAUSE =====  The cause is in the com...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QABN,QAUD,QBBI,QA01,QAHE,QAKC,QAFI,QAJB,QAMB,QAI4,QDL9,QBWQ,QBWO,QBWN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Common File Dialog Multiple Selection File Limit</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 15, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q179372</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When you use the GetOpenFileName API or the MFC CFileDialog class with the
+OFN_ALLOWMULTISELECT flag on Windows NT 4.0, you are limited to the number
+of characters that will be returned in the file name buffer.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The cause is in the common file dialog box code in Comdlg32.dll in Windows
+NT 4.0 and Windows NT 4.0 with Service Pack 1.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Install Windows NT 4.0 Service Pack 2 or greater.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The GetOpenFileName API takes a pointer to an OPENFILENAME structure that
+specifies options and initialization information for the Windows common
+file dialog box, and returns information about the file(s) selected. The
+MFC CFileDialog class encapsulates the Windows common file dialog box. The
+CFileDialog class's m_ofn member variable is a structure of type
+OPENFILENAME. You can specify the OFN_ALLOWMULTISELECT flag in the Flags
+member of the OPENFILENAME structure to allow the user to select more than
+one file.
+<P>
+When the OFN_ALLOWMULTISELECT and OFN_EXPLORER flags are specified, the
+lpstrFile member of the OPENFILENAME structure is a pointer to a caller-
+allocated buffer that receives the current directory followed by the names
+of the selected files. Each member of this list is separated by a single
+NULL value and the list is terminated by two sequential NULL values. If the
+OFN_EXPLORER flag is not specified, then the strings are space separated
+and the function adds the short (8.3) filenames to the list. The nMaxFile
+member specifies the size, in bytes (ANSI version) or characters (Unicode
+version), of the buffer pointed to by lpstrFile.
+<P>
+The GetOpenFileName or CFileDialog.DoModal() function will return IDCANCEL
+if the length of the formatted string (composed of the directory and file
+names) exceeds any limit you set. If the user tries to open a number of
+files that will exceed the character limit, CommDlgExtendedError() will
+return the value FNERR_BUFFERTOOSMALL. If this occurs, the first two bytes
+of lpstrFile contain the required buffer size in either bytes (ANSI
+version) or characters (Unicode version).
+<P>
+There is a bug in Windows NT 4.0 that limits the number of characters that
+will be copied to lpstrFile to 2,562 characters no matter what size is
+specified in nMaxFile. When this occurs, the function returns IDOK, but the
+file list in lpstrFile is truncated at this limit.
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+<P>
+The following MFC code demonstrates the problem by trying to open various
+numbers of files:
+<P>
+<PRE>   #include "cderr.h" //for definition of FNERR_BUFFERTOOSMALL
+
+   CFileDialog   dlg( TRUE, NULL, NULL, OFN_ALLOWMULTISELECT, NULL, NULL );
+   DWORD MAXFILE = 2562; //2562 is the max
+   dlg.m_ofn.nMaxFile = MAXFILE;
+   char* pc = new char[MAXFILE];
+   dlg.m_ofn.lpstrFile = pc;
+   dlg.m_ofn.lpstrFile[0] = NULL;
+
+   int iReturn = dlg.DoModal();
+   if(iReturn ==  IDOK)
+   {
+      int nCount = 0;
+      POSITION pos = dlg.GetStartPosition();
+      while (pos != NULL)
+      {
+         dlg.GetNextPathName(pos);
+         nCount++;
+      }
+      CString str;
+      str.Format("Successfully opened %d files\n", nCount);
+      AfxMessageBox(str);
+   }
+   else if(iReturn == IDCANCEL)
+      AfxMessageBox("Cancel");
+
+   if(CommDlgExtendedError() == FNERR_BUFFERTOOSMALL)
+      AfxMessageBox("BUFFERTOOSMALL");
+   delete []pc;
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+For additional information, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q99097.htm">Q99097</A></B>
+   TITLE     : HOWTO: Customize Common Dialog Box Parameter Blocks
+
+   ARTICLE-ID: <B><A href="../visualc/q162160.htm">Q162160</A></B>
+   TITLE     : DOC: CFileDialog::DoModal Does Not Return 0
+
+   ARTICLE-ID: <B><A href="../win32sdk/q131225.htm">Q131225</A></B>
+   TITLE     : PRB: CFileDialog::DoModal() Does Not Display FileOpen Dialog
+
+   ARTICLE-ID: <B><A href="../visualc/q115087.htm">Q115087</A></B>
+   TITLE     : HOWTO: Change the Background Color of a Common Dialog
+
+   ARTICLE-ID: <B><A href="../win32sdk/q130761.htm">Q130761</A></B>
+   TITLE     : HOWTO: Use FileOpen Common Dialog w/OFN_ALLOWMULTIPLESELECT
+
+</PRE>(c) Microsoft Corporation 1998, All Rights Reserved. Contributions by
+Philip Spory, Microsoft Corporation
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: CFileDialog OFN_ALLOWMULTISELECT OPENFILENAME<BR>
+nMaxFile lpstrFile Common File Dialog limit max GetOpenFileName<BR>
+Keywords          : UsrCmnDlg kbcode<BR>
+Technology        : kbMfc<BR>
+Version           : WINNT:4.0<BR>
+Platform          : winnt<BR>
+Issue type        : kbbug<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 15, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

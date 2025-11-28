@@ -1,0 +1,299 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: VMD_Post_Absolute_Pointer_Message Bug in VMOUSE </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q139292">
+<META NAME="KBModify" CONTENT="1995/11/20">
+<META NAME="KBCreate" CONTENT="1995/11/08">
+<META NAME="Keywords" CONTENT="kbprg kbbuglist">
+<META NAME="KBArea" CONTENT="Support; KB; win32ddk">
+<META NAME="Description" CONTENT="  The VMOUSE VxDCall VMD_Post_absolute_Pointer_Message does not correctly call the USER API Mouse_Event as documented in the MSDN Library compact disc and elsewhere. The other VxD calls to VMOUSE are not affected by this problem. Programmers using th...">
+<META NAME="Product" CONTENT="Win32 DDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAYA,QAGI,QAH4,QADO,QAIF,QDL9,QBWO,QBWN,QBC9,QBC8,QAYZ,QANO,QBXS,QAGU,QACI V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: VMD_Post_Absolute_Pointer_Message Bug in VMOUSE</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 20, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q139292</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Device Development Kit (DDK) for Windows 95,
+   version 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The VMOUSE VxDCall VMD_Post_absolute_Pointer_Message does not correctly
+call the USER API Mouse_Event as documented in the MSDN Library compact
+disc and elsewhere. The other VxD calls to VMOUSE are not affected by this
+problem. Programmers using the Mouse_Event call to the USER API directly
+as from a DLL are not affected by this problem.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+The developers generated the following workaround sample code. In general,
+it ends up calling the Mouse_Event API. A number of customers have used
+this sample to guide them and have met with success. There are, however,
+two important caveats:
+
+<UL><LI>The value in VMOUSE_FOCUS_VM is never initialized. In your
+   initialization code, you should default it to the current VM by using
+   something like this:
+<P>
+   VMMcall Get_SYS_VM_Handle
+   mov [VMOUSE_FOCUS_VM],ebx
+
+<LI>The hook call VMMCall Hook_Device_PM_API does not currently have a
+   corresponding unhook call. Therefore your VxD will need to be static.
+<P>
+</UL><h3>Sample Code</h3>
+ 
+<P>
+;******************************
+; Microsoft Corp. (C) 1991-1996
+;******************************
+; Your driver may already have the following code to track MOUSE
+; Ownership. This code needs to be there because even as advertized, VMD_
+; Post_Absolute_Message won't handle MS-DOS VMs. So your VxD needs to track
+; mouse ownership and selectively call VMD_Post_Absolute_Pointer_Message
+;=======================================================
+VxD_Locked_Data_Seg
+<PRE>lpfnPreviousVMOUSEPMAPI   dd   0   ; VMOUSE's PM_API_Proc
+               ; will be non-zero if you hook vmouse.
+
+UserEventHandle   dd   0
+User_Mouse_Event_Segment   dd   0
+User_Mouse_Event_Offset      dd   0
+</PRE>VxD_Locked_Data_Ends
+;In the Device_Init (or sys_dynamic_Device_init, if it
+;is a dyna-loaded VxD (loaded by vmouse)) proc of your VxD,
+<PRE>   VxDCall   VMD_Get_Version      ; get version of
+ VMOUSE
+   cmp   eax, 400h      ; Q: correct support ABS coords?
+   jne   done         ;   Y: Get out
+   mov   eax, VMD_Device_ID      ; N: hook vmouse's service.
+   mov   esi, OFFSET32 FTG_PM_API
+   VMMCall   Hook_Device_PM_API      ; Hook VMOUSE's PM
+ API
+   mov   [lpfnPreviousVMOUSEPMAPI], esi   ; Save old address
+</PRE>done:
+; Now on to FTG_PM_API. This will watch for Mouse.drv telling VMOUSE
+; about User.exe's entry point. This entry point used to be called
+; by your Mouse.drv in Windows 3.1.
+BeginProc FTG_PM_API
+<PRE>   movzx   eax, [ebp.Client_AX]
+   cmp   eax, VMDAPI_SET_MOUSE_EVENT_CALLBACK
+   jne   @F
+   movzx   eax, [ebp.Client_DX]
+   mov   [USER_Mouse_Event_Offset], eax
+   mov   eax, [ebp.Client_ECX]
+   mov   [USER_Mouse_Event_Segment], ax
+   jmp   goto_previous
+@@:
+   cmp   eax, VMDAPI_SET_MOUSE_FOCUS
+   jne   goto_previous
+   mov   eax, [ebp.Client_EBX]      ; contains the VM handle
+   mov   [VMOUSE_FOCUS_VM], eax
+</PRE>goto_previous:
+<PRE>   jmp   [lpfnPreviousVMOUSEPMAPI]
+</PRE>EndProc FTG_PM_API
+; Now on to mouse focus tracking. FTG needs to track mouse
+; focus, because if the mouse focus is on SYS_VM, then it
+; wants to handle the absolute device in one way, otherwise
+; in a different way.
+; Add to your CONTROL_PROC, the following line:
+<PRE>   Control_Dispatch Set_Device_Focus, FTG_Set_Device_Focus
+</PRE>; On to FTG_Set_Device_Focus
+BeginProc FTG_Set_Device_Focus
+<PRE>   or   edx, edx      ; Q: Critical set focus ?
+   jz   fsdf_set      ;    Y: set it
+   cmp   edx, VMD_Device_ID   ;    N: Q: Is it for VMD ?
+   jne   fsdf_exit
+</PRE>fsdf_set:
+<PRE>   mov   [VMOUSE_FOCUS_VM], ebx
+</PRE>fsdf_exit:
+<PRE>   ret
+</PRE>EndProc FTG_Set_Device_Focus
+;***********************************************************
+; All the previous code needed to be there in your VxD anyway because,
+; even as advertized, VMD_Post_Absolute_Pointer_Message, didn't work for
+; MS-DOS VMs. The following code will circumvent VMD_Post_Abso...
+;==================================================================
+; Say that you are at this decision point
+; Q: Should I call VMOUSE or should I do the relative motion stuff
+;    or whatever for the MS-DOS VMs ?
+<PRE>   mov   ebx, [VMOUSE_FOCUS_VM]
+   VMMCall   Test_Sys_VM_Handle   ; Q: Is this System VM ?
+   jnz   Handle_DOS_VMs      ;    N: do what you would have done.
+</PRE>; Handle Windows VM absolute motion here.
+; Assumption: You are at interrupt time. AND
+;
+; Buttons = button state (button state as desired by User.exe's
+<PRE>;          mouse_event procedure.)
+;       (without the absolute bit set).
+</PRE>; XPos = X position
+; YPos = Y position
+;
+<PRE>   xor   eax, eax
+   cmp   [lpfnpreviousVMOUSEPMAPI], eax   ; Q: good vmouse ?
+   je   call_it
+   cmp   [UserEventHandle], eax      ; Q: Event scheduled already?
+   jne   handled_it
+   mov   esi, OFFSET32 CallUserProc
+   mov   eax, TIME_CRITICAL_BOOST
+   mov   ecx, PEF_Wait_For_STI OR PEF_Always_Sched
+   VMMCall   Call_Priority_VM_Event
+   mov   [UserEventHandle], esi
+   jmp   handled_it
+</PRE>call_it:
+<PRE>   mov   al, [Buttons]
+   mov   esi, [XPos]
+   mov   edi, [YPos]
+   VxDCall   VMD_Post_Absolute_Pointer_Message
+
+handled_it:               ; handled hardware int.
+
+   ....
+
+</PRE>; Now on to the final part. Call User.exe's mouse_event proc
+BeginProc CallUserProc
+<PRE>   movzx   ecx, [USER_Mouse_Event_Segment]
+   jecxz   cup_done
+   Push_Client_State
+   VMMCall   Begin_Nest_Exec
+   movzx   eax, [Buttons]      ; buttons
+   or   ax, 8000h      ; set absolute bit
+   mov   [ebp.Client_EAX], eax
+   mov   eax, [XPos]      ; send X position
+   mov   [ebp.Client_EBX], eax
+   mov   eax, [YPos]      ; send Y position
+   mov   [ebp.Client_ECX], eax
+
+   movzx   eax, [ButtonCount]   ; How many buttons ?
+   mov   [ebp.Client_EDX], eax   ; send # buttons
+   xor   eax, eax
+   mov   [ebp.Client_EDI], eax   ; These need to be 0
+   mov   [ebp.Client_ESI], eax
+
+   mov   edx, [USER_Mouse_Event_Offset]   ; ECX Still contains SEGMENT
+
+   VMMCall   Simulate_Far_Call
+   VMMCall   Resume_Exec
+
+   VMMCall   End_Nest_Exec
+   Pop_Client_State
+
+</PRE>cup_done:
+<PRE>   mov   [UserEventHandle], 0      ; Reset flag so new messages
+                                   ; can go in
+   ret
+
+</PRE>EndProc CallUserProc
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this problem and will
+post new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+MSDN Library Compact Disc October 1995
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00 absolute VxD win95<BR>
+KBCategory: kbprg kbbuglist<BR>
+KBSubcategory:<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 20, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

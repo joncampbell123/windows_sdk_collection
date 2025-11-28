@@ -1,0 +1,377 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Launching COM Server with Long File Name Returns 0x80080005 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q179690">
+<META NAME="KBModify" CONTENT="1998/01/22">
+<META NAME="KBCreate" CONTENT="1998/01/21">
+<META NAME="Keywords" CONTENT="AtlServer vcbuglist500 kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  A COM local server fails to start, accompanied by the error  Server Execution Failed  (error number 0x80080005 or -2146959355), if it is registered in a directory with a long file name that contains a space and a similar directory name exists at th...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAFI,QAUD,QAH4,QAIJ,QAI4,QAKP,QA6E,QALW,QAUJ,QDIV,QBFY,QBXB,QBVV,QA5E,QATJ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Launching COM Server with Long File Name Returns 0x80080005</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 22, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q179690</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Active Template Library (ATL) 2.1 included with:
+   - Microsoft Visual C++, 32-bit Editions, version 5.0
+<LI>Microsoft Windows NT 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+A COM local server fails to start, accompanied by the error "Server
+Execution Failed" (error number 0x80080005 or -2146959355), if it is
+registered in a directory with a long file name that contains a space and a
+similar directory name exists at the same level.
+<P>
+If the server is registered with a short file name, this problem does not
+occur. This is not a problem for inproc servers. All ATL local servers are
+registered with long file names.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This problem is caused by the fact that unquoted long file names containing
+spaces are ambiguous to CreateProcess (which is called by CoCreateInstance/
+CoGetClassObject). Refer to the CreateProcess documentation for more
+information.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+This problem can be fixed by overriding the registration functions in the
+CComModule derived class and adding code to use the short file name in
+registration instead of the long file name. MFC uses short file names for
+registration.
+
+<OL><P><LI>Change CExeModule definition in StdAfx.h as follows.
+<P>
+<P><PRE>      class CExeModule : public CComModule
+      {
+      public:
+<PRE></PRE>         LONG Unlock();
+         DWORD dwThreadID;
+
+      #ifdef _ATL_STATIC_REGISTRY
+      // Statically linking to Registry component.
+
+         HRESULT WINAPI UpdateRegistryFromResourceS(UINT nResID,
+            BOOL bRegister, struct _ATL_REGMAP_ENTRY* pMapEntries = NULL);
+         HRESULT WINAPI UpdateRegistryFromResourceS(LPCTSTR lpszRes,
+            BOOL bRegister, struct _ATL_REGMAP_ENTRY* pMapEntries = NULL);
+
+      #else
+
+         HRESULT WINAPI UpdateRegistryFromResourceD(LPCTSTR lpszRes,
+            BOOL bRegister, struct _ATL_REGMAP_ENTRY* pMapEntries = NULL);
+         HRESULT WINAPI UpdateRegistryFromResourceD(UINT nResID,
+            BOOL bRegister, struct _ATL_REGMAP_ENTRY* pMapEntries = NULL);
+
+      #endif
+      };
+
+</PRE><P><LI>Add the following code to &lt;ProjectName&gt;.cpp after the #includes:
+<P>
+<P><PRE>      #ifdef _ATL_STATIC_REGISTRY
+      #include &lt;statreg.h&gt;
+      #endif
+</PRE>
+<P><LI>Add the following code to &lt;ProjectName&gt;.cpp before _tWinMain():
+<P>
+<P><PRE>      #ifdef _ATL_STATIC_REGISTRY
+      // Statically linking to Registry component.
+</PRE><P>
+<P><PRE>      HRESULT WINAPI CExeModule::UpdateRegistryFromResourceS(UINT nResID,
+<PRE></PRE>         BOOL bRegister, struct _ATL_REGMAP_ENTRY* pMapEntries)
+      {
+         USES_CONVERSION;
+         CRegObject ro;
+         TCHAR szModule[_MAX_PATH];
+         GetModuleFileName(_Module.GetModuleInstance(), szModule,
+            _MAX_PATH);
+
+         TCHAR szModuleShort[_MAX_PATH];
+         // Convert to short file name.
+         if (::GetShortPathName(szModule, szModuleShort, _MAX_PATH))
+         {
+            lstrcpy(szModule, szModuleShort);
+         }
+
+         LPOLESTR pszModule = T2OLE(szModule);
+         ro.AddReplacement(OLESTR("Module"), pszModule);
+         if (NULL != pMapEntries)
+         {
+            while (NULL != pMapEntries-&gt;szKey)
+            {
+               _ASSERTE(NULL != pMapEntries-&gt;szData);
+               ro.AddReplacement(pMapEntries-&gt;szKey, pMapEntries-&gt;szData);
+               pMapEntries++;
+            }
+         }
+
+         LPCOLESTR szType = OLESTR("REGISTRY");
+         return (bRegister) ? ro.ResourceRegister(pszModule, nResID,
+            szType) :
+            ro.ResourceUnregister(pszModule, nResID, szType);
+      }
+
+      HRESULT WINAPI CExeModule::UpdateRegistryFromResourceS(LPCTSTR
+         lpszRes,
+         BOOL bRegister, struct _ATL_REGMAP_ENTRY* pMapEntries)
+      {
+         USES_CONVERSION;
+         CRegObject ro;
+         TCHAR szModule[_MAX_PATH];
+         GetModuleFileName(_Module.GetModuleInstance(), szModule,
+            _MAX_PATH);
+
+         TCHAR szModuleShort[_MAX_PATH];
+         // Convert to short file name.
+         if (::GetShortPathName(szModule, szModuleShort, _MAX_PATH))
+         {
+            lstrcpy(szModule, szModuleShort);
+         }
+
+         LPOLESTR pszModule = T2OLE(szModule);
+         ro.AddReplacement(OLESTR("Module"), pszModule);
+         if (NULL != pMapEntries)
+         {
+            while (NULL != pMapEntries-&gt;szKey)
+            {
+               _ASSERTE(NULL != pMapEntries-&gt;szData);
+               ro.AddReplacement(pMapEntries-&gt;szKey, pMapEntries-&gt;szData);
+               pMapEntries++;
+            }
+         }
+
+         LPCOLESTR szType = OLESTR("REGISTRY");
+         LPCOLESTR pszRes = T2COLE(lpszRes);
+         return (bRegister) ? ro.ResourceRegisterSz(pszModule, pszRes,
+            szType)
+            : ro.ResourceUnregisterSz(pszModule, pszRes, szType);
+      }
+
+      #else
+
+      ATLAPI MyAtlModuleUpdateRegistryFromResourceD(_ATL_MODULE* pM,
+         LPCOLESTR lpszRes, BOOL bRegister,
+         struct _ATL_REGMAP_ENTRY* pMapEntries, IRegistrar* pReg = NULL)
+      {
+         USES_CONVERSION;
+         _ASSERTE(pM != NULL);
+         HRESULT hRes = S_OK;
+         CComPtr&lt;IRegistrar&gt; p;
+         if (pReg != NULL)
+            p = pReg;
+         else
+         {
+            hRes = CoCreateInstance(CLSID_Registrar, NULL,
+               CLSCTX_INPROC_SERVER, IID_IRegistrar, (void**)&amp;p);
+         }
+         if (SUCCEEDED(hRes))
+         {
+            TCHAR szModule[_MAX_PATH];
+            GetModuleFileName(pM-&gt;m_hInst, szModule, _MAX_PATH);
+
+            TCHAR szModuleShort[_MAX_PATH];
+            // Convert to short file name.
+            if (::GetShortPathName(szModule, szModuleShort, _MAX_PATH))
+            {
+               lstrcpy(szModule, szModuleShort);
+            }
+
+            p-&gt;AddReplacement(OLESTR("Module"), T2OLE(szModule));
+
+            if (NULL != pMapEntries)
+            {
+               while (NULL != pMapEntries-&gt;szKey)
+               {
+                  _ASSERTE(NULL != pMapEntries-&gt;szData);
+                  p-&gt;AddReplacement((LPOLESTR)pMapEntries-&gt;szKey,
+                     (LPOLESTR)pMapEntries-&gt;szData);
+                  pMapEntries++;
+               }
+            }
+            LPCOLESTR szType = OLESTR("REGISTRY");
+            GetModuleFileName(pM-&gt;m_hInstResource, szModule, _MAX_PATH);
+            LPOLESTR pszModule = T2OLE(szModule);
+            if (HIWORD(lpszRes)==0)
+            {
+               if (bRegister)
+                  hRes = p-&gt;ResourceRegister(pszModule,
+                     ((UINT)LOWORD((DWORD)lpszRes)), szType);
+               else
+                  hRes = p-&gt;ResourceUnregister(pszModule,
+                     ((UINT)LOWORD((DWORD)lpszRes)), szType);
+            }
+            else
+            {
+               if (bRegister)
+                  hRes = p-&gt;ResourceRegisterSz(pszModule, lpszRes, szType);
+               else
+                  hRes = p-&gt;ResourceUnregisterSz(pszModule, lpszRes,
+                     szType);
+            }
+
+         }
+         return hRes;
+      }
+
+      HRESULT WINAPI CExeModule::UpdateRegistryFromResourceD(LPCTSTR
+         lpszRes,
+         BOOL bRegister, struct _ATL_REGMAP_ENTRY* pMapEntries)
+      {
+         USES_CONVERSION;
+         return MyAtlModuleUpdateRegistryFromResourceD(this,
+            T2COLE(lpszRes),
+            bRegister, pMapEntries);
+      }
+
+      HRESULT WINAPI CExeModule::UpdateRegistryFromResourceD(UINT nResID,
+         BOOL bRegister, struct _ATL_REGMAP_ENTRY* pMapEntries)
+      {
+         return MyAtlModuleUpdateRegistryFromResourceD(this,
+            (LPCOLESTR)MAKEINTRESOURCE(nResID), bRegister, pMapEntries);
+      }
+
+      #endif
+
+</PRE><P><LI>Save the changes and rebuild all.
+<P>
+</OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+
+<OL><P><LI>Create two directories, C:\Program Files and C:\Program.
+
+<P><LI>Copy an ATL local server to C:\Program Files.
+
+<P><LI>Register the server.
+
+<P><LI>Attempt to start the server from a client application. Note that the
+   server does not start and CoCreateInstance returns error 0x80080005.
+
+<P><LI>Copy and register the local server in the directory C:\Program.
+
+<P><LI>Attempt to start the server from a client application. Note that the
+   server starts. No errors are returned.
+<P>
+</OL>NOTE: Surrounding the long file name in the registry with quotation marks
+does not solve this problem.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 80080005 -2146959355 LFN atl registration server<BR>
+execution failed<BR>
+(c) Microsoft Corporation 1997, All Rights Reserved. Contributions by Mike<BR>
+Francis, Microsoft Corporation<BR>
+Keywords          : AtlServer vcbuglist500 kbcode<BR>
+Technology        : ole<BR>
+Version           : WINDOWS:2.1; WINNT:4.0<BR>
+Platform          : WINDOWS winnt<BR>
+Issue type        : kbbug<BR>
+Solution Type     : kbpending<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 22, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,282 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Put OLE Attachments on the ClipBoard from SimpleMAPI </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q149977">
+<META NAME="KBModify" CONTENT="1996/04/29">
+<META NAME="KBCreate" CONTENT="1996/04/17">
+<META NAME="Keywords" CONTENT="kbole kbhowto kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  SimpleMapi provides a set of structures that you can use to obtain all sorts of file attachments. This article focuses on how to deal with OLE attachments (DocFiles) from your messages.  MORE INFORMATION  SimpleMapi saves all attachments in the rec...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QA9Q,QA5T,QADK,QALW,QAW6,QAPN,QDL9,QBWO,QBWN,QBXS,QBW5,QAY2,QANH,QAH6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Put OLE Attachments on the ClipBoard from SimpleMAPI</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 29, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q149977</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE libraries included with:
+<P>
+<P><PRE>    - Microsoft Windows NT version 3.51
+    - Microsoft Windows 95
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+SimpleMapi provides a set of structures that you can use to obtain all
+sorts of file attachments. This article focuses on how to deal with OLE
+attachments (DocFiles) from your messages.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+SimpleMapi saves all attachments in the recipients temp directory. Once you
+determine the location of your OLE Object file by using lpMapiMessage-&gt;
+lpFiles-&gt;lpszPathName and lpMapiMessage-&gt;lpFiles- &gt;lpszFileName to
+determine the specified file, you can take control over that file.
+<P>
+Simple MAPI represents OLE object files as OLE object streams. If you
+already know that your attachment is a strutured storage file, then your
+task is limited to OLE APIs. If don't know that your attachment is a
+strutured storage file, you'll need to parse through Simple MAPI structures
+in order to determine the type of the attachment.
+<P>
+A MapiMessage is comprised of 12 members which are:
+<P>
+typedef struct
+{
+<PRE>     ULONG            ulReserved;
+     LPTSTR           lpszSubject;
+     LPTSTR           lpszNoteText;
+     LPTSTR           lpszMessageType;
+     LPTSTR           lpszDateReceived;
+     LPTSTR           lpszConversationID;
+     FLAGS            flFlags;
+     lpMapiRecipDesc  lpOriginator;
+     ULONG            nRecipCount;
+     lpMapiRecipDesc  lpRecips;
+     ULONG            nFileCount;
+     lpMapiFileDesc   lpFiles;
+</PRE>} MapiMessage, FAR *lpMapiMessage;
+<P>
+Of these 12 members, this article will address two, nFileCount and lpFiles.
+nFileCount (as this member states) is the number of attachments your
+message contains. lpFiles is a pointer to another structure called
+MapiFileDesc that contains six members, which are:
+<P>
+typedef struct
+{
+<PRE>     ULONG    ulReserved;
+     ULONG    flFlags;
+     ULONG    nPosition;
+     LPTSTR   lpszPathName;
+     LPTSTR   lpszFileName;
+     LPVOID   lpFileType;
+</PRE>} MapiFileDesc, FAR *lpMapiFileDesc;
+<P>
+You can determine if you're dealing with an OLE file if lpMapiMessage-&gt;
+lpMapiFileDesc-&gt;flFlags tests true for MAPI_OLE_STATIC or MAPI_OLE.
+Remember the OLE file is copied to your temp directory or whatever path
+you've set in your environment variable TEMP.
+<P>
+Once you have determined that the attachment is an OLE object and you have
+determined the location of your attachment, you can treat this file like an
+ordinary structure storage. For example, you can send the information
+contained in the storage to the clipboard.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+StgCreateDocfile(OLESTR("c:\\temp\\storage.tmp"),STGM_CREATE |
+STGM_READWRITE|STGM_SHARE_EXCLUSIVE,0,&amp;pStore);
+<P>
+<PRE>// lpMapiMessage-&gt;lpFiles-&gt;lpszPathName not only contains the full path
+// of the file but also the name of the file.
+
+</PRE>OleCreateFromFile(CLSID_NULL,OLESTR(lpMapiMessage-&gt;lpFiles-&gt;lpszPathName),
+IID_IDataObject,OLERENDER_DRAW,NULL,pCOleclientSite,pStore,
+(LPVOID*)&amp;pDataObject);
+<P>
+OleSetClipboard(pDataObject);
+<P>
+You'll have to implement IOleClientSite if you use the OleCreateFromFile
+API. Here's an example of an implementation:
+<P>
+class COleclientsite : public IOleClientSite
+{ ... };
+<P>
+STDMETHODIMP COleclientsite::QueryInterface(REFIID riid, LPVOID *ppvobj)
+{
+<PRE>   *ppvobj = NULL;
+
+   if((IID_IUnknown == riid ) || ( IID_IOleClientSite == riid)) *ppvobj =
+</PRE>this;
+<P>
+<PRE>   if(*ppvobj != NULL)
+   {
+      ((LPUNKNOWN)*ppvobj)-&gt;AddRef();
+      return NOERROR;
+
+   }
+
+   else return ResultFromScode(E_NOINTERFACE);
+</PRE>}
+<P>
+<P>
+<PRE>/* because you are passing a pointer of IOleClientSite to
+   OleCreateFromFile, you need to ensure that the ref count is set to one
+*/
+
+</PRE>COleclientsite::COleclientsite():refcnt(1){}
+<P>
+STDMETHODIMP_(ULONG)COleclientsite::AddRef(void)
+{
+<PRE>   return ++refcnt;
+</PRE>}
+<P>
+STDMETHODIMP_(ULONG)COleclientsite::Release(void)
+{
+<PRE>   unsigned int local_var = refcnt;
+
+   if(--local_var == 0)
+
+      delete this;
+
+   return local_var;
+</PRE>}
+<P>
+STDMETHODIMP COleclientsite::SaveObject()
+{
+<PRE>   return NOERROR;
+</PRE>}
+<P>
+STDMETHODIMP COleclientsite::GetMoniker(DWORD dwAssign,DWORD
+dwWhichMoniker,LPMONIKER *ppmonk)
+{
+<PRE>   *ppmonk = NULL;
+   return ResultFromScode(E_NOTIMPL);
+</PRE>}
+<P>
+STDMETHODIMP COleclientsite::GetContainer(LPOLECONTAINER *ppCon)
+{
+<PRE>   *ppCon = NULL;
+   return ResultFromScode(E_NOINTERFACE);
+</PRE>}
+<P>
+STDMETHODIMP COleclientsite::ShowObject()
+{
+<PRE>   return ResultFromScode(E_NOTIMPL);
+</PRE>}
+<P>
+STDMETHODIMP COleclientsite::OnShowWindow(BOOL fShow)
+{
+<PRE>   return NOERROR;
+</PRE>}
+<P>
+STDMETHODIMP COleclientsite::RequestNewObjectLayout()
+{
+<PRE>   return NOERROR;
+</PRE>}
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+OLE 2 Programmer's Reference Volume One, pages 318 - 328, pg 639.
+Microsoft Developer Studio Online Help \win32sdk\ole\ole programmer's
+reference\functions
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 4.00<BR>
+KBCategory: kbole kbhowto kbcode<BR>
+KBSubcategory: mapi<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 29, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

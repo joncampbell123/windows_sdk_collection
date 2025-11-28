@@ -1,0 +1,268 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Embedding a File in a Message Programmatically </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q168903">
+<META NAME="KBModify" CONTENT="1997/05/23">
+<META NAME="KBCreate" CONTENT="1997/05/22">
+<META NAME="Keywords" CONTENT="EMAPI kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; mapi">
+<META NAME="Description" CONTENT="  Using Extended MAPI, it is possible to embed a file in a message so that the contents of the file are viewed when the message is opened, embedding a bitmap into the message so that the actual bitmap appears when you open the message for example.  M...">
+<META NAME="Product" CONTENT="mapi">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAEV,QAYC,QAGI,QAW6,QAH4,QA5T,QANE,QAI4,QAGB,QBBI,QAUR,QAIF,QAA1,QBXS V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Embedding a File in a Message Programmatically</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 23, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q168903</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Extended Messaging Application Programming Interface (MAPI), version
+   1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Using Extended MAPI, it is possible to embed a file in a message so that
+the contents of the file are viewed when the message is opened, embedding a
+bitmap into the message so that the actual bitmap appears when you open the
+message for example.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Embed a File in a Message</h3>
+ 
+
+<OL><P><LI>Create an attachment for the message by calling the message's
+   IMessage::CreateAttach method and pass NULL as the interface identifier.
+
+<P><LI>Call IMAPIProps::SetProps to set PR_ATTACH_METHOD to ATTACH_OLE,
+   indicating an OLE object.
+
+<P><LI>Set PR_RENDERING_POSITION to indicate where the attachment should be
+   displayed.
+
+<P><LI>Call IMAPIProp::OpenProperty to open the PR_ATTACH_DATA_OBJ property
+   with an IStorage object.
+
+<P><LI>Use OleCreateFromFile to create the embedded IStorage object from
+   the specified file.
+
+<P><LI>Call the new storage object's IStorage::Commit method.
+<P>
+</OL><h3>Example</h3>
+ 
+<P>
+The following code creates an attachment for a message, prompts the user
+for a file, and then embeds that file in the message. This code assumes the
+message has already been created. The pointer to the message is contained
+in the variable pMsg.
+<P>
+The following .lib files should be linked:
+
+<UL><LI>Ole32.lib
+<LI>Oleaut32.lib
+<LI>Uuid.lib
+<LI>Mapi32.lib
+<P>
+<PRE>   // BEGIN CODE
+   #include &lt;windows.h&gt;
+
+   #define USES_IID_IMAPITable
+   #define USES_IID_IMessage
+   #define USES_IID_IMAPIStatus
+   #define INITGUID
+   #include &lt;initguid.h&gt;
+
+   #include &lt;ole2.h&gt;
+   #include &lt;mapiguid.h&gt;
+   #include &lt;mapiutil.h&gt;
+   #include &lt;mapitags.h&gt;
+
+   #define USES_OID_OLE2_STORAGE
+   #define INITOID
+   #include &lt;mapioid.h&gt;
+
+   LPSTORAGE     pstg = NULL;
+   LPUNKNOWN     lpUnknown = NULL;
+   LPATTACH      pAtt      = NULL;
+   ULONG         ulAttNum;
+   HRESULT       hRes;
+   OPENFILENAME  ofn;
+   TCHAR         szFile[MAX_PATH];
+   OLECHAR       pszFile[MAX_PATH];
+
+   enum {METHOD,RENDERING,NUM_ATT_PROPS};
+   SPropValue    spvAttach[NUM_ATT_PROPS];
+
+   ZeroMemory((LPVOID) &amp;ofn, sizeof ofn);
+
+   // Set up structure to retrieve filename
+   lstrcpy(szFile,"*.*");
+   ofn.lStructSize = sizeof(ofn);
+   ofn.hwndOwner   = hWnd;
+   ofn.lpstrFilter = "All files\0*.*\0";
+   ofn.lpstrFile   = szFile;
+   ofn.nMaxFile    = MAX_PATH;
+   ofn.lpstrTitle  = "Attach File";
+   ofn.Flags       = OFN_NONETWORKBUTTON | OFN_FILEMUSTEXIST |
+                     OFN_NOCHANGEDIR     | OFN_PATHMUSTEXIST;
+
+   // Prompt user for file name
+   if (GetOpenFileName(&amp;ofn))
+   {
+      // Create an attachment on the message
+      if (FAILED(hRes = pMsg-&gt;CreateAttach(
+            NULL, (ULONG)0, &amp;ulAttNum, &amp;pAtt)))
+         goto Quit;
+
+      spvAttach[METHOD].ulPropTag = PR_ATTACH_METHOD;
+      spvAttach[METHOD].Value.l = ATTACH_OLE;
+
+      spvAttach[RENDERING].ulPropTag = PR_RENDERING_POSITION;
+      spvAttach[RENDERING].Value.l = 0;
+
+      // Save the properties we have set on the attachment
+      if (FAILED(hRes = pAtt -&gt; SetProps(
+            NUM_ATT_PROPS,
+            (LPSPropValue)&amp;spvAttach,
+            NULL)))
+         goto Quit;
+
+      // PR_ATTACH_DATA_OBJ will contain the OLE object
+      if (FAILED(hRes = pAtt-&gt;OpenProperty(
+            PR_ATTACH_DATA_OBJ,
+            (LPIID)&amp;IID_IStorage, 0,
+            MAPI_CREATE | MAPI_MODIFY,
+            (LPUNKNOWN *)&amp;pstg)))
+         goto Quit;
+
+      // We must convert the file name to a Wide Character string
+      // for use in the OleCreateFromFile function
+      MultiByteToWideChar(CP_ACP, 0, ofn.lpstrFile, -1, pszFile, 512);
+
+      // Create an embedded object in the IStorage object from the
+      // contents of the specified file
+      if (FAILED(hRes = OleCreateFromFile(
+            CLSID_NULL, pszFile, IID_IOleObject,
+            OLERENDER_NONE, NULL, NULL, pstg,
+            (LPVOID FAR*)&amp;lpUnknown)))
+         goto Quit;
+
+      // Call the Commit Method of the IStorage Object
+      if (FAILED(hRes = pstg-&gt;Commit(STGC_DEFAULT)))
+         goto Quit;
+
+      // Save the changes to the Attachment
+      pAtt -&gt; SaveChanges(0);
+
+   Quit:
+      if (pAtt)
+         pAtt -&gt; Release();
+
+      if (lpUnknown)
+         lpUnknown -&gt; Release();
+
+      if (pstg)
+         pstg -&gt; Release();
+
+      return hRes;
+
+   // END CODE
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : EMAPI kbcode<BR>
+Version             : 1.0<BR>
+Platform            : WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 23, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

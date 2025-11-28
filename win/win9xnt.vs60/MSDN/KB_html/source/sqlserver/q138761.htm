@@ -1,0 +1,213 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Differences in Column Nullability </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q138761">
+<META NAME="KBModify" CONTENT="1997/04/08">
+<META NAME="KBCreate" CONTENT="1995/10/26">
+<META NAME="Keywords" CONTENT="kbinterop kbprg kbusage SSrvDB_Lib SSrvProg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The nullability of columns in SQL Server temporary tables referenced by stored procedures can affect the operation of stored procedures.  MORE INFORMATION  The execution plans built for SQL Server stored procedures contain information on the nullab...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QAB9,QBVV,QABA,QA9E,QAE1,QABB,QBXR,QDMN,QBF0,QARL,QAI4,QBWS,QARR,QA4Q V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Differences in Column Nullability</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 8, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q138761</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 &amp; 6.5
+<LI>Microsoft Open Data Base Connectivity, version 2.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The nullability of columns in SQL Server temporary tables referenced by
+stored procedures can affect the operation of stored procedures.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The execution plans built for SQL Server stored procedures contain
+information on the nullability (the property of allowing or not allowing
+nulls) of all the table columns referenced by the stored procedure. Proper
+execution of the stored procedure depends on the nullability information
+stored in the execution plan agreeing with the actual nullability of the
+tables being referenced.
+<P>
+If sites are running a mix of DB-Lib and ODBC clients executing stored
+procedures on SQL Server 6.0 or later, it is important that all temporary
+tables referenced by those stored procedures be created with NULL or NOT
+NULL explicitly stated for all of the columns. This is because ODBC and DB-
+Lib clients have different defaults regarding whether columns are NULL or
+NOT NULL if this is not explicitly stated.
+<P>
+Prior to version 6.0, SQL Server followed non-ANSI rules regarding
+nullability defaults. SQL Server 6.0 introduced the command:
+<P>
+<PRE>   SET ANSI_NULL_DFLT_ON ON
+
+</PRE>which clients can use to change their default to the ANSI standard. Since
+the ODBC standard is based on the ANSI standard, a 2.50.0121 or later
+Microsoft SQL Server ODBC Driver sets this option on when it detects it is
+running against a 6.0 or later SQL Server. DB-Lib clients, however, are
+more targeted to maintaining compatibility with older SQL Servers, and they
+do not set this option. If a procedure like the following is created
+through a DB-Lib application, such as ISQL/w or the SQL Enterprise Manager:
+<P>
+<PRE>   create procedure testproc as
+   create table #testit (cola int, colb char(3))
+   insert into #testit values (1, 'aaa')
+   select * from #testit
+   go
+
+</PRE>then the temporary table #testit will be created with the columns not
+allowing nulls. This fact will be recorded in the stored procedure. When
+the procedure is later executed by an ODBC client, however, the temporary
+table created for the ODBC client will allow nulls in both columns. This
+conflict between what is recorded in the stored procedure and the current
+version of the table can prevent the proper operation of the stored
+procedure. All problems will be prevented if the procedure is changed to
+explicitly state NULL or NOT NULL for each column:
+<P>
+<PRE>   create procedure testproc as
+   create table #testit (cola int NOT NULL, colb char(3) NOT NULL)
+   insert into #testit values (1, 'aaa')
+   select * from #testit
+   go
+
+</PRE>The same type of problems could also occur if the first procedure were
+created from an ODBC application and later executed by a DB-Lib
+application.
+<P>
+An example of the types of problems encountered is inherent in the fact
+that the nullability of the columns has been changed. If a procedure were
+created and tested with ODBC Test, the procedure would allow nulls to be
+added to the temporary table simply because the columns default to NULL. If
+the procedure were then executed from ISQL/w it would start generating
+errors if the user attempted to insert null data because the version of the
+temporary table created for the DB-Lib client would default to NOT NULL.
+<P>
+If a stored procedure references a temporary table that is created outside
+the procedure, this issue can also affect any version of the Microsoft ODBC
+driver running against SQL Server 4.21a or earlier servers. This is because
+if NULL or NOT NULL is not specified on any CREATE TABLE statement issued
+through the drivers, the drivers automatically add NULL to the column
+definition before passing the statement to the server. For example, if the
+following procedure is created in a 4.21a server using ISQL/w:
+<P>
+<PRE>   create table #testit (cola int, colb char(3))
+   go
+   create procedure testproc as
+   insert into #testit values (1, 'aaa')
+   select * from #testit
+   go
+
+</PRE>and then an ODBC application does:
+<P>
+<PRE>   SQLExecDirect(hstmt, "create table #testit
+                         (cola int, colb char(3))", SQL_NTS);
+   SQLExecDirect(hstmt, "execute testproc", SQL_NTS);
+
+</PRE>Microsoft ODBC drivers will change the create table statement to:
+<P>
+<PRE>   create table #testit (cola int null, colb char(3) null)
+
+</PRE>before sending it to the server in order to enforce the ANSI standard.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words:  sql6 dblib odbc<BR>
+Keywords            : kbinterop kbprg kbusage SSrvDB_Lib SSrvProg<BR>
+Version             : 2.5.0121 6.0 6.5<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 8, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

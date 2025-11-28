@@ -1,0 +1,216 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Valid Routine Results in "Record Not Locked" Error </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q111919">
+<META NAME="KBModify" CONTENT="1995/06/27">
+<META NAME="KBCreate" CONTENT="1994/02/23">
+<META NAME="Keywords" CONTENT="kbprg kberrmsg kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  A VALID clause on a GET field or BROWSE field accidentally releases an automatic record lock, causing a  Record Not Locked  error message when the valid routine returns .F. The error will not occur if the valid routine returns .T.  CAUSE =====  The...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA5V,QAUD,QDMH,QABT,QAB4,QA7O,QACI,QBFM,QA7N,QBV8,QAB9,QAAP,QBVV,QAVX,QAVW V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Valid Routine Results in "Record Not Locked" Error</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 27, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q111919</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft FoxPro for Windows, versions 2.5, 2.5a, and 2.5b
+<LI>Microsoft FoxPro for MS-DOS, versions 2.0, 2.5, 2.5a, and 2.5b
+<LI>Microsoft FoxPro for Macintosh, versions 2.5b
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+A VALID clause on a GET field or BROWSE field accidentally releases an
+automatic record lock, causing a "Record Not Locked" error message when the
+valid routine returns .F. The error will not occur if the valid routine
+returns .T.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The following sequence of events will cause the automatic record lock
+to be released:
+
+<OL><P><LI>The record lock is placed automatically through a command, such as READ
+   or BROWSE.
+
+<P><LI>During the VALID routine, the record pointer is moved to a new record.
+
+<P><LI>Another command, such as REPLACE, that places an automatic record lock
+   is executed on the new record position. Since only one automatic record
+   lock can be effective at a time, the original lock is released when the
+   new lock is placed.
+
+<P><LI>The VALID routine returns a .F. value. Control returns to the original
+   GET field or BROWSE field, causing the record pointer to be moved back
+   to the original record. The automatic record lock has been released,
+   which causes the error to occur when editing control is returned to the
+   field.
+<P>
+</OL><h2>RESOLUTION</h2>
+ 
+<P>
+There are two possible resolutions:
+
+<UL><LI>When the record pointer is moved to a new record, lock the record by
+   using the RLOCK() function. Make sure that the SET MULTILOCKS ON command
+   is in effect. While this will prevent the problem, the lock must be
+   released programmatically when the pointer is moved to a new record.
+   This constant locking and unlocking can slow down system performance.
+<P>
+   -or-
+
+<LI>After the second automatic record locking command is issued in the VALID
+   clause, move the record pointer back to the original record and issue an
+   RLOCK() function. For example, in the LOSELOCK program used to reproduce
+   the problem (see "More Information" below), the changes will appear as
+   follows:
+<P>
+<P><PRE>      m.cno = cno
+      m.recno = RECNO()
+      SEEK m.cno
+      IF FOUND()
+<PRE></PRE>         WAIT WINDOW "Record exists"
+         REPLACE cno WITH m.cno
+      *************************************************************
+      * The following 2 lines eliminate the error
+      *************************************************************
+         GO m.recno
+         =RLOCK()
+      *************************************************************
+         RETURN .F.
+      ENDIF
+
+</PRE></OL><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Problem</h3>
+ 
+
+<OL><P><LI>Create a TEST database by issuing the following commands in the
+   Command window:
+<P>
+<P><PRE>      USE tutorial/customer
+      COPY TO test NEXT 10
+      USE test
+      INDEX ON cno TAG cno
+      SET ORDER TO TAG cno
+</PRE>
+<P><LI>Create a program file named LOSELOCK with the following commands:
+<P>
+<P><PRE>      m.cno = cno
+      m.recno = RECNO()
+      SEEK m.cno
+      IF FOUND()
+<PRE></PRE>         WAIT WINDOW "Record exists"
+         REPLACE cno WITH m.cno
+         RETURN .F.
+      ENDIF
+
+</PRE><P><LI>In the Command window, issue the following command:
+<P>
+<P><PRE>      BROWSE FIELDS cno :V=loselock(), company, contact
+</PRE>
+<P><LI>Use the DOWN ARROW key to move to the third record.
+
+<P><LI>In the CNO field, type the same customer number that appears in the
+   first record. A "record not locked" error should occur.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: FoxMac FoxDos FoxWin 2.50 2.50a 2.50b errmsg<BR>
+err msg<BR>
+KBCategory: kbprg kberrmsg kbprb<BR>
+KBSubcategory: FxprgBrowse<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 27, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

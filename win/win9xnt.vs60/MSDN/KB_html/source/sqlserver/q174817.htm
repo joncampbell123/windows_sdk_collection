@@ -1,0 +1,219 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Microsoft SQL Server DB-Library Has Limited Extensibility </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q174817">
+<META NAME="KBModify" CONTENT="1997/10/10">
+<META NAME="KBCreate" CONTENT="1997/10/07">
+<META NAME="Keywords" CONTENT="SSrvProg">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  When you work with technologies like COM, ISAPI, Transaction Server, and other extensible architectures, you should strongly consider using ODBC 3.0 instead of DB-Library. Extensible architectures allow the developer to extend, enhance, and customi...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABM,QAGI,QBVV,QA9E,QAIF,QDIZ,QBG2,QAX1,QAPF,QAI5,QAEV,QAAP,QAA1,QAX3,QAB4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Microsoft SQL Server DB-Library Has Limited Extensibility</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q174817</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When you work with technologies like COM, ISAPI, Transaction Server, and
+other extensible architectures, you should strongly consider using ODBC 3.0
+instead of DB-Library. Extensible architectures allow the developer to
+extend, enhance, and customize the environment. The design of DB-Library
+does not always lend itself well to these technologies. This article
+discusses some specific extensibility pitfalls of DB-Library and how ODBC
+or OLEDB addresses them differently.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+There are currently two native ways to connect and work with Microsoft SQL
+Server: DB-Library and the SQL Server ODBC Driver. The SQL Server ODBC
+driver does not convert function calls into DB-Library statements. The SQL
+Server ODBC driver performs just as fast as, or faster than, DB-Library in
+head-to-head tests.
+<P>
+The goal of COM, Microsoft Transaction Server (MTS), ISAPI, and Extended
+Stored Procedure (XPROC) is to allow extensibility. DB-Library maintains
+some information on a per-process basis rather than a per-connection basis
+which makes this difficult.
+<P>
+The dbinit() and dbexit() calls should be made when you start and exit the
+application. If you are building COM components or an ISAPI extension, it
+becomes difficult if you do not control the entire environment.
+<P>
+Internally, DB-Library maintains an array of valid SQL Sever connections.
+When dbclose() is invoked, the entry is removed from the array. When
+dbexit() is called, the array is used to close all connections that remain
+open. If two COM components or ISAPI extension DLLs are not working
+together, the DB-Library environment may not be set up correctly, and may
+become corrupted unexpectedly. If you add vendor components to this
+environment, synchronization of the DB-Library environment becomes very
+difficult.
+<P>
+Within a SQL Server XPROC you do not have to call dbinit() or dbexit()
+because it was called by SQL Server process at startup. The environment has
+already been initialized with configuration parameters set by SQL Server.
+It is difficult to find out what values have been set; it is not possible
+to change these values. For example, the maximum open DBPROCESS
+configuration value is set based on the "user connections" SQL Server
+configuration value. There are some DB-Library calls available to query
+these configuration values. Access to these global calls must be thread
+safe and synchronized. For example, the dbsetmaxprocs() call is one that
+must be synchronized. For more information about writing ODBC-based XPROCS
+see the Samples\ODS\XP_ODBC sample that is included with the Microsoft SQL
+Server Programmer's Toolkit (PTK).
+<P>
+ODBC 3.0 corrects many environment problems by localizing the HENV pointer.
+Each component can call SQLAllocEnv(). ODBC 3.0 also has a new feature
+called Connection Pooling. The MTS documentation suggests that you open the
+connection, do your work and close the connection as quickly as possible.
+This design model leads to increased scalability of your MTS components.
+<P>
+To handle messages received from the SQL Server, DB-Library uses a callback
+model and ODBC uses a message retrieval model. This makes DB-Library
+difficult to integrate into a class/component design. You must install the
+per-process error and message handlers and make a call to dbsetuserdata()
+and give it the proper "this or me" pointer. Then in your error or message
+handler you can use the dbgetuserdata() call to retrieve the proper
+pointer. This approach can leave gaps in your error and message handling.
+If you install a global error or message handler, you can easily replace a
+previously installed handler. You do not get a valid DBPROCESS until you
+are logged in to SQL Server. This makes it difficult to set or establish a
+design which allows you to capture errors prior to the dbopen call.
+<P>
+The ODBC model of direct retrieval allows you to handle all errors and
+messages inline, where they are encountered. This lends itself to class and
+component design as well as the "throw" construct. If you use the throw
+operator in a DB-Library error or message handler you will cause internal
+DB-Library routines to be skipped and subsequently cause DB- Library
+(client) hangs. You simply can not throw reliably from any callback
+function.
+<P>
+The SQL-DMO, ESQL for C, and VBSQL products are currently based on the
+DB-Library. The issues discussed earlier are valid considerations for
+developing scalable business solutions.
+<P>
+Currently the Microsoft Transaction Server Context object does not handle
+transactional operations for DB-Library components. If you are developing
+components with MTS you should use ODBC. Transactions are not maintained
+for DB-Library connections.
+<P>
+This is not a complete description of issues that you may experience when
+developing scalable solutions for Microsoft SQL Server using DB-Library or
+DB-Library-based connectivity methods (such as SQL-DMO). You should consult
+the Microsoft Knowledge Base for additional reference information.
+<P>
+Other issues regarding the dbsettime(),dbgettime(), and dbsetlogintime()
+calls are not directly covered here, but are worth considering. For
+additional information, consult the SQL Server Books Online.
+<P>
+It is highly recommended you use ODBC or OLEDB to develop extensible
+components. ODBC and OLEDB have been redesigned with scalability in mind.
+They present a better development environment than that offered by DB-
+Library and should therefore be considered for all such development
+projects.
+<P>
+ 
+<PRE>Keywords          : SSrvProg
+Version           : Windows:6.5
+Platform          : WINDOWS
+Issue type        : kbinfo</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

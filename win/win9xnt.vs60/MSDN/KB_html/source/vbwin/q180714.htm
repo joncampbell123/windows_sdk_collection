@@ -1,0 +1,480 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Pass a Picture Object Remotely Using COM </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q180714">
+<META NAME="KBModify" CONTENT="1998/02/11">
+<META NAME="KBCreate" CONTENT="1998/02/06">
+<META NAME="Keywords" CONTENT="IAPOLE kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  This article discusses how to use the Component Object Model (COM) to pass objects remotely. This process is commonly referred to as cross-process object marshaling. The article also examines the difference between passing objects by reference (ByR...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH6,QAPN,QAH7,QAD7,QAW6,QAH4,QAB4,QAAP,QAGI,QAFF,QARL,QANF,QAY5,QAGB,QAB9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Pass a Picture Object Remotely Using COM</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 11, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q180714</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Visual Basic Control Creation, Professional, and Enterprise
+   Editions for Windows, version 5.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article discusses how to use the Component Object Model (COM) to pass
+objects remotely. This process is commonly referred to as cross-process
+object marshaling. The article also examines the difference between passing
+objects by reference (ByRef) and by value (ByVal), and demonstrates a
+custom marshaling approach to remotely pass a Picture object from one
+machine to another (ByVal) using COM.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+You can pass objects to a remote machine using COM, but you must pass the
+objects ByRef. (Note: An ActiveX Data Objects (ADO) recordset is the
+current exception to this rule because a custom proxy was built for this
+object type.) However, passing an object by reference requires network
+traffic for each subsequent method call because the object resides on the
+remote machine. You can work around this limitation using the Variant data
+type. The following sample passes a Picture object to a remote machine
+using a COM callback and the Variant data type.
+<P>
+<P><h3>Step-by-Step Procedure</h3>
+ 
+<P>
+The following sections contain the sample code for the server and client
+projects. This code can be pasted directly into class modules in existing
+projects or can be added to a new class. This sample assumes that you have
+a new class module in each project, with the noted names.
+<P>
+The Server Functions:
+
+<OL><P><LI>Add a new class module to your server project (ActiveX Exe).
+
+<P><LI>In the Name property of the new class module, type "clsPassPicture"
+   and set the Instancing property to 5-Multiuse.
+
+<P><LI>Add the following variable declarations to the Declarations section:
+<P>
+<P><PRE>      Private gbconnected As Boolean
+      Private objClient As Object
+</PRE>
+<P><LI>Add the following code to clsPassPicture:
+<P>
+   Sample Code
+   -----------
+<P>
+<P><PRE>      ' Receive the callback reference from the client.
+      Public Function AddObjectReference(Caller As Object) As Boolean
+<PRE></PRE>         On Error GoTo AddObjectReferenceError
+
+         ' Store the remote client reference for later use.
+         Set objClient = Caller
+         AddObjectReference = True
+         gbconnected = True ' Global connected flag.
+
+         Exit Function
+
+      AddObjectReferenceError:
+         #If DEBUG_ON Then
+          MsgBox Error$, vbOKOnly + vbExclamation, _
+              "AddObjectReference -           Error " &amp; Err.Number
+         #End If
+         AddObjectReference = False
+         Exit Function
+
+      End Function
+
+      ' Receive the drop request from the client and destroy the
+      ' reference.
+      Public Function DropObjectReference(Caller As Object) As Boolean
+         On Error GoTo DropObjReferenceError
+
+         If objClient Is Caller Then
+            gbconnected = False
+            DropObjectReference = True
+         Else
+            ' Debug.Print "Caller not the same as ObjRef. Unable to
+            ' quit."
+            DropObjectReference = False
+         End If
+         Exit Function
+
+      DropObjReferenceError:
+         #If DEBUG_ON Then
+            MsgBox Error$, vbOKOnly + vbExclamation, _
+              "DropObjectReference -              Error" &amp; Str$(Err)
+         #End If
+         DropObjectReference = False
+         Exit Function
+
+      End Function
+
+      ' Public function that receives the pass picture request from
+      ' the client.
+      Public Function ServerIcon() As Boolean
+         Dim i As Integer
+         Dim MyFile As String
+         Dim tb() As Byte
+
+         On Error GoTo IconError
+         If gbconnected Then     ' Test for existing client reference.
+             MyFile = "C:\TestPass.bmp"
+             SavePicture MyForm.Image1.Picture, MyFile  ' Save to temp
+                                                        ' file.
+             Open MyFile For Binary As #1   ' Read into byte array.
+             i = 0
+             i = LOF(1)                     ' Get the file size.
+             ReDim tb(i + 1) As Byte        ' Resize the array.
+             i = 0
+             Do Until EOF(1)
+                Get #1, , tb(i)             ' Read data into array.
+                i = i + 1
+             Loop
+             Close #1
+             Kill MyFile               ' Clean up the temp file.
+             objClient.ReceivePic tb   ' Pass the array to the client
+                                       ' using a reference.
+             ServerIcon = True
+          End If
+       Exit Function
+
+      IconError:
+         #If DEBUG_ON Then
+         MsgBox Error$, vbOKOnly + vbExclamation, _
+              "Get Server Icon - Error"          &amp; Str$(Err)
+         #End If
+         ServerIcon = False
+      End Function
+
+</PRE><P><LI>Add a new form to your project and type "MyForm" in the Name
+   property.
+
+<P><LI>Add an Image control to the form, type "Image1" in the Name property,
+   and set the Picture property to an icon on your system.
+<P>
+</OL>The Client Code:
+
+<OL><P><LI>Add a new class module to an ActiveX EXE project, type
+   "clsReceivePicture" in the Name property, and set the Instancing
+   property to 5-Multiuse.
+
+<P><LI>Add the following code to the class module:
+<P>
+   Sample Code
+   -----------
+<P>
+<P><PRE>      Public Sub ReceivePic(PassedPic As Variant)
+<PRE></PRE>         Dim i As Integer, j As Integer
+         Dim MyFile As String
+         Dim tb() As Byte
+         ' This public sub routine shows how to pass an object using an
+         ' icon.
+
+         On Error GoTo BadObj
+         i = UBound(PassedPic)
+         ' Repack the variant into the byte array for binary write.
+         ReDim tb(i) As Byte
+
+         For j = LBound(PassedPic) To UBound(PassedPic)
+            tb(j) = PassedPic(j)
+         Next j
+
+         ' Write to a local file.
+         MyFile = "C:\TestPass.bmp"
+         Open MyFile For Binary As #1
+
+         For j = LBound(tb) To UBound(tb)
+            Put #1, , tb(j)
+         Next j
+         Close #1
+
+         ' Recreate the object from a file.
+         Set frmDCOMDemoClient.picPassIcon.Picture = LoadPicture(MyFile)
+         Kill MyFile
+         Exit Sub
+
+      BadObj:
+         MsgBox Err.Number &amp; ": " &amp; Err.Description &amp; _
+              " - " &amp; "Object Pass    Failed..."
+      End Sub
+
+</PRE><P><LI>Add a new form to the project and type "frmDCOMDemoClient" in the Name
+   property.
+
+<P><LI>Add the following code to the Sub Main() procedure so that the
+   frmDCOMDemoClient form appears when the project is started. If the
+<PRE>   Sub Main() procedure does not exist, create it in a standard module.
+   You must also select Sub Main() from the Startup Object list in the
+   Project Properties dialog box.
+
+      Load frmDCOMDemoClient
+      frmDCOMDemoClient.Show
+
+</PRE><P><LI>Add a command button to the form and type "cmdGetObject" in the Name
+   property and "Get Server Icon" in the Caption property.
+
+<P><LI>Add a PictureBox control to the form and type "picPassIcon" in the Name
+   property.
+
+<P><LI>Add the following variable declarations to the form:
+<P>
+<P><PRE>      Public mbIsConnected As Boolean
+      Public objMyClassInstance As Object
+      Private oServer As YourDCOMServer.clsPassPicture
+</PRE>
+<P><LI>Add the following code to the form:
+<P>
+   Sample Code
+   -----------
+<P>
+<P><PRE>      Private Sub cmdGetObject_Click()
+<PRE></PRE>         ' This subroutine calls the server to initiate the icon pass.
+         Dim rf As Boolean
+
+         ' Connect to your server, selected in the Project References
+         ' dialog box.
+         Set oServer = New YourDCOMServer.clsPassPicture
+         ServerConnect               ' Set up the callback.
+         If mbIsConnected Then
+            rf = oServer.ServerIcon    ' Call remote server method.
+            If rf Then
+               MsgBox "Icon Passed Successfully..."
+            Else
+               MsgBox "Icon Pass Failed..."
+            End If
+            ServerDisconnect           ' Clean up after the callback.
+         Else
+            MsgBox "Callback Connection Failed"
+         End If
+      End Sub
+
+      Public Sub ServerConnect()
+         Dim bsuccess As Integer
+         Dim bRetVal As Boolean
+         Dim iCounter As Integer
+
+         ' Used by the OLE Collision Handler.
+         Dim nCurErrorCount As Integer
+         Const MAX_ERROR_COUNT = 10
+
+         On Error GoTo cmdButtonError
+         Screen.MousePointer = vbHourglass
+         'MyPanels(1).Text = "Connecting to Server..."
+         Set objMyClassInstance = New YourDCOMClient.clsReceivePicture
+      100   If oServer.AddObjectReference(objMyClassInstance) Then
+      110       mbIsConnected = True
+         Else
+             mbIsConnected = False
+         End If
+         Screen.MousePointer = vbDefault
+         Exit Sub
+
+      cmdButtonError:
+      ' When using asynchronous callbacks between two objects, you need
+      ' this error checking code to deal with the possibility of a
+      ' collision. This collision can occur when a client and server
+      ' attempt to call each other at the same time. This error handler
+      ' forces the client to wait for a random period of time and retry the
+      ' failed operation. During this time, the server should complete its
+      ' call to the client, allowing the client to succeed when it retries
+      ' the call to the server. You should also include the same error
+      ' handling code in the server object.
+
+         If Erl = 100 And Err = &amp;H80010001 Then
+            If nCurErrorCount &gt;= MAX_ERROR_COUNT Then
+               MsgBox "Unable to obtain server reference.  Retry later.", _
+               vbExclamation, "Remote Server Connect Error"
+               Resume EndOfError
+            Else
+               For iCounter = 1 To 2000 * Rnd()
+                  DoEvents
+               Next iCounter
+               Resume
+            End If
+         End If
+         Screen.MousePointer = vbDefault
+         MsgBox Error$, vbCritical, "cmdButton Error"
+      EndOfError:
+         'MyPanels(1).Text = "Ready"
+      End Sub
+
+      Public Sub ServerDisconnect()
+         Dim bsuccess As Integer
+         Dim bRetVal As Boolean
+         Dim iCounter As Integer
+
+         ' Used by the OLE Collision Handler.
+         Dim nCurErrorCount As Integer
+         Const MAX_ERROR_COUNT = 10
+
+         On Error GoTo cmdButtonError
+         Screen.MousePointer = vbHourglass
+         ' MyPanels(1).Text = "Disconnecting from Server..."
+         ' Increase the callback interval to reduce the risk of collision.
+         ' bsuccess = oServer.SetInterval(30)
+         ' Now tell the server to disconnect.
+      100   If oServer.DropObjectReference(objMyClassInstance) Then
+      110      mbIsConnected = False
+           ' Dereference the local object.
+            Set objMyClassInstance = Nothing
+            Set picPassIcon.Picture = LoadPicture()
+            MsgBox "Disconnect Successful..."
+         Else
+            MsgBox "Disconnect Failed..."
+         End If
+         Screen.MousePointer = vbDefault
+         Exit Sub
+
+      cmdButtonError:
+         If Erl = 100 And Err = &amp;H80010001 Then
+            If nCurErrorCount &gt;= MAX_ERROR_COUNT Then
+              MsgBox "Unable to release server reference.  Retry later.", _
+              vbExclamation, "Remote Server Disconnect Error"
+              Resume EndOfError
+            Else
+               For iCounter = 1 To 2000 * Rnd()
+                   DoEvents
+               Next iCounter
+               Resume
+            End If
+         End If
+         Screen.MousePointer = vbDefault
+         MsgBox Error$, vbCritical, "cmdButton Error"
+      EndOfError:
+         ' MyPanels(1).Text = "Ready"
+      End Sub
+
+</PRE><P><LI>Change all of the server object names used in this sample to the
+   actual name used by your server project (from step 1).
+
+<P><LI>Distribute the server project to another machine. For more
+   information regarding how to distribute your server project, please see
+   the following article in the Microsoft Knowledge Base:
+<P>
+<P><PRE>      Article ID: <B><A href="../vbwin/q161837.htm">Q161837</A></B>
+<PRE></PRE>      Title     : HOWTO: Create a DCOM Client/Server Application
+
+</PRE><P><LI>Run the client project and click Get Server Icon.
+
+<P><LI>You should see the icon appear in the PictureBox on the client form.
+
+<P><LI>If you receive any error messages, please see the references section
+   below.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+For more information regarding how to use Windows 95 as a COM server,
+please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>      Article ID: <B><A href="../vbwin/q165101.htm">Q165101</A></B>
+      Title     : HOWTO: Use Win95 as a DCOM Server
+
+</PRE></OL>For more information regarding how to use remote events or callbacks with
+COM, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>      Article ID: <B><A href="../vbwin/q175510.htm">Q175510</A></B>
+      Title     : FILE: VB5DCOM.EXE: Using Callbacks and WithEvents with
+                  DCOM
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: callback marshaling<BR>
+Keywords          : IAPOLE kbcode<BR>
+Technology        : kbole<BR>
+Version           : win95:5.0;winnt:5.0<BR>
+Platform          : Win95 winnt<BR>
+Issue type        : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 11, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

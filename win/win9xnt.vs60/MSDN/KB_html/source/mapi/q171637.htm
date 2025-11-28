@@ -1,0 +1,253 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Getting the Details of a Recipient </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q171637">
+<META NAME="KBModify" CONTENT="1997/07/25">
+<META NAME="KBCreate" CONTENT="1997/07/18">
+<META NAME="Keywords" CONTENT="EMAPI">
+<META NAME="KBArea" CONTENT="Support; KB; mapi">
+<META NAME="Description" CONTENT="  This article demonstrates code that calls IAddrBook::Details to display the address book details page for a given recipient. There are two necessary steps to displaying the details page:  1. Call IAddrBook::ResolveName to resolve the recipient to o...">
+<META NAME="Product" CONTENT="mapi">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAD2,QBXB,QAWI,QAR2,QAGI,QAI4,QAH4,QAHE,QBXD,QAPN,QAH6,QAUD,QAH7,QAD7,QAIF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Getting the Details of a Recipient</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q171637</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI> Extended Messaging Application Programming Interface (MAPI),
+   version 1.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article demonstrates code that calls IAddrBook::Details to display the
+address book details page for a given recipient. There are two necessary
+steps to displaying the details page:
+
+<OL><P><LI>Call IAddrBook::ResolveName to resolve the recipient to one and only one
+   unique recipient.
+
+<P><LI>Call IAddrBook::Details to display the details page for the unique
+   recipient.
+<P>
+</OL><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following code is broken into two main functionality sections that
+match the steps necessary to show the details page of an address book for a
+given recipient.
+<P>
+The first function, GetDetails(), takes an in parameter, which is a string
+that represents either the display name or email alias of the recipient you
+are interested in. GetDetails calls the second function, ResolveName(),
+which takes an in parameter and an out parameter. The in parameter is a
+copy of the parameter passed to the GetDetails function. The out parameter
+is an LPADRLIST type that is passed back to you for use in the
+IAddrBook::Details method.
+<P>
+This code assumes the presence of an active MAPI session and an open
+Address book object. For more information on starting a MAPI session, see
+"Starting a MAPI Session" in the Microsoft Developer Network (MSDN) Library
+CD. For more information on opening an address book see "Opening the
+Address Book" in the MSDN Library CD.
+<P>
+<PRE>   HRESULT GetDetails ( LPSTR lpszFriendlyName )
+   {
+       HRESULT hRes = S_OK;
+       ULONG   ulUIParam = 0;
+       LPADRLIST lpAdrList = NULL;
+       ULONG cbEID = 0L;
+       LPBYTE lpEID = NULL;
+
+       hRes = ResolveName ( lpszFriendlyName, &amp;lpAdrList );
+
+       if ( SUCCEEDED ( hRes ) )
+       {
+           // Step through the rows of properties in lpAdrList. When we
+           // find the PR_ENTRYID, stop and call the IAddrBook::Details
+           // method to show  the information stored in the address book
+           // about the requested recipient.
+           for ( ULONG i = 0; i &lt; lpAdrList -&gt; aEntries -&gt; cValues; i++ )
+           {
+               if ( PR_ENTRYID ==
+                    lpAdrList -&gt; aEntries -&gt; rgPropVals[i].ulPropTag )
+               {
+                   // These next two assignments are unnecessary but make
+                   // the code more readable below.
+                   cbEID=lpAdrList-&gt;aEntries-&gt;rgPropVals[i].Value.bin.cb;
+                   lpEID=lpAdrList-&gt;aEntries-&gt;rgPropVals[i].Value.bin.lpb;
+
+                   hRes = m_pAddrBook -&gt; Details ( &amp;ulUIParam,
+                                                   NULL, NULL,
+                                                   cbEID,
+                                                   (LPENTRYID) lpEID,
+                                                   NULL, NULL, NULL,
+                                                   DIALOG_MODAL );
+                   break;
+               }
+           }
+       }
+
+       MAPIFreeBuffer ( lpAdrList );
+       return hRes;
+   }
+
+   HRESULT ResolveName ( LPSTR lpszName, LPADRLIST *lpAdrList )
+   {
+       // NOTE: Callers of this function MUST release lpAdrList when done
+       // with it using MAPIFreeBuffer.
+
+       HRESULT hRes = S_OK;
+       LPADRLIST pAdrList = NULL;
+
+       // Allocate memory for new SRowSet structure.
+       hRes = MAPIAllocateBuffer(CbNewSRowSet(1),(LPVOID*) &amp;pAdrList);
+
+       // If memory allocation fails, quit.
+       if ( FAILED ( hRes ) )
+        return hRes;
+
+       // Zero out allocated memory.
+       ZeroMemory ( pAdrList, CbNewSRowSet(1));
+
+       // Allocate memory for SPropValue structure that indicates what
+       // recipient properties will be set. NUM_RECIP_PROPS == 5.
+       hRes = MAPIAllocateBuffer( 1 * sizeof(SPropValue),
+                         (LPVOID*) &amp;(pAdrList-&gt;aEntries[0].rgPropVals));
+
+       // If memory allocation fails, quit.
+       if ( FAILED ( hRes ) )
+           hRes;
+
+       // Zero out allocated memory.
+       ZeroMemory ( pAdrList -&gt; aEntries[0].rgPropVals,
+                    sizeof(SPropValue) );
+
+       // How many recipients.
+       pAdrList-&gt;cEntries = 1;
+
+       // How many properties per recipient.
+       pAdrList-&gt;aEntries[0].cValues    = 1;
+
+       // Set the SPropValue members == the desired values.
+       pAdrList-&gt;aEntries[0].rgPropVals[0].ulPropTag = PR_DISPLAY_NAME;
+       pAdrList-&gt;aEntries[0].rgPropVals[0].Value.lpszA =  lpszName;
+
+       // ResolveName is kind enough to redimension the ADRLIST that we
+       // pass to it and give us back a fully qualified ADRLIST structure
+       // that contains all the recipient information the address book
+       // decided to give us back.
+       if ( SUCCEEDED (
+          hRes = m_pAddrBook -&gt; ResolveName ( (ULONG) m_hWnd,
+                                               0L, NULL, pAdrList ) ) )
+       *lpAdrList = pAdrList;
+
+       return hRes;
+   }
+
+</PRE></OL>Important Note: The documentation for the IAddrBook::Details method fails
+to mention the DIALOG_MODAL flag. This flag is not optional for this call
+at the present time and must be included in order to display the details
+page.
+<P>
+ 
+<PRE>Keywords          : EMAPI
+Version           : WINDOWS:1.0
+Platform          : WINDOWS
+Issue type        : kbhowto
+Solution Type     : kbworkaround</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

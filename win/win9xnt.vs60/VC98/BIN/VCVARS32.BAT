@@ -1,0 +1,1 @@
+Placeholder vcvars32.bat

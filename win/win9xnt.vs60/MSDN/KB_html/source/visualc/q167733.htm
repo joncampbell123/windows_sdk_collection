@@ -1,0 +1,221 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Operator New Doesn't Throw bad_alloc Exception on Failure </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q167733">
+<META NAME="KBModify" CONTENT="1997/07/24">
+<META NAME="KBCreate" CONTENT="1997/04/29">
+<META NAME="Keywords" CONTENT="CPPIss CRTIss STLIss">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Operator new does not throw a bad_alloc exception when it fails. It simply returns a null pointer.  RESOLUTION  Operator new does call the new handler function after it fails to procure the requestion block of memory, but before it returns the null...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QASP,QAGI,QANY,QAKM,QBFY,QAY5,QAA1,QDI2,QBXL,QBWA,QA7H,QA4Q,QAW6,QAPN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Operator New Doesn't Throw bad_alloc Exception on Failure</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 24, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q167733</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The C Run-time (CRT) included with:
+   - Microsoft Visual C++, 32-bit Editions, version 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Operator new does not throw a bad_alloc exception when it fails. It simply
+returns a null pointer.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Operator new does call the new handler function after it fails to procure
+the requestion block of memory, but before it returns the null pointer. An
+application could install a new handler to throw a bad_alloc exception as
+follows:
+<P>
+<PRE>   #include &lt;new&gt;
+   #include &lt;new.h&gt;
+   int my_new_handler(size_t) {
+      throw std::bad_alloc();
+      return 0;
+   }
+   int main () {
+      _PNH _old_new_handler;
+      _old_new_handler = _set_new_handler(my_new_handler);
+      /* ... application processing ... */
+      _set_new_handler(_old_new_handler);
+      return 0;
+   }
+
+</PRE>To call new handler when malloc fails to obtain the requested block of
+memory, use the _set_new_mode function.
+<P>
+To install the new handler before your global objects are initialized,
+create a class that sets the new handler in its constructor and installs
+the old new handler in its destructor. Create a global object of that type
+and use the init_seg pragma to force this global object to be initialized
+before any of your global objects. The example below demonstrates this. It
+also demonstrates the use of _set_new_mode to cause a failed malloc call to
+generate an exception. Note that to do this, the code below must reside in
+its own source file. You cannot change the initializations segment more
+than once per translation unit (source file) with the pragma init_seg.
+<P>
+<PRE>   #include &lt;new&gt;
+   #include &lt;new.h&gt;
+   #pragma init_seg(lib)
+   int my_new_handler(size_t) {
+   throw std::bad_alloc();
+   return 0;
+   }
+   struct my_new_handler_obj{
+   _PNH _old_new_handler;
+   int _old_new_mode;
+   _tag_g_new_handler_obj() {
+      _old_new_mode = _set_new_mode(1);
+      _old_new_handler = _set_new_handler(my_new_handler);
+   }
+   ~_tag_g_new_handler_obj() {
+      _set_new_handler(_old_new_handler);
+      _set_new_mode(_old_new_mode);
+   }
+
+   } _g_new_handler_obj;
+
+</PRE>Operator new, as implemented by Visual C++ 5.0, ignores the function
+exception specification. So new(std::nothrow) still generates an exception
+if your new handler is installed to throw an exception as the examples
+above demonstrate. To change this behavior, override operator new as
+follows:
+<P>
+<PRE>   void *__cdecl operator new(size_t cb, const std::nothrow_t&amp;) throw()
+   {
+    char *p;
+    try {
+        p = new char[cb];
+    }
+    catch (std::bad_alloc) {
+        p = 0;
+    }
+    return p;
+   }
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design though not in conformance with the ANSI Draft
+Working Papers for C++.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For additional information, please see the following articles in the Visual
+C++ 5.0 online Help:
+<P>
+<PRE>   TITLE: Using _set_new_handler
+   URL:   mk:@ivt:vclang/FB/DD/S44B55.HTM
+
+   TITLE: _set_new_handler
+   URL:   mk:@ivt:vccore/F3F/F43/D4D/S4CF52.HTM
+
+   TITLE: _set_new_mode
+   URL:   mk:@ivt:vccore/F3F/F43/D4D/S4CF53.HTM
+
+   TITLE: init_seg
+   URL:   mk:@ivt:vccore/F39/D3B/S4C364.HTM
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : CPPIss CRTIss STLIss<BR>
+Version             : 5.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 24, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

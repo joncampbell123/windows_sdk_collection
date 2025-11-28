@@ -1,0 +1,444 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Accessing OLE 2.0 Embedded Object Dirties OLE 1.0 Client </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q118613">
+<META NAME="KBModify" CONTENT="1997/10/10">
+<META NAME="KBCreate" CONTENT="1994/07/25">
+<META NAME="Keywords" CONTENT="MfcOLE kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  When an OLE 2.0 embedded object is opened and closed in an OLE 1.0 client without being modified, the client document needs to be updated (that is, marked as  dirty ). This causes the client to ask whether the user wants to save the document.  To p...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QA9Q,QAW6,QALW,QAPN,QAGI,QARL,QAUR,QABO,QAY5,QAY2,QAB5,QAIF,QBXS,QBBS V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Accessing OLE 2.0 Embedded Object Dirties OLE 1.0 Client</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q118613</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.50 1.51 1.52 | 2.00 2.10 4.00 4.10
+<PRE>WINDOWS        | WINDOWS NT
+</PRE>kbprg
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.5, 1.51, and 1.52
+    - Microsoft Visual C++ 32-bit Edition, versions 2.0, 2.1,
+      4.0, and 4.1
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When an OLE 2.0 embedded object is opened and closed in an OLE 1.0 client
+without being modified, the client document needs to be updated (that is,
+marked as "dirty"). This causes the client to ask whether the user wants to
+save the document.
+<P>
+To prevent the client from marking its document as dirty, you must modify
+the implementations of IOleObject and IDataObject in your OLE 2.0 server.
+In an MFC-based server application, this is most conveniently done by
+deriving a new class from COleServerDoc and changing the application's
+server document class so that it is derived from the new class.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+This behavior can be observed using the Windows Write applet with any of
+the MFC sample servers. To observe this behavior, perform the following
+steps:
+
+<OL><P><LI>Open a document in Write.
+
+<P><LI>Embed a new object in the document.
+
+<P><LI>Save the document.
+
+<P><LI>Open the embedded object.
+
+<P><LI>Immediately close the object to return to Write.
+
+<P><LI>Exit Write. (You will be asked whether you want to save the updated
+   document.)
+<P>
+</OL>When an OLE 2.0 embedded object is closed, the object calls
+IAdviseSink::OnClose() to notify its container. The OLE translation layer
+simply translates this into a client callback of OLE_CLOSE, which causes
+the client to receive an update of the embedded object's metafile. This in
+turn causes the client to think its document is dirty and needs to be
+saved.
+<P>
+To avoid this behavior, perform the following steps:
+
+<OL><P><LI>Add a flag to the OLE 2.0 object that supports IDataObject,
+   IPersistStorage, and IOleObject.
+
+<P><LI>During IOleObject::OnClose, set the flag to TRUE before the call to
+   IAdviseHolder::SendOnClose() and reset it after the call returns.
+
+<P><LI>Modify the implementations of IDataObject::GetData() and
+   IDataObject::GetDataHere() to return E_FAIL when m_bDontSave is TRUE.
+<P>
+</OL>To implement the above steps using MFC, perform the following steps:
+
+<OL><P><LI>Create a new class, COleServerDocEx, derived from COleServerDoc.
+
+<P><LI>Add a member variable, m_bDontSave, to COleServerDocEx.
+
+<P><LI>Override OnCloseDocument() in COleServerDocEx. Set m_bDontSave to TRUE,
+   call the base class function, then reset m_bDontSave. This effectively
+   brackets the call to IAdviseHolder::OnClose().
+
+<P><LI>Reimplement the IDataObject interface in COleServerDocEx. For all
+   functions except GetData() and GetDataHere(), simply delegate to the
+   COleServerDoc implementation of IDataObject.
+
+<P><LI>In the implementations of GetData() and GetDataHere(), return E_FAIL if
+   m_bDontSave is TRUE.
+
+<P><LI>Modify your application's document class so it is derived from
+   COleServerDocEx rather than COleServerDoc.
+<P>
+</OL><h3>Sample Code</h3>
+ 
+<P>
+The following code implements the COleServerDocEx class mentioned
+above:
+<P>
+<PRE>   ////////////////////////////////////////////////////////////////
+   // olesvrex.h : interface of the COleServerDocEx class
+   //
+
+   class COleServerDocEx : public COleServerDoc
+   {
+      DECLARE_DYNAMIC(COleServerDocEx)
+
+   // Constructors and Destructors
+   public:
+      COleServerDocEx();
+
+   // Implementation
+   public:
+      virtual ~COleServerDocEx();
+   #ifdef _DEBUG
+      virtual void AssertValid() const;
+      virtual void Dump(CDumpContext&amp; dc) const;
+   #endif
+
+      // overridables for implementation
+      virtual void OnCloseDocument();
+
+   protected:
+      BOOL m_bDontSave;
+
+   // Message Maps
+   protected:
+      //{{AFX_MSG(COleServerDocEx)
+      //}}AFX_MSG
+      DECLARE_MESSAGE_MAP()
+
+   // Interface Maps
+   protected:
+      BEGIN_INTERFACE_PART(DataObjectEx, IDataObject)
+         STDMETHOD(GetData)(LPFORMATETC, LPSTGMEDIUM);
+         STDMETHOD(GetDataHere)(LPFORMATETC, LPSTGMEDIUM);
+         STDMETHOD(QueryGetData)(LPFORMATETC);
+         STDMETHOD(GetCanonicalFormatEtc)(LPFORMATETC, LPFORMATETC);
+         STDMETHOD(SetData)(LPFORMATETC, LPSTGMEDIUM, BOOL);
+         STDMETHOD(EnumFormatEtc)(DWORD, LPENUMFORMATETC FAR*);
+         STDMETHOD(DAdvise)(LPFORMATETC, DWORD, LPADVISESINK, LPDWORD);
+         STDMETHOD(DUnadvise)(DWORD);
+         STDMETHOD(EnumDAdvise)(LPENUMSTATDATA FAR*);
+      END_INTERFACE_PART(DataObjectEx)
+
+      DECLARE_INTERFACE_MAP()
+
+   };
+
+   //
+   // End of olesvrex.h
+   ////////////////////////////////////////////////////////////////
+
+
+   ////////////////////////////////////////////////////////////////
+   //
+   // olesvrex.cpp : implementation of the COleServerDocEx class
+
+   #include "stdafx.h"
+   #include "olesvrex.h"
+
+   #ifdef _DEBUG
+      #undef THIS_FILE
+      static char BASED_CODE THIS_FILE[] = __FILE__;
+   #endif
+
+   ///////////////////////////////////////////////////////////////
+   // COleServerDocEx
+
+   IMPLEMENT_DYNAMIC(COleServerDocEx, COleServerDoc)
+
+   BEGIN_MESSAGE_MAP(COleServerDocEx, COleServerDoc)
+      //{{AFX_MSG_MAP(COleServerDocEx)
+      //}}AFX_MSG_MAP
+   END_MESSAGE_MAP()
+
+   ///////////////////////////////////////////////////////////////
+   // COleServerDocEx construction/destruction
+
+   COleServerDocEx::COleServerDocEx()
+   {
+      m_bDontSave = FALSE;
+   }
+
+   COleServerDocEx::~COleServerDocEx()
+   {
+   }
+
+   ////////////////////////////////////////////////////////////////
+   // COleServerDocEx default command handling
+
+   void COleServerDocEx::OnCloseDocument()
+   {
+      m_bDontSave = TRUE;
+      COleServerDoc::OnCloseDocument();
+      m_bDontSave = FALSE;
+   }
+
+   ////////////////////////////////////////////////////////////////
+   // COleServerDocEx OLE interface implementation
+
+   BEGIN_INTERFACE_MAP(COleServerDocEx, COleServerDoc)
+      INTERFACE_PART(COleServerDocEx, IID_IDataObject, DataObjectEx)
+   END_INTERFACE_MAP()
+
+   ////////////////////////////////////////////////////////////////
+   // COleServerDocEx::XDataObjectEx
+
+   STDMETHODIMP_(ULONG) COleServerDocEx::XDataObjectEx::AddRef()
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      return (ULONG)pThis-&gt;ExternalAddRef();
+   }
+
+   STDMETHODIMP_(ULONG) COleServerDocEx::XDataObjectEx::Release()
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      return (ULONG)pThis-&gt;ExternalRelease();
+   }
+
+   STDMETHODIMP COleServerDocEx::XDataObjectEx::QueryInterface(
+      REFIID iid, LPVOID far* ppvObj)
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      return (HRESULT)pThis-&gt;ExternalQueryInterface(&amp;iid, ppvObj);
+   }
+
+   STDMETHODIMP COleServerDocEx::XDataObjectEx::GetData(
+      LPFORMATETC lpFormatEtc, LPSTGMEDIUM lpStgMedium)
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      ASSERT_VALID(pThis);
+
+      if (pThis-&gt;m_bDontSave)
+         return ResultFromScode(E_FAIL);
+
+      return pThis-&gt;m_xDataObject.GetData(lpFormatEtc, lpStgMedium);
+   }
+
+   STDMETHODIMP COleServerDocEx::XDataObjectEx::GetDataHere(
+      LPFORMATETC lpFormatEtc, LPSTGMEDIUM lpStgMedium)
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      ASSERT_VALID(pThis);
+
+      if (pThis-&gt;m_bDontSave)
+         return ResultFromScode(E_FAIL);
+
+      return pThis-&gt;m_xDataObject.GetDataHere(lpFormatEtc, lpStgMedium);
+   }
+
+   STDMETHODIMP COleServerDocEx::XDataObjectEx::QueryGetData(
+      LPFORMATETC lpFormatEtc)
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      ASSERT_VALID(pThis);
+
+      return pThis-&gt;m_xDataObject.QueryGetData(lpFormatEtc);
+   }
+
+   STDMETHODIMP COleServerDocEx::XDataObjectEx::GetCanonicalFormatEtc(
+      LPFORMATETC lpFormatEtcIn, LPFORMATETC lpFormatEtcOut)
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      ASSERT_VALID(pThis);
+
+      return pThis-&gt;m_xDataObject.GetCanonicalFormatEtc(lpFormatEtcIn,
+                                                        lpFormatEtcOut);
+   }
+
+   STDMETHODIMP COleServerDocEx::XDataObjectEx::SetData(
+      LPFORMATETC lpFormatEtc, LPSTGMEDIUM lpStgMedium, BOOL fRelease)
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      ASSERT_VALID(pThis);
+
+      return pThis-&gt;m_xDataObject.SetData(lpFormatEtc, lpStgMedium,
+                                          fRelease);
+   }
+
+   STDMETHODIMP COleServerDocEx::XDataObjectEx::EnumFormatEtc(
+      DWORD dwDirection, LPENUMFORMATETC FAR* ppenumFormatEtc)
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      ASSERT_VALID(pThis);
+
+      return pThis-&gt;m_xDataObject.EnumFormatEtc(dwDirection,
+                                                ppenumFormatEtc);
+   }
+
+   STDMETHODIMP COleServerDocEx::XDataObjectEx::DAdvise(
+      FORMATETC FAR* pFormatetc, DWORD advf,
+      LPADVISESINK pAdvSink, DWORD FAR* pdwConnection)
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      ASSERT_VALID(pThis);
+
+      return pThis-&gt;m_xDataObject.DAdvise(pFormatetc, advf, pAdvSink,
+                                          pdwConnection);
+   }
+
+   STDMETHODIMP COleServerDocEx::XDataObjectEx::DUnadvise(DWORD dwConn)
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      ASSERT_VALID(pThis);
+
+      return pThis-&gt;m_xDataObject.DUnadvise(dwConn);
+   }
+
+   STDMETHODIMP COleServerDocEx::XDataObjectEx::EnumDAdvise(
+      LPENUMSTATDATA FAR* ppenumAdvise)
+   {
+      METHOD_PROLOGUE(COleServerDocEx, DataObjectEx)
+      ASSERT_VALID(pThis);
+
+      return pThis-&gt;m_xDataObject.EnumDAdvise(ppenumAdvise);
+   }
+
+   ////////////////////////////////////////////////////////////////
+   // COleServerDocEx diagnostics
+
+   #ifdef _DEBUG
+   void COleServerDocEx::AssertValid() const
+   {
+      COleServerDoc::AssertValid();
+   }
+
+   void COleServerDocEx::Dump(CDumpContext&amp; dc) const
+   {
+      COleServerDoc::Dump(dc);
+      AFX_DUMP1(dc, "\nm_bDontSave = ", m_bDontSave);
+   }
+   #endif //_DEBUG
+
+   //
+   // End of olesvrex.cpp
+   ////////////////////////////////////////////////////////////////
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.50 2.00 2.10 2.50 2.51 2.52 3.00 3.10<BR>
+4.00 4.10<BR>
+KBCategory: kbprg<BR>
+KBSubcategory: MfcOLE<BR>
+Keywords          : MfcOLE kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.50 1.51 1.52 | 2.00 2.10 4.00<BR>
+Platform          : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,282 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC: How to Dial a Phone Number in Microsoft Access (1.x/2.0) </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q93696 ">
+<META NAME="KBModify" CONTENT="1997/06/08">
+<META NAME="KBCreate" CONTENT="1992/12/17">
+<META NAME="Keywords" CONTENT="kbprg PgmApi">
+<META NAME="KBArea" CONTENT="Support; KB; access, convert, crossnet, dbweb, odbc, winprint, setup, vbapp, office, officevba">
+<META NAME="Description" CONTENT="  Advanced: Requires expert coding, interoperability, and multiuser skills.  This article describes a sample user-defined Access Basic function, DialNumber(), that you can use to dial a telephone number from Microsoft Access using your computer's mod...">
+<META NAME="Product" CONTENT="Access">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA1S,QDL4,QDN9,QBXE,QAY5,QA5F,QAMA,QAS6,QAKC,QBV8,QAB9,QAGU,QBC6,QDL9,QBWO V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC: How to Dial a Phone Number in Microsoft Access (1.x/2.0)</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 8, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q93696 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access versions 1.0, 1.1, 2.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Advanced: Requires expert coding, interoperability, and multiuser skills.
+<P>
+This article describes a sample user-defined Access Basic function,
+DialNumber(), that you can use to dial a telephone number from Microsoft
+Access using your computer's modem. This method uses Microsoft Windows
+application programming interface (API) function calls.
+<P>
+Although this function will work with Microsoft Access version 2.0,
+version 2.0 has a new AutoDialer feature that can be used for dialing
+telephone numbers. For more information about the AutoDialer feature,
+search for "AutoDialer" using the Microsoft Access 2.0 Help menu.
+<P>
+This article assumes that you are familiar with Access Basic and with
+creating Microsoft Access applications using the programming tools
+provided with Microsoft Access. For more information on Access Basic,
+please refer to the "Introduction to Programming" manual in Microsoft
+Access version 1.x, or the "Building Applications" manual in version 2.0.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To dial a phone number in Microsoft Access, you can use Microsoft Windows
+API calls in the dynamic-link library (DLL) USER.EXE. There are 17
+communication API calls available in USER.EXE, but only the following 3
+are used to dial a phone number: OpenComm(), CloseComm(), and WriteComm().
+<P>
+The following steps demonstrate how to create and use the DialNumber()
+function.
+<P>
+NOTE: In the following sample code, an underscore (_) is used as a line-
+continuation character. Remove the underscore from the end of the line
+when re-creating this code in Access Basic.
+
+<OL><P><LI>Open the sample database NWIND.MDB.
+
+<P><LI>Create a new Access Basic module with the following in the Declarations
+   section:
+<P>
+<P><PRE>      Option Explicit
+</PRE><P>
+<P><PRE>      ' The number of seconds to wait for the modem to dial before
+      ' .. resetting the modem. If the phone hangs up prematurely
+      ' .. try increasing this value by small increments.
+      Const WAITSECONDS = 4
+</PRE><P>
+<P><PRE>      Declare Function OpenComm Lib "User" (ByVal lpComName$, _
+<PRE></PRE>         ByVal wInQueue%, ByVal wOutQueue%) As Integer
+      Declare Function CloseComm Lib "User" (ByVal nCid%) As Integer
+      Declare Function WriteComm Lib "User" (ByVal nCid%, _
+         ByVal lpBuf$, ByVal nSize%) As Integer
+
+      Const ID_CANCEL = 2
+      Const MB_OKCANCEL = 1
+      Const MB_ICONSTOP = 16, MB_ICONINFORMATION = 64
+
+</PRE><P><LI>Add the following function to the module:
+<P>
+<P><PRE>      ' ***********************************************************
+      ' FUNCTION: DialNumber()
+      '
+      ' PURPOSE: To dial a telephone number using the computer's modem
+      '
+      ' ARGUMENTS:
+<PRE></PRE>      '    PhoneNumber: The telephone number to dial
+      '
+      '    CommPort: The communications port the modem is connected
+      '              to. Typically, modems are found on COM2, however,
+      '              they can be configured for any COM port.
+      '
+      ' EXAMPLE:
+      '    Type the following in the Immediate window using a modem
+      '    connected to the COM2 port:
+      '
+      '       ? DialNumber("555-1212", "COM2")
+      '
+      ' ***********************************************************
+      Function DialNumber (PhoneNumber, CommPort As String)
+         Dim Msg As String, MsgBoxType As Integer, MsgBoxTitle As String
+         Dim ModemCommand As String
+         Dim OpenPort As Integer
+         Dim RetVal As Integer
+         Dim StartTime
+         Dim CR As String: CR = Chr$(13)
+         Dim LF As String: LF = Chr$(10)
+
+         ' Ask the user to pick up the phone.
+         Msg = "Please pickup the phone and choose OK to dial " _
+            &amp; PhoneNumber
+         MsgBoxType = MB_ICONINFORMATION + MB_OKCANCEL
+         MsgBoxTitle = "Dial Number"
+         If MsgBox(Msg, MsgBoxType, MsgBoxTitle) = ID_CANCEL Then
+            Exit Function
+         End If
+
+         ' Open the communications port.
+         OpenPort = OpenComm(CommPort, 1024, 128)
+         If OpenPort &lt; 0 Then
+            Msg = "Unable to open communication port " &amp; CommPort
+            GoTo Err_DialNumber
+         End If
+
+         ' Send the telephone number to the modem.
+         ModemCommand = "ATDT" &amp; PhoneNumber &amp; CR &amp; LF
+         If WriteComm(OpenPort, ModemCommand, Len(ModemCommand)) &lt; 0 Then
+            Msg = "Unable to dial number " &amp; PhoneNumber
+            GoTo Err_DialNumber
+         End If
+
+         ' Wait WAITSECONDS seconds for the phone to dial.
+         StartTime = Timer
+         While Timer &lt; StartTime + WAITSECONDS
+            DoEvents
+         Wend
+
+         ' Reset the modem and take it off line.
+         ModemCommand = "ATH0" &amp; CR &amp; LF
+         RetVal = WriteComm(OpenPort, ModemCommand, Len(ModemCommand))
+
+         ' Close the communications port.
+         RetVal = CloseComm(OpenPort)
+
+         Exit Function
+
+      Err_DialNumber:      'This is not an On Error routine.
+         Msg = Msg &amp; CR &amp; CR &amp; "Make sure no other devices are using _
+            communication port " &amp; CommPort
+         MsgBoxType = MB_ICONSTOP
+         MsgBoxTitle = "Dial Number Error"
+         MsgBox Msg, MsgBoxType, MsgBoxTitle
+
+      End Function
+
+</PRE><P><LI>Open the Employees form in Design view.
+
+<P><LI>Add a command button with the following properties to the form next
+   to the Home Phone field.
+<P>
+<P><PRE>      Microsoft Access 1.x:
+</PRE><P>
+<PRE>         ControlName: btnDialPhone
+         Caption: Dial
+         OnPush: =DialNumber([Home Phone], "COM2")
+
+      Microsoft Access 2.0:
+
+         Name: btnDialPhone
+         Caption: Dial
+         OnClick: =DialNumber([Home Phone], "COM2")
+
+</PRE><P><LI>View the form in Form view. To dial an employee's home phone number,
+   choose the Dial button.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+For an example of this topic in Microsoft Access for Windows 95 version
+7.0, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>    ARTICLE-ID: <B><A href="../vbapps/q148857.htm">Q148857</A></B>
+    TITLE:      ACC: How to Dial a Phone Number Using MS Access 95/97
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: comm port<BR>
+Keywords            : kbprg PgmApi<BR>
+Version             : 1.0 1.1 2.0<BR>
+Platform            : WINDOWS<BR>
+Hardware            : X86<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 8, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

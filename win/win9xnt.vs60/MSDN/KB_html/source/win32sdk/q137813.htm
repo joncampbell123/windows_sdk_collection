@@ -1,0 +1,512 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How Win32 Applications Can Read CD-ROM Sectors in Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q137813">
+<META NAME="KBModify" CONTENT="1996/12/16">
+<META NAME="KBCreate" CONTENT="1995/10/05">
+<META NAME="Keywords" CONTENT="kbprg kbcode kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Some Win32 applications, such as multimedia applications and games, need to read sectors directly from compact discs to implement custom access or read caching to optimize CD-ROM access for specific purposes. This article provides information and e...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAUD,QBFN,QBXM,QAHC,QADN,QAIF,QAH4,QAY2,QDL9,QBWO,QBWN,QAKC,QALG,QAB5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How Win32 Applications Can Read CD-ROM Sectors in Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 16, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q137813</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   Microsoft Windows 95 version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Some Win32 applications, such as multimedia applications and games, need to
+read sectors directly from compact discs to implement custom access or read
+caching to optimize CD-ROM access for specific purposes. This article
+provides information and example code that demonstrates how Win32
+applications can read sectors from compact discs on Windows 95.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The Windows 95 Compact Disc File System (CDFS) is a protected-mode CD-ROM
+driver that implements the V86-mode MSCDEX Interrupt 2Fh functions as its
+sole application-callable interface. This interface allows it to replace
+real-mode CD-ROM drivers and MSCDEX.EXE and still be completely compatible
+with existing applications for MS-DOS and Windows 3.x. In fact,
+applications for MS-DOS and Windows 3.x will not be able to tell the
+difference between CDFS and MSCDEX.EXE.
+<P>
+Windows 95 provides an interface for Win32 applications to read sectors
+from compact discs. This interface differs substantially from that
+provided by Windows NT. While Win32 applications on Windows NT use
+CreateFile() and ReadFile() to read sectors from compact discs, Win32
+applications running on Windows 95 must use an indirect method that
+involves thunking to a 16-bit DLL that calls MSCDEX Int 2Fh functions.
+<P>
+Because the MSCDEX interface is callable only in V86-mode, Win32
+applications must thunk to a 16-bit DLL, and the 16-bit DLL must use the
+DOS Protected Mode Interface (DPMI) Simulate Real Mode Interrupt function
+to call its functions. The Win32 application must pass a buffer to the 16-
+bit DLL. Inside the thunk, the 16-bit DLL obtains the sector data from
+MSCDEX, copies it into the Win32 application's buffer, and returns to the
+Win32 application.
+<P>
+The following code demonstrates how to read sectors from a compact disc
+using the method described above. Because the code implements a flat thunk,
+it is divided into three sections:
+
+<UL><LI>Code that resides in a Win32 DLL (the 32-bit side of the thunk).
+
+<LI>Code that resides in the thunk script.
+
+<LI>Code that resides in the 16-bit DLL that actually calls MSCDEX.
+<P>
+<PRE>//--------------------------------------------------------------------
+// Code inside the Win32 DLL (the 32-bit side of the thunk)
+// ReadSectorsFromCD() is exported by the DLL so that it can be called
+// by Win32-based applications.
+
+#include &lt;windows.h&gt;
+
+#define CD_SECTOR_SIZE         2048
+
+</PRE></UL>__declspec(dllexport)
+<PRE>BOOL WINAPI ReadSectorsFromCD (BYTE   bDrive,
+                               DWORD  dwStartSector,
+                               WORD   wSectors,
+                               LPBYTE lpBuff);
+
+// Prototype for thunk function in 16-bit DLL.
+BOOL FAR PASCAL ReadCDRomSectors (BYTE   bDrive,
+                                  DWORD  dwStartSector,
+                                  WORD   wSectors,
+                                  LPBYTE lpBuffer);
+
+/*-------------------------------------------------------------------
+  ReadSectorsFromCD()
+
+  Calls the thunked function, ReadCDRomSectors(). This function is
+  exported by the Win32 DLL and thus is callable from Win32-based
+  applications.
+
+  Parameters:
+
+     bDrive
+        Drive letter of CD-ROM drive to read from. Specified as
+        a character in the range 'A', 'B', 'C', ..., 'Z'.  May be
+        upper- or lower-case.
+
+     dwStartSector
+        First sector to read.
+
+     wSectors
+        Number of sectors to read.
+
+     lpBuffer
+        Buffer to contain sector data. Must be large enough to
+        accommodate all sectors being read. Because this buffer is
+        provided to the 16-bit DLL via a thunk, its maximum
+        length is limited to 64K.
+
+  Example use:
+     // Read 5 sectors from CD-ROM drive E: starting at sector 16.
+     fResult = ReadSectorsFromCD ('E', 16, 5, lpBuff);
+
+  Return Value
+     Returns TRUE if successful, or FALSE if an error occurred
+     in reading or if a parameter was invalid.
+</PRE>-------------------------------------------------------------------*/
+<P>
+__declspec(dllexport)
+<PRE>BOOL WINAPI ReadSectorsFromCD (BYTE   bDrive,
+                               DWORD  dwStartSector,
+                               WORD   wSectors,
+                               LPBYTE lpBuff)
+{
+   // Call 16-bit DLL to read sectors via a 32-&gt;16 thunk
+   return ReadCDRomSectors (bDrive, dwStartSector, wSectors, lpBuff);
+</PRE>}
+<P>
+<PRE>//--------------------------------------------------------------------
+// Contents of the thunk script
+
+</PRE>enablemapdirect3216 = true;
+<P>
+typedef unsigned short WORD;
+typedef unsigned long  DWORD;
+typedef unsigned char  BYTE, *LPBYTE;
+<PRE>typedef bool           BOOL;
+
+BOOL ReadCDRomSectors (BYTE   bDrive,
+                       DWORD  dwStartSector,
+                       WORD   wSectors,
+                       LPBYTE lpBuffer)
+{
+   lpBuffer = inout;
+</PRE>}
+<P>
+<PRE>//--------------------------------------------------------------------
+// Code inside the 16-bit DLL. This code implements the 16-bit side of
+// the thunk, and is where the calls to MSCDEX are made to read
+// sectors from a compact disc.
+
+#include &lt;windows.h&gt;
+#include &lt;string.h&gt;
+#include &lt;ctype.h&gt;
+
+// Cooked-mode sector size in bytes
+#define CD_SECTOR_SIZE         2048
+
+// Maximum sector buffer size in bytes
+#define MAX_BUFFER_LENGTH      65536
+
+// Maximum number of sectors for each read request
+#define MAX_CD_SECTORS_TO_READ ((MAX_BUFFER_LENGTH) / \
+                                (CD_SECTOR_SIZE))
+
+// Processor flags masks -- use for testing wFlags member of RMCS
+#define CARRY_FLAG  0x0001
+
+// Real-mode call structure for making DPMI Simulate Real Mode
+// Interrupt calls.
+</PRE>typedef struct tagRMCS
+{
+<PRE>   DWORD edi, esi, ebp, RESERVED, ebx, edx, ecx, eax;
+   WORD  wFlags, es, ds, fs, gs, ip, cs, sp, ss;
+</PRE>} RMCS, FAR* LPRMCS;
+<P>
+<PRE>BOOL FAR PASCAL __export ReadCDRomSectors (BYTE   bDrive,
+                                           DWORD  dwStartSector,
+                                           WORD   wSectors,
+                                           LPBYTE lpBuffer);
+
+BOOL FAR PASCAL MSCDEX_ReadSector (BYTE   bDrive,
+                                   DWORD  dwStartSector,
+                                   LPBYTE RMlpBuffer);
+
+</PRE>BOOL FAR PASCAL SimulateRM_Int (BYTE bIntNum, LPRMCS lpCallStruct);
+<PRE>void FAR PASCAL BuildRMCS (LPRMCS lpCallStruct);
+
+/*-------------------------------------------------------------------
+  ReadCDRomSectors()
+
+  Reads a specified number of sectors from a CD-ROM.
+
+  Parameters:
+
+     bDrive
+        Drive letter of CD-ROM drive to read from. Specified as
+        a character in the range 'A', 'B', 'C', ..., 'Z'.  May be
+        upper- or lower-case.
+
+     dwStartSector
+        First sector to read.
+
+     wSectors
+        Number of sectors to read.
+
+     lpBuffer
+        Buffer to contain sector data. Must be large enough to
+        accommodate all sectors being read. Since this buffer is
+        provided by the calling Win32 application, no more than
+        the first 64K bytes will be used.
+
+  Return Value
+     Returns TRUE if successful, or FALSE if an error occurred
+     in reading or if a parameter was invalid.
+</PRE>-------------------------------------------------------------------*/
+<P>
+<PRE>BOOL FAR PASCAL __export ReadCDRomSectors (BYTE   bDrive,
+                                           DWORD  dwStartSector,
+                                           WORD   wSectors,
+                                           LPBYTE lpBuffer)
+{
+   BOOL   fResult;
+   DWORD  cbOffset;
+   DWORD  i;
+   DWORD  gdaBuffer;     // Return value of GlobalDosAlloc().
+   LPBYTE RMlpBuffer;    // Real-mode buffer pointer
+   LPBYTE PMlpBuffer;    // Protected-mode buffer pointer
+
+
+   // Convert drive letter into drive number for MSCDEX call.
+   bDrive = toupper(bDrive) - 'A';
+
+   /*
+      Validate parameters:
+         bDrive must be between 0 and 25, inclusive.
+         lpBuffer must not be NULL.
+         wSectors must be between 1 and the maximum number of
+            sectors that can fit into a 64K buffer, inclusive.
+   */
+   if (bDrive &gt; 25 || !lpBuffer)
+      return FALSE;
+
+   if (!wSectors || (wSectors &gt; MAX_CD_SECTORS_TO_READ))
+      return FALSE;
+
+   /*
+      Allocate buffer for MSCDEX call. This buffer must be below 1MB
+      because the MSCDEX function will be called using DPMI. Like real-
+      mode MSCDEX.EXE, CDFS implements the MSCDEX API as V86-mode
+      Interrupt 2Fh functions.
+
+      Free memory below 1MB is relatively scarce, so allocating a
+      small sector buffer increases the chances that it can be
+      allocated no matter how many other applications and MS-DOS
+      device drivers are running. Also, a small sector buffer leaves
+      more memory for other applications to use.
+   */
+   gdaBuffer = GlobalDosAlloc (CD_SECTOR_SIZE);
+
+   if (!gdaBuffer)
+      return FALSE;
+
+   RMlpBuffer = (LPBYTE)MAKELONG(0, HIWORD(gdaBuffer));
+   PMlpBuffer = (LPBYTE)MAKELONG(0, LOWORD(gdaBuffer));
+
+   // Call MSCDEX to read each sector.
+   for (i = cbOffset = 0;
+        i &lt; wSectors;
+        i++, cbOffset += CD_SECTOR_SIZE)
+      {
+      if (fResult = MSCDEX_ReadSector (bDrive,
+                                       dwStartSector + i,
+                                       RMlpBuffer))
+         _fmemcpy (lpBuffer + cbOffset, PMlpBuffer, CD_SECTOR_SIZE);
+      else
+         break;
+      }
+
+   GlobalDosFree (LOWORD(gdaBuffer));
+
+   return (fResult);
+</PRE>}
+<P>
+<PRE>/*-------------------------------------------------------------------
+  MSCDEX_ReadSector()
+
+  Calls MSCDEX to read a single sector from a CD-ROM compact disc.
+
+  Parameters:
+
+     bDrive
+        Drive number of CD-ROM drive to read from. Expected to be
+        a number in the following series: 0 = A, 1 = B, 2 = C, etc.
+
+     dwStartSector
+        First sector of read.
+
+     RMlpBuffer
+        Real-mode segment:offset pointer to a buffer that will receive
+        sector data. Must be large enough to accommodate a single
+        sector in cooked mode.
+
+  Return Value
+     Returns TRUE if successful, or FALSE if an error occurred in
+     reading.
+</PRE>-------------------------------------------------------------------*/
+<P>
+<PRE>BOOL FAR PASCAL MSCDEX_ReadSector (BYTE   bDrive,
+                                   DWORD  dwStartSector,
+                                   LPBYTE RMlpBuffer)
+{
+   RMCS   callStruct;
+   BOOL   fResult;
+
+   /*
+      Prepare DPMI Simulate Real Mode Interrupt call structure with
+      the register values used to make the MSCDEX Absolute read call.
+      Then, call MSCDEX using DPMI and check for errors in both the DPMI
+      call and the MSCDEX call.
+   */
+   BuildRMCS (&amp;callStruct);
+   callStruct.eax = 0x1508;                 // MSCDEX Absolute read
+   callStruct.ebx = LOWORD(RMlpBuffer);     // Offset of sect buffer
+   callStruct.es  = HIWORD(RMlpBuffer);     // Segment of sect buffer
+   callStruct.ecx = bDrive;                 // 0=A, 1=B, 2=C, etc.
+   callStruct.edx = 1;                      // Read one sector
+   callStruct.esi = HIWORD(dwStartSector);
+   callStruct.edi = LOWORD(dwStartSector);
+
+   if (fResult = SimulateRM_Int (0x2F, &amp;callStruct))
+      fResult = !(callStruct.wFlags &amp; CARRY_FLAG);
+
+   return fResult;
+</PRE>}
+<P>
+<PRE>/*-------------------------------------------------------------------
+  SimulateRM_Int()
+
+  Allows protected-mode software to execute real-mode interrupts
+  such as calls to MS-DOS, MS-DOS TSRs, MS-DOS device drivers.
+
+  This function implements the "Simulate Real Mode Interrupt"
+  function of the DPMI specification v0.9 and later.
+
+  Parameters:
+
+     bIntNum
+        Number of the interrupt to simulate.
+
+     lpCallStruct
+        Call structure that contains params (register values)
+        for bIntNum.
+
+  Return Value
+     SimulateRM_Int returns TRUE if it succeeded or FALSE if
+     it failed.
+
+  Comments
+     lpCallStruct is a protected-mode selector:offset address, not
+     a real-mode segment:offset address.
+</PRE>-------------------------------------------------------------------*/
+<P>
+BOOL FAR PASCAL SimulateRM_Int (BYTE bIntNum, LPRMCS lpCallStruct)
+{
+<PRE>   BOOL fRetVal = FALSE;        // Assume failure
+
+   _asm {
+         push di
+         mov  ax, 0300h         ; DPMI Simulate Real Mode Interrupt
+         mov  bl, bIntNum       ; Number of the interrupt to simulate
+         mov  bh, 01h           ; Bit 0 = 1; all other bits must be 0
+         xor  cx, cx            ; No words to copy from PM to RM stack
+         les  di, lpCallStruct  ; Real mode call structure
+         int  31h               ; Call DPMI
+         jc   END1              ; CF set if error occurred
+
+         mov  fRetVal, TRUE
+     END1:
+         pop di
+        }
+   return (fRetVal);
+</PRE>}
+<P>
+<PRE>/*-------------------------------------------------------------------
+   BuildRMCS()
+
+   Initializes a real-mode call structure by zeroing all its members.
+
+   Parameters:
+
+      lpCallStruct
+         Points to a real-mode call structure
+
+   Return Value
+         None.
+
+   Comments
+         lpCallStruct is a protected-mode selector:offset address,
+         not a real-mode segment:offset address.
+</PRE>-------------------------------------------------------------------*/
+<P>
+<PRE>void FAR PASCAL BuildRMCS (LPRMCS lpCallStruct)
+   {
+   _fmemset (lpCallStruct, 0, sizeof(RMCS));
+   }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+DOS Protected Mode Interface Specification Version 0.9.
+Programmer's Guide to Windows 95.
+Win32 SDK Online Documentation.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: Windows 95 4.00 cdrom cd-rom absolute<BR>
+KBCategory: kbprg kbcode kbhowto<BR>
+KBSubcategory: MMCDROM BseFileio<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 16, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,285 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Turn Off the COM Garbage Collection Mechanism </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q171414">
+<META NAME="KBModify" CONTENT="1997/07/18">
+<META NAME="KBCreate" CONTENT="1997/07/15">
+<META NAME="Keywords" CONTENT="LeTwoArc LeTwoCom LeTwoDCom">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  COM's automatic garbage collection mechanism enables objects in COM servers to reclaim their resource allocations and delete themselves in the event that all clients terminate abnormally. Implementation of this mechanism involves periodic pings sen...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAW6,QARL,QAGI,QAJQ,QDKA,QAUD,QADX V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Turn Off the COM Garbage Collection Mechanism</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q171414</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE Libraries included with:
+   - Microsoft Windows NT version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+COM's automatic garbage collection mechanism enables objects in COM servers
+to reclaim their resource allocations and delete themselves in the event
+that all clients terminate abnormally. Implementation of this mechanism
+involves periodic pings sent from each client machine to each server
+machine. There are some situations where it might be desirable to turn off
+this pinging to create a “NOPING” COM object. This article discusses these
+situations and also shows a method by which a COM server can turn off
+pinging for its objects.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When a COM client terminates normally, it releases all references to its
+server object. When a client terminates abnormally however, there might be
+outstanding references to the server object. Without a garbage collection
+mechanism, the server code has no way of knowing when to reclaim the
+resources allocated for the COM object, which can then cause a resource
+leak. To address this problem, COM implements an automatic garbage
+collection mechanism in which the COM resolver process (RPCSS) on the
+client machine pings the server machine on behalf of the client process.
+<P>
+A detailed description of the overall garbage collection (GC) strategy and
+protocol of COM is beyond the scope of this article. There are, however,
+many optimizations involved, such that the overhead of pinging even in a
+very large-scale DCOM system is extremely low. The most basic optimizations
+are (a) ping traffic occurs on a machine-to-machine basis, not on a client-
+to-object basis or on a process-to-process basis; (b) all references from
+all clients to all objects are summarized in a single 128-bit value (a
+“ping set ID”), with only that 16-byte value sent across the network every
+two minutes. In other words, in a steady state, one client holding one
+reference to one object on a server will generate the same small amount of
+ping traffic as 1,000 clients holding 10,000 references to 10,000 objects
+on the same server. (A slightly larger ping message is sent to add or
+remove objects from the ping set as the set of references varies over
+time.) Moreover, alternatives to using COM’s GC protocol (for example,
+using periodic application-level “pings”–-method calls that inform the
+object that clients are still alive, or using an underlying transport
+mechanism such as TCP keepalives) are demonstrably much less efficient.
+Therefore, DCOM’s default GC mechanism should be used for any objects that
+must be shut down when their clients disappear or otherwise misbehave if
+those objects would effectively become memory leaks on the server.
+<P>
+The resolver on the server machine keeps track of the pings for each server
+object. The ping period is 2 minutes and, currently, it is non-
+configurable. When the resolver on the server machine detects that an
+object has not been pinged for 6 minutes, it assumes that all clients of
+the object have terminated or otherwise are no longer using the object. The
+resolver will then release all external references to the object. It does
+this by simply having the object’s stub manager (the COM runtime code that
+delivers calls to each object) call ::Release() on the object’s IUnknown
+interface. At this point, the object’s reference count will be zero so far
+as the COM runtime is concerned. (There may still be references held by
+local (same-apartment) clients, so the object’s internal reference count
+may not necessarily go to zero at this point.) The object may then shut
+itself down.
+<P>
+Note that garbage collection applies to all servers regardless of whether
+their clients are local or remote, or a combination of local and remote.
+The underlying pinging mechanism is different in the local case as no
+network packets are generated, but for all practical purposes, the behavior
+is the same.
+<P>
+There are some circumstances where it is desirable to turn off COM's
+garbage collection mechanism. For example, you might have a stateless
+object (for example, a multi-user computational object where all relevant
+state is passed as [in] parameters on method calls and the relevant output
+is provided as an [out] parameter) or a long-lived object with no per-
+client-relative state (for example, objects that make up a directory of
+other objects) that does not need the ability to detect the liveness of its
+clients. Essentially, the kind of object under discussion is one in which
+the internal implementation of the IUnknown::Addref and ::Release() methods
+do not control the object’s lifetime; some other mechanism is used to
+determine when to shut down the object (if ever). In such situations, it
+may be preferable to turn off the periodic pings to eliminate the network
+traffic they cause. The following section shows you how to do this via
+sample code.
+<P>
+It must be kept in mind that garbage collection is done on an object-by-
+object basis and not on a process-by-process basis. So, if you have a
+server process that serves multiple objects (including class factory
+objects) to all clients and you do not want the server machine to be pinged
+by its clients, then you must turn off pinging for all objects in the
+server. As a corollary, while it is perfectly legitimate to disable pinging
+for only one or some objects in a process or for all object in one or only
+some processes on a server, the COM pinging protocol is so optimized that
+there will be no significant change in the network bandwidth used by the
+COM GC protocol whether there is one or 10,000 DCOM objects in use on a
+machine-wide basis -- assuming all objects have approximately the same
+number and set of clients. In other words, if there are any other DCOM
+objects on a given server using COM’s GC/pinging protocol, and those
+objects are used by roughly the same number and set of clients that are
+using an object that might be marshaled “NOPING”, there is essentially no
+advantage to turning off the pinging protocol with respect to that
+particular object. There will only be a measurable decrease in network
+traffic if the clients of the NOPING object(s) are significantly different
+from the clients of the other objects on the same machine.
+<P>
+Also, it must be noted carefully that garbage collection is an all-or-
+nothing proposition. If you turn off garbage collection for an object, then
+COM-based lifetime management of the object is turned off also. This means
+that clients can no longer call Release() on their interface pointers and
+expect the object to receive the call. Release() called on any proxy is a
+no-op for such objects. This may seem counterintuitive at first, but it is
+the correct behavior because COM can no longer guarantee that the object
+will be shutdown when clients disappear. If ::Release() was enabled in this
+situation then the object would find that its reference count went to zero
+when all clients behaved properly but never went to zero if any one client
+misbehaved. This kind of totally unreliable behavior is far worse than the
+simple rule that if objects are marshaled with the NOPING flag then without
+exception they will never receive any ::Release() calls from the COM
+runtime. As an implementation detail, to maximize network efficiency
+::Release() calls on proxies for objects marshaled NOPING are never sent
+across the wire.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+You can turn off garbage collection and pinging for an object by marshaling
+its interfaces with the MSHLFLAGS_NOPING flag. The following sample code
+shows how to do this inside the class factory's CreateInstance() function.
+This is required so that the standard marshaler object gets associated with
+the stub manager for the object as soon as the object is created. Any
+subsequent calls to CoMarshalInterface() by the stub manager will find the
+pre-created standard marshaler object.
+<P>
+<PRE>  STDMETHODIMP
+  CClassFactory::CreateInstance(LPUNKNOWN punkOuter, REFIID riid,
+          void**ppv)
+  {
+    HRESULT     hr;
+    IMarshal *pIM = NULL;
+    IUnknown *pUnknown;
+
+    *ppv = NULL;
+    if (punkOuter != NULL)
+        return CLASS_E_NOAGGREGATION;
+
+    // create our object.
+    p = new CSimpleObject;
+    if (p == NULL)
+        return E_OUTOFMEMORY;
+
+    hr = p-&gt;QueryInterface(IID_IUnknown, (void**)&amp;pUnknown);
+    hr = CoGetStandardMarshal(riid, pUnknown, 0, NULL, MSHLFLAGS_NOPING
+         |MSHLFLAGS_NORMAL, &amp;pIM);
+
+    // don't release pIM. All marshals of all interfaces on this object
+    // from now on will automatically be NOPING
+
+    if (FAILED(hr))
+    {
+        Message(TEXT("Server: CoGetStandardMarshal Error"), hr);
+        return(E_FAILED);
+    }
+    pUnknown-&gt;Release();
+
+    hr = p-&gt;QueryInterface(riid, ppv);
+    return hr;
+  }  // CClassFactory::CreateInstance
+
+</PRE>When the object is ready to be shut down, it should do the following:
+<P>
+<PRE>  pIM-&gt;DisconnectObject(0);
+  pIM-&gt;Release();
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : LeTwoArc LeTwoCom LeTwoDCom<BR>
+Version             : 4.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

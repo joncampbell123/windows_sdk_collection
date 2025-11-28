@@ -1,0 +1,187 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Short or Aborted USB Transfers Causes Data Toggle Problems </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q180576">
+<META NAME="KBModify" CONTENT="1998/02/06">
+<META NAME="KBCreate" CONTENT="1998/02/05">
+<META NAME="Keywords" CONTENT="">
+<META NAME="KBArea" CONTENT="Support; KB; win95ddk">
+<META NAME="Description" CONTENT="  Under the Universal Serial Bus (USB) Supplement for OSR 2 (OSR 2.1), it is possible that a short or aborted USB transfer for a bulk or interrupt endpoint may cause a subsequent transfer to either fail, or to discard the first data packet of the tra...">
+<META NAME="Product" CONTENT="win95ddk">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDKE,QAH6,QASP,QAKR,QAU9,QAUD,QDLW,QALZ,QAEF,QAYY,QAGI,QAKP,QDIR,QBXS,QA6E V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Short or Aborted USB Transfers Causes Data Toggle Problems</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 6, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q180576</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows 95 OEM Service Release version 2.1
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Under the Universal Serial Bus (USB) Supplement for OSR 2 (OSR 2.1), it is
+possible that a short or aborted USB transfer for a bulk or interrupt
+endpoint may cause a subsequent transfer to either fail, or to discard the
+first data packet of the transfer. This problem is caused by a data toggle
+synchronization problem between the endpoint on the USB device and the
+driver (UHCD.SYS) for the UHCI (Universal Host Controller Interface) USB
+host controller.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This problem arises because the UHCI driver computes the data toggle for an
+endpoint based upon the number of transfer descriptors built for the
+transfer, rather than the number of transfer descriptors actually used. If
+a transfer turns out to be short or aborted, it is possible that the data
+toggle state maintained by the UHCI driver will not be synchronized with
+the data toggle state maintained by the USB device itself. Subsequent
+attempts to transfer data on the endpoint may fail due to the incorrect
+data toggle. It is also possible that a subsequent transfer request will
+succeed if the USBD_SHORT_TRANSFER_OK flag is set, but will discard the
+first data packet of the transfer due to the mismatched data toggle.
+<P>
+It should be noted that this problem only exists in the UHCI driver for OSR
+2.1, and does not exist in the OHCI (Open Host Controller Interface) driver
+(OPENHCI.SYS).
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+On all short or aborted transfers, a Windows Driver Model (WDM) driver must
+reset the data toggle states maintained by both the UHCI driver and the USB
+device itself. To do so, the following sequence must be followed when the
+short or aborted transfer occurs:
+
+<OL><P><LI>Reset the pipe using the URB_FUNCTION_RESET_PIPE function. On OSR 2.1
+   this will cause the UHCI driver to reset the data toggle state
+   maintained by the driver to DATA0, and return a URB status of
+   0x40000005. On an OHCI controller this function will return a URB status
+   of USBD_STATUS_SUCCESS, but it will not cause the data toggle to be
+   reset to DATA0 on the host. On post OSR 2.1 implementations of WDM, this
+   URB will return a status of STATUS_INVALID_PARAMETER because the size of
+   the _URB_PIPE_REQUEST URB has changed in post OSR 2.1 implementations of
+   WDM. If the URB_FUNCTION_RESET_PIPE request returns a URB status of
+   anything other than 0x40000005, the WDM driver should simply resume
+   normal operation because the data toggle problem does not exist outside
+   of the OSR 2.1 version of the UHCI host controller driver.
+
+<P><LI>Assuming the URB_FUNCTION_RESET_PIPE URB returns a URB status of
+   0x40000005, the WDM driver should then issue a clear feature request for
+   the pipe using the URB_FUNCTION_CLEAR_FEATURE_TO_ENDPOINT function with
+   a feature selector of ENDPOINT_STALL. Firmware on the USB device must
+   reset the data toggle to DATA0 when it receives this clear feature
+   request.
+<P>
+</OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+Universal Serial Bus Specification, version 1.0
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: USB OSR 2.1 data toggle short transfer bulk WDM<BR>
+UHCI<BR>
+Version           : WIN95<BR>
+Platform          : Win95<BR>
+Issue type        : kbbug<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 6, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

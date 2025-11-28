@@ -1,0 +1,254 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Conditions for Stored Procedure Recompilation </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q104445">
+<META NAME="KBModify" CONTENT="1997/10/09">
+<META NAME="KBCreate" CONTENT="1993/09/16">
+<META NAME="Keywords" CONTENT="SSrvServer SSrvWinNT kbother">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  This article provides information on the conditions under which a stored procedure execution plan is recompiled and other conditions under which the query tree stored in SYSPROCEDURES can be re-resolved.  MORE INFORMATION  When a stored procedure i...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDMG,QAB9,QABM,QA28,QATJ,QBF0,QAPN,QAJQ,QAXB,QAHT,QAJZ,QAFI,QAE1,QAIC,QAGU V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Conditions for Stored Procedure Recompilation</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 9, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q104445</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<PRE>  - Microsoft SQL Server version 4.2, 6.0 and 6.5  
+  - Microsoft SQL Server version 4.2 for OS/2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article provides information on the conditions under which a stored
+procedure execution plan is recompiled and other conditions under which
+the query tree stored in SYSPROCEDURES can be re-resolved.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When a stored procedure is created, a normalized query tree for the
+procedure is saved in the SYSPROCEDURES system table. The normalized
+query tree contains the referenced table/view and column information.
+The process of normalization parses the SQL statements into a more
+efficient format and resolves all referenced objects into their internal
+representations. During this process, table names, for example, are
+resolved into their object IDs and column names are resolved into column
+IDs. When the procedure is subsequently executed, the tree is retrieved
+from SYSPROCEDURES, and based on it, an optimized execution plan is
+created and stored in the procedure cache.
+<P>
+Under certain conditions, the execution plan in the procedure cache can
+become invalid; as a result, the procedure needs to be recompiled.
+Under other conditions, it is possible that the query tree in
+SYSPROCEDURES can become invalid; in this case the query tree needs to
+be re-resolved.
+<P>
+The following are the conditions under which a stored procedure is
+recompiled:
+
+<OL><P><LI>An index on a referenced table is dropped.
+
+<P><LI>The table is altered using ALTER TABLE.
+
+<P><LI>A rule or default is bound to the table or column.
+
+<P><LI>The stored procedure has been flagged for recompilation by executing
+   sp_recompile on any referenced table.
+
+<P><LI>The stored procedure is executed using the WITH RECOMPILE option.
+
+<P><LI>The stored procedure is created using the WITH RECOMPILE option.
+
+<P><LI>All copies of the execution plan in cache are currently in use.
+<P>
+</OL>Item 1 causes the "indexdel" column in SYSOBJECTS to be incremented.
+Items 2 through 4 cause the "schema" column in SYSOBJECTS for the object
+to be incremented.
+<P>
+When a stored procedure is executed, it checks these columns for all
+referenced objects to see if there has been any change since the last
+execution. If a change is detected, the stored procedure is recompiled.
+<P>
+The following matrix summarizes what actions cause the "schema" or
+"indexdel" columns in SYSOBJECTS to be updated for a referenced object:
+<P>
+<PRE>   Action                   Schema    Indexdel
+   -------------------------------------------
+   Drop Index                 -           X
+   Bind / Unbind rule         X           -
+   Bind / Unbind default      X           -
+   Alter Table                X           -
+   Update Statistics          -           -
+   Create Index               -           -
+   sp_recompile               X           -
+
+</PRE></OL>Note that adding an index or updating statistics does not update the
+schema; thereby, it does not force a new execution plan. An existing
+plan in the cache will continue to be used unless the procedure is
+executed with the WITH RECOMPILE command or has been created with the
+RECOMPILE command option.
+<P>
+The following are the conditions under which the tree in SYSPROCEDURES
+can be re-resolved:
+
+<OL><P><LI>Executing LOAD DATABASE on the database containing the procedure.
+
+<P><LI>Executing LOAD DATABASE on a database containing a referenced table.
+
+<P><LI>Dropping and re-creating a table referenced by the procedure.
+
+<P><LI>Dropping and re-creating a database containing a table referenced
+   by the procedure.
+<P>
+</OL>Note that while recompiling will not cause the procedure to grow, the
+re-resolution of the query tree can. In some cases this may eventually
+cause the stored procedure execution plan to become too big and
+generate error message 703:
+<P>
+<PRE>   Memory request failed because more than 64 pages are required to
+   run the query in its present form. The query should be broken up
+   into shorter queries if possible.
+
+</PRE></OL>DBCC MEMUSAGE can be used to monitor the size of execution plans for
+stored procedures.( DBCC MEMUSAGE also displays the size of the tree but
+only when the stored procedure is created. Subsequently only the size of
+the execution plan is displayed. )
+<P>
+The following is some more information on execution plans:
+<P>
+- Stored procedures are re-usable, not re-entrant, for example, only one
+<PRE>  user may be executing a given copy of the execution plan at one time. If
+  two or more users try to execute the same procedure at the same time,
+  the server will create an additional copy of the execution plan. On the
+  other hand, when a user finishes using a procedure the execution plan is
+  available for reuse, in cache, by another user.
+
+</PRE>- If an existing plan is in use, it is possible that a new execution plan
+<PRE>  for a procedure may be different from an older one:
+
+  - If the user passes a different set of parameters in the second
+    invocation.
+
+  - If an index has been added to a referenced table or update statistics
+    has been run at some time since the older execution plan was generated.
+
+  For stored procedures that accept parameters that can be used in the
+  WHERE clause, the execution plan in the procedure cache is the optimized
+  path to the data (based on the parameters given during the first
+  execution of the procedure). For such procedures, if the parameters can
+  be significantly different for each execution of the procedure, it is
+  probably worth exploring the use of the WITH RECOMPILE option during
+  execution or even during the creation of the procedure. This does add
+  the overhead of having to generate the execution plan for each execution
+  of the procedure.
+
+  The additional execution plans stay in cache until they are paged out,
+  and could cause one execution to be very different from another. A user
+  has no control or knowledge of which plan will be used. This can
+  sometimes explain unexpectedly different execution times for the same
+  procedure given the same data and parameters
+
+</PRE>- If a very large number of stored procedures are being executed
+<PRE>  concurrently and repetitively, then performance could be improved by
+  enlarging procedure cache. This will prevent execution plans from
+  constantly being paged out of cache and having to read the procedure
+  tree from disk and recompile it.
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: recompilation re-resolution Windows NT<BR>
+Keywords          : SSrvServer SSrvWinNT kbother<BR>
+Version           : 4.2 6.0 6.5 | 4.2 6.0 6.5<BR>
+Platform          : OS/2 WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 9, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,233 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Cannot Read Red Book Audio Sectors in Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q180115">
+<META NAME="KBModify" CONTENT="1998/01/29">
+<META NAME="KBCreate" CONTENT="1998/01/29">
+<META NAME="Keywords" CONTENT="BseFileio">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Some applications read raw sectors from compact discs by calling the MSCDEX/CDFS Send Driver Request function (Int 2Fh, function 1510h) to issue a Read Long command (command code 128) to the CD-ROM driver.  The Read Long command correctly reads sec...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QBV8,QAB9,QBFN,QBXM,QDL9,QBWO,QBWN,QBWQ,QAY5,QDLP,QAU9,QAC9,QAK2,QBVV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Cannot Read Red Book Audio Sectors in Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 29, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q180115</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Some applications read raw sectors from compact discs by calling the
+MSCDEX/CDFS Send Driver Request function (Int 2Fh, function 1510h) to issue
+a Read Long command (command code 128) to the CD-ROM driver.
+<P>
+The Read Long command correctly reads sectors on ISO 9660 and High-Sierra
+formatted discs. However, the Read Long command does not read sectors from
+Red Book Audio discs or sectors from the audio session of a multisesson
+disc. On such discs, the Read Long command returns a status word of 8102h,
+which means that the command completed, but there was a "Device Not Ready"
+error.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The Windows 95 CD-ROM file system driver (CDFS) supports the Read Long
+command only for ISO 9660 and High-Sierra discs (data discs). The Windows
+95 CDFS does not support the Read Long command for Red Book Audio discs or
+the audio session of multisession discs.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Although the Windows 95 CDFS does not support reading Red Book Audio
+sectors, the Windows 95 IO Subsystem does. It is possible to bypass CDFS by
+calling the IO Subsystem directly from a virtual device driver (VxD) or by
+calling WinASPI32.
+<P>
+Although applications cannot call IO Subsystem functions directly, they can
+call VxDs that call IO Subsystem functions. Therefore, to read audio
+sectors, you can write a VxD for your application to call. [Win32
+applications use the DeviceIoControl() API to call VxDs; 16-bit Windows
+applications use interrupts.] When called by your application, your VxD
+should submit IOR_READ commands using the IORF_AUDIO_DATA_READ flag.
+<P>
+With this approach, your application can use drive letters, and the VxD
+will correlate the drive letter to IOS DCB. The I/O subsystem can then
+handle building and translating appropriate READ commands for the specific
+CD-ROM drive.
+<P>
+Alternatively, if you do not want to write a VxD, your application can call
+WinASPI32 to build raw READ compact disc command descriptor blocks (CDBs)
+(for ATAPI drives) or READ_CDDA CDBs (for SCSI drives) to submit to the
+drive. The drawback with this approach is that ASPI cannot correlate the
+ASPI device with its drive letter; therefore, the application must
+determine which READ command is correct for the CD-ROM drive.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Windows 95 CD-ROM Support</h3>
+ 
+<P>
+Windows 95 CD-ROM support consists of the Compact Disc File System
+(Cdfs.vxd), and the IO Subsystem. CDFS is the protected-mode replacement
+for Mscdex.exe; it supports the MSCDEX Int 2Fh interface so that 16-bit
+Windows and MS-DOS-based applications that call Mscdex.exe functions will
+work unmodified in Windows 95.
+<P>
+The IO Subsystem is a layered set of virtual device drivers that forms the
+low-level support for CDFS and other file systems (VFAT). In response to
+Int 2Fh MSCDEX function calls, CDFS calls the IO Subsystem to access the
+physical drive.
+<P>
+The IO Subsystem also handles all file system related calls that are
+destined for the CD-ROM drive. For example, requests to open a file on a
+compact disc and read its contents goes from the application to the IO
+Subsystem, which talks to the drive to get the data from the disc.
+<P>
+Because CDFS calls the IO Subsystem, and the IO Subsystem is layered,
+Windows 95 was designed such that the IO subsystem can use either the built-
+in virtual device drivers to support CD-ROM drives, or an OEM-supplied real-
+mode CD-ROM driver. Thus, if a given CD-ROM drive is not supported directly
+by the protected-mode IO Subsystem components, it still may be used by
+Windows 95 through the OEM-supplied driver.
+<P>
+<P><h3>Send Driver Request Behavior</h3>
+ 
+<P>
+Similar to MSCDEX, CDFS supports a special function, Send Driver Request
+(Int 2Fh, function 1510h), which passes application requests to the IO
+Subsystem. The purpose of this function is to allow applications to issue
+commands that are not supported by other MSCDEX functions (Int 2Fh,
+functions 1500h-1509h, 150Bh-150Fh). These commands usually include
+optional behavior that is specific to the capabilities of the drive, such
+as the "close tray" command supported by tray-based drives.
+<P>
+CD-ROM driver software is not required to support every command that can be
+sent via Send Driver Request. Usually, a CD-ROM driver supports a
+particular command only if the specific device for which it was designed
+supports the feature. If a CD-ROM driver does not support a particular
+command, it generally returns with a status word of 8102h, which means "the
+command completed with a Device Not Ready error."
+<P>
+CDFS can also return a status word of 8102h to signal that it did not pass
+the request to the CD-ROM driver.
+<P>
+<P><h3>Read Long Command Behavior</h3>
+ 
+<P>
+Applications issue the Read Long command (command code 128) by calling the
+MSCDEX Send Driver Request function (Int 2Fh, function 1510h). The Read
+Long command is designed to read "raw" (2352-byte) or "cooked" (2048-byte)
+sectors in HSG or REDBOOK addressing modes. (When reading raw sectors, only
+one sector at a time can be read.)
+<P>
+The Windows 95 only supports the Read Long command for reading raw and
+cooked sectors from ISO 9660 and High-Sierra discs in the HSG addressing
+mode.
+<P>
+<P>
+ 
+<PRE>Keywords          : BseFileio
+Version           : win95
+Platform          : Win95
+Issue type        : kbprb
+Solution Type     : kbnofix</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 29, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,240 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: CDaoTableDef CreateField Cannot Set "Allow Zero Length" </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q148805">
+<META NAME="KBModify" CONTENT="1997/09/19">
+<META NAME="KBCreate" CONTENT="1996/03/22">
+<META NAME="Keywords" CONTENT="MfcDAO kbprg kbbuglist kbfixlist">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The CDaoFieldInfo structure has a member variable, m_bAllowZeroLength, that allows you to set the  Allow Zero Length  property for a text or memo field in a Microsoft Access table. However, m_bAllowZeroLength cannot be set to TRUE in an MFC DAO app...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBXS,QAGI,QAH4,QA7O,QA7N,QAR4,QAPN,QA1S,QAI4,QDN9,QA5F,QAY5,QAMA,QBS8,QBSO V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: CDaoTableDef CreateField Cannot Set "Allow Zero Length"</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 19, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q148805</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++, 32-bit Edition, version 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The CDaoFieldInfo structure has a member variable, m_bAllowZeroLength, that
+allows you to set the "Allow Zero Length" property for a text or memo field
+in a Microsoft Access table. However, m_bAllowZeroLength cannot be set to
+TRUE in an MFC DAO application. The application does not complain when you
+call CDaoTableDef::CreateField () to set this to TRUE, but the table in
+Microsoft Access shows that the field property does not allow zero length.
+Later if you try to put a NULL value in the field, a CDAOException is
+thrown which says "Field cannot be Null."
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+AfxSetFieldInfo in Daocore.cpp (which is called by CreateField) has this
+code:
+<P>
+<PRE>   if (!fieldinfo.m_bAllowZeroLength)
+      DAO_CHECK(pDAOField-&gt;put_AllowZeroLength(AFX_DAO_FALSE));
+
+</PRE>Because the default in Microsoft Access is FALSE (does not allow zero
+length), the above code doesn't set it to TRUE.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+
+<OL><P><LI>Copy the code for AfxSetFieldInfo() from Daocore.cpp into your project
+   as a separate function. Then modify the line containing the bug. Remove
+   the exclamation mark (!) in the first line, and change AFX_DAO_FALSE to
+   AFX_DAO_TRUE in the second line:
+<P>
+<PRE>   void AFX_CDECL MyAfxSetFieldInfo(DAOField* pDAOField,
+                        CDaoFieldInfo&amp;  fieldinfo)
+   {
+   ...
+   // Here you fix the bug
+
+   if (fieldinfo.m_bAllowZeroLength)
+      DAO_CHECK(pDAOField-&gt;put_AllowZeroLength(AFX_DAO_TRUE));
+   ...
+   }
+
+</PRE><P><LI>Instead of calling CDaoTableDef.CreateField(), write your own function
+   to call the DAO function CreateField() directly by using the tabledef's
+   m_daoTableDef pointer. The following example shows how to do that:
+<P>
+<PRE>   void MyCreateField()
+   {
+   CDaoDatabase db;
+   db.Open("c:\\msdev\\projects\\daoenrol\\stdreg32.mdb",
+      FALSE, FALSE);
+
+   // create a tabledef
+   CDaoTableDef td ( &amp;db );
+   td.Create(_T("Table1"),0,_T("Table1"), NULL);
+
+   // create a FieldInfo structure
+   struct CDaoFieldInfo m_FI;
+
+   m_FI.m_nOrdinalPosition = 0;
+
+   // always initialize the rest
+   m_FI.m_strName = _T("MyField");
+   m_FI.m_nType = dbText ;
+   m_FI.m_lSize = 20;
+   m_FI.m_bAllowZeroLength = TRUE;  // To set "Allow Zero Length"
+
+   m_FI.m_strDefaultValue = _T("");
+   m_FI.m_bRequired = FALSE;
+   m_FI.m_lAttributes = dbUpdatableField;
+
+   m_FI.m_strValidationRule = _T("");
+   m_FI.m_strValidationText = _T("");
+
+   // Copy code from CDaoTableDef::CreateField()
+
+   DAOField* pDAOField;
+
+   // Create the DAO field object (setting basic properties)
+
+   // DAO_CHECK(m_pDAOTableDef-&gt;CreateField(
+   DAO_CHECK(td.m_pDAOTableDef-&gt;CreateField(
+      COleVariant(m_FI.m_strName, VT_BSTRT),
+      COleVariant(m_FI.m_nType),
+      COleVariant(m_FI.m_lSize), &amp;pDAOField));
+
+   TRY
+   {
+   // Basic properties already set, so set the rest
+   MyAfxSetFieldInfo(pDAOField, m_FI);
+
+   // Append the field object to the fields collection
+   if (td.m_pDAOFields == NULL)
+       // cannot call private member function
+       //td.InitFieldsCollection();
+       DAO_CHECK(td.m_pDAOTableDef-&gt;get_Fields (&amp;(td.m_pDAOFields)));
+
+   DAO_CHECK(td.m_pDAOFields-&gt;Append(pDAOField));
+   }
+   CATCH_ALL(e)
+   {
+      pDAOField-&gt;Release();
+      THROW_LAST();
+   }
+   END_CATCH_ALL
+
+   pDAOField-&gt;Release();
+
+   td.Append();
+   }
+
+</PRE></OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This problem was corrected in Microsoft
+Visual C++, 32-bit Edition, version 4.1.
+<P>
+ 
+<PRE>Keywords          : MfcDAO kbprg kbbuglist kbfixlist
+Technology        : kbMfc
+Version           : 4.0
+Platform          : NT WINDOWS
+Issue type        : kbbug
+Solution Type     : kbfix</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 19, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

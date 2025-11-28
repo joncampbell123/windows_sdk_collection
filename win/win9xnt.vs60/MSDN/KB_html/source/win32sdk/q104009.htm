@@ -1,0 +1,307 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Generic Thunks: Calling a Win32 DLL from a Win16 Application </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q104009">
+<META NAME="KBModify" CONTENT="1996/12/17">
+<META NAME="KBCreate" CONTENT="1993/09/02">
+<META NAME="Keywords" CONTENT="kbprg kbfile kbhowto">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Neither Windows NT nor Windows 95 allow direct mixing of 16-bit code and 32- bit code in the same process. Both platforms support IPC mechanisms, such as DDE, RPC, OLE, named pipes, and WM_COPYDATA, which you can use for communication between 16-bi...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAH6,QAH7,QAD7,QAIF,QAHE,QAH4,QBWP,QAY5,QDL9,QBWQ,QBWO,QBWN,QAY2,QAJH V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Generic Thunks: Calling a Win32 DLL from a Win16 Application</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 17, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q104009</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) included with:
+<P>
+   - Windows NT, versions 3.10, 3.50, 3.51, 4.0
+   - Windows 95, version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Neither Windows NT nor Windows 95 allow direct mixing of 16-bit code and 32-
+bit code in the same process. Both platforms support IPC mechanisms, such
+as DDE, RPC, OLE, named pipes, and WM_COPYDATA, which you can use for
+communication between 16-bit code and 32-bit code. However, there are
+occasions when it is necessary to call a function in a Win32-based DLL
+(including functions in the system DLLs) from a 16-bit application under
+WOW.
+<P>
+Under Windows NT and Windows 95, it is possible to call routines in a Win32
+dynamic-link library (DLL) from a 16-bit Windows application using an
+interface called Generic Thunking. This is not to be confused with the
+Win32s Universal Thunks interface, which provides the same functionality
+under Windows 3.1.
+<P>
+Also, Generic Thunks is not to be confused with the Windows 95 Flat Thunks
+interface, which provides the same functionality under Windows 95. For more
+information on the different types of thunking interface on each Win32
+platform, please refer to the following Microsoft Knowledge Base article:
+<P>
+<PRE>  ARTICLE-ID: <B><A href="../win32sdk/q125710.htm">Q125710</A></B>
+  TITLE     : Types of Thunking Available in Win32 Platforms
+
+</PRE>The Generic Thunking interface consists of functions that allow a 16-bit
+application to load the Win32 DLL, get the address of an exported DLL
+routine, call the routine (passing it up to thirty-two 32-bit arguments),
+convert 16:16 (WOW) addresses to 0:32 addresses (useful if you need to
+build up a 32-bit structure that contains pointers and pass a pointer to
+it), call back into the 16-bit application from the Win32 DLL, and free the
+Win32 DLL.
+<P>
+Generic Thunks are documented in the Win32 SDK documentation, under
+"Programming and Tools Guides/Programming Techniques."
+<P>
+NOTE: It is a good idea to test the Win32 DLL by calling it from a Win32-
+based application before attempting to call it from a 16-bit Windows-based
+application, because the debugging support is superior in the 32-bit
+environment.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The basic steps for calling a function through generic thunking are:
+
+<UL><LI>Call LoadLibraryEx32W() to load the Win32 DLL.
+<LI>Call GetProcAddress32W() to get the address of the DLL routine.
+<LI>Call the DLL routine using CallProc32W() or CallProcEx32W.
+<P>
+</UL>CallProc32W() is a Pascal function which was designed to take a variable
+number of arguments, a Proc address, a mask, and the number of parameters.
+The mask is used to specify which arguments should be treated as being
+passed by value and which parameters should be translated from 16:16
+pointers to flat pointers. Note that the low-order bit of the mask
+represents the last parameter, the next lowest bit represents the next to
+the last parameter, and so forth.
+<P>
+The problem with CallProc32W() is that you cannot create a prototype for
+it unless you restrict each file so that it only uses calls to functions
+that contain the same number of parameters. This is a limitation of the
+Pascal calling convention. Windows NT 3.5 and later supports
+CallProcEx32W(), which uses the C calling convention to support variable
+arguments. However, under Windows 95 there are certain caveats in using the
+CallProc32W() and CallProcEx32W() functions. For more information, see the
+documentation for these functions.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following code fragments can be used as a basis for Generic Thunks.
+<P>
+Assume that the 16-bit Windows-based application is named app16, the
+Win32 DLL is named dll32, and the following are declared:
+<P>
+<PRE>   typedef void (FAR PASCAL *MYPROC)(LPSTR, HANDLE);
+
+   DWORD ghLib;
+   MYPROC hProc;
+   char FAR *TestString = "Hello there";
+
+</PRE>The DLL routine is defined in dll32.c as follows:
+<P>
+<PRE>   void WINAPI MyPrint( LPTSTR lpString, HANDLE hWnd )
+   {
+      ...
+   }
+
+</PRE>Attempt to load the library in the app16 WinMain():
+<P>
+<PRE>   if( NULL == (ghLib = LoadLibraryEx32W( "dll32.dll", NULL, 0 )) ) {
+      MessageBox( NULL, "Cannot load DLL32", "App16", MB_OK );
+      return 0;
+   }
+
+</PRE>Attempt to get the address of MyPrint():
+<P>
+<PRE>   if( NULL == (hProc = (MYPROC)GetProcAddress32W( ghLib, "MyPrint" ))) {
+      MessageBox( hWnd, "Cannot call DLL function", "App16", MB_OK );
+      ...
+   }
+
+</PRE>Although some of the Generic Thunking functions are called in 16-bit code,
+they need to be provided with 32-bit handles, and they return 32-bit
+handles. Therefore, before calling CallProcEx32W() and passing it a handle,
+you must convert the window handle, hWnd, to a 32-bit window handle,
+hWnd32:
+<P>
+<PRE>   hWnd32 = WOWHandle32( hWnd, WOW_TYPE_HWND );
+
+</PRE>Call MyPrint() and pass it TestString and hWnd32 as arguments:
+<P>
+<PRE>   CallProcEx32W( 2, 2, hProc, (DWORD) TestString, (DWORD) hWnd32 );
+
+</PRE>Alternatively, you can use CallProc32W() as follows:
+<P>
+<PRE>   CallProc32W( (DWORD) TestString, (DWORD) hWnd32, hProc, 2, 2 );
+
+</PRE>A mask of 2 (0x10) is given because we want to pass TestString by reference
+(WOW translates the pointer) and we want to pass the handle by value.
+<P>
+Free the library right before exiting WinMain():
+<P>
+<PRE>   FreeLibrary32W( ghLib );
+
+</PRE>NOTE: When linking the Windows-based application, you need to put the
+following statements in the .DEF file, indicating that the functions will
+be imported from the WOW kernel:
+<P>
+<PRE>   IMPORTS
+      kernel.LoadLibraryEx32W
+      kernel.FreeLibrary32W
+      kernel.GetProcAddress32W
+      kernel.GetVDMPointer32W
+      kernel.CallProcEx32W
+      kernel.CallProc32W
+
+</PRE>The complete sample can be obtained by downloading GTHUNKS.EXE, a self-
+extracting file, on these services:
+
+<UL><LI>Microsoft's World Wide Web site on the Internet
+<P><PRE>      On the www.microsoft.com home page, click the Support icon
+      Click Knowledge Base, and select the product
+<PRE></PRE>      Enter kbfile <A href="http://support.microsoft.com/download/support/mslfiles/gthunks.exe">GTHUNKS.EXE</A> <I>(size: 18926 bytes)</I> 
+                              , and click GO!
+      Open the article, and click the button to download the file
+
+</PRE><LI>Internet (anonymous FTP)
+<P><PRE>      ftp ftp.microsoft.com
+      Change to the Softlib/Mslfiles folder
+      Get <A href="http://support.microsoft.com/download/support/mslfiles/gthunks.exe">GTHUNKS.EXE</A> <I>(size: 18926 bytes)</I> 
+</PRE>
+<LI>Microsoft Download Service (MSDL)
+<P><PRE>      Dial (206) 936-6735 to connect to MSDL
+      Download <A href="http://support.microsoft.com/download/support/mslfiles/gthunks.exe">GTHUNKS.EXE</A> <I>(size: 18926 bytes)</I> 
+</PRE><P>
+</UL>For additional information about downloading, please see the following
+article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../zmiscellaneous/q119591.htm">Q119591</A></B>
+   TITLE     : How to Obtain Microsoft Support Files from Online Services
+
+</PRE><h3>Faults</h3>
+ 
+<P>
+On MIPS systems, an alignment fault will occur when a Win32-based
+application de-references a pointer to unaligned data that was passed by a
+16-
+bit Windows application. As a workaround, declare the parameter with the
+UNALIGNED keyword. For example,
+<P>
+<PRE>   void func( DWORD *var );
+
+</PRE>becomes
+<P>
+<PRE>   void func( DWORD unaligned *var);
+
+</PRE>An application can use SetErrorMode() to specify SEM_NOALIGMENTFAULTEXCEPT
+flag. If this is done, the system will automatically fix up alignment
+faults and make them invisible to the application.
+<P>
+The default value of this error mode is OFF for MIPS, and ON for ALPHA. So
+on MIPS platforms, an application MUST call SetErrorMode() and specify
+SEM_NOALIGMENTFAULTEXCEPT if it wants the system to automatically fix
+alignment faults. This call does not have to be made on ALPHA platforms.
+This flag has no effect on x86 systems. Note that the fix above is
+preferable.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 3.50 3.51 4.00 softlib GTHUNKS.EXE<BR>
+KBCategory: kbprg kbfile kbhowto<BR>
+KBSubcategory: BseThunks BseMisc
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 17, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,199 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Petzold DDE Sample Applications Contain Errors </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q165887">
+<META NAME="KBModify" CONTENT="1997/03/28">
+<META NAME="KBCreate" CONTENT="1997/03/26">
+<META NAME="Keywords" CONTENT="kbcode kbprg UsrDde">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The sample applications Ddepop1.exe and Showpop1.exe, found in Chapter 17 of  Programming Windows 95  by Charles Petzold, contain errors that prevent them from running properly under 32-bit Windows. When these applications are run together, the cli...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWN,QDL9,QBWO,QAH4,QAGI,QAAP,QBWQ,QA01,QAY2,QAUD,QAN0,QAB4,QAEV,QBXT,QBFY V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Petzold DDE Sample Applications Contain Errors</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 28, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q165887</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows NT versions 3.51, 4.0
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+The sample applications Ddepop1.exe and Showpop1.exe, found in Chapter 17
+of "Programming Windows 95" by Charles Petzold, contain errors that prevent
+them from running properly under 32-bit Windows. When these applications
+are run together, the client may pop up a message box "Failure on
+WM_DDE_ADVISE!" and may neglect to establish links on all of the requested
+items. You may also experience memory leakage.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+Specifically, when WM_DDE_ACK messages are pulled off the message queue via
+calls to PeekMessage(), the author neglects to invoke UnpackDDElParam()
+prior to using the data referenced by the lParam member of the MSG
+structure. Depending on the value of the handle returned from
+PackDDElParam, this may cause a successful ACK to return failure instead.
+The memory leakage invariably occurs as the calls to GlobalDeleteAtom
+uniformly fail. This appears to have been a simple oversight when porting
+the 16-bit samples from the author's previous book.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Replace the code beginning at line 575 of DDEPOP1.C with the following:
+<P>
+<PRE>      if (PeekMessage (&amp;msg, hwndServer,
+                       WM_DDE_ACK, WM_DDE_ACK, PM_REMOVE))
+      {
+         // Must unpack lParam
+    UINT uiLow, uiHi;
+
+         UnpackDDElParam (WM_DDE_ACK, msg.lParam, &amp;uiLow, &amp;uiHi) ;
+    FreeDDElParam (WM_DDE_ACK, msg.lParam) ;
+
+         //wStatus = LOWORD (msg.lParam) ;
+         wStatus = uiLow ;
+
+         DdeAck = *((DDEACK *) &amp;wStatus) ;
+
+         //aItem  = HIWORD (msg.lParam) ;
+         aItem  = (ATOM)uiHi ;
+
+    GlobalDeleteAtom (aItem) ;
+         break ;
+      }
+
+</PRE>You will also need to substitute the following corrected code for the code
+that begins at line 161 of SHOWPOP1.C:
+<P>
+<PRE>      if (PeekMessage (&amp;msg, hwnd,
+                       WM_DDE_ACK, WM_DDE_ACK, PM_REMOVE))
+      {
+         // Must unpack lParam
+    UINT uiLow, uiHi;
+
+    UnpackDDElParam (WM_DDE_ACK, msg.lParam, &amp;uiLow, &amp;uiHi) ;
+    FreeDDElParam (WM_DDE_ACK, msg.lParam) ;
+
+         //GlobalDeleteAtom (HIWORD (msg.lParam)) ;
+    GlobalDeleteAtom ((ATOM)uiHi) ;
+
+         //wStatus = LOWORD (msg.lParam) ;
+         wStatus = uiLow ;
+
+         DdeAck = *((DDEACK *) &amp;wStatus) ;
+
+         if (DdeAck.fAck == FALSE) {
+            GlobalFree (hDdeAdvise) ;
+         }
+
+         break ;
+      }
+
+</PRE><h2>REFERENCES</h2>
+ 
+<P>
+"Programming Windows 95," Charles Petzold, Microsoft Press, 1996.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 95<BR>
+Keywords            : kbcode kbprg UsrDde<BR>
+Version             : 3.51 4.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 28, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

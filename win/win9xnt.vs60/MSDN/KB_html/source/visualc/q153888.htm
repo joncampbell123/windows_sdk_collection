@@ -1,0 +1,229 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: RFX_LongBinary Not Optimized for SQL Server </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q153888">
+<META NAME="KBModify" CONTENT="1997/06/26">
+<META NAME="KBCreate" CONTENT="1996/07/22">
+<META NAME="Keywords" CONTENT="kbinterop kbprg kbusage MfcDatabase">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Performing inserts of image fields into a SQL Server table using the MFC database classes may result in less than optimum performance. Other operations involving image fields, such as updates, do not suffer from this reduced performance.  CAUSE ===...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAMB,QAH4,QA9N,QBXT,QA5V,QAIB,QACI,QA7O,QA7N,QAKD,QAEF,QABM,QAY5,QAPN,QAGI V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: RFX_LongBinary Not Optimized for SQL Server</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q153888</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   - Microsoft Visual C++, 32-bit Edition, versions 4.0, 4.1, 4.2
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Performing inserts of image fields into a SQL Server table using the
+MFC database classes may result in less than optimum performance. Other
+operations involving image fields, such as updates, do not suffer from
+this reduced performance.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+MFC's RFX_LongBinary function uses an obsolete method to specify the
+size of the image field when binding the CLongBinary buffer for the
+insertion.
+<P>
+Due to limitations of the SQL Server driver, MFC will always use SQL
+statements instead of SQLSetPos functionality to perform inserts of
+image fields to a recordset opened on a SQL Server database. MFC also
+uses parameterized insert statements. As a result, SQLBindParameter()
+is called to bind the CLongBinary variable's buffer to the parameter
+in the insert statement. MFC specifies that the length of the long
+binary field is SQL_DATA_AT_EXEC, a symbol that signifies that data
+will be transferred via SQLPutData() without providing any information
+about the field's size. The SQL Server driver generates an internal
+plan for the insert that contains a subquery of the form
+"SELECT ... LIKE" that results in a table scan that can be quite time-
+consuming.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To avoid unnecessary table scans when inserting data into image fields,
+you can modify MFC to use the SQL_LEN_DATA_AT_EXEC() macro that provides
+information about the size of the image data and thereby minimizes the
+need for table scans.
+<P>
+NOTE: Visual C++ version 5.0 now uses the SQL_LEN_DATA_AT_EXEC() macro.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following steps detail one method of making the needed changes in
+RFX_LongBinary:
+
+<OL><P><LI>Copy the implementation of RFX_LongBinary() (MSDEV\MFC\SRC\DBRFX.CPP)
+   into a new .cpp file, and rename the function to something like
+   RFX_LongBinary2(). Create a header file for the .cpp file and include
+   that in your recordset .cpp file. Be sure to #include "stdafx.h" at
+   the top of your new .cpp file, and include the .cpp file in your
+   project.
+
+<P><LI>Change all RFX_LongBinary() calls in your recordset's
+   DoFieldExchange() to calls to RFX_LongBinary2().
+
+<P><LI>In your new RFX_LongBinary2() implementation, copy the following code
+   that appears under "case CFieldExchange::SetFieldNull":
+<P>
+<P><PRE>      // Length is signed value, it's limited by LONG_MAX
+      if (value.m_dwDataLength &gt;
+<PRE></PRE>          (ULONG)(LONG_MAX - labs(SQL_LEN_DATA_AT_EXEC_OFFSET)))
+      {
+         ASSERT(FALSE);
+         *plLength = LONG_MAX - labs(SQL_LEN_DATA_AT_EXEC_OFFSET);
+      }
+      else
+         *plLength = value.m_dwDataLength;
+
+      *plLength = SQL_LEN_DATA_AT_EXEC(*plLength);
+
+   and paste this code over the line that contains SQL_DATA_AT_EXEC
+   in the following code that appears under "case CFieldExchange::Value":
+
+      {
+         // Indicate data will be sent after SQLExecute
+         *plLength = SQL_DATA_AT_EXEC;       &lt;&lt; REPLACE THIS LINE
+      }
+
+   This will cause the macro to be used instead of the constant.
+
+</PRE><P><LI>In the CFieldExchange::SetFieldNull case, you can simply comment out
+   the conditional that currently causes the macro to be used only in
+   those cases where m_bUseUpdateSQL is FALSE. You will comment out
+   a total of five lines as noted below:
+<P>
+<PRE>     if (pFX-&gt;m_prs-&gt;m_bUseUpdateSQL)      // COMMENT OUT THIS LINE
+        *plLength = SQL_DATA_AT_EXEC;      // COMMENT OUT THIS LINE
+     else                                  // COMMENT OUT THIS LINE
+     {                                     // COMMENT OUT THIS LINE
+        // Length is signed value, it's limited by LONG_MAX
+        if (value.m_dwDataLength &gt;
+            (ULONG)(LONG_MAX - labs(SQL_LEN_DATA_AT_EXEC_OFFSET)))
+        {
+           ASSERT(FALSE);
+           *plLength = LONG_MAX - labs(SQL_LEN_DATA_AT_EXEC_OFFSET);
+        }
+        else
+           *plLength = value.m_dwDataLength;
+
+        *plLength = SQL_LEN_DATA_AT_EXEC(*plLength);
+     }                                     // COMMENT OUT THIS LINE
+
+</PRE></OL><h2>REFERENCES</h2>
+ 
+<P>
+ODBC Programmer's Reference.
+ 
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Keywords            : kbinterop kbprg kbusage MfcDatabase<BR>
+Technology          : kbMfc<BR>
+Version             : 4.0 4.1 4.2<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

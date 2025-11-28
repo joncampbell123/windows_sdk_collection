@@ -1,0 +1,264 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Converting DLLTRACE to Use MFC in Shared Library </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q140850">
+<META NAME="KBModify" CONTENT="1997/10/13">
+<META NAME="KBCreate" CONTENT="1995/12/07">
+<META NAME="Keywords" CONTENT="MfcDLL kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  The Visual C++ 4.0 sample DLLTRACE demonstrates how to create a Regular DLL with an exported function that can be called to pop up a modal dialog box. By default, this sample is set to statically link MFC to the DLL. In previous versions of Visual ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAH4,QAUD,QALS,QAKR,QAGI,QAHE,QABA,QAY5,QA3A,QAKP,QDNN,QBVV,QAY2,QBV8,QAB9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Converting DLLTRACE to Use MFC in Shared Library</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 13, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q140850</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   Microsoft Visual C++, 32-bit Edition, version 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The Visual C++ 4.0 sample DLLTRACE demonstrates how to create a Regular DLL
+with an exported function that can be called to pop up a modal dialog box.
+By default, this sample is set to statically link MFC to the DLL. In
+previous versions of Visual C++, this was the only option available for
+Regular DLLs. These kinds of DLLs were formerly known as _USRDLLs.
+<P>
+Now, it is possible for a Regular DLL to use MFC from the shared MFC40 DLL.
+Because there are certain benefits for doing this, you may want to convert
+the DLLTRACE sample to use the shared MFC DLL. However, it is necessary to
+use the macro AFX_MANAGE_STATE in order to switch the proper global MFC
+module state correctly.
+<P>
+This article describes the steps required to convert the DLLTRACE sample to
+use the shared version of MFC. It also discusses some of the general
+problems that will result in any Regular DLL that does not switch the
+module state appropriately.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Size is the major advantage for converting a statically-linked Regular DLL
+to a Regular DLL that uses the MFC Shared Library. Converting the Trace.dll
+from the DLLTRACE sample to use the Shared Library will drop the size of a
+release-build DLL from around 95K down to about 12K. The difference between
+debug builds is even more staggering: a debug build Trace.dll drops from
+nearly a megabyte in size down to 25K when using MFC in the Shared Library.
+<P>
+<P><h3>Steps to Convert DLLTRACE to Use MFC in a Shared Library</h3>
+ 
+
+<OL><P><LI>In the Build Settings property sheet, select both the release and debug
+   builds to change settings for.
+
+<P><LI>In the General tab, in the Microsoft Foundation Classes combo box,
+   change the option to "Use MFC in a Shared DLL (mfc(d).dll)."
+
+<P><LI>Add the following line of code to the beginning of every function
+   exported from the DLL:
+<P>
+   AFX_MANAGE_STATE(AfxGetStaticModuleState())
+<P>
+</OL><h3>The AfxGetStaticModuleState() MFC Function</h3>
+ 
+<P>
+The code in step 3 uses an MFC-provided macro (AFX_MANAGE_STATE) to swap
+the current module state with the state returned from
+AfxGetStaticModuleState() until the end of the current scope. The
+AfxGetStaticModuleState() function is a special MFC function in Regular
+DLLs that returns the module state of the Regular DLL in the context of the
+DLL. For example, Trace.dll exports only three functions:
+<P>
+<PRE>   PromptTraceFlags()
+   ProcessDLLIdle()
+   FilterDLLMsg()
+
+</PRE></OL>Here is what FilterDLLMsg() should look like in the converted form:
+<P>
+<PRE>   extern "C" BOOL FAR PASCAL EXPORT FilterDllMsg(LPMSG lpMsg)
+   {
+      AFX_MANAGE_STATE(AfxGetStaticModuleState())
+      TRY
+      {
+          return AfxGetApp()-&gt;PreTranslateMessage(lpMsg);
+      }
+      END_TRY
+      return FALSE;
+   }
+
+</PRE>After making these changes, rebuild the DLLTRACE project. The application
+will use the new DLL and work just as it did before.
+<P>
+<P><h3>Problems Occur If the AFX_MANAGE_STATE Macro Is Not Used</h3>
+ 
+<P>
+Certain problems will occur if the AFX_MANAGE_STATE macro is not used. In
+discussing these problems, this article may shed some light on problems
+that crop up when attempting to convert the old-style _USRDLLs to use the
+DLL version of MFC.
+<P>
+If the PromptTraceFlags function does not use the AFX_MANAGE_STATE macro at
+the very beginning of execution, an assertion will fail at line 43 in
+Dlgdata.cpp and the following message will appear in the output window:
+<P>
+<PRE>   Error: no data exchange control with ID xx.
+
+</PRE>The primary cause of this problem is that MFC is using the resource handle
+of the main application to load the dialog template for the Prompt Dialog.
+This template is actually stored in the Trace DLL. The root cause, of
+course, is that MFC's module state information has not been switched by the
+AFX_MANAGE_STATE macro. The resource handle is recovered from MFC's module
+state; not switching the module state causes the wrong resource handle to
+be used.
+<P>
+If the AFX_MANAGE_STATE macro is omitted from the beginning of either the
+FilterDLLMsg function or the ProcessDLLIdle function, a different problem
+occurs. In this case, immediately after executing the DLLTRACE application
+it takes a momentary siesta and then quits with an error message similar to
+this one:
+<P>
+<PRE>   Unhandled exception in dlltrace.exe (MFC40D.DLL):
+      0xC00000FD: Stack Overflow
+
+</PRE>The primary culprit here is the AfxGetApp() function, which is used to call
+either PreTranslateMessage() in the case of FilterDLLMsg() or OnIdle() in
+the case of ProcessDLLIdle(). Once again, the root evil is the failure to
+switch the module state, which maintains the pointer to the current CWinApp
+object that is returned from AfxGetApp().
+<P>
+In each of these situations, when the module state is not switched,
+AfxGetApp() returns a pointer to the CTheApp object of the application, not
+the CTracerDLL object of the DLL, as it rightfully should. When
+FilterDLLMsg() goes to call AfxGetApp()-&gt;PreTranslateMessage(), it calls
+CTheApp::PreTranslateMessage(). However, FilterDllMsg() was called by
+CTheApp::PreTranslateMessage(); so, once again, FilterDLLMsg() is called,
+which in turn calls CTheApp::PreTranslateMessage(), creating a bad case of
+infinite recursion. ProcessDLLIdle() is invoked in a similar way.
+<P>
+To avoid this recursive state, AFX_MANAGE_STATE is used and AfxGetApp()
+returns a pointer to the CTracerDLL object in the DLL. Because CTracerDLL
+has no override of PreTranslateMessage() or OnIdle(), the default MFC
+versions are called -- not the CTheApp overrides. Consequently, there is no
+infinite recursion.
+<P>
+<P><h3>Final Question</h3>
+ 
+<P>
+Why doesn't AFX_MANAGE_STATE need to be put on every function in the DLL?
+CTracerDLL::InitInstance() is called by the MFC code in the application,
+why doesn't it need to have AFX_MANAGE_STATE?
+<P>
+The answer is that MFC does it for you. MFC manually shifts the module
+state before InitInstance() and then switches it back after InitInstance()
+returns. The same is true for all message map handlers. Regular DLLs
+actually have a special master window procedure that automatically switches
+the module state before routing any message.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+MFC Technical Note 58.
+<P>
+ 
+<PRE>Keywords          : MfcDLL kbprg
+Technology        : kbMfc
+Version           : WINDOWS NT: 4.0
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 13, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

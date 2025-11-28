@@ -1,0 +1,244 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Remove CodeView Symbolic Data from an .EXE or DLL </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q74951 ">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1991/08/05">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; utilities">
+<META NAME="Description" CONTENT="   The standard method for removing CodeView symbolic debugging information from an executable file (.EXE) or a dynamic-link library (DLL) file is to relink the .OBJ files without specifying the /CO (CodeView) option, but in some cases it may be desi...">
+<META NAME="Product" CONTENT="Programming Utilities">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEF,QA2H,QAUD,QAY2,QAML,QAYY,QA9N,QANJ,QDH6,QALG,QBE7,QBE6,QABI,QADC,QDKD V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Remove CodeView Symbolic Data from an .EXE or DLL</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q74951 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+2.20 3.00 3.11 3.14 4.0x 4.10 | 2.20 3.00 3.1x 3.50 | 3.x 4.0x 4.10
+<PRE>MS-DOS                        | OS/2                | WINDOWS
+</PRE>kbtool kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft CodeView for MS-DOS, versions 2.2, 3.0, 3.11, 3.14, 4.0,
+   4.01, 4.05, and 4.1
+<LI>Microsoft CodeView for OS/2, versions 2.2, 3.0, 3.11, 3.12, and 3.5
+<LI>Microsoft CodeView for Windows, versions 3.0, 3.05, 3.06, 3.07,
+   4.0, 4.01, and 4.1
+</UL> 
+<P>
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The standard method for removing CodeView symbolic debugging
+information from an executable file (.EXE) or a dynamic-link library
+(DLL) file is to relink the .OBJ files without specifying the /CO
+(CodeView) option, but in some cases it may be desirable to remove the
+CodeView data without relinking.
+<P>
+As demonstrated below, this can be done by writing a small program to
+remove the CodeView debug information, since this information is
+appended to the end of a file and does not interfere in any way with
+the preceding .EXE or DLL file contents.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Any file that contains CodeView information can be identified by a
+special signature and a file offset in the last 8 bytes of the file.
+The signature is the first 4 of these 8 bytes and consists of "NB"
+followed by a 2-digit ASCII number corresponding to the .EXE format
+produced by the version of the LINK that was used.
+<P>
+The next 4 bytes after the signature contain a long value representing
+the negative offset from the end of the file where the CodeView
+symbols actually start. The signature at the end of the file is also
+repeated at the beginning of the appended CodeView data in order to
+provide verification that the file does indeed contain CodeView
+symbolic information.
+<P>
+The sample program below removes CodeView symbolic data from an .EXE
+by executing the following steps. If any step is unsuccessful, the
+program halts and produces an appropriate message.
+
+<OL><P><LI>Check for the CodeView signature 8 bytes from the end of the file.
+
+<P><LI>Extract the offset value for the symbolic information from the last
+   4 bytes of the file and compute the offset of the symbolic data.
+
+<P><LI>Move to that file location and check for a matching CodeView
+   signature.
+
+<P><LI>Truncate the file at that point.
+<P>
+</OL>For further information on the format and signatures used for CodeView
+3.x debugging information, see Section 3.3 on page 44 of the
+"Microsoft C Developer's Toolkit Reference," which is included in the
+Microsoft Developer's Toolkit (product number 048-044-060).
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/* Compile options needed: none
+*/
+
+#include &lt;stdio.h&gt;
+#include &lt;io.h&gt;
+#include &lt;errno.h&gt;
+#include &lt;string.h&gt;
+
+int main(int argc, char *argv[])
+</PRE></OL>{
+<PRE>   FILE *fptr;
+   unsigned long cvsize = 0L, filesize;
+   int fhandle;
+   char cv_sig1[5], cv_sig2[5];
+
+   // get filename argument from command line and open it
+   if (argc &lt; 2)
+   {
+      printf("\nUsage: %s &lt;filename&gt;\n\n", argv[0]);
+      return 1;
+   }
+
+   if ((fptr = fopen(argv[1], "rb+")) == NULL)
+   {
+      printf("\nUnable to open file: %s\n\n", argv[1]);
+      return 1;
+   }
+
+   // get handle to the file and determine file size
+   fhandle = fileno(fptr);
+   filesize = filelength(fhandle);
+
+   // go to the last 8 bytes in the file and read the signature
+   fseek(fptr, (long)(filesize - 8), SEEK_SET);
+   fread(cv_sig1, sizeof(char), 4, fptr);
+   cv_sig1[4] = '\0';
+
+   // verify that the signature is valid
+   if (!(cv_sig1[0] == 'N' &amp;&amp; cv_sig1[1] == 'B'))
+   {
+      printf("\n%s contains no CodeView symbols\n\n", argv[1]);
+      return 1;
+   }
+
+   // read the symbol table offset
+   fread(&amp;cvsize, sizeof(long), 1, fptr);
+
+   // go to the start of the symbol table and read the signature
+   fseek(fptr, (long)(filesize - cvsize), SEEK_SET);
+   fread(cv_sig2, sizeof(char), 4, fptr);
+   cv_sig2[4] = '\0';
+
+   // compare the two signatures
+   if (strcmp(cv_sig1, cv_sig2) != 0)
+   {
+      printf("\nSignature Cross Match Failed on %s!\n\n", argv[1]);
+      return 1;
+   }
+
+   // truncate the file, since all tests have been successful
+   chsize(fhandle, (long)(filesize - cvsize));
+   fclose(fptr);
+   printf("\nCodeView information successfully removed from %s!\n\n",
+          argv[1]);
+   return 0;
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 2.20 3.00 3.50 4.00 4.10<BR>
+KBCategory: kbtool kbcode<BR>
+KBSubcategory: CvwIss<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

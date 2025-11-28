@@ -1,0 +1,204 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Deleting CRecordset Object Before Closing It </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q113815">
+<META NAME="KBModify" CONTENT="1997/09/18">
+<META NAME="KBCreate" CONTENT="1994/04/17">
+<META NAME="Keywords" CONTENT="kb16bitonly MfcDatabase kbbuglist kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  If a CDatabase object is allocated and then passed into a CRecordset constructor the user may notice a memory leak if the CRecordset is deleted before calling CRecordset::Close().   Not only will memory leak, but the following ODBC error may eventu...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGB,QAPN,QAW6,QAEF,QAGI,QAAW,QBCT,QAR4,QAH4,QAGC,QAKP,QABI,QAH7,QAH6,QAD7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Deleting CRecordset Object Before Closing It</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q113815</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.50 1.51
+WINDOWS
+kbprg kbfixlist kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+   Microsoft Visual C++ for Windows, versions 1.5 and 1.51
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+If a CDatabase object is allocated and then passed into a CRecordset
+constructor the user may notice a memory leak if the CRecordset is
+<PRE>deleted before calling CRecordset::Close().   Not only will memory
+</PRE>leak, but the following ODBC error may eventually occur when using
+snapshots (or more specifically, when using the cursor library):
+<P>
+<PRE>    General Error: Unable to create file buffer
+    State:S1000
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+A bug in the CRecordset destructor prevents the ::SQLFreeStmt() from
+getting called for the ODBC statement handle (HSTMT) used by the CRecordset
+object.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To work around the problem,  make sure that CRecordset::Close() is
+called before it is deleted. One way to handle this is to put a call
+to CRecordset::Close() in the destructor of the CRecordset-derived
+class.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the products listed at the
+beginning of this article. This bug was corrected in MFC version 3.0,
+included with Visual C++, 32-bit Edition, version 2.0.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The CRecordset destructor has the following code:
+<P>
+<PRE>    CRecordset::~CRecordset()
+    {
+        if (!m_bRecordsetDb)
+            m_pDatabase = NULL;
+
+        ASSERT_VALID(this);
+
+        TRY
+        {
+            Close();
+            if (m_bRecordsetDb)
+            {
+                delete m_pDatabase;
+                m_pDatabase = NULL;
+            }
+        }
+        ...
+
+</PRE>The m_bRecordsetDb is a flag that the CRecordset class uses to tell
+whether the CRecordset created the CDatabase object or whether it was
+passed to the CRecordset in the constructor.  If a program passes in
+the CDatabase pointer to the CRecordset, looking at the code you can
+see that m_pDatabase will be set to NULL.  Unfortunately this causes
+a problem when Close() is called later in the function.
+In CRecordset::Close() the following lines determine whether the
+HSTMT allocated by the CRecordset needs to be freed:
+<P>
+<PRE>   if (m_pDatabase != SQL_NULL_HDBC)
+      {
+          AFX_SQL_SYNC(::SQLFreeStmt(m_hstmtUpdate, SQL_DROP));
+      }
+
+</PRE>Since m_pDatabase has been set to NULL and the CDatabase object still
+exists, we run into a problem because SQL_NULL_HDBC is equal to NULL.
+Thus, the statement handle is never freed although the CRecordset
+goes away.  This normally isn't too much of a problem because
+statement handles get freed when a connection goes away.  However, if
+you are re-using a CDatabase for multiple CRecordset objects, many
+allocated HSTMTs will accumulate.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.50 2.50 2.51 odbc<BR>
+KBCategory: kbprg kbfixlist kbbuglist<BR>
+KBSubcategory: MfcDatabase<BR>
+Keywords          : kb16bitonly MfcDatabase kbbuglist kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.50 1.51<BR>
+Platform          : WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,233 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: GDI Leaks Memory When Font Selected In MM_ANISOTROPIC Mode </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q149289">
+<META NAME="KBModify" CONTENT="1998/02/23">
+<META NAME="KBCreate" CONTENT="1996/03/29">
+<META NAME="Keywords" CONTENT="GdiFnt GdiMisc">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  When a window's map mode is set to either MM_ISOTROPIC or MM_ANISOTROPIC, and the window extents or viewport extents are changed, then a previously selected font instance cannot be found in the GDI font instance heap because the extents are part of...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QADF,QAH4,QA2Q,QDL9,QBWO,QBWN,QA5W,QAL3,QABA,QAKP,QAGQ,QBXS,QBVV,QAG2,QAEV V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: GDI Leaks Memory When Font Selected In MM_ANISOTROPIC Mode</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 23, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q149289</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) on the following
+   platform:
+<P><PRE>    - Windows 95
+</PRE><LI>Microsoft Windows 95
+<LI>Microsoft Windows 95 OEM Service Release versions 1.0, 2.0, 2.1, 2.5
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When a window's map mode is set to either MM_ISOTROPIC or MM_ANISOTROPIC,
+and the window extents or viewport extents are changed, then a previously
+selected font instance cannot be found in the GDI font instance heap
+because the extents are part of the lookup comparison criteria. This
+results in 52 bytes of lost heap space for each new font instance.
+<P>
+The system may eventually hang due to lack of memory.
+<P>
+The window's map mode setting is not exposed directly in the user interface
+of a program, whereas a change in a font or a window's "zoom factor" (often
+controlled by the extents) is exposed directly in the user interface.
+Therefore, you are limited in what you can do to minimize the effects of
+this problem.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+When a font is selected into a device context, the current window and
+viewport extents are copied to a structure that is stored in an internal
+"font instance" heap. A search is conducted in this heap for the current
+font, so that it can be freed. The lookup criteria to find this includes
+the window and viewport extents. If either of these extents have changed
+since the current font was selected, then the lookup fails and the item is
+not removed from the heap, which results in a loss of 52 bytes of memory.
+<P>
+Note that the values for the window and viewport origin do not affect this
+problem. In addition, the trouble only manifests when either the
+MM_ISOTROPIC and MM_ANISOTROPIC mapping modes are set.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+The following algorithm is recommended for WM_PAINT handling, and it
+assumes that:
+
+<UL><LI>New or modified extents have been saved for use when this message
+   arrives.
+
+<LI>Either the MM_ISOTROPIC or MM_ANISOTROPIC mapping mode is in force.
+<P>
+</UL>To use this algorithm:
+
+<OL><P><LI>Select a new font.
+
+<P><LI>Set new extents.
+
+<P><LI>Draw, output text, and so on.
+
+<P><LI>Restore original extents.
+
+<P><LI>Select the original font.
+<P>
+</OL>A standard method for storing data unique to a window procedure and
+instance is through the GetWindowLong() and SetWindowLong() API calls. You
+use the value DWL_USER for the nIndex parameter to save the address of data
+allocated during WM_CREATE code execution. Please refer to the Win32
+Programmer's Reference for additional information.
+<P>
+The C code fragment below is an example that describes the algorithm
+mentioned above, and assumes that the map mode and the values in the global
+SIZE structure "sWinExt" are being modified elsewhere in the program:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   SIZE sWinExt = {1,1};
+   SIZE sOldWinExt = {1,1};
+   
+   LRESULT APIENTRY WndProc(HWND hwnd, UINT message, WPARAM wParam,
+                            LPARAM lParam)
+   {
+      HDC hDC;
+      HFONT hFont;
+      PAINTSTRUCT ps;
+   
+      switch (message) {
+      case WM_PAINT:
+         hDC = BeginPaint(hwnd,&amp;ps);
+         hFont = SelectObject(hDC,GetStockObject(ANSI_VAR_FONT));
+         SetWindowExtEx(hDC,sWinExt.cx,sWinExt.cy,&amp;sOldWinExt);
+         // Draw, output text, and so on.
+         SetWindowExtEx(hDC,sOldWinExt.cx,sOldWinExt.cy,NULL);
+         SelectObject(hDC,hFont);
+         EndPaint(hwnd, &amp;ps);
+         return 0;
+
+</PRE></OL>WARNING: ANY USE BY YOU OF THE CODE PROVIDED IN THIS ARTICLE IS AT YOUR OWN
+RISK. Microsoft provides this code "as is" without warranty of any kind,
+either express or implied, including but not limited to the implied
+warranties of merchantability and/or fitness for a particular purpose.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the Microsoft products
+listed at the beginning of this article. We are researching this problem
+and will post new information here in the Microsoft Knowledge Base as it
+becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Fonts are normally selected in the code that handles a WM_PAINT message for
+a given window. Window and viewport extents are typically modified
+according to the user's choice for a window "zoom factor" by resizing the
+window itself or by predetermined factors involving screen resolution and
+presentation data, such as that used for CAD.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: GDI font heap leak 52 UniSys<BR>
+Keywords          : GdiFnt GdiMisc<BR>
+Version           : WIN95<BR>
+Platform          : Win95<BR>
+Hardware          : x86<BR>
+Issue type        : kbbug<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 23, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

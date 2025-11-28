@@ -1,0 +1,215 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: Problems with Using the MFC DAO Classes in a .DLL or .OCX </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q143084">
+<META NAME="KBModify" CONTENT="1997/10/13">
+<META NAME="KBCreate" CONTENT="1996/01/25">
+<META NAME="Keywords" CONTENT="MfcDAO vcbuglist400 vcfixlist410 kbprg kbbuglist kbfixlist">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Two errors can occur when using the MFC DAO database classes in a DLL. Depending upon the context of how you use the MFC DAO classes in the DLL, you can receive an assertion on line 36 of the Daocore.cpp or you may receive an access violation.  CAU...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QAKP,QAO4,QAGB,QAR4,QALH,QAIF,QABO,QDNN,QBW7,QBFY,QAZV,QAW6,QAPN,QAI5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: Problems with Using the MFC DAO Classes in a .DLL or .OCX</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 13, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q143084</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++, 32-bit Edition, version 4.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Two errors can occur when using the MFC DAO database classes in a DLL.
+Depending upon the context of how you use the MFC DAO classes in the DLL,
+you can receive an assertion on line 36 of the Daocore.cpp or you may
+receive an access violation.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+The root of the problem exists in how MFC is terminating DAO. MFC calls
+AfxDaoTerm from the exit instance of CWinApp. This is fine for applications
+but isn't a good thing to do for DLLs because ExitInstance() is called from
+the DLL_PROCCESS_DETACH case. Use of OLE and specifically DAO should be
+avoided in the ExitInstance() of a DLL.
+<P>
+Another problem with the MFC DAO code is that it stores the pointer to the
+database engine on a global scope so that if one regular DLL that links to
+MFC dynamically closes and calls AfxDaoTerm, it closes the database engine
+for any other DLLs which use DAO and link dynamically to MFC.
+<P>
+The line 36 assertion is caused by the fact that an exception gets thrown
+in AfxDaoTerm when trying to call Release() on the database engine. The
+exception prohibits the setting of m_pDAOEngine pointer back to NULL.
+Again, this problem occurs because MFC incorrectly calls DAO in
+ExitInstance() of a DLL.
+<P>
+Here is the code in AfxDaoTerm():
+<P>
+<PRE>   // Clean up engine object if necessary
+      if (pDaoState-&gt;m_pDAODBEngine != NULL)
+      {
+            pDaoState-&gt;m_pDAODBEngine-&gt;Release();
+            pDaoState-&gt;m_pDAODBEngine = NULL;
+      }
+
+</PRE>You can see that if an exception occurs in Release(), the m_pDAODBEngine
+pointer is not set to NULL. Thus, the assert on line 36 of Daocore.cpp will
+occur:
+<P>
+<PRE>   ASSERT(m_pDAODBEngine == NULL);
+
+</PRE>An access violation can occur if you perform the following sequence:
+
+<OL><P><LI>Dynamically load DLL1 and use MFC DAO classes.
+</OL>2. Dynamically load DLL2 and use MFC DAO classes.
+3. Close DAO objects and unload DLL1.
+4. Do something with DAO in DLL2.
+<P>
+This occurs because the DLL1 has already shut down the DAO components.
+<P>
+There may be other scenarios that can cause other access violations to
+occur. For example, do not create global MFC DAO objects within a DLL. The
+resolution section below doesn't address this problem because it is
+something that should not be done.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To work around the problems with DAO in a DLL, do one of the following:
+
+<UL><LI>Link all DLLs using the static version of MFC, except in the case of
+   an .ocx that requires the shared MFC DLL.
+<P>
+   -or-
+
+<LI>Construct and Open a CDaoWorkspace object in the calling application
+   so that the DAO engine is initialized and terminated in the
+   application rather than in the any of your DLLs.
+<P>
+   -or-
+
+<LI>Use the dbDAO C++ classes provided with the DAO SDK, which is installed
+   from the Visual C++ CD-ROM compact disc.
+<P>
+</UL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. This bug was corrected in Visual C++ 4.1.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For more information about problems using DAO in DLLs, please refer to the
+following articles in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE ID: <B><A href="../visualc/q149889.htm">Q149889</A></B>
+   TITLE     : PRB: Assertion or Problems Using DAO in a DLL
+
+   ARTICLE ID: <B><A href="../visualc/q152315.htm">Q152315</A></B>
+   TITLE     : PRB: When to Call AfxDaoTerm() in an Automation Server
+
+</PRE></OL> 
+<PRE>Keywords          : MfcDAO vcbuglist400 vcfixlist410 kbprg kbbuglist kbfixlist
+Technology        : kbMfc
+Version           : 4.0
+Platform          : NT WINDOWS
+Issue type        : kbbug
+Solution Type     : kbfix</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 13, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

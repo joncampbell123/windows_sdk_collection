@@ -1,0 +1,233 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Handling Timeouts Correctly in DB-Library </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q48712 ">
+<META NAME="KBModify" CONTENT="1997/04/25">
+<META NAME="KBCreate" CONTENT="1989/09/07">
+<META NAME="Keywords" CONTENT="kbprg SSrvDB_Lib SSrvProg SSrvWinNT">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  In SQL Server, an application attempting to access data that is locked by another user will be blocked until the lock is released. If this causes a deadlock (both requesting locks that the other holds), SQL Server will immediately terminate one of ...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QA4Q,QABM,QAB4,QAAP,QAGI,QAVX,QAVW,QBW7,QAO4,QAHT,QAGB,QAA8,QALW,QABT V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Handling Timeouts Correctly in DB-Library</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q48712 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server Programmer's Toolkit, version 4.2
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In SQL Server, an application attempting to access data that is locked
+by another user will be blocked until the lock is released. If this
+causes a deadlock (both requesting locks that the other holds), SQL
+Server will immediately terminate one of the participants (no timeout
+is involved).
+<P>
+If there is no deadlock, the application requesting the locked data
+will be blocked until the other user chooses to release the lock.
+There is no mandatory timeout period, and there is no way to test
+whether or not a data item is locked, except to attempt to access
+the data (and potentially get blocked indefinitely).
+<P>
+With DB-Library (DB-Lib), it is possible to continue issuing commands
+after a timeout has occurred. To regain control after a timeout period,
+do the following:
+
+<OL><P><LI>Use dbtimeout() to set a nonzero timeout value.
+
+<P><LI>Within the error handler, test for dberr of SQLETIME to determine
+   if a timeout has occurred.
+
+<P><LI>If a timeout has occurred, your error handler has the option of
+   either returning control to DB-LIB for another timeout interval
+   (DB_CONTINUE) or canceling the current command (DB_CANCEL).
+
+<P><LI>If DB_CANCEL is used, an attention will be sent to the server and
+   control will be returned to the statement following the dbsqlok(),
+   dbresults(), or dbnextrow() that was waiting.
+
+<P><LI>Do NOT call dbcancel(dbproc) from within the error handler if a
+   timeout has occurred. This is true even if the error handler
+   address has been set to null to prevent recursive calls to the
+   error handler. Instead, have your error handler return INT_CANCEL.
+   When the error handler returns INT_CANCEL after a timeout, DB-Lib
+   will send a cancel request to SQL Server and will continue reading
+   data.
+<P>
+</OL><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Sample Program</h3>
+ 
+<P>
+<PRE>   #define INCL_BASE
+   #define DBMSOS2
+   #include &lt;os2.h&gt;
+   #include &lt;stdio.h&gt;
+   #include &lt;sqlfront.h&gt;
+   #include &lt;sqldb.h&gt;
+
+   DBPROCESS *dbproc;
+   int msg_handler();
+   int err_handler();
+   static int timeout=FALSE;
+
+   main()
+   {
+   LOGINREC  *login;
+
+        login = dblogin();
+        DBSETLUSER(login,"sa");
+        dbproc = dbopen(login, "server");
+        dbmsghandle(msg_handler);
+        dberrhandle(err_handler);
+        dbsettime(5);
+
+        dbcmd(dbproc,"select command from sqlhelp");
+        dbsqlexec(dbproc);
+        timeout_processing();
+        while( dbresults(dbproc) != NO_MORE_RESULTS )
+        {
+          while( dbnextrow(dbproc) != NO_MORE_ROWS )
+          {
+            .
+            .
+            .
+          }
+        }
+   }
+
+
+   int msg_handler(dbproc, msgno, msgstate, severity, msgtext)
+   DBPROCESS   *dbproc;
+   DBINT       msgno;
+   int         msgstate;
+   int         severity;
+   char        *msgtext;
+   {
+       printf("SQL Server Message %ld, state %d, severity %d:\n%s\n",
+               msgno, msgstate, severity, msgtext );
+       return(DBNOSAVE);
+   }
+
+
+   int err_handler(dbproc, severity, dberr, oserr, dberrstr,
+                   oserrstr)
+   DBPROCESS   *dbproc;
+   int         severity;
+   int         dberr;
+   int         oserr;
+   char        *dberrstr;
+   char        *oserrstr;
+   {
+       if( dberr==SQLETIME )      &lt;--- test for timeout condition
+         timeout=TRUE;
+       else
+       {          printf("DB-LIB Error %d,\n%s\n",dberr,dberrstr);
+         if( oserr&gt;0 )
+           printf("OS Error %d,\n%s\n",oserr,oserrstr);
+
+       }
+       return(INT_CANCEL);
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: dblib Windows NT<BR>
+Keywords            : kbprg SSrvDB_Lib SSrvProg SSrvWinNT<BR>
+Version             : 4.2 | 4.2  | 4.2<BR>
+Platform            : MS-DOS OS/2 WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

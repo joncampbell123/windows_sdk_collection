@@ -1,0 +1,311 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Add PCMCIA Support to a Windows NT Device Driver </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q170084">
+<META NAME="KBModify" CONTENT="1998/02/17">
+<META NAME="KBCreate" CONTENT="1997/06/13">
+<META NAME="Keywords" CONTENT="NTDDKKMode">
+<META NAME="KBArea" CONTENT="Support; KB; win32ddk">
+<META NAME="Description" CONTENT="  PCMCIA support under Windows NT is in the form of basic PC Card enabling. PCMCIA features like dynamic configuration and hot-plugging are currently unsupported. Basically, a developer writes an ISA device driver and insures that the PC Card is conf...">
+<META NAME="Product" CONTENT="Win32 DDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDJW,QABA,QA2O,QBWP,QA05,QAU9,QDIZ,QBW6,QAKD,QAB5,QAZV,QBBI,QAUJ,QA4H,QAOE V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Add PCMCIA Support to a Windows NT Device Driver</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 17, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q170084</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Device Development Kit (DDK) for Windows NT,
+   versions 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+PCMCIA support under Windows NT is in the form of basic PC Card enabling.
+PCMCIA features like dynamic configuration and hot-plugging are currently
+unsupported. Basically, a developer writes an ISA device driver and insures
+that the PC Card is configured correctly (either via the CIS tuple
+information or the registry overrides described below). The ISA driver
+checks the registry to see if the card is configured and gets the resources
+from the resource list created by PCMCIA.SYS.
+<P>
+For an explanation of how to mask specific IRQ's to PCMCIA devices, please
+see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../winnt/q168303.htm">Q168303</A></B>
+   TITLE     : Masking IRQ's for PCMCIA Devices
+
+</PRE><B><A href="../winnt/q168303.htm">Q168303</A></B> also includes detailed information about the InterruptMask value of
+the PCMCIA registry key that controls IRQ masking.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+For PCMCIA.SYS to recognize the card, there must first be an entry in the
+PCMCIA database. This database is stored in the Windows NT registry. In the
+following discussion, note that HKLM indicates HKEY_LOCAL_MACHINE and CCS
+indicates CurrentControlSet.
+<P>
+WARNING: Modifying the registry can cause the system to become unstable and
+may cause the system to become unusable (requiring a reinstallation). Do
+not modify the registry unless you understand the implications of any
+changes you are making.
+<P>
+<P><h3>Add PC Card Information to the PCMCIA Database</h3>
+ 
+
+<OL><P><LI>Under HKLM\SYSTEM\CCS\Services\Pcmcia\DataBase add a key for
+   Manufacturer ID. This information is in the Level 1 Version/Product
+   Information Tuple. The Manufacturer ID is the first ASCII string after
+   the Minor Version Number. For example:
+<P>
+<P><PRE>      HKLM\SYSTEM\CCS\Services\Pcmcia\DataBase\XYZ Corp
+</PRE>
+<P><LI>Under Manufacturer ID, add a key for the Device ID. The Device ID is the
+   second ASCII string (just after the Manufacturer ID). For Example:
+<P>
+<P><PRE>      HKLM\SYSTEM\CCS\Services\Pcmcia\DataBase\XYZ Corp\XYZ device
+</PRE>
+<P><LI>For PCMCIA.SYS to configure the PC Card, you must specify the name of a
+   driver under the Device ID key. Add this as a value under the Device ID
+   key.
+<P>
+<P><PRE>      Driver : REG_SZ : Xyz
+</PRE><P>
+   Note that the value of the driver specified here does not need to match
+   the "real" driver's name. For example, the driver that actually
+   controlled a card may be ABC.SYS and have a service key name "Abc", but
+   the driver name specified in the PCMCIA database is "Xyz". In this case
+   the driver ABC.SYS would look for the resource information under "Xyz"
+   in the Hardware key (described below).
+<P>
+   Finding the PC Card Resources
+   -----------------------------
+<P>
+   After adding the PCMCIA database information and rebooting, the
+   PCMCIA.SYS driver will attempt to configure the card according to the
+   CIS tuple data. If the tuple data is successfully parsed and the PC Card
+   configured, PCMCIA will create a resource list under the following key:
+<P>
+<P><PRE>      HKLM\HARDWARE\DESCRIPTION\System\PCMCIA PCCARDS
+</PRE><P>
+   There should be a value under this key of the name specified in the
+   PCMCIA database entry for this particular card. For the example
+   presented thus far, the PCMCIA database described driver "Xyz". So,
+   under the PCMCIA PCCARDS key should be a value similar to the following:
+<P>
+<P><PRE>      Xyz : REG_FULL_RESOURCE_DESCRIPTOR : ...
+</PRE><P>
+   If the ISA driver for the PC Card finds this value, then the PC Card is
+   configured and ready to go. The resource descriptor layout is described
+   in the Windows NT DDK. The ISA driver should parse this resource list to
+   get the information and map the I/O and memory spaces as required, as
+   well as configure the interrupt.
+<P>
+   If the resource list is found in the dynamic HARDWARE key, then the card
+   is configured and usable. If the resource list is not there, then the
+   card is not in the socket, or an override is required to make PCMCIA.SYS
+   configure the card.
+<P>
+   There may be more than one resource list value under this key, so make
+   sure to check that the value name matches the driver name specified in
+   the PCMCIA database.
+<P>
+   Using Registry Overrides for PCMCIA Cards
+   -----------------------------------------
+<P>
+   In order for PCMCIA overrides to be processed, they must specify either
+   an interrupt or I/O port address (or both). If the card does not use
+   either, then you will have to select a dummy I/O port address to force
+   the override to be accepted.
+
+<P><LI>Create a new driver key in the Services key. The name for this key
+   should match the key specified in the PCMCIA database for this specific
+   PCCARD, with a single digit ("1" through "9") appended to it. For
+   example:
+<P>
+<P><PRE>      HKLM\SYSTEM\CCS\Services\Xyz1
+</PRE>
+<P><LI>Under the new driver key, add a Parameters key. For example:
+<P>
+<P><PRE>      HKLM\SYSTEM\CCS\Services\Xyz1\Parameters
+</PRE>
+<P><LI>Under the Parameters key, the following value is required. If it is not
+   present or set to zero, the PCMCIA driver will not use this
+   configuration and will search for another configuration in the registry.
+   PCMCIA.SYS will stop searching for configurations as soon as it finds a
+   valid override. This is why you cannot use more than one PC Card with a
+   specific Manufacturer ID and Device ID.
+<P>
+<P><PRE>      Pcmcia : DWORD : 1
+</PRE>
+<P><LI>Under the Parameters key, add the optional keywords as needed. Examples
+   include:
+<P>
+<P><PRE>      AttributeMemorySize : DWORD : 0x1000
+      InterruptNumber : DWORD : 0xf
+      IoBaseAddress : DWORD : 0x170
+      IoBaseAddress_1 : DWORD : 0x376
+      IoLength : DWORD : 0x8
+      IoLength_1 : DWORD : 0x2
+</PRE><P>
+</OL>Possible override values under:
+<P>
+<PRE>   HKLM\SYSTEM\CCS\Services\Pcmcia\DataBase\XYZ Corp\XYZ device
+
+Value Name                     Data Type  Description
+-------------------------      ---------  -------------------------------
+CcrBase                        REG_DWORD  Configuration register base
+PortWidth16                    REG_DWORD  1=16 bit accesses to I/O space
+Driver                         REG_SZ     Driver name
+CardMemorySize                 REG_DWORD  [0] Card memory length
+CardMemorySize_1               REG_DWORD  [1] Card memory length
+AttributeMemorySize            REG_DWORD  [0] Attribute memory length
+AttributeMemorySize_1          REG_DWORD  [1] Attribute memory length
+
+</PRE></OL>Possible override values for:
+<PRE>    HKLM\SYSTEM\CCS\Services\Xyz1\Parameters
+
+Value Name                     Data Type  Description
+-------------------------      ---------  -------------------------------
+Pcmcia                         REG_DWORD  1=enable this configuration
+InterruptNumber                REG_DWORD  Interrupt value
+
+IoBaseAddress                  REG_DWORD  [0] I/O port base address
+IoLength                       REG_DWORD  [0] I/O port length
+
+IoBaseAddress_1                REG_DWORD  [1] I/O port base address
+IoLength_1                     REG_DWORD  [1] I/O port length
+
+MemoryMappedBaseAddress        REG_DWORD  [0] Host base memory
+MemoryMappedSize               REG_DWORD  [0] Host base memory length
+PCCARDMemoryWindowOffset       REG_DWORD  [0] Card base (host base offset)
+Address_16                     REG_DWORD  1=16-bit memory access
+
+MemoryMappedBaseAddress_1      REG_DWORD  [1] Host base memory
+MemoryMappedSize_1             REG_DWORD  [1] Host base memory length
+PCCARDMemoryWindowOffset_1     REG_DWORD  [1] Card base (host base offset)
+Address1_16                    REG_DWORD  1=16-bit memory access
+
+MemoryMappedBaseAddress_2      REG_DWORD  [2] Host base memory
+MemoryMappedSize_2             REG_DWORD  [2] Host base memory length
+PCCARDMemoryWindowOffset_2     REG_DWORD  [2] Card base (host base offset)
+Address2_16                    REG_DWORD  1=16-bit memory access
+
+MemoryMappedBaseAddress_3      REG_DWORD  [3] Host base memory
+MemoryMappedSize_3             REG_DWORD  [3] Host base memory length
+PCCARDMemoryWindowOffset_3     REG_DWORD  [3] Card base (host base offset)
+Address3_16                    REG_DWORD  1=16-bit memory access
+
+PCCARDAttributeMemoryAddress   REG_DWORD  [0] Attribute memory
+PCCARDAttributeMemorySize      REG_DWORD  [0] Attribute memory length
+PCCARDAttributeMemoryOffset    REG_DWORD  [0] Attribute memory offset
+AttributeMemory_16             REG_DWORD  1=16-bit memory access
+
+</PRE>PCCARDAttributeMemoryAddress_1 REG_DWORD  [1] Attribute memory
+<PRE>PCCARDAttributeMemorySize_1    REG_DWORD  [1] Attribute memory length
+</PRE>PCCARDAttributeMemoryOffset_1  REG_DWORD  [1] Attribute memory offset
+<PRE>AttributeMemory1_16            REG_DWORD  1=16-bit memory access
+
+ModemFunction                  REG_DWORD  1=multifunction modem device
+
+PCCARDReadyInterrupt           REG_DWORD  * Not implemented *
+</PRE> 
+<PRE>Keywords          : NTDDKKMode
+Version           : WINNT:3.51,4.0;
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 17, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,345 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>VB3 How to View Photos from the NWIND.MDB Database in VB </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q113957">
+<META NAME="KBModify" CONTENT="1997/01/09">
+<META NAME="KBCreate" CONTENT="1994/04/20">
+<META NAME="Keywords" CONTENT="kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  This article shows by example how to view the photos in the Microsoft Access versions 1.x and 2.0 NWIND.MDB database.  NOTE: To run the code in this article, you will need to have both Microsoft Access version 1.x or 2.0 and the Microsoft Jet 2.0/V...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QANF,QA4Q,QAPN,QA5V,QA7O,QAH4,QACJ,QA1S,QBS0,QABI,QAW6,QAMN,QATX,QAOE,QAB5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>VB3 How to View Photos from the NWIND.MDB Database in VB</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 9, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q113957</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+<P>
+- Microsoft Visual Basic programming system for Windows, version 3.0
+ 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This article shows by example how to view the photos in the Microsoft
+Access versions 1.x and 2.0 NWIND.MDB database.
+<P>
+NOTE: To run the code in this article, you will need to have both
+Microsoft Access version 1.x or 2.0 and the Microsoft Jet 2.0/Visual
+Basic 3.0 Compatibility Layer .DLL files.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Step-by-Step Example to View the Photos</h3>
+ 
+
+<OL><P><LI>Start a new project in Visual Basic. Form1 is created by default.
+
+<P><LI>Add two Labels, two Text box controls, two Picture box controls and two
+   Data controls to Form1.
+
+<P><LI>Using the following table as a guide, set the properties of the
+   controls you added in step 2.
+<P>
+<PRE>   Control     Property               New Value
+   ----------------------------------------------------------------
+   Label1      Caption                Access 1.x
+   Label2      Caption                Access 2.0
+   Data1       DatabaseName           C:\ACCESS\NWIND.MDB
+   Data1       RecordSource           Employees
+   Data2       DatabaseName           C:\ACCESS2\SAMPAPPS\NWIND.MDB
+   Data2       RecordSource           Employees
+
+</PRE><P><LI>Place the following code in the (general) (declarations) section of
+   MODULE1.BAS:
+<P>
+   Option Explicit
+<P>
+   Global Const LENGTH_FOR_SIZE = 4
+   Global Const OBJECT_SIGNATURE = &amp;H1C15
+   Global Const OBJECT_HEADER_SIZE = 20
+   Global Const CHECKSUM_SIGNATURE = &amp;HFE05AD00
+   Global Const CHECKSUM_STRING_SIZE = 4
+<P>
+<PRE>   ' PT : Window sizing information for object
+   '      Used in OBJECTHEADER type
+   Type PT
+      Width As Integer
+      Height As Integer
+   End Type
+
+   ' OBJECTHEADER : Contains relevant information about object
+   '
+   Type OBJECTHEADER
+      Signature As Integer         'Type signature (0x1c15)
+      HeaderSize As Integer        'Size of header (sizeof(struct
+                                   'OBJECTHEADER) + cchName +
+                                   'cchClass)
+      ObjectType As Long           'OLE Object type code (OT_STATIC,
+                                   'OT_LINKED, OT_EMBEDDED)
+      NameLen As Integer           'Count of characters in object
+                                   'name (CchSz(szName) + 1)
+      ClassLen As Integer          'Count of characters in class
+                                   'name (CchSz(szClass) + 1)
+      NameOffset As Integer        'Offset of object name in
+                                   'structure (sizeof(OBJECTHEADER))
+      ClassOffset As Integer       'Offset of class name in
+                                   'structure (ibName + cchName)
+      ObjectSize As PT             'Original size of object (see
+                                   'code below for value)
+      OleInfo As String * 256
+   End Type
+
+   Type OLEHEADER
+      OleVersion As Long
+      Format As Long
+      OleInfo As String * 512
+   End Type
+
+   ' Enter each of the following Declare statements as one, single line:
+   Declare Function GetTempFileName Lib "Kernel" (ByVal cDriveLetter As
+      Integer, ByVal  lpPrefixString As String, ByVal wUnique As Integer,
+      ByVal lpTempFileName As String) As Integer
+   Declare Sub hmemcpy Lib "Kernel" (dest As Any, source As Any,
+      ByVal bytes As Long)
+
+   Function CopyOleBitmapToFile (OleField As Field) As String
+
+      Const BUFFER_SIZE = 8192
+
+      Dim tempFileName As String
+      Dim Handle As Integer
+      Dim Buffer As String
+
+      Dim BytesNeeded As Long
+
+      Dim Buffers As Long
+      Dim Remainder As Long
+
+      Dim ObjHeader As OBJECTHEADER
+      Dim sOleHeader As String
+
+      Dim ObjectOffset As Long
+      Dim BitmapOffset As Long
+      Dim BitmapHeaderOffset As Integer
+
+      Dim r As Integer
+      Dim i As Long
+
+      tempFileName = ""
+      If OleField.FieldSize() &gt; OBJECT_HEADER_SIZE Then
+
+         ' Get the Microsoft Access OLE header:
+         sOleHeader = OleField.GetChunk(0, OBJECT_HEADER_SIZE)
+         hmemcpy ObjHeader, ByVal sOleHeader, OBJECT_HEADER_SIZE
+
+         ' Calculate the offset where the OLE object starts:
+         ObjectOffset = ObjHeader.HeaderSize + 1
+
+         ' Get enough bytes after the OLE header to get the bitmap header:
+         Buffer = OleField.GetChunk(ObjectOffset, 512)
+
+         ' Make sure the class of the object is a Paint Brush object:
+         If Mid(Buffer, 12, 6) = "PBrush" Then
+
+            BitmapHeaderOffset = InStr(Buffer, "BM")
+
+            If BitmapHeaderOffset &gt; 0 Then
+
+               ' Calculate the beginning of the bitmap:
+               BitmapOffset = ObjectOffset + BitmapHeaderOffset - 1
+
+               ' Calculate the size of the bitmap:
+               ' Enter the following two lines as one, single line:
+               BytesNeeded = OleField.FieldSize() - OBJECT_HEADER_SIZE -
+                  BitmapHeaderOffset - CHECKSUM_STRING_SIZE + 1
+
+               ' Calculate the number of buffers needed to copy
+               ' the OLE object based on the bitmap size:
+               Buffers = BytesNeeded \ BUFFER_SIZE
+               Remainder = BytesNeeded Mod BUFFER_SIZE
+
+               ' Get a unique, temp filename:
+               tempFileName = Space(255)
+               r = GetTempFileName(0, "", -1, tempFileName)
+
+               ' Copy the bitmap to the temporary file chunk by chunk:
+               Handle = FreeFile
+               Open tempFileName For Binary As #Handle
+
+               For i = 0 To Buffers - 1
+                  ' Enter the following two lines as one, single lin:
+                  Buffer = OleField.GetChunk(BitmapOffset + i *
+                     BUFFER_SIZE, BUFFER_SIZE)
+                  Put #Handle, , Buffer
+               Next
+
+               ' Copy the remaining chunk of the bitmap to the file:
+               ' Enter the following two lines as one, single line:
+               Buffer = OleField.GetChunk(BitmapOffset + Buffers *
+                  BUFFER_SIZE, Remainder)
+               Put #Handle, , Buffer
+               Close #Handle
+            End If
+         End If
+      End If
+      CopyOleBitmapToFile = Trim(tempFileName)
+   End Function
+
+   Sub DisplayOleBitmap (ctlPict As Control, OleField As Field)
+
+      Const DT_LONGBINARY = 11
+
+      Dim r As Integer
+      Dim Handle As Integer
+      Dim OleFileName As String
+
+      If OleField.Type = DT_LONGBINARY Then
+
+         OleFileName = CopyOleBitmapToFile(OleField)
+
+         If OleFileName &lt;&gt; "" Then
+
+            ' Display the bitmap:
+            ctlPict.Picture = LoadPicture(OleFileName)
+
+            ' Delete the temporary file:
+            Kill OleFileName
+         End If
+      End If
+   End Sub
+
+</PRE><P><LI>Add the following to the Data1 Reposition event:
+<P>
+<PRE>   Sub Data1_Reposition ()
+      Screen.MousePointer = 11
+      ' Make sure this is the current record:
+      If Not (Data1.Recordset.EOF And Data1.Recordset.BOF) Then
+         ' Change Photo to the name of the OLE field
+         ' for the record set you are using:
+         DisplayOleBitmap Picture1, Data1.Recordset("Photo")
+      End If
+      Screen.MousePointer = 0
+   End Sub
+
+</PRE><P><LI>Add the following to the Data2 Reposition event:
+<P>
+<PRE>   Sub Data2_Reposition ()
+      Screen.MousePointer = 11
+      ' Make sure this is the current record:
+      If Not (Data2.Recordset.EOF And Data2.Recordset.BOF) Then
+         ' Change Photo to the name of the OLE field
+         ' for the record set you are using:
+         DisplayOleBitmap Picture2, Data2.Recordset("Photo")
+      End If
+      Screen.MousePointer = 0
+   End Sub
+
+</PRE><P><LI>From the Run menu, choose Start (ALT, R, S), or press the F5 key to
+   run the program. Click the Data1 control; then click the Data2 control.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+In order to work around the 'Invalid Picture' error, the code in this
+article is based on the code published in the following article in the
+Microsoft Knowledge Base:
+<P>
+ARTICLE-ID: <B><A href="../vbwin/q103115.htm">Q103115</A></B>
+<PRE>TITLE     : PRB: Invalid Picture Error When Try to Bind Picture Control
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: APrgDataAcc<BR>
+Additional reference words: 3.00<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 9, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

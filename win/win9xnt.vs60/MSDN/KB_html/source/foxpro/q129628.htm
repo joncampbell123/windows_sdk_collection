@@ -1,0 +1,370 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: "Invalid function argument value, type, or count" Error </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q129628">
+<META NAME="KBModify" CONTENT="1997/10/20">
+<META NAME="KBCreate" CONTENT="1995/05/01">
+<META NAME="Keywords" CONTENT="FxtoolWizscreen kbbuglist kbcode kbfixlist kbtool">
+<META NAME="KBArea" CONTENT="Support; KB; foxpro, crossnet, odbc">
+<META NAME="Description" CONTENT="  When the SCREEN WIZARD has been used to create a screen for two or more related tables, clicking the LOCATE button can produce this error message:     Invalid function argument value, type, or count.  CAUSE =====  In the LOC_DLOG procedure for the ...">
+<META NAME="Product" CONTENT="Visual FoxPro">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBL2,QA7N,QA7O,QA2Q,QAH4,QBWS,QAG2,QBXS,QAUJ,QAB4,QAY2,QAGB,QAUD,QAA8,QAFR V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: "Invalid function argument value, type, or count" Error</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 20, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q129628</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+2.6x
+WINDOWS
+kbtool kbcode kbfixlist kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft FoxPro for Windows, versions 2.6x
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When the SCREEN WIZARD has been used to create a screen for two or more
+related tables, clicking the LOCATE button can produce this error message:
+<P>
+<PRE>   Invalid function argument value, type, or count.
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+In the LOC_DLOG procedure for the LOCATE button, OBJVAR is used to provide
+the name of the memory variable, array element, or field associated with an
+object. However, OBJVAR is returning a NULL value rather than a CHARACTER
+value during a READ, which causes the error message.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+NOTE: In Visual FoxPro, the One-To-Many Form Wizard is used for related
+tables. The One-To-Many Wizard does not have this problem.
+<P>
+To avoid this message, perform one of the following resolutions.
+<P>
+<P><h3>Resolution 1</h3>
+ 
+<P>
+Change the following line of code in the .SPR from
+<P>
+<PRE>   DO WHILE !EMPTY(OBJVAR(m.i))
+
+</PRE>to the following:
+<P>
+<PRE>   DO WHILE TYPE("OBJVAR(m.i)") = "C"
+
+</PRE>By checking the return type of the function, the error will not occur, and
+the loop will not continue, which is the purpose of checking EMPTY().
+<P>
+<P><h3>Resolution 2</h3>
+ 
+<P>
+Change the LOC_DLOG procedure in the .SPR file.
+<P>
+You can have the BROWSE window that is executed in the LOCATE button
+display all fields from the parent table or display only the fields
+included in the screen. For example, a screen may have been created that
+holds only the CNO and COMPANY fields from the CUSTOMER table; in this
+case, the BROWSE should display only the fields CNO and COMPANY, not all
+fields from CUSTOMER.
+<P>
+How to Display all Fields from a Table in the BROWSE:
+
+<OL><P><LI>Add the following to the SETUP code prior to #REGION 0:
+<P>
+   PUBLIC myprog
+<PRE>   myprog=PROGRAM()        &amp;&amp; Store name of the screen currently running.
+   mypath=FULLPATH(myprog) &amp;&amp; Store the full path of the screen.
+
+</PRE><P><LI>Replace the existing LOC_DLOG PROCEDURE in the CLEANUP code of the .SCX
+   file with this code:
+<P>
+   PROCEDURE loc_dlog
+<P><PRE>      PRIVATE gfields,i
+      DEFINE WINDOW wzlocate FROM 1,1 TO 20,40;
+<PRE></PRE>         SYSTEM GROW CLOSE ZOOM FLOAT FONT "MS Sans Serif",8
+      MOVE WINDOW wzlocate CENTER
+      ** Save the name of the currently used table:
+      cur_tbl=ALIAS()
+      ** Get the full path of where the .SCX table for this screen is:
+      myscx= ;
+      SUBSTR(FULLPATH(myprog+'.spr'),1,ATC('.',FULLPATH(myprog+'.spr'))-1)
+      ** If the screen table isn't open, open it:
+      IF !USED(myscx+'.scx')
+         SELECT 0
+         USE (myscx)+'.scx' AGAIN
+      ELSE
+         SELECT (myscx)+'.scx'
+      ENDIF
+
+      ** Get all name fields where objtype=15 and objcode=1
+      ** objtype = 15 and objcode = 1 are the field names used
+      ** in the screen
+      COUNT FOR objtype=15 AND objcode=1 TO mnum
+      ** Create an array to hold the field names used in the screen:
+      DIMENSION test[mnum]
+      j = 1
+      ** Select the main, original table:
+      SELECT (cur_tbl)
+      m.gfields=SET('FIELDS',2)
+      IF !EMPTY(RELATION(1))
+         SET FIELDS ON
+         IF m.gfields # 'GLOBAL'
+            SET FIELDS GLOBAL
+         ENDIF
+
+         IF EMPTY(FLDLIST())
+            m.i=1
+            ** Select the screen's database:
+            SELECT (myprog)
+            SET FIELDS TO
+            SET FILTER TO objtype=15 AND objcode=1
+            GO TOP
+            ** Grab the field names and place into array:
+            * NOTE: If all the field objects are changed to memory
+            * variables, this DO WHILE loop will go into an infinite loop.
+            * SKIP only occurs when the entry is NOT a memory variable.
+            * Also, if m.memvar is used, the "M." will not match it.
+            DO WHILE !EOF()
+            FOR j = 1 TO mnum
+               IF ATC('M.',MLINE(name,1))=0
+                  test[j]=MLINE(name,1)
+                  SKIP
+               ENDIF
+            NEXT
+            ENDDO
+            SET FILTER TO
+            SELECT (cur_tbl)
+            SET FIELDS ON
+            SET FIELDS GLOBAL
+            j = 1
+            FOR j = 1 TO mnum
+               SET FIELDS TO (test[j])
+            NEXT
+         ENDIF
+      ENDIF
+
+      ** Close the screen file that was used:
+      IF USED(myprog)
+         SELECT (myprog)
+         USE
+         SELECT (cur_tbl)
+      ENDIF
+
+   BROWSE WINDOW wzlocate NOEDIT NODELETE ;
+      NOMENU TITLE C_BRTITLE
+      SET FIELDS &amp;gfields
+      SET FIELDS OFF
+      RELEASE WINDOW wzlocate
+      RELEASE test    &amp;&amp; Release the array from memory.
+   RETURN
+
+</PRE></OL>How to Display Only the Fields Included in the Screen in the BROWSE:
+
+<OL><P><LI>Add the following code to the SETUP code prior to #REGION 0:
+<P>
+   PUBLIC myprog
+<PRE>   myprog=PROGRAM()        &amp;&amp; Store name of the screen currently running.
+   mypath=FULLPATH(myprog) &amp;&amp; Store the full path of the screen.
+
+</PRE><P><LI>Replace the existing LOC_DLOG PROCEDURE in the CLEANUP code of the .SCX
+   file with this code:
+<P>
+   PROCEDURE loc_dlog
+<P><PRE>      PRIVATE gfields,i
+      DEFINE WINDOW wzlocate FROM 1,1 TO 20,40;
+<PRE></PRE>         SYSTEM GROW CLOSE ZOOM FLOAT FONT "MS Sans Serif",8
+      MOVE WINDOW wzlocate CENTER
+      cur_tbl=ALIAS()
+      myscx ;
+      =SUBSTR(FULLPATH(myprog+'.spr'),1,ATC('.',FULLPATH(myprog+'.spr'))-1)
+      IF !USED(myscx+'.scx')
+         SELECT 0
+         USE (myscx)+'.scx' AGAIN
+      ELSE
+         SELECT (myscx)+'.scx'
+      ENDIF
+
+      SET FILTER TO objtype=2
+      GO TOP
+      ** Get all expr fields where objtype=2:
+      COUNT FOR objtype=2 TO mnum
+      GO TOP
+      curr_dbf = LEFT(MLINE(name,1),ATC('.dbf',MLINE(name,1))-1)
+      SELECT (curr_dbf)
+      num_flds1=FCOUNT()
+
+      SELECT (cur_tbl)
+
+      m.gfields=SET('FIELDS',2)
+      IF !EMPTY(RELATION(1))
+         SET FIELDS ON
+         IF m.gfields # 'GLOBAL'
+            SET FIELDS GLOBAL
+         ENDIF
+
+         IF EMPTY(FLDLIST())
+            m.i=1
+            FOR k = 1 TO fcount()
+               SET FIELDS TO (FIELD(k))
+            NEXT
+         ENDIF
+      ENDIF
+
+      ** Close the screen file that was used:
+      IF USED(myprog)
+         SELECT (myprog)
+         USE
+         SELECT (cur_tbl)
+      ENDIF
+
+      BROWSE WINDOW wzlocate NOEDIT NODELETE ;
+         NOMENU TITLE C_BRTITLE
+      SET FIELDS &amp;gfields
+      SET FIELDS OFF
+      RELEASE WINDOW wzlocate
+   RETURN
+
+</PRE></OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the Microsoft products
+listed at the beginning of this article. This problem was corrected in
+Visual FoxPro 3.0 for Windows.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Problem</h3>
+ 
+
+<OL><P><LI>Enter these commands:
+<P>
+   SELECT 0
+   USE tutorial\customer
+   SELECT 0
+   USE tutorial\invoices
+   INDEX ON cno TAG cno
+   SET ORDER TO TAG cno
+   SELECT customer
+   SET RELATION TO cno INTO invoices
+   SET SKIP TO invoices
+
+<P><LI>Choose Wizard from the Run menu, and select Screen.
+
+<P><LI>Add all fields from both tables. Select all the remaining defaults. Save
+   as OBJVAR.
+
+<P><LI>Enter this command:
+<P>
+   DO objvar.spr
+
+<P><LI>As soon as the screen appears, click the LOCATE button. At this point,
+   you'll see the error message:
+<P>
+   Invalid function argument value, type, or count.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: VFoxWin FoxWin 2.60 2.60a fixlist3.00<BR>
+buglist2.60 buglist2.60a<BR>
+KBCategory: kbtool kbcode kbfixlist kbbuglist<BR>
+KBSubcategory: FxtoolWizscreen<BR>
+Keywords          : FxtoolWizscreen kbbuglist kbcode kbfixlist kbtool<BR>
+Version           : 2.6x<BR>
+Platform          : WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 20, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

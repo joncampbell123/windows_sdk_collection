@@ -1,0 +1,259 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: sp_MSbackup_now Fails on Scheduled Dumps to Same Device </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q119266">
+<META NAME="KBModify" CONTENT="1997/04/30">
+<META NAME="KBCreate" CONTENT="1994/08/11">
+<META NAME="Keywords" CONTENT="kbbug4.21 kbtool SSrvAdmin SSrvStProc">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="BUG# NT: 860 (4.21)   When more than one scheduled event exists to dump to the same logical device name, the SQL Monitor backup stored procedure sp_MSbackup_now may fail with Msg 512:     Subquery returned more than 1 value. This is illegal when    t...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAYZ,QALB,QACE,QA2Q,QAGJ,QAG2,QAU3,QAUJ,QAMR,QBWS,QAB5,QAJQ,QABM,QA5E,QAFH V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: sp_MSbackup_now Fails on Scheduled Dumps to Same Device</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 30, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q119266</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server, version 4.21
+</PRE> 
+BUG# NT: 860 (4.21)
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When more than one scheduled event exists to dump to the same logical
+device name, the SQL Monitor backup stored procedure sp_MSbackup_now may
+fail with Msg 512:
+<P>
+<PRE>   Subquery returned more than 1 value. This is illegal when
+   the subquery follows =, !=, &lt;, &lt;=, &gt;, &gt;=, or when the
+   subquery is used as an expression.
+
+</PRE>When scheduled backups fail in this scenario, the History Log Report
+run from SQL Administrator does not report any errors or information
+about the status of the dump.
+<P>
+<P><h2>WORKAROUND</h2>
+ 
+<P>
+The following two options can be used to avoid this problem:
+
+<OL><P><LI>Create multiple logical dump device names that reference the same
+   physical device name.
+
+<P><LI>Execute the following script to replace the existing sp_MSbackup_now
+   procedure:
+<P>
+   use master
+   go
+   if exists (select name from sysobjects where name = 'sp_MSbackup_now')
+   drop procedure sp_MSbackup_now
+   go
+   create procedure sp_MSbackup_now
+   as
+   declare @now datetime, @dayofweek smallint, @hour smallint, @minute
+   smallint, @elapsed int, @monthyear varchar(30)
+   set nocount on
+<P>
+<PRE>   /* */
+   /* Get the current date and time. */
+   /* Parse out the relevant parts of the date */
+   /* */
+   select @now = getdate()
+   select @dayofweek = datepart(weekday,@now)
+   select @monthyear = substring(convert(varchar(12),getdate()),1,12)
+
+   /* */
+   /* Create a temporary table to hold data on what needs to be dumped */
+   /* */
+   create table #spdumptab
+   (id           int         Not Null,      /* Unique identifier */
+   name          varchar(30)  Not Null, /* Name of database to be dumped */
+   owner         varchar(30)  Not Null, /* Name of the database owner */
+   ddump          varchar(30)  Null,        /* Database dump device */
+   ldump          varchar(30)  Null,        /* Log dump device */
+   datacntrltype  smallint     Null,  /* Control type */
+   logcntrltype   smallint     Null,  /* Control type */
+   status       tinyint      Null,     /* extra dump parameters */
+   trys         tinyint      Null,     /* number of attempts to dump */
+   emailname    varchar(60)  Null,/* email recipient(s) for notification */
+   dumptime     varchar(32)  Not Null,   /* scheduled event time */
+   day            tinyint      Not Null,   /* day of week for dump */
+   freq           tinyint      Not Null    /* frequency of dump */
+   )
+
+   /* */
+   /* Check all databases that are dumped daily, weekly, and biweekly */
+   /* Note: The dump can only occur if the start time(HH:MM) is &gt; the
+   last dump &lt;= now */
+   /* */
+   insert into #spdumptab
+   select Event_id, Database_name,
+   Database_owner,Database_dump,Log_dump,NULL,NULL,Stat,attempts,
+   email_name,@monthyear+Start_time,Day,Frequency
+   from MSscheduled_backups
+   where Enabled = 1         /* Dump turned on */
+   and ((convert(smallint,Day) = @dayofweek) or Frequency = 1)
+                      /* Dump today or Daily */
+   and Frequency &lt;= 14         /* Freq daily, weekly, or biweekly */
+   and datediff(day, Last_dump, @now) &gt;= convert(smallint,Frequency)
+                      /* Freq time has elapsed */
+   and @now &gt;= convert(datetime, @monthyear + Start_time)
+   and datediff(hour, Last_dump, @now) &gt;=convert(smallint,Frequency)*24
+         /* Freq time has elapsed */
+   and datediff(minute, Last_dump, @now) &gt;=
+   convert(smallint,Frequency)*24*60         /* Freq time has elapsed */
+
+   /* */
+   /* Check all the databases that are dumped monthly */
+   /* Note: First we get this week number, then do the same criteria as
+   the Daily, weekly, bi-weekly dump.The dump can only occur if the
+   start time(HH:MM) is &gt; the last dump &lt;= now */
+   /* */
+   declare @rundate datetime, @weekno smallint  /* Get this week number */
+   select @rundate = @now
+   select @weekno = 1
+   while datepart(month,dateadd(day,-7,@rundate)) = datepart(month,@now)
+   begin
+   select @weekno = @weekno + 1
+   select @rundate = dateadd(day,-7,@rundate)
+   end
+
+   insert into #spdumptab
+   select Event_id, Database_name,
+   Database_owner,Database_dump,Log_dump,NULL,NULL,Stat,attempts,
+   email_name, @monthyear+Start_time,Day,Frequency
+   from MSscheduled_backups
+   where Enabled = 1                           /* Dump turned on */
+   and (convert(smallint,Day) = @dayofweek)     /* Dump today */
+   and Frequency &gt;= 31                    /* Freq monthly */
+   and (convert(smallint,Frequency) - 22) &gt;= @weekno  /* Week of month */
+   and datediff(day, Last_dump, @now) &gt;= 22  /* Freq time has elapsed */
+   and @now &gt;= convert(datetime, @monthyear + Start_time)
+   and datediff(hour, Last_dump, @now) &gt;= 22*24
+                  /* Freq time has elapsed */
+   and datediff(minute, Last_dump, @now) &gt;= 22*24*60
+                      /* Freq time has elapsed */
+
+   update #spdumptab set datacntrltype = (select distinct cntrltype
+        from master..sysdevices s where #spdumptab.ddump = s.name)
+   update #spdumptab set logcntrltype = (select distinct cntrltype
+        from master..sysdevices s where #spdumptab.ldump = s.name)
+
+   set nocount off
+   /* */
+   /* Output the values to the daemon */
+   /* */
+   select id = id, name = name, owner = owner, ddump = ddump,
+   ldump = ldump, dcntrl = datacntrltype, lcntrl = logcntrltype,
+   stat = status, attempt=trys, email=emailname,
+      dumptime=convert(varchar(32),
+   convert(datetime,dumptime)),day,freq
+   from #spdumptab
+   order by (convert(datetime,dumptime))
+   go
+
+</PRE></OL><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in SQL Server version
+4.21.006. We are researching this problem and will post new information
+here in the Microsoft Knowledge Base as it becomes available.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Windows NT<BR>
+Keywords            : kbbug4.21 kbtool SSrvAdmin SSrvStProc<BR>
+Version             : 4.21.006<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 30, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

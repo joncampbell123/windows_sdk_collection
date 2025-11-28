@@ -1,0 +1,310 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Support Two File Extensions per MFC Document Type </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q141921">
+<META NAME="KBModify" CONTENT="1997/10/10">
+<META NAME="KBCreate" CONTENT="1996/01/02">
+<META NAME="Keywords" CONTENT="MfcDocView MFCThreadIss kbhowto kbprg kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  Applications built with the Microsoft Foundation Classes (MFC) document or view architecture have at most one file extension associated with each document type. This default file extension, if specified, is stored in the document template string st...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAOG,QAUD,QA4F,QATX,QABA,QAHH,QAY5,QABO,QAB9,QAEF,QBTI,QBV8,QAP2,QBBI,QA2O V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Support Two File Extensions per MFC Document Type</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q141921</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+1.00 1.50 1.51 1.52 | 2.00 2.10 2.20 4.00
+<PRE>WINDOWS             | WINDOWS NT
+</PRE>kbprg kbusage kbhowto
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC), included with:
+<P>
+<P><PRE>    - Microsoft Visual C++ for Windows, versions 1.0, 1.5, 1.51, 1.52
+    - Microsoft Visual C++, 32-bit Edition, versions 2.0, 2.1, 2.2, 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Applications built with the Microsoft Foundation Classes (MFC) document or
+view architecture have at most one file extension associated with each
+document type. This default file extension, if specified, is stored in the
+document template string stored in the string table.
+<P>
+It is often useful to associate two file extensions with a given document
+type. This article describes a technique you can use to allow two file
+extensions to be stored in the document template string. Through class
+derivation and function overrides, it is possible to associate both file
+extensions with the document template.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Step-by-Step Procedure</h3>
+ 
+<P>
+Use the following steps to associate two file extensions with a single
+document type in either SDI or MDI applications.
+
+<OL><P><LI>Modify the string table entry so that it contains two file extensions.
+   The two extensions are entered into the filterExt field separated by a
+   semicolon (for example, .aaa;.bbb). The document template string may
+   look similar to this:
+<P>
+   \nExts\nExts\nFiles (*.aaa; *.bbb)\n.aaa;.bbb\nExts.Doc\nExts Doc.
+
+<P><LI>Derive a class from CMultiDocTemplate for MDI applications, or
+   CSingleDocTemplate for SDI applications. Add this class to your project,
+   and use it when creating the document templates in your InitInstance
+   function. You will need to create a constructor that simply calls the
+   base class constructor.
+<P>
+   CMyMultiDocTemplate::CMyMultiDocTemplate(
+<P><PRE>      UINT nIDResource, CRuntimeClass* pDocClass,
+      CRuntimeClass* pFrameClass, CRuntimeClass* pViewClass ) :
+      CMultiDocTemplate(nIDResource, pDocClass, pFrameClass, pViewClass)
+      { };
+</PRE>
+<P><LI>Override the GetDocString function in your class derived from
+   CMultiDocTemplate or CSingleDocTemplate in step 2.
+<P>
+   BOOL CMyMultiDocTemplate::GetDocString(CString&amp; rString,
+<PRE>                            enum DocStringIndex i) const
+   {
+        CString strTemp,strLeft,strRight;
+        int nFindPos;
+        AfxExtractSubString(strTemp, m_strDocStrings, (int)i);
+
+        if(i == CDocTemplate::filterExt)  {
+          nFindPos=strTemp.Find(';');
+          if(-1 != nFindPos) {
+            //string contains two extensions
+            strLeft=strTemp.Left(nFindPos+1);
+            strRight="*"+strTemp.Right(lstrlen((const
+            char*)strTemp)-nFindPos-1);
+            strTemp=strLeft+strRight;
+          }
+        }
+    rString = strTemp;
+    return TRUE;
+   }
+
+</PRE><P><LI>Override CMyMultiDocTemplate::MatchDocType so that both file extensions
+   are recognized when a file is opened.
+<P>
+   CDocTemplate::Confidence CMyMultiDocTemplate::MatchDocType(const
+<PRE>        char* pszPathName, CDocument*&amp; rpDocMatch)
+   {
+        ASSERT(pszPathName != NULL);
+        rpDocMatch = NULL;
+
+        // go through all documents
+        POSITION pos = GetFirstDocPosition();
+        while (pos != NULL)
+        {
+           CDocument* pDoc = GetNextDoc(pos);
+           if (pDoc-&gt;GetPathName() == pszPathName) {
+              // already open
+              rpDocMatch = pDoc;
+              return yesAlreadyOpen;
+           }
+        }  // end while
+
+        // see if it matches either suffix
+        CString strFilterExt;
+        if (GetDocString(strFilterExt, CDocTemplate::filterExt) &amp;&amp;
+          !strFilterExt.IsEmpty())
+        {
+           // see if extension matches
+           ASSERT(strFilterExt[0] == '.');
+           CString ext1,ext2;
+           int nDot = CString(pszPathName).ReverseFind('.');
+           const char* pszDot = nDot &lt; 0 ? NULL : pszPathName + nDot;
+
+           int nSemi = strFilterExt.Find(';');
+           if(-1 != nSemi)   {
+             // string contains two extensions
+             ext1=strFilterExt.Left(nSemi);
+             ext2=strFilterExt.Mid(nSemi+2);
+             // check for a match against either extension
+             if (nDot &gt;= 0 &amp;&amp; (lstrcmpi(pszPathName+nDot, ext1) == 0
+                 || lstrcmpi(pszPathName+nDot,ext2) ==0))
+               return yesAttemptNative; // extension matches
+           }
+           else
+           { // string contains a single extension
+             if (nDot &gt;= 0 &amp;&amp; (lstrcmpi(pszPathName+nDot,
+                 strFilterExt)==0))
+             return yesAttemptNative;  // extension matches
+           }
+        }
+        return yesAttemptForeign; //unknown document type
+   }
+
+</PRE><P><LI>To make Save and Save As function correctly, override the DoSave
+   function in your CDocument-derived class. Simply cut and paste the MFC
+   implementation of CDocument::DoSave() from Mfc\Src\Doccore.cpp into your
+   derived class.
+<P>
+   Replace these lines:
+<P>
+<PRE>        // append the default suffix if there is one
+        CString strExt;
+        if (pTemplate-&gt;GetDocString(strExt, CDocTemplate::filterExt) &amp;&amp;
+            !strExt.IsEmpty())
+        {
+           ASSERT(strExt[0] == '.');
+           newName += strExt;
+        }
+
+   with these lines:
+
+        // append the default suffix if there is one
+        CString strExt;
+        if (pTemplate-&gt;GetDocString(strExt, CDocTemplate::filterExt) &amp;&amp;
+            !strExt.IsEmpty())
+        {
+          ASSERT(strExt[0] == '.');
+
+          int nSemi;                       //added
+          if(nSemi = strExt.Find(';'));    //added
+          strExt = strExt.Left(nSemi);     //added
+
+          newName += strExt;
+        }
+
+   The three added lines of code return the first extension by default when
+   Save As is processed for a document type that has two extensions
+   specified in its document string. The user must type over this extension
+   if a file is to be saved with the second extension specified in the
+   document string.
+
+   You will also need to replace the following lines of code:
+
+      CATCH_ALL(e)
+      {
+      TRACE0("Warning: failed to delete file after failed SaveAs.\n");
+      DELETE_EXCEPTION(e);
+      }
+
+   with:
+
+      CATCH_ALL(e)
+      {
+      TRACE0("Warning: failed to delete file after failed SaveAs.\n");
+      e-&gt;Delete();     //modified
+      }
+
+   This is necessary because the DELETE_EXCEPTION() macro is undefined in
+   this context.
+
+</PRE><P><LI>(16-bit Editions Only) Use Class Wizard to provide OnFileSave and
+   OnFileSaveAs command handlers in your derived document class. This is
+   necessary because in the 16-bit versions of Visual C++, the DoSave
+   function is not virtual. Simply cut and paste the contents of the base
+   class versions of both functions from Mfc\Src\Doccore.cpp into your
+   command handlers. The resulting functions call the local copy of DoSave
+   rather than the base class version. It may be necessary to add #include
+   "io.h" to your project to provide a definition for the _access function.
+<P></OL>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.50 1.51 1.52 2.00 2.50 3.00 3.10<BR>
+KBCategory: kbprg kbusage kbhowto<BR>
+KBSubcategory: MfcDocView MfcThreadIss<BR>
+Keywords          : MfcDocView MFCThreadIss kbhowto kbprg kbusage<BR>
+Technology        : kbMfc<BR>
+Version           : 1.00 1.50 1.51 1.52 | 2.00 2.10<BR>
+Platform          : NT WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

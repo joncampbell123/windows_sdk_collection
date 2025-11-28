@@ -1,0 +1,204 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>SNA Server APPC Error Communicating to Software AG Entire APPC </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q156083">
+<META NAME="KBModify" CONTENT="1997/04/17">
+<META NAME="KBCreate" CONTENT="1996/09/16">
+<META NAME="Keywords" CONTENT="kb3rdparty kbnetwork kbprg snaappc snatp">
+<META NAME="KBArea" CONTENT="Support; KB; sna">
+<META NAME="Description" CONTENT="  You may see the following message sequence when you run an APPC TP on SNA Server communicating to a partner APPC TP on an MVS host (running on Software AG Entire APPC server v1.2.4), over a mapped conversation:  SNA Server            Host          ...">
+<META NAME="Product" CONTENT="SNA Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAYY,QAYL,QALG,QAJH,QAUJ,QBJC,QAXC,QA7O,QAAP,QAB4,QBET,QA7N,QAH4,QBGP,QBCF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>SNA Server APPC Error Communicating to Software AG Entire APPC</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q156083</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SNA Server version 2.0, 2.1, and 2.11
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+You may see the following message sequence when you run an APPC TP on
+SNA Server communicating to a partner APPC TP on an MVS host (running on
+Software AG Entire APPC server v1.2.4), over a mapped conversation:
+<P>
+<PRE>SNA Server            Host
+
+                  &lt;- RH=039020  RU=00 A2 12 FF &lt;lu6.2 data&gt;
+                  &lt;- RH=039020  RU=00 A2 12 FF &lt;lu6.2 data&gt;
+                  &lt;- RH=019020  RU=00 04 12 F3 00 A2 12 FF &lt;lu6.2 data&gt;
+
+</PRE>RH=879000, RU=08460000 -&gt;
+RH=0A8900, RU=07070889010000 -&gt;
+<P>
+The APPC application running on SNA Server is notified of a conversation
+failure, when the host TP receives an FMH-7 error with a sense code of
+08890100, or the Transaction Program Error: No data truncation.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This is a problem in the Software AG Entire APPC Server running on MVS.
+The RU in the third LU6.2 data message sent by the host includes a
+"Map name" GDS command prior to the LU6.2 application data:
+<P>
+<PRE>   000412F300A212FF....
+
+</PRE>where 000412F3 = Map Name GDS variable (NULL map name)
+<PRE>      00A212FF = LU6.2 data (data length of A2)
+
+</PRE>The SNA Server APPC interface does not support the "Map name" function and
+rejects the data with a sense code of 08460000 (error forthcoming)
+followed by an FMH-7 error and sense data = 08890100.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Currently no fix is available from Software AG.
+<P>
+The APPC application could work around the problem by using basic
+conversation verbs on the mapped conversation, allowing the application to
+ignore the Map Name GDS variable. Here is how the application would need
+to be modified to accomplish this:
+
+<UL><LI>For all APPC calls, change the opcode field to indicate that the Basic
+   verb function is to be called, and change the opext field in the verb
+   control block to AP_BASIC_CONVERSATION.
+
+<LI>To simplify handling of received data, set fill = AP_LL on all receive
+   verbs, to restrict received data records to single LLs only.
+
+<LI>Change the send and receive verbs to handle the 4 leading bytes at the
+   start of the LU6.2 data as follows:
+<P>
+   byte 1,2 = LL field (length of LU6.2 data + 4 bytes, or 32767 max)
+   byte 3,4 = GDS variable, where
+<PRE>               x12FF = LU6.2 application data, or
+               x12F3 = Map Name GDS variable
+   byte 5+  = LU6.2 application data (32763 bytes max)
+
+   When you get a message containing the Map Name GDS variable, ignore
+   it and look for LU6.2 application data which may follow.
+
+</PRE></UL>NOTE: If the leading bit of the LL field is set to "1", this indicates
+that another LL follows the LU6.2 data. For example, if an APPC
+application writes 8KB of data, and if it uses a GDS LU6.2 data size
+of 4KB, the receiving TP would receive the data as follows (if
+fill=AP_LL is used):
+<P>
+<PRE>   Data from first receive:   9000 12FF &lt;4KB of data - 4 bytes&gt;
+   Data from second receive:  9000 &lt;4KB of data - 2 bytes&gt;
+   Data from third receive:   0008 &lt;last 6 bytes of data&gt;
+
+</PRE>where:
+<PRE>   9000 = LL field: continuation bit + 4KB of data to follow
+   12FF = LU6.2 application data GDS variable
+
+</PRE>NOTE: It is up to the APPC sender to format the GDS variables and
+length values. The SNA Server APPC interface sends GDS data in
+4KB chunks, though other implementations may use the max size of
+32767.
+<P>
+For more information about LL and GDS variables, see Chapter 12 of the
+“IBM SNA Formats Guide” (GDS ID Description and Assignments), IBM
+document number GA27-3136.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: prodsna<BR>
+Keywords            : kb3rdparty kbnetwork kbprg snaappc snatp<BR>
+Version             : 2.0 2.1 2.11<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

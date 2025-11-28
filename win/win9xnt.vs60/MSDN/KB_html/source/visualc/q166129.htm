@@ -1,0 +1,251 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Obtaining the DEVMODE and DEVNAMES Structures </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q166129">
+<META NAME="KBModify" CONTENT="1997/11/24">
+<META NAME="KBCreate" CONTENT="1997/03/31">
+<META NAME="Keywords" CONTENT="MfcPrinting kbprint">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  You need the DEVMODE and DEVNAMES structures to specify a printer in an MFC application when you programmatically print to a non-default (network or secondary) printer. They can be manually constructed using information obtained from the GetPrinter...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAOX,QACT,QABA,QAIC,QAUD,QAGI,QAYY,QBXS,QBBI,QAY5,QAY2,QAUJ,QAJH,QAH4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Obtaining the DEVMODE and DEVNAMES Structures</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 24, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q166129</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++, 32-bit Editions, versions 4.0, 4.1, 4.2, 4.2b,
+<P><PRE>     5.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+You need the DEVMODE and DEVNAMES structures to specify a printer in an MFC
+application when you programmatically print to a non-default (network or
+secondary) printer. They can be manually constructed using information
+obtained from the GetPrinter() printer API.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+During a normal print operation in an MFC application, the print dialog box
+is displayed which allows you to select the printer you want to print to.
+The default printer displayed in the print dialog box is the default
+printer specified in the system. MFC stores the default printer of the
+application in the CWinApp::m_hDevMode and CWinApp::m_hDevNames protected
+data members. Because MFC initializes these variables to NULL, the MFC
+print architecture defaults to the system's default printer the first time
+a print operation is performed. The system default printer's DEVMODE and
+DEVNAMES are then copied to the MFC application's m_hDevMode and
+m_hDevNames data members.
+<P>
+Occasionally, a programmer may want to print to a printer other than the
+default printer without having the user specify it through the print dialog
+box. Two common examples are:
+
+<UL><LI>Set the default printer of the application to something other than the
+   system's default printer.
+<P>
+</UL>-or-
+
+<UL><LI>Printing directly to a non-default printer such as another network
+   printer.
+<P>
+</UL>Whether you need to use the non-default printer on a permanent basis or for
+only one print job, you need the DEVMODE and DEVNAMES structure to create
+the printer DC. The PRINTER_INFO_2 structure from GetPrinter() contains all
+the information needed to fill the DEVMODE and DEVNAMES structures. The
+printer DC can then be created by the programmer explicitly through
+CPrintDialog::CreatePrinterDC() or CDC::CreateDC() (among others), or
+implicitly through the MFC framework.
+<P>
+The sample code below shows how to use GetPrinter() to set the default
+printer of the application. The code implements a CMyApp function that uses
+the printer name supplied to globally allocate a new DEVMODE and DEVNAMES
+structures and set them to the data members of CWinApp. You can call this
+function from CMyApp::InitInstance(), or anywhere before printing. Note
+that these structures are not freed because the MFC framework handles this
+automatically.
+<P>
+To print directly to a non-default printer, create the structures in the
+OnPreparePrinting, set them to pInfo-&gt;m_pPD-&gt;m_pd's corresponding data
+members, and call pInfo-m_pPD-&gt;CreatePrinterDC(). Do not call
+DoPreparePrinting().
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   class CMyApp : public CWinApp
+   {
+   public:
+       CTestprintApp();
+       BOOL SetPrinterDevice(char*);
+       ...
+   };
+
+   #include &lt;winspool.h&gt;
+
+   BOOL CMyApp::SetPrinterDevice(char* pszDeviceName)
+   {
+   // Open printer and obtain PRINTER_INFO_2 structure.
+   HANDLE hPrinter;
+   if (OpenPrinter(pszDeviceName, &amp;hPrinter, NULL) == FALSE)
+       return FALSE;
+   DWORD dwBytesReturned, dwBytesNeeded;
+   GetPrinter(hPrinter, 2, NULL, 0, &amp;dwBytesNeeded);
+   PRINTER_INFO_2* p2 = (PRINTER_INFO_2*)GlobalAlloc(GPTR,
+       dwBytesNeeded);
+   if (GetPrinter(hPrinter, 2, (LPBYTE)p2, dwBytesNeeded,
+       &amp;dwBytesReturned) == 0) {
+   GlobalFree(p2);
+   ClosePrinter(hPrinter);
+   return FALSE;
+   }
+   ClosePrinter(hPrinter);
+
+   // Allocate a global handle for DEVMODE and copy DEVMODE data.
+   HGLOBAL  hDevMode = GlobalAlloc(GHND, sizeof(*p2-&gt;pDevMode));
+   DEVMODE* pDevMode = (DEVMODE*)GlobalLock(hDevMode);
+   memcpy(pDevMode, p2-&gt;pDevMode, sizeof(*p2-&gt;pDevMode));
+   GlobalUnlock(hDevMode);
+
+   // Compute size of DEVNAMES structure you'll need.
+   DWORD drvNameLen = strlen(p2-&gt;pDriverName);  // driver name
+   DWORD ptrNameLen = strlen(p2-&gt;pPrinterName); // printer name
+   DWORD porNameLen = strlen(p2-&gt;pPortName);    // port name
+   DWORD devNameSize = sizeof(DEVNAMES) +
+       ptrNameLen + porNameLen + drvNameLen + 3;
+
+   // Allocate a global handle big enough to hold DEVNAMES.
+   HGLOBAL   hDevNames = GlobalAlloc(GHND, devNameSize);
+   DEVNAMES* pDevNames = (DEVNAMES*)GlobalLock(hDevNames);
+
+   // Copy the DEVNAMES information from PRINTER_INFO_2 structure.
+   pDevNames-&gt;wDriverOffset = sizeof(DEVNAMES);
+   memcpy((char*)pDevNames + pDevNames-&gt;wDriverOffset,
+       p2-&gt;pDriverName, drvNameLen);
+
+   pDevNames-&gt;wDeviceOffset = sizeof(DEVNAMES) +
+   drvNameLen + 1;
+   memcpy((char*)pDevNames + pDevNames-&gt;wDeviceOffset,
+       p2-&gt;pPrinterName, ptrNameLen);
+
+   pDevNames-&gt;wOutputOffset = sizeof(DEVNAMES) +
+       drvNameLen + ptrNameLen + 2;
+   memcpy((char*)pDevNames + pDevNames-&gt;wOutputOffset,
+       p2-&gt;pPortName, porNameLen);
+
+   pDevNames-&gt;wDefault = 0;
+
+   GlobalUnlock(hDevNames);
+   GlobalFree(p2);   // free PRINTER_INFO_2
+
+   m_hDevMode = hDevMode;
+   m_hDevNames = hDevNames;
+   return TRUE;
+   }
+
+</PRE>(c) Microsoft Corporation 1997, All Rights Reserved.
+Contributions by Adam Kim, Microsoft Corporation
+ 
+<PRE>Keywords          : MfcPrinting kbprint
+Technology        : kbMfc
+Version           : 4.0 4.1 4.2 4.2b 5.0
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 24, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

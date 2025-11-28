@@ -1,0 +1,235 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Allocate Memory From the MS-DOS Upper Memory Area </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q102325">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1993/08/03">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  In MS-DOS version 5.0, an application can dynamically allocate blocks of memory from the MS-DOS upper-memory area. To do so, the application calls Function 5803h, Set Upper-Memory Link, before it calls the malloc() function in the C run-time librar...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBW6,QAGI,QAE2,QBFY,QAY2,QBE7,QBE6,QBXS,QAJH,QBXA,QAPF,QABA,QAEF,QAC2,QACJ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Allocate Memory From the MS-DOS Upper Memory Area</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q102325</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+6.00 6.00a 6.00ax 7.00 | 1.00 1.50
+<PRE>MS-DOS                 | WINDOWS
+</PRE>kbprg kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The C Run-time (CRT), included with:
+<P>
+<P><PRE>    - Microsoft C for MS-DOS, versions 6.0, 6.0a, and 6.0ax
+    - Microsoft C/C++ for MS-DOS, version 7.0
+    - Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In MS-DOS version 5.0, an application can dynamically allocate blocks
+of memory from the MS-DOS upper-memory area. To do so, the application
+calls Function 5803h, Set Upper-Memory Link, before it calls the
+malloc() function in the C run-time library.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The first 640KB of MS-DOS memory is commonly called "conventional
+memory." The address space immediately above that, in the address
+range from 640K to 1024K is the Upper Memory Area (UMA).
+<P>
+When an application developed in the compact or large memory model
+uses malloc() to dynamically allocate memory, malloc() acquires memory
+in the MS-DOS far heap to satisfy the request. By default, MS-DOS
+makes only conventional memory available to an application because, by
+default, MS-DOS does not link conventional memory with the 384K of UMA
+memory immediately above conventional memory.
+<P>
+MS-DOS version 5.0 introduces the ability to satisfy allocation
+requests with the UMA on machines that have an 80386 or greater
+processor and that have physical memory installed in the address space
+from 640K to 1024K. Both HIMEM.SYS and EMM386 must be installed, and
+the CONFIG.SYS file must contain the line DOS=UMB.
+<P>
+The code example below demonstrates establishing the link to the
+MS-DOS UMA and allocating memory from the UMA.
+<P>
+NOTE: This example does not work when an application other than
+MS-DOS, such as 386MAX, manages the UMA.
+<P>
+By default, the MS-DOS memory allocation strategy involves searching
+memory from the available memory block with the lowest address. If the
+upper-memory link is established, MS-DOS searches the UMA only after
+all conventional memory has been exhausted. You can change this
+allocation strategy using the MS-DOS Function 5801h, Set Allocation
+Strategy. For example, your application can choose to search only the
+UMA.
+<P>
+If you change the upper-memory link state or the original MS-DOS
+memory allocation strategy, you must restore them before terminating
+your application.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/*
+ * Compiler options needed: /AL or /AC
+ */
+
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;conio.h&gt;
+#include &lt;malloc.h&gt;
+#include &lt;dos.h&gt;
+
+void main(void)
+</PRE>{
+<PRE>   int i;
+   char in;
+   union REGS inregs, outregs;
+
+   printf("Link upper-memory area? Y/N: ");
+   in = getche();
+   while (in != 'Y' &amp;&amp; in != 'y' &amp;&amp; in != 'N' &amp;&amp; in != 'n')
+   {
+      printf("\nLink upper-memory area? Y/N: ");
+      in = getche();
+   }
+
+   if (in == 'Y' || in == 'y')
+   {
+      // Link upper-memory area
+      inregs.x.ax = 0x5803;
+      inregs.x.bx = 0x0001;
+      int86(0x21, &amp;inregs, &amp;outregs);
+      if (outregs.x.cflag)
+         printf("\n** Set Upper-Memory Link error **\n");
+   }
+
+   // malloc() as many 1KB blocks as possible
+   for (i = 0; ; i++)
+   {
+      if (!malloc(1024))
+         break;
+   }
+   printf("\n%d KB successfully allocated\n", i);
+
+   // Unlink UMA
+   inregs.x.ax = 0x5803;
+   inregs.x.bx = 0x0000;
+   int86(0x21, &amp;inregs, &amp;outregs);
+   if (outregs.x.cflag)
+      printf("** Set Upper-Memory Link error **\n");
+</PRE>}
+<P>
+Running the application produced the following output. The MEM /C
+command showed that the test machine had 582K available conventional
+memory and 76K free in the UMA.
+<P>
+<P><h3>Output</h3>
+ 
+<P>
+Link upper-memory area? Y/N: n
+503 KB successfully allocated
+Link upper-memory area? Y/N: y
+578 KB successfully allocated
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 1.00 1.50 6.00 6.00a 6.00ax 7.00<BR>
+KBCategory: kbprg kbcode<BR>
+KBSubcategory: CRTIss<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

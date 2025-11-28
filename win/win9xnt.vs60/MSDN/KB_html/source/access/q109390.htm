@@ -1,0 +1,306 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>ACC: Sample Function to Use the COMMDLG Color Dialog Box </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q109390">
+<META NAME="KBModify" CONTENT="1997/06/08">
+<META NAME="KBCreate" CONTENT="1994/01/02">
+<META NAME="Keywords" CONTENT="kbprg PgmApi">
+<META NAME="KBArea" CONTENT="Support; KB; access, convert, crossnet, dbweb, odbc, winprint, setup, vbapp, office, officevba">
+<META NAME="Description" CONTENT="  Advanced: Requires expert coding, interoperability, and multiuser skills.  The Palette in Microsoft Access provides a limited selection of colors for database objects and does not allow you to create custom colors. However, the BackColor, ForeColor...">
+<META NAME="Product" CONTENT="Access">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ODBC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAG9,QAPG,QA1S,QAY5,QDN9,QBV8,QAB9,QA7H,QA4Q,QANG,QA5F,QAMA,QA01,QAGI,QBFY V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>ACC: Sample Function to Use the COMMDLG Color Dialog Box</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 8, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q109390</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Access versions 1.0, 1.1, 2.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Advanced: Requires expert coding, interoperability, and multiuser skills.
+<P>
+The Palette in Microsoft Access provides a limited selection of colors for
+database objects and does not allow you to create custom colors. However,
+the BackColor, ForeColor, and BorderColor properties of forms and reports
+will accept any valid RGB color value.
+<P>
+This article lists a sample Access Basic function called ChooseColor() that
+uses the Microsoft Windows standard Color dialog box so that you can choose
+from a greater selection of colors or create your own custom color.
+<P>
+NOTE: In Access for Windows 95, the new Color Builder Wizard is included
+which replaces the functionality of the ChooseColor function. For more
+information about the Color Builder, search for "Color Builder" using the
+Microsoft Access for Windows 95 Help Index.
+<P>
+This article assumes that you are familiar with Access Basic and with
+creating Microsoft Access applications using the programming tools provided
+with Microsoft Access. For more information on Access Basic, please refer
+to the "Introduction to Programming" manual in Microsoft Access version
+1.x, or the "Building Applications" manual, Chapter 3, "Introducing Access
+Basic" in version 2.0.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To set up the sample function ChooseColor(), create a new module with the
+following Declarations section and function:
+<P>
+NOTE: In the following sample code, an underscore (_) is used as a line-
+continuation character. Remove the underscore when re-creating this code in
+Access Basic.
+<P>
+<PRE>   '********************************************************************
+   ' MODULE DECLARATION SECTION
+   '********************************************************************
+   Option Explicit
+
+   '
+   ' Required COMMDLG Declarations
+   '
+   Type ChooseColor
+      lStructSize As Long
+      hwndOwner As Integer
+      hInstance  As Integer
+      RgbResult As Long
+      lpCustColors As Long
+      Flags As Long
+      lCustData As Long
+      lpfnHook As Long
+      lpTemplateName As Long
+   End Type
+
+   Global Const CC_RGBINIT = &amp;H1
+   Global Const CC_FULLOPEN = &amp;H2
+
+   Declare Function ChooseColor_API Lib "COMMDLG.DLL" Alias _
+      "ChooseColor" (pCHOOSECOLOR As ChooseColor) As Integer
+   Declare Function CommDlgExtendedError Lib "COMMDLG.DLL" () As Long
+
+   '
+   ' Global Memory Declarations
+   '
+   Declare Function GlobalAlloc Lib "Kernel" _
+      (ByVal wFlags As Integer, ByVal dwBytes As Long) As Integer
+   Declare Function GlobalFree Lib "Kernel" _
+      (ByVal hMem As Integer) As Integer
+   Declare Function GlobalLock Lib "Kernel" _
+      (ByVal hMem As Integer) As Long
+   Declare Function GlobalUnlock Lib "Kernel" _
+      (ByVal hMem As Integer) As Integer
+
+   Global Const GMEM_MOVEABLE = &amp;H2
+   Global Const GMEM_ZEROINIT = &amp;H40
+   Global Const GHND = (GMEM_MOVEABLE Or GMEM_ZEROINIT)
+
+   Declare Sub hmemcpy Lib "Kernel" _
+      (lpDest As Any, lpSource As Any, ByVal dwBytes As Long)
+
+   '********************************************************************
+   ' FUNCTION: ChooseColor
+   '
+   ' PURPOSE:
+   '   Uses the standard Windows Color dialog box in COMMDLG.DLL to get
+   '   a 256-color RGB value for use in Microsoft Access. The returned
+   '   value can be used in the BackColor, ForeColor, or BorderColor
+   '   properties.
+   '
+   ' ARGUMENTS:
+   '   DefaultColor - The default RGB color to be selected.
+   '                  Black, 0, is usually the default.
+   '
+   ' RETURN VALUE:
+   '   &gt;=0  The user-selected RGB value
+   '   -1   Couldn't allocate global memory
+   '   -2   Couldn't lock global memory
+   '   -3   COMMDLG error occurred. A message box will display the
+   '        number prior to this function exiting.
+   '
+   ' ********************************************************************
+   Function ChooseColor (ByVal DefaultColor As Long) As Long
+      Dim C As ChooseColor
+      Dim MemHandle As Long
+      Dim Result As Integer, i As Integer
+
+      ' Define CustomColor array, address, size variables
+      ReDim CustomColors(15) As Long
+      Dim CustomColorsAddress As Long
+      Dim CustomColorsSize As Integer
+
+      ' Fill custom colors array with all white
+      For i = 0 To UBound(CustomColors)
+         CustomColors(i) = &amp;HFFFFFF
+      Next
+
+      ' Get size of global memory needed for custom colors
+      CustomColorsSize = Len(CustomColors(0)) * 16
+
+      ' Get a global memory block to hold a copy of the custom colors
+      MemHandle = GlobalAlloc(GHND, CustomColorsSize)
+      If MemHandle = 0 Then
+         ChooseColor = -1
+         Exit Function
+      End If
+
+      ' Lock the custom color's global memory block
+      CustomColorsAddress = GlobalLock(MemHandle)
+      If CustomColorsAddress = 0 Then
+         ChooseColor = -2
+         Exit Function
+      End If
+
+      ' Copy custom colors to the global memory block
+      Call hmemcpy(ByVal CustomColorsAddress, _
+         CustomColors(0), CustomColorsSize)
+
+      ' Initialize Choose Color structure
+      C.lStructSize = Len(C)
+      C.hwndOwner = 0&amp;
+      C.lpCustColors = CustomColorsAddress
+      C.RgbResult = DefaultColor
+      C.Flags = CC_RGBINIT Or CC_FULLOPEN
+
+      ' Call the Choose Color COMMDLG routine
+      Result = ChooseColor_API(C)
+
+      ' Did an error occur?
+      If Result = 0 And CommDlgExtendedError() &lt;&gt; 0 Then
+         ChooseColor = -3
+         MsgBox Str$(CommDlgExtendedError()), 16, "Choose Color Error"
+      End If
+
+      ' Copy the new custom colors to the CustomColors address locally
+      ' .. CustomColor array will now contain list of new custom colors
+      Call hmemcpy(CustomColors(0), _
+         ByVal CustomColorsAddress, CustomColorsSize)
+
+      ' Unlock and free the global memory block
+      Result = GlobalUnlock(MemHandle)
+      Result = GlobalFree(MemHandle)
+
+      ' Return the selected color
+      ChooseColor = C.RgbResult
+
+   End Function
+
+</PRE><h3>How to Use the ChooseColor() Function</h3>
+ 
+<P>
+The following sample Access Basic function demonstrates how to use the
+ChooseColor() function:
+<P>
+<PRE>   Function GetColor()
+      MsgBox Str$(ChooseColor(0))
+   End Function
+
+</PRE>The GetColor() function calls the ChooseColor() function and selects black
+as the default color. A message box will display the color selected in the
+Color dialog box.
+<P>
+The GetColor() function can be called from a command button by entering the
+following for the button's OnPush property:
+<P>
+<PRE>   =GetColor()
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: commdlg.dll<BR>
+Keywords            : kbprg PgmApi<BR>
+Version             : 1.0 1.1 2.0<BR>
+Platform            : WINDOWS<BR>
+Hardware            : X86<BR>
+Issue type          : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 8, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

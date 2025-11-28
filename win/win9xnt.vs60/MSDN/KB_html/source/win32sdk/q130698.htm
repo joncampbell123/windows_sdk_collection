@@ -1,0 +1,233 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Obtain Filename and Path from a Shell Link or Shortcut </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q130698">
+<META NAME="KBModify" CONTENT="1996/07/19">
+<META NAME="KBCreate" CONTENT="1995/05/25">
+<META NAME="Keywords" CONTENT="kbprg kbcode kbole">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The shortcuts used in Microsoft Windows 95 provide applications and users a way to create shortcuts or links to objects in the shell's namespace. The IShellLink OLE Interface can be used to obtain the path and filename from the shortcut, among othe...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAE2,QBBS,QAGI,QBQU,QAW6,QAUD,QAPN,QBWR,QA2S,QAWI,QAFI,QDL9,QBXA,QBWO,QBWN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Obtain Filename and Path from a Shell Link or Shortcut</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 19, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q130698</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK), versions 3.51 and 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The shortcuts used in Microsoft Windows 95 provide applications and users
+a way to create shortcuts or links to objects in the shell's namespace.
+The IShellLink OLE Interface can be used to obtain the path and filename
+from the shortcut, among other things.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+A shortcut allows the user or an application to access an object from
+anywhere in the namespace. Shortcuts to objects are stored as binary
+files. These files contain information such as the path to the object,
+working directory, the path of the icon used to display the object,
+the description string, and so on.
+<P>
+Given a shortcut, applications can use the IShellLink interface and
+its functions to obtain all the pertinent information about that
+object. The IShellLink interface supports functions such as GetPath(),
+GetDescription(), Resolve(), GetWorkingDirectory(), and so on.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following code shows how to obtain the filename or path and
+description of a given link file:
+<P>
+<PRE>   #include &lt;windows.h&gt;
+   #include &lt;shlobj.h&gt;
+
+   // GetLinkInfo() fills the filename and path buffer
+   // with relevant information.
+   // hWnd         - calling application's window handle.
+   //
+   // lpszLinkName - name of the link file passed into the function.
+   //
+   // lpszPath     - the buffer that receives the file's path name.
+   //
+   // lpszDescription - the buffer that receives the file's
+   // description.
+   HRESULT
+   GetLinkInfo( HWND    hWnd,
+                LPCTSTR lpszLinkName,
+                LPSTR   lpszPath,
+                LPSTR   lpszDescription)
+   {
+
+      HRESULT hres;
+      IShellLink *pShLink;
+      WIN32_FIND_DATA wfd;
+
+   // Initialize the return parameters to null strings.
+      *lpszPath = '\0';
+      *lpszDescription = '\0';
+
+   // Call CoCreateInstance to obtain the IShellLink
+   // Interface pointer. This call fails if
+   // CoInitialize is not called, so it is assumed that
+   // CoInitialize has been called.
+      hres = CoCreateInstance( &amp;CLSID_ShellLink,
+                               NULL,
+                               CLSCTX_INPROC_SERVER,
+                               &amp;IID_IShellLink,
+                               (LPVOID *)&amp;pShLink );
+
+      if (SUCCEEDED(hres))
+      {
+         IPersistFile *ppf;
+
+   // The IShellLink Interface supports the IPersistFile
+   // interface. Get an interface pointer to it.
+         hres = pShLink-&gt;lpVtbl-&gt;QueryInterface(pShLink,
+                                            &amp;IID_IPersistFile,
+                                            (LPVOID *)&amp;ppf );
+         if (SUCCEEDED(hres))
+         {
+            WORD wsz[MAX_PATH];
+
+   // Convert the given link name string to a wide character string.
+            MultiByteToWideChar( CP_ACP, 0,
+                                 lpszLinkName,
+                                 -1, wsz, MAX_PATH );
+   // Load the file.
+            hres = ppf-&gt;lpVtbl-&gt;Load(ppf, wsz, STGM_READ );
+            if (SUCCEEDED(hres))
+            {
+   // Resolve the link by calling the Resolve() interface function.
+   // This enables us to find the file the link points to even if
+   // it has been moved or renamed.
+               hres = pShLink-&gt;lpVtbl-&gt;Resolve(pShLink,  hWnd,
+                                               SLR_ANY_MATCH | SLR_NO_UI);
+               if (SUCCEEDED(hres))
+               {
+   // Get the path of the file the link points to.
+                  hres = pShLink-&gt;lpVtbl-&gt;GetPath( pShLink, lpszPath,
+                                               MAX_PATH,
+                                               &amp;wfd,
+                                               SLGP_SHORTPATH );
+
+   // Only get the description if we successfully got the path
+   // (We can't return immediately because we need to release ppf &amp;
+   //  pShLink.)
+                  if(SUCCEEDED(hres))
+                  {
+   // Get the description of the link.
+                    hres = pShLink-&gt;lpVtbl-&gt;GetDescription(pShLink,
+                                                         lpszDescription,
+                                                         MAX_PATH );
+                  }
+               }
+            }
+            ppf-&gt;lpVtbl-&gt;Release(ppf);
+         }
+         pShLink-&gt;lpVtbl-&gt;Release(pShLink);
+      }
+      return hres;
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.00<BR>
+KBCategory: kbprg kbcode kbole<BR>
+KBSubcategory: IShellLink<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 19, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

@@ -1,0 +1,249 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Focus and Tab Issues with ATL Subclassed Edit Control </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q179696">
+<META NAME="KBModify" CONTENT="1998/02/16">
+<META NAME="KBCreate" CONTENT="1998/01/21">
+<META NAME="Keywords" CONTENT="AtlControl kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  If you use the ATL Wizards to create an ActiveX control that subclasses the Edit common control, you may see one or both of the following problems depending on where you use the control:   - You cannot use the TAB key to set focus to the ActiveX Ed...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAMN,QAOE,QA7O,QAB5,QADO,QAHP,QAHV,QAUD,QACI,QARP,QAEV,QBE7,QBE6,QAW6,QAEF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Focus and Tab Issues with ATL Subclassed Edit Control</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  February 16, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q179696</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Active Template Library (ATL), versions 2.0, 2.1
+   included with:
+<P><PRE>    - Microsoft Visual C++, 32-bit Editions, version 5.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+If you use the ATL Wizards to create an ActiveX control that subclasses the
+Edit common control, you may see one or both of the following problems
+depending on where you use the control:
+
+<UL><LI>You cannot use the TAB key to set focus to the ActiveX Edit control. You
+   must use the mouse to set focus and activate the ActiveX Edit control.
+
+<LI>Once the ActiveX Edit control has the focus, you will hear a beep if you
+   try to use the TAB key to change the focus away from it.
+<P>
+</UL><h2>CAUSE</h2>
+ 
+<P>
+When an ATL-based ActiveX control subclasses a Windows common control, it
+creates a contained window object to subclass the control. When you use the
+TAB key to move around an application, the ActiveX control window gets the
+focus but never shifts the focus to the Edit window within the ActiveX
+control. As a result, you must click the Edit control to activate it.
+<P>
+The second issue results from the way an ATL-based control and its ActiveX
+control container handle messages. Because of the way some control
+containers handle messages, they do not get the opportunity to process the
+TAB keystroke, even if the control itself does not process it.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+To activate the ATL-based ActiveX Edit control with the TAB key, you can
+override the OnSetFocus method and set the focus to the contained Edit
+window before returning.
+<P>
+To use the TAB key to shift the focus away from the ATL-based control, you
+can override the TranslateAccelerator method. If the message is WM_KEYDOWN
+and the key is the TAB key, give the IOleControlSite TranslateAccelerator a
+chance to process the message first.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft is researching this problem and will post new information here in
+the Microsoft Knowledge Base as it becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To work around these issues, add the following code to your ATL-based
+control class:
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   typedef enum tagKEYMODIFIERS
+   {
+      KEYMOD_NONE    = 0X00000000,
+      KEYMOD_SHIFT   = 0x00000001,
+      KEYMOD_CONTROL = 0x00000002,
+      KEYMOD_ALT     = 0x00000004
+   } KEYMODIFIERS;
+
+   class ATL_NO_VTABLE Csc_ctrl2 :
+      ...
+   {
+      ...
+
+      LRESULT OnSetFocus(UINT   /* nMsg */,
+                         WPARAM /* wParam */,
+                         LPARAM /* lParam */,
+                         BOOL&amp;  /* bHandled */)
+      {
+         CComQIPtr &lt;IOleControlSite, &amp;IID_IOleControlSite&gt;
+            spSite(m_spClientSite);
+         if (m_bInPlaceActive &amp;&amp; spSite)
+            spSite-&gt;OnFocus(TRUE);
+
+         ::SetFocus(m_ctlEdit.m_hWnd);
+         return 0;
+      }
+
+      STDMETHOD(TranslateAccelerator)(LPMSG lpmsg)
+      {
+      CComQIPtr&lt;IOleControlSite,&amp;IID_IOleControlSite&gt;
+            spCtrlSite(m_spClientSite);
+      if (spCtrlSite)
+      {
+         if ((lpmsg-&gt;message == WM_KEYDOWN) &amp;&amp;
+             (LOWORD(lpmsg-&gt;wParam) == VK_TAB))
+         {
+            DWORD keymods = 0;
+            keymods += (GetKeyState(VK_SHIFT) &lt; 0) ? KEYMOD_SHIFT
+                                                   : KEYMOD_NONE;
+            keymods +=
+               (GetKeyState(VK_CONTROL) &lt; 0) ? KEYMOD_CONTROL
+                                             : KEYMOD_NONE;
+            keymods += (GetKeyState(VK_MENU) &lt; 0) ? KEYMOD_ALT
+                                                  : KEYMOD_NONE;
+            return spCtrlSite-&gt;TranslateAccelerator(lpmsg,keymods);
+         }
+      }
+      return S_FALSE;
+    }
+
+   ...
+   };
+
+</PRE><h3>Steps to Reproduce Behavior</h3>
+ 
+
+<OL><P><LI>Use the ATL Wizards to create an ActiveX control project that
+   subclasses an Edit control.
+
+<P><LI>Build the control and place it in different containers with several
+   other controls.
+
+<P><LI>Use the TAB key to move between the controls.
+<P>
+</OL><h2>REFERENCES</h2>
+ 
+<P>
+For additional information, please see the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../visualc/q169434.htm">Q169434</A></B>
+   TITLE     : BETA-PRB: Tabbing Broken for ATL Controls in IE 4.0
+
+</PRE></OL>(c) Microsoft Corporation 1998, All Rights Reserved. Contributions by Shawn
+William Karr, Microsoft Corporation
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 5.00 Visual Studio C++ Basic<BR>
+Keywords          : AtlControl kbcode<BR>
+Version           : win95:2.0,2.1;winnt:2.0,2.1<BR>
+Platform          : Win95 winnt<BR>
+Issue type        : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  February 16, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

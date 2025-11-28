@@ -1,0 +1,224 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to Use OLE Drag &amp; Drop from the Taskbar Notification Area </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q139408">
+<META NAME="KBModify" CONTENT="1995/11/16">
+<META NAME="KBCreate" CONTENT="1995/11/08">
+<META NAME="Keywords" CONTENT="kbole kbui kbhowto kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; oleprog">
+<META NAME="Description" CONTENT="  The Windows 95 user interface includes a notification area on the system taskbar where applications can install an icon for providing visual feedback to the user. This article describes how to use such an icon as a source for dragging objects to ot...">
+<META NAME="Product" CONTENT="OLE (Programming)">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="OLE ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA9N,QAGI,QAO2,QDL9,QBWO,QBWN,QAEV,QANS,QACI,QA8W,QBVV,QBIC,QAY5,QAJH,QBWQ V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to Use OLE Drag &amp; Drop from the Taskbar Notification Area</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 16, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q139408</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft OLE libraries included with Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The Windows 95 user interface includes a notification area on the system
+taskbar where applications can install an icon for providing visual
+feedback to the user. This article describes how to use such an icon as a
+source for dragging objects to other applications.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+For general information on using the taskbar notification area, look up
+"Taskbar Notification Area" in the "Programmer's Guide to Windows 95"
+included with the Win32 SDK documentation.
+<P>
+When the user clicks a notification icon, the shell sends an application-
+defined message to the application window associated with the icon. If the
+application calls DoDragDrop at this time, the mouse pointer will not
+change to indicate a dragging operation and the drag operation will fail.
+This is because DoDragDrop calls SetCapture to associate mouse input with a
+hidden OLE window owned by the calling application, but the mouse click
+happened over a window (the taskbar) not owned by the application.
+<P>
+NOTE: The Windows 95 and Windows NT environments differ from Windows 3.x in
+that each thread of execution has its own message queue. This change
+affects window focus and mouse capture. For more information on this, look
+up "Mouse Capture" in the Win32 SDK documentation.
+<P>
+To perform a drag and drop operation from a taskbar notification icon, you
+need to temporarily combine the taskbar's input queue with the input queue
+of the calling application. The following function demonstrates how this
+can be done:
+<P>
+<PRE>   HRESULT DoSpecialDragDrop(LPDATAOBJECT pDataObject,
+                          LPDROPSOURCE pDropSource,
+                          DWORD dwOKEffect,
+                          DWORD *pdwEffect)
+   {
+    POINT pt;
+    HWND hwndAttach;
+    DWORD dwAttachThreadID;
+    DWORD dwCurrentThreadID;
+    HRESULT hr = E_FAIL;
+
+    // Find the window under the mouse pointer.
+    // This window might not be owned by the current thread, which
+    // means you need to use AttachThreadInput in order for mouse
+    // capture (and drag and drop) to work correctly.
+    GetCursorPos(&amp;pt);
+    hwndAttach = WindowFromPoint(pt);
+    if (!hwndAttach)
+        return hr;
+
+    // Get thread ID's
+    dwAttachThreadID = GetWindowThreadProcessId(hwndAttach, NULL);
+    dwCurrentThreadID = GetCurrentThreadId();
+
+    // Attach input queues if necessary
+    if (dwAttachThreadID != dwCurrentThreadID)
+        AttachThreadInput(dwAttachThreadID, dwCurrentThreadID, TRUE);
+
+    // Do the drag and drop
+    hr = DoDragDrop(pDataObject, pDropSource, dwOKEffect, pdwEffect);
+
+    // Detach input queues
+    if (dwAttachThreadID != dwCurrentThreadID)
+        AttachThreadInput(dwAttachThreadID, dwCurrentThreadID, FALSE);
+
+    return hr;
+   }
+
+</PRE>DoSpecialDragDrop is called in the same way as DoDragDrop, except that it
+should not be called while processing the taskbar notification message
+because the shell sends this message with SendMessage. Because shell
+interaction may be required during the drag and drop operation, the
+application should delay the drag and drop by posting itself another
+message, allowing the shell to continue execution as in this example:
+<P>
+<PRE>   #define WM_MYNOTIFICATIONMESSAGE    WM_APP      // app-defined messages
+   #define WM_MYDODRAGDROP             WM_APP + 1
+
+   case WM_MYNOTIFICATIONMESSAGE:      // icon notification message
+       if (lParam == WM_LBUTTONDOWN &amp;&amp; wParam == idMyNotificationIcon)
+       {
+           // Give control back to the taskbar and do Drag/Drop later.
+           // This way the shell won't be blocked on a SendMessage call
+           // while we are trying to do the drag/drop.
+           PostMessage(hwnd, WM_MYDODRAGDROP, wParam, lParam);
+       }
+       break;
+
+   case WM_MYDODRAGDROP:
+       {
+           LPDATAOBJECT pDataObject;
+           LPDROPSOURCE pDropSource;
+           DWORD dwEffect;
+
+           // Initialize IDataObject and IDropSource objects
+           :
+           // This drag source only allows Copy, not Move or Link.
+           DoSpecialDragDrop(pDataObject,
+                             pDropSource,
+                             DROPEFFECT_COPY,
+                             &amp;dwEffect);
+
+           // Clean up IDataObject and IDropSource objects
+           :
+        }
+   break;
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 2.00 tray Shell_TrayWnd TrayNotifyWnd<BR>
+KBCategory: kbole kbhowto kbui kbcode<BR>
+KBSubcategory: LeTwoDdc<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 16, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

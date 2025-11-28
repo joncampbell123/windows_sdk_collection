@@ -1,0 +1,249 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Programmatically Force a Logoff on Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q168690">
+<META NAME="KBModify" CONTENT="1997/05/20">
+<META NAME="KBCreate" CONTENT="1997/05/19">
+<META NAME="Keywords" CONTENT="BseMisc BseProcThrd">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  You can use the Win32 API ExitWindowsEx() on Windows NT to force a logoff. You accomplish this by combining the EWX_LOGOFF and EWX_FORCE flags. Unfortunately, this combination is not supported on Windows 95.  You can duplicate this capability on Wi...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWN,QDL9,QBWO,QBWQ,QAJH,QDKA,QA63,QDIT,QBVV,QAGB,QAGI,QAGQ,QDNF,QBWP,QAX6 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Programmatically Force a Logoff on Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  May 20, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q168690</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Application Programming Interface (API) included with:
+   - Microsoft Windows 95
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+You can use the Win32 API ExitWindowsEx() on Windows NT to force a logoff.
+You accomplish this by combining the EWX_LOGOFF and EWX_FORCE flags.
+Unfortunately, this combination is not supported on Windows 95.
+<P>
+You can duplicate this capability on Windows 95 by taking some additional
+steps before calling ExitWindowsEx().
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+ExitWindowsEx() with the EWX_LOGOFF flag alone does not force non-
+responsive applications to close. To achieve this, follow these steps:
+
+<OL><P><LI>Enumerate top-level windows with the EnumWindows() API.
+
+<P><LI>In the EnumWindowsProc, ask each application to shut down by sending it
+   the WM_QUERYENDSESSION message.
+
+<P><LI>If the application responds positively, then send the WM_ENDSESSION
+   message to direct the application to terminate.
+
+<P><LI>If the application responds negatively, terminate the application with
+   the TerminateProcess() API.
+
+<P><LI>Once all applications with top-level windows have been shut down in this
+   manner, you can call ExitWindowsEx(EWX_LOGOFF) with a reasonable
+   assurance that the logoff operation will complete.
+<P>
+</OL>IMPORTANT: Using the TerminateProcess() API is not a "nice" way to shut
+down an application and could result in the loss of data. This technique
+should only be used if a machine must be guaranteed to perform the logoff
+operation while unattended.
+<P>
+NOTE: This method is not 100% successful. There are a few applications that
+cause ExitWindowsEx() to fail. This article will be updated when more
+information is available.
+<P>
+NOTE: ExitWindowsEx does not work correctly if it is called from a Win32
+Console application. This must be a Windows application to work properly.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+The following sample code demonstrates the technique:
+<P>
+<PRE>   #include &lt;windows.h&gt;
+
+   BOOL CALLBACK EnumWindowsProc(
+       HWND hwnd,
+       DWORD lParam
+       );
+
+   //
+   // EnumWindowsProc must be called from a windows
+   // application on Windows 95
+   //
+   int WINAPI WinMain(
+       HINSTANCE hInstance,
+       HINSTANCE hPrevInstance,
+       LPSTR lpCmdLine,
+       int nCmdShow
+       )
+   {
+       //
+       // close all open applications
+       //
+       EnumWindows(EnumWindowsProc, 0);
+
+       // Now do a regular logoff
+       ExitWindowsEx(EWX_LOGOFF , 0);
+
+   }
+
+   BOOL CALLBACK EnumWindowsProc(
+       HWND hwnd,
+       DWORD lParam
+       )
+   {
+       DWORD      pid = 0;
+       LRESULT    lResult;
+       HANDLE     hProcess;
+       DWORD      dwResult;
+
+       lResult = SendMessageTimeout(
+           hwnd,
+           WM_QUERYENDSESSION,
+           0,
+           ENDSESSION_LOGOFF,
+           SMTO_ABORTIFHUNG,
+           2000,
+           &amp;dwResult);
+
+       if( lResult )
+       {
+          //
+          // application will terminate nicely so let it
+          //
+          lResult = SendMessageTimeout(
+              hwnd,
+              WM_ENDSESSION,
+              TRUE,
+              ENDSESSION_LOGOFF,
+              SMTO_ABORTIFHUNG,
+              2000,
+              &amp;dwResult);
+
+       }
+       else  // we have to take more forceful measures
+       {
+           //
+           // get the processid for this window
+           //
+           GetWindowThreadProcessId( hwnd, &amp;pid );
+           //
+           // open the process with all access
+           //
+           hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+           //
+           // bye-bye
+           //
+           TerminateProcess(hProcess, 0);
+
+       }
+       //
+       // continue the enumeration
+       //
+       return TRUE;
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: 95 win95 ExitWindowsEx FORCE LOGOFF<BR>
+Keywords            : BseMisc BseProcThrd<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  May 20, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

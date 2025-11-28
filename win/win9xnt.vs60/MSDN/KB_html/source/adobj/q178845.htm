@@ -1,0 +1,262 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Use IDispatch for Objects Created by a DataSpace Object </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q178845">
+<META NAME="KBModify" CONTENT="1998/01/08">
+<META NAME="KBCreate" CONTENT="1998/01/05">
+<META NAME="Keywords" CONTENT="kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; adobj">
+<META NAME="Description" CONTENT="  Remote Data Services (RDS) has a DataSpace object that creates COM objects on a remote Internet Information Server (IIS) computer. The DataSpace's CreateObject() call accepts a ProgID as well as the Universal Resource Identifier (URL) for an IIS se...">
+<META NAME="Product" CONTENT="adobj">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAPN,QAGI,QAW6,QAUD,QAH4,QAIF,QBFY,QAY5,QANN,QAL3,QALW,QAPF,QAKD,QAHE,QAD7 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Use IDispatch for Objects Created by a DataSpace Object</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 8, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q178845</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Remote Data Service for ADO version 1.5
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+Remote Data Services (RDS) has a DataSpace object that creates COM objects
+on a remote Internet Information Server (IIS) computer. The DataSpace's
+CreateObject() call accepts a ProgID as well as the Universal Resource
+Identifier (URL) for an IIS server. CreateObject() returns a variant that
+contains the IDispatch * for the created object.
+<P>
+If QueryInterface() is called to get an interface other than IDispatch,
+E_NOINTERFACE is returned.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+All calls to methods of the object created by DataSpace.CreateObject() must
+be made through IDispatch::Invoke(). Furthermore, you must call
+GetIDsOfNames() to get the DISPIDs of the methods you want to call because
+RDS changes the values of the DISPIDs. They may be different from the IDs
+specified in the typelib.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+The Visual C++ code sample shown below in the "More Information" section
+demonstrates how to call methods of a remote object created with RDS. The
+sample uses the Visual C++ 5.0 #import feature to generate C++ classes for
+calling methods of the DataSpace object and the remote object, which in
+this case is an RDS DataFactory.
+<P>
+The sample code shows calling the undocumented function
+_com_dispatch_method(), which is a function of the C run-time library. As
+an alternative, IDispatch::Invoke can be called directly without the use of
+this helper function.
+<P>
+Here is a short description of the function:
+<P>
+<PRE>   HRESULT  __cdecl _com_dispatch_method(IDispatch * pDisp, DISPID dispid,
+            WORD w, VARTYPE vt, void * pResult, const wchar_t * szFormat,
+            ...);
+
+   pDisp    - IDispatch of the method's object.
+   dispid   - The DISPID of the method to call.
+   w        - Always DISPATCH_METHOD.
+   vt       - The return type. Must be a Variant type.
+   pResult  - Pointer to the memory location to place the return value.
+   SzFormat - String where each byte represents the variant type of each
+              of the arguments being passed to the method.
+
+</PRE>The method contains a variable number of arguments because szFormat is
+followed by the arguments that you are passing to the object's method.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Here is the code:
+<P>
+<P>
+<PRE>   //include definitions for DataSpace and DataFactory objects
+   #import "c:\program files\common files\system\msadc\msadco.dll"
+   #import "c:\program files\common files\system\msadc\msadcf.dll"
+
+   #import "c:\program files\common files\system\ado\msado15.dll" rename
+       ("EOF", "ADOEOF")
+
+   void CDlg::OnGetData()
+   {
+     CoInitialize(NULL);
+
+     RDS::DIDataspacePtr spDSP;
+      IDispatchPtr spDF;
+
+   HRESULT hr;
+   _variant_t varResult;
+
+   hr = spDSP.CreateInstance(_uuidof(RDS::DataSpace));
+   if (FAILED(hr))
+   {
+     // handle failure
+   }
+
+   varResult = spDSP-&gt;CreateObject(_bstr_t("RDSSERVER.DataFactory"),
+                                   _bstr_t("<B>http://someServer</B>"));
+
+   hr = varResult.pdispVal-&gt;QueryInterface(_uuidof(IDispatch),
+                                           (LPVOID *)&amp;spDF);
+   if ((FAILED(hr))
+   {
+      // handle error
+   }
+
+
+   // Call the Query method of the DataFactory.
+   // First query for the DISPID of the method because RDS
+   // modifies the DISPID. It can be different than what the
+   // type library states.
+   LPOLESTR pszNames[1] = {OLESTR("Query")};
+   DISPID dispids[1];
+   hr = spDF-&gt;GetIDsOfNames(IID_NULL, pszNames, 1, LOCALE_SYSTEM_DEFAULT,
+                            dispids);
+   if (FAILED(hr)
+   {
+      //handle error
+   }
+
+   try
+   {
+      ADODB::_RecordsetPtr pRS;
+      IDispatch * _result;
+      _com_dispatch_method(spDF, dispids[0], DISPATCH_METHOD,
+                           VT_DISPATCH, (void*)&amp;_result,
+                           L"\x0008\x0008\x0003",
+                           (BSTR) _bstr_t("DSN=AdvWorks;UID=Admin;PWD=;"),
+                           (BSTR)_bstr_t("Select * from employees"), 0L);
+      pRS = _result;
+    }
+    catch(_com_error e)
+    {
+      TRACE("Hresult = %x\n", e.Error());
+      TRACE("%S\n", e.Description());
+      return;
+    }
+
+
+   // Output the results of the returned recordset.
+    long lCount = pRS-&gt;Fields-&gt;Count;
+
+    for (long lIndex = 0; lIndex&lt;lCount; lIndex++)
+    {
+       _variant_t varField = pRS-&gt;Fields-&gt;Item[lIndex]-&gt;Value;
+
+       if (varField.vt != VT_NULL)
+       {
+          varField.ChangeType(VT_BSTR);
+          // Do something with the BSTR here, for example, put it into a
+          // list control.
+         }
+      }
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: interface nointerface<BR>
+Keywords          : kbcode<BR>
+Version           : WINDOWS:1.5<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 8, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

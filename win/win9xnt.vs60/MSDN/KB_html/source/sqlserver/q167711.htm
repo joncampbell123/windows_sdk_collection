@@ -1,0 +1,263 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Understanding Bufwait and Writelog Timeout Messages </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q167711">
+<META NAME="KBModify" CONTENT="1998/01/22">
+<META NAME="KBCreate" CONTENT="1997/04/29">
+<META NAME="Keywords" CONTENT="SSrvAdmin SSrvErr_Log SSrvGen kbenv kbhw">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  When examining the SQL Server errorlog, you may periodically see the following types of messages:     bufwait: timeout, BUF_IO, bp 0xd37ab0, pg 0x5e74e, stat 0x1008/0x400003,    obj 0x6d4f8c1b, bpss 0x2069e1f0     -or-     writelog: timeout, dbid 2...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QABA,QABM,QAY5,QAU3,QAMR,QAEV,QBWP,QAKC,QBXS,QDIZ,QBAO,QA26,QAKD,QAC9 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Understanding Bufwait and Writelog Timeout Messages</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  January 22, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q167711</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, versions 6.0 and 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+When examining the SQL Server errorlog, you may periodically see the
+following types of messages:
+<P>
+<PRE>   bufwait: timeout, BUF_IO, bp 0xd37ab0, pg 0x5e74e, stat 0x1008/0x400003,
+   obj 0x6d4f8c1b, bpss 0x2069e1f0
+
+   -or-
+
+   writelog: timeout, dbid 2, dbstat2 0x22(0x22), q1/q2 0/1, owner=3,
+   waittype=0x81
+
+</PRE>This article explains the meaning of bufwait and writelog timeout messages.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+SQL Server uses the asynchronous I/O calls ReadFile(), ReadFileEx(),
+WriteFile(), and WriteFileEx() when performing reads and writes. These
+Win32 API calls submit an I/O request to Windows NT Server, and then allow
+the application to continue with other operations while waiting for the
+operation to complete. At completion, it signals the application that the
+write has completed by means of a synchronization event or completion
+routine.
+<P>
+Both the bufwait and logwrite messages are actually warnings, and may not
+necessarily be a sign of any problem with the computer or SQL Server. If
+SQL Server has waited longer than the number of seconds configured in the
+<PRE>'resource timeout' setting (which by default is 10 seconds), it prints an
+</PRE>error message indicating the timeout. However, it must continue waiting on
+the I/O request to complete before it can continue. The bufwait message
+corresponds to a delay in either reading a page from disk to put in cache,
+or flushing a page in cache out to disk. The logwrite message is specific
+to reading or writing log records.
+<P>
+SQL Server uses normal thread synchronization methods to guarantee ordered
+access to the transaction log. In a writelog timeout message, the database
+ID is supplied in the dbid field, as well as the process ID (owner) of the
+other connection on which it is waiting. In the sample message above,
+notice that the current process was using tempdb (dbid 2), and that it is
+waiting on the checkpoint process (owner=3). When investigating the cause
+of writelog timeouts, it may be beneficial to periodically query
+sysprocesses to gather information about what types of processing are being
+performed by the "owner" spid listed in the writelog message.
+<P>
+Heavy rollback activity adds additional log and disk I/O contention, and
+such activity has been observed as contributing to writelog timeouts. For
+best performance, attempt to minimize the number of transactions that must
+be rolled back; as activity on the server increases, using a query timeout
+that is too short may further exacerbate the problem by causing unnecessary
+rollbacks. Beginning with SQL Server 6.5 Service Pack 2, a new
+configuration option, LogLRU buffers, was added that may improve
+performance in environments requiring heavy log reads, such as would be
+required in processing a rollback or trigger. Note that using this option
+reserves space to hold log pages in cache, reducing the amount of data
+cache available. See the Readme.txt file included in the service pack for
+more information on determining an optimum value for this parameter.
+<P>
+If these messages appear only intermittently, they may not be indicative of
+any problem. However, if they appear on a fairly regular basis, it may be a
+sign that the disk subsystem is reaching capacity, and that you may benefit
+from spreading the I/O load over a larger number of controllers or disks,
+to reduce the length of time you have to wait for the operation to
+complete.
+<P>
+To determine what load the disk subsystem is handling, you can use
+Performance Monitor to watch the disk counters appropriate to your system.
+Monitor the %Disk Time counter for LogicalDisk and/or PhysicalDisk that
+correspond to your log and data devices; if the value is consistently high,
+consider ways to spread the I/O load, and look for indications that the
+disk subsystem is reaching its limits. You can perform additional fine
+tuning by using the %Disk Read Time and %Disk Write Time counters, which
+would allow finer control in spreading the I/O load across the disks and
+controllers. A large Disk Queue Length value indicates a large backlog in
+I/O requests, and you may want to investigate adding further disks or
+additional controllers to spread the I/O load. You can find additional
+information about the disk counters in the Windows NT Server documentation,
+the Windows NT Server Resource Kit, and the following article in the
+Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../winnt/q102020.htm">Q102020</A></B>
+   TITLE     : How to Monitor Disk Performance with Performance Monitor
+
+</PRE>While these messages result from delay in performing I/O, several SQL
+Server configuration values have a direct impact on the overall I/O
+throughput of the system: max async I/O; max lazywrite I/O; logwrite sleep;
+and resource timeout.
+<P>
+The 'max async I/O' configuration value determines the maximum number of
+outstanding asynchronous I/O requests that SQL Server will allow,
+throttling the number of pending requests. When an asynchronous I/O request
+is made, Windows NT Server must queue the request, which has an associated
+overhead. While asynchronous I/O requests can increase performance when
+used appropriately, a limit can be reached at which point further use may
+actually begin to degrade system performance. This limit largely depends on
+the controller, driver, and associated disk subsystem. If you persistently
+receive any of the above errors and have changed this setting from its
+default value, consider setting it back to its default value.
+<P>
+The 'max lazywrite I/O' parameter is closely related to the 'max async I/O'
+setting, but specifically throttles the number of outstanding requests made
+by the Lazywriter process. The Lazywriter process attempts to flush changed
+pages from cache to disk so that there is always some free space in data
+cache. The amount of space that the process attempts to keep free is
+controlled by the 'free buffers' configuration option.
+<P>
+The 'logwrite sleep' configuration setting is an advanced configuration
+option that forces an intentional delay before writing log pages to disk.
+Because the log pages must be physically committed to disk before data
+modifications are made, you generally want these writes to be performed as
+quickly as possible. In certain circumstances, you can enhance performance
+by intentionally forcing a delay so that multiple processes can "pack" log
+records on a single page and thus reduce the number of write operations.
+The amount of time used in this intentional delay is counted as part of the
+timeout period for the overall write operation, so a writelog timeout may
+be artificially induced by increasing the 'logwrite sleep' configuration
+setting. Changes to this configuration value should only be made in a
+controlled fashion, to ensure that performance is not hindered.
+<P>
+The 'resource timeout' configuration setting controls the overall timeout
+on the asynchronous I/O operations. By default, the setting is set to 10
+(seconds), so any operation that takes longer than 10 seconds to complete
+results in a timeout warning. Setting this value too low may cause timeouts
+in an unrealistically short time. If you are frequently seeing bufwait or
+writelog timeouts, you can increase this setting to reduce the frequency
+with which these errors are generated.
+<P>
+Because SQL Server stresses the I/O subsystem so extensively, it is also
+important to verify that you are running with the latest versions of the
+drive and controller firmware, as well as the latest driver. Also consult
+your hardware manufacturer for any diagnostics they may have for stressing
+the disk subsystem.
+<P>
+If the above information does not help resolve the issue, you may want to
+consider stressing the system in a manner similar to that done by SQL
+Server. To assist you in doing this, a utility called SQLHDTST has been
+written. For more information about the utility and locations from which it
+can be downloaded, see the following article in the Microsoft Knowledge
+Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../sqlserver/q135582.htm">Q135582</A></B>
+   TITLE     : INF: SQL Server Utility Files Available
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: error message bufwait writelog configuration<BR>
+sp_configure<BR>
+Keywords          : SSrvAdmin SSrvErr_Log SSrvGen kbenv kbhw<BR>
+Version           : WINNT:6.0 6.5<BR>
+Platform          : winnt<BR>
+Issue type        : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  January 22, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

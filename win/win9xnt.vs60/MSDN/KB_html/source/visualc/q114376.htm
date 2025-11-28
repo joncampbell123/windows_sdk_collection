@@ -1,0 +1,275 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FIX: CWnd::ExecuteDlgInit() Uses AfxGetInstanceHandle </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q114376">
+<META NAME="KBModify" CONTENT="1997/09/18">
+<META NAME="KBCreate" CONTENT="1994/05/02">
+<META NAME="Keywords" CONTENT="MfcMisc kbbuglist kbfixlist kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  In the Microsoft Foundation Classes, version 2.0, CWnd::ExecuteDlgInit() incorrectly searches for dialog box resources only in the executing module.  CAUSE =====  In WINCORE.CPP, lines 1463 and 1464, CWnd::ExecuteDlgInit() attempts to find the spec...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAIM,QAUD,QAR4,QAGI,QABO,QAJH,QBXS,QAH4,QABH,QABI,QA01,QAY5,QALW,QAW6,QAPN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FIX: CWnd::ExecuteDlgInit() Uses AfxGetInstanceHandle</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  September 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q114376</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+<PRE>1.00    | 1.00
+</PRE>WINDOWS | WINDOWS NT
+kbprg kbfixlist kbbuglist
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P>
+<P><PRE>    - Microsoft Visual C++ for Windows, version 1.0
+    - Microsoft Visual C++, 32-bit Edition, version 1.0
+</UL></PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+In the Microsoft Foundation Classes, version 2.0, CWnd::ExecuteDlgInit()
+incorrectly searches for dialog box resources only in the executing
+module.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+In WINCORE.CPP, lines 1463 and 1464, CWnd::ExecuteDlgInit() attempts to
+find the specified resource using the following code:
+<P>
+<PRE>    if ((hDlgInit = ::FindResource(AfxGetInstanceHandle(),
+        lpszResourceName, RT_DLGINIT)) != NULL)
+
+</PRE>This forces the use of only those resources bound to the executing
+module. For localization and other uses, it must be possible to load
+resources from other sources.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+This problem was fixed in the Microsoft Foundation Classes, version
+2.5, which is supplied with Visual C++ for Windows, version 1.5. The fix
+involves defining AfxFindResourceHandle() to return the correct
+resource handle either by using AfxGetResourceHandle() for a single
+executable or by searching the list of CDynLinkLibrary objects for
+an application using the shared dynamic link library (DLL) version of
+the Microsoft Foundation Class library (compiling using _AFXDLL). This
+allows the application to switch between several sets of resources
+located in DLLs.
+<P>
+Applications maintain a list of the shared and extension DLLs using
+instances of the CDynLinkLibrary class. Each node in the list is an
+object of the CDynLinkLibrary class or of a class derived from the
+CDynLinkLibrary class. This object can also be used to hold private data
+for the DLL by deriving from CDynLinkLibrary and adding additional member
+variables. For an example of CDynLinkLibrary, please examine the Microsoft
+Foundation Class library DLLHUSK sample supplied with Visual C++, versions
+1.0 and 1.5.
+<P>
+In a Microsoft Foundation Class application that does not use the
+shared DLL (MFC2xx.DLL), AfxFindResourceHandle() calls
+AfxGetResourceHandle(), which returns the current resource handle for the
+executable. In a Microsoft Foundation Class application that uses
+MFC2xx.DLL, AfxFindResourceHandle() traverses the CDynLinkLibrary
+object list of shared and extension DLLs, looking for the correct
+resource handle.
+<P>
+To get this behavior in a Microsoft Foundation Class library version
+2.0 application, add the following function to the source module
+that contains the dialog box class code:
+<P>
+HINSTANCE ResourceInit(LPCSTR szResourceName,LPCSTR szResType)
+{
+<P>
+<PRE>    // first check the app
+    HINSTANCE hInstApp = AfxGetResourceHandle();
+    if (::FindResource(hInstApp, szResourceName,
+          szResType) != NULL)
+        return hInstApp;
+
+    // check for DLLs in proper order
+    CDynLinkLibrary* pDLL;
+    for (pDLL = _AfxGetAppData()-&gt;pFirstDLL; pDLL != NULL;
+         pDLL = pDLL-&gt;m_pNextDLL)
+    {
+        if (pDLL-&gt;m_hResource != NULL &amp;&amp;
+            ::FindResource(pDLL-&gt;m_hResource,
+              szResourceName, szResType) != NULL)
+        {
+            // found it in a DLL, use it's resource handle
+            return pDLL-&gt;m_hResource;
+        }
+    }
+
+    // if failed to find resource, fail initialization
+    TRACE("\n Resource not found \n");
+    return (HINSTANCE)NULL;
+</PRE>}
+<P>
+Make a call to this function in the CDialog derived class' override
+of OnInitDialog(). The ResourceInit() function will check the list
+of CDynLinkLibrary objects for the application and return the
+appropriate resource handle (or NULL if not found). The OnInitDialog()
+function may look like this:
+<P>
+BOOL CDerivedDlg::OnInitDialog()
+{
+<PRE>    // attempt to find dialog box template
+    HINSTANCE hResInst = ResourceInit(m_lpDialogTemplate, RT_DIALOG);
+    if(NULL == hResInst) return FALSE;
+
+    // get app's resource handle so we can set it back later
+    HINSTANCE hAppInst = AfxGetResourceHandle();
+    // temporarily set to DLL's resource handle
+    AfxSetResourceHandle(hResInst);
+    // Call base class which initializes the dialog
+    // and loads the template
+    BOOL bInit = CDialog::OnInitDialog();
+    // restore the app's resource handle
+    AfxSetResourceHandle(hAppInst);
+
+    return bInit;
+</PRE>}
+<P>
+In addition, the resource handle must be set correctly before the
+call to DoModal(). The easiest way to do this is to:
+
+<OL><P><LI>Call ResourceInit() from the constructor of the dialog box.
+
+<P><LI>Set the resource handle for the application appropriately.
+
+<P><LI>Reset it to the actual application resource handle when the dialog box
+   is destroyed.
+<P>
+</OL>Here is an example of the constructor:
+<P>
+CDerivedDlg::CDerivedDlg(CWnd* pParent /*=NULL*/)
+<PRE>    : CDialog(CDerivedDlg::IDD, pParent)
+</PRE></OL>{
+<PRE>    //{{AFX_DATA_INIT(CDerivedDlg)
+    // NOTE: the ClassWizard will add member initialization here
+    //}}AFX_DATA_INIT
+    AfxSetResourceHandle(ResourceInit(m_lpDialogTemplate,RT_DIALOG));
+</PRE>}
+<P>
+Here is an example of the destructor:
+<P>
+CDerivedDlg::~CDerivedDlg()
+{
+<PRE>    AfxSetResourceHandle(AfxGetApp()-&gt;m_hInstance);
+    // reset resource to application's instance handle
+</PRE>}
+<P>
+The ResourceInit() function may be used at any point for any type of
+resource that may be located in a DLL or in the application's
+resources.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in the Microsoft
+Foundation Classes, version 2.0. The problem was corrected in
+Microsoft Foundation Classes, version 2.5.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 1.00 2.00 2.10 international language<BR>
+afxdll<BR>
+KBCategory: kbprg kbfixlist kbbuglist<BR>
+KBSubcategory: MfcMisc<BR>
+Keywords          : MfcMisc kbbuglist kbfixlist kbprg<BR>
+Technology        : kbMfc<BR>
+Version           : 1.00    | 1.00<BR>
+Platform          : NT WINDOWS<BR>
+Solution Type     : kbfix<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  September 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

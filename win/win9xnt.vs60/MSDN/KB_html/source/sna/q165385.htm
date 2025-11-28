@@ -1,0 +1,220 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Single Signon for APPC Applications Using Privileged Proxy </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q165385">
+<META NAME="KBModify" CONTENT="1997/08/25">
+<META NAME="KBCreate" CONTENT="1997/03/18">
+<META NAME="Keywords" CONTENT="kbbug3.00 kbfix3.00.sp1 prodsna snaappc snacpic kbnetwork kbprg">
+<META NAME="KBArea" CONTENT="Support; KB; sna">
+<META NAME="Description" CONTENT="  An APPC application is not allowed to open an LU6.2 conversation using the SNA Server 3.0 Host Security single signon feature and impersonate the security context of another Windows NT user account.  An APPC application that is defined on a compute...">
+<META NAME="Product" CONTENT="SNA Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QAGU,QAAD,QAA1,QAJH,QABO,QAI5,QDI2,QAGI,QDKF,QBVW,QBG2,QAPP,QACK,QDN1 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Single Signon for APPC Applications Using Privileged Proxy</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q165385</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SNA Server version 3.0.
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+An APPC application is not allowed to open an LU6.2 conversation using the
+SNA Server 3.0 Host Security single signon feature and impersonate the
+security context of another Windows NT user account.
+<P>
+An APPC application that is defined on a computer running Windows NT can
+only open a conversation using Single Signon on behalf of the Windows NT
+account that the application is defined to use.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+SNA Server 3.0 was not originally designed to support this functionality.
+<P>
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Several updates have been made to SNA Server 3.0 to allow a privileged APPC
+application to open an APPC conversation using the Single Signon feature on
+behalf of any defined Windows NT user. This is referred to as the
+privileged proxy feature. In addition, an extension has been added to the
+APPC API to invoke the feature. These extensions are documented in the
+descriptions of [MC_]ALLOCATE APPC verbs.
+<P>
+An APPC application becomes privileged by being started in a Windows NT
+user account that is a member of a special Windows NT group.
+<P>
+When a Host Security Domain is configured, SNA Server Manager will define a
+second Windows NT group for use with the host security features of SNA
+Server. If the user account under which the actual client is running is a
+member of this second Windows NT group, the client is privileged to
+initiate an APPC conversation on behalf of any user account defined in the
+Host Account Cache.
+<P>
+The following illustrates how the privileged proxy feature works:
+<P>
+The SNA Server administrator creates a Host Security Domain called APP. SNA
+Server Manager now creates two Windows NT groups. The first group is called
+APP and the second is called APP_PROXY for this example. Users that are
+assigned to the APP group are enabled for single signon. Users assigned to
+the APP_PROXY group are privileged proxies. The administrator adds the
+Windows NT user AppcUser to the APP_PROXY group using the Users button on
+the Host Security Domain property dialog box in SNA Server Manager.
+<P>
+The administrator then sets up an APPC application on the SNA Server to run
+as a Windows NT service called APPCAPP and that service has been setup to
+operate under the AppcUser user account. When APPCAPP runs, it opens an
+APPC session via an MC_ALLOCATE verb using the extended VCB format and
+specifies the Windows NT username of the desired user, UserA (for example).
+The SNA Server service sees the session request coming from a connection
+that is a member of the Host Security Domain APP. The Client/Server
+interface tells the SNA Server service that the actual client is AppcUser.
+The SNA Server service checks to see if AppcUser is a member of the
+APP_PROXY group. Because AppcUser is a member of APP_PROXY, the SNA Server
+service inserts the Username/Password for UserA in the APPC Attach (FMH-5)
+command and sends it off to the partner TP.
+<P>
+<P><h3>APPC APPLICATION REQUIREMENTS TO IMPLEMENT PRIVILEGED PROXY SUPPORT</h3>
+ 
+<P>
+In order to support the priviledged proxy feature, the APPC 
+application must implement the following program logic: 
+
+<OL><P><LI>First, the updated WINAPPC.H and WAPPC32.LIB files must be used 
+   from the SNA Server 3.0 Service Pack #1 SDK. The updated WINAPPC.H
+   includes new prototypes to support the privileged proxy feature.
+
+<P><LI>The APPC application must determine the Windows NT user ID and domain
+   name that it wishes to impersonate.
+
+<P><LI>The APPC application must set the following parameters before calling
+   the [MC_]ALLOCATE verb:
+<P>
+   - Set security = AP_PROXY_SAME, AP_PROXY_PGM or AP_PROXY_STRONG
+   - enable the use of the extended ALLOCATE verb control block (VCB) 
+<P><PRE>     structure by setting the AP_EXTD_VCB flag in the opext field.
+</PRE>   - set up the pointers for proxy_user and proxy_domain to point to
+<P><PRE>     UNICODE strings containing the user name and domain name of the 
+     user to be impersonated.
+</PRE><P>
+</OL>NOTE: The application does not need to set up user_id and pwd fields 
+in the Allocate VCB.
+<P>
+When the APPC application performs the above steps and calls 
+[MC_]ALLOCATE, the SNA Server will perform a lookup in the host 
+security domain for the specified Windows NT user, set the
+user ID and password fields in the FMH-5 Attach message sent to 
+the remote system.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a problem in SNA Server version 3.0.
+This problem was corrected in the latest Microsoft SNA Server 3.0 U.S.
+Service Pack. For information on obtaining the service pack, query on
+the following word in the Microsoft Knowledge Base (without the spaces):
+<P>
+<PRE>   S E R V P A C K
+</PRE></OL> 
+<PRE>Keywords          : kbbug3.00 kbfix3.00.sp1 prodsna snaappc snacpic kbnetwork kbprg
+Version           : 3.0
+Platform          : winnt
+Issue type        : kbbug
+Solution Type     : kbfix</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

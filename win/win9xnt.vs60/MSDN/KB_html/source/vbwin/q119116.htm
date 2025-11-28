@@ -1,0 +1,247 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>How to ZAP or PACK a dBASE or FoxPro Table </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q119116">
+<META NAME="KBModify" CONTENT="1995/06/21">
+<META NAME="KBCreate" CONTENT="1994/08/08">
+<META NAME="Keywords" CONTENT="kbprg kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; vbwin">
+<META NAME="Description" CONTENT="  The following passage appears in the  Professional Features,  Book 2, page 141:     dBASE and FoxPro database systems do not physically delete records, but    merely mark them for deletion at a later time. You must pack the .DBF    file (using your...">
+<META NAME="Product" CONTENT="Visual Basic for Windows">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEF,QAGB,QDI1,QA5V,QBCT,QAGC,QDKD,QAZV,QATJ,QBGA,QA28,QAZZ,QABM,QAPN,QAFF V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>How to ZAP or PACK a dBASE or FoxPro Table</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 21, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q119116</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Standard and Professional Editions of Microsoft Visual Basic for
+   Windows, version 3.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The following passage appears in the "Professional Features," Book 2,
+page 141:
+<P>
+<PRE>   dBASE and FoxPro database systems do not physically delete records, but
+   merely mark them for deletion at a later time. You must pack the .DBF
+   file (using your own utilities) to remove these records from the .DBF
+   files. The CompactDatabase function will not affect attached tables.
+
+</PRE>This article shows you how to ZAP and/or PACK a dBASE or FoxPro table in
+Microsoft Visual Basic version 3.0 without needing separate utilities.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+To be able to ZAP or PACK your .DBF files, you must have the following
+entry in your VB.INI or &lt;appname&gt;.INI file:
+<P>
+<PRE>   [dBase ISAM]
+   Deleted=On
+
+</PRE>This will filter out deleted records so they do not appear in recordsets.
+<P>
+To perform a ZAP, you simply need to run a DELETE action query. For
+example, the following sample marks all the records in the AUTHORS.DBF
+table as deleted:
+<P>
+<PRE>   Dim db As database
+   Set db = OpenDatabase("c:\dBaseIII", false, false, "dBase III")
+   'Open the database.
+
+   db.Execute "Delete From Authors"       'Execute the delete action query.
+   db.Close                               'Close the database.
+
+</PRE>NOTE: For extremely large tables, it is more efficient to delete the
+Tabledef representing the table from the TableDefs collection of the
+database and then re-create the table structure. Please see articles
+<B><A href="../vbwin/q110959.htm">Q110959</A></B>
+and <B><A href="../vbwin/q108147.htm">Q108147</A></B> for more information on this approach.
+<P>
+The following subroutine shows you how to perform a PACK. Essentially, you
+copy all the records to a new temporary table, delete the old one, then
+rename the temporary table as the original name.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   Sub Pack_DBF (db As Database, tblname As String)
+     Const MB_YESNO = 4                     ' Yes and No buttons
+     Const MB_ICONEXCLAMATION = 48          ' Warning message
+     Const IDYES = 6                        ' Yes button pressed
+
+     Dim dbdir As String, tmp As String 'Temp variables
+     Dim i As Integer, ret As Integer   'Counter and return value of MsgBox
+
+     Dim flags As Integer                   'Flags for MsgBox
+     ReDim idxs(0) As New index             'Holds indexes
+
+     On Error GoTo PackErr
+
+     flags = MB_YESNO Or MB_ICONEXCLAMATION
+     ret = MsgBox("Remove All Deleted Records in " &amp; tblname &amp; "?", flags)
+     If ret = IDYES Then
+       dbdir = db.Name + "\"                      'Hold database directory
+
+       'Delete the temp file if it exists.
+       If Dir$(dbdir &amp; "p_a_c_k.*") &lt;&gt; "" Then
+         Kill dbdir &amp; "p_a_c_k.*"
+       End If
+
+       'Store the indexes.
+       For i = 0 To db.TableDefs(tblname).Indexes.Count - 1
+         ReDim Preserve idxs(i + 1)
+         idxs(i).Name = db.TableDefs(tblname).Indexes(i).Name
+         idxs(i).Fields = db.TableDefs(tblname).Indexes(i).Fields
+         idxs(i).Primary = db.TableDefs(tblname).Indexes(i).Primary
+         idxs(i).Unique = db.TableDefs(tblname).Indexes(i).Unique
+       Next
+
+       'Create the new table without the deleted records.
+       db.Execute "Select * into [p_a_c_k] from " &amp; tblname
+
+       'Delete the current table.
+       db.TableDefs.Delete tblname
+
+       'Rename the DBF file and any memo files.
+       tmp = Dir$(dbdir &amp; "p_a_c_k.*")
+       Do While tmp &lt;&gt; ""
+       'Rename with the correct file extension; this should be on one line.
+
+           Name dbdir &amp; tmp As dbdir &amp; tblname &amp;
+                                Right$(tmp, Len(tmp) - InStr(tmp, ".") + 1)
+           tmp = Dir$
+       Loop
+
+       'Refresh the tabledefs and add the indexes to the new table.
+       db.TableDefs.Refresh
+       For i = 0 To UBound(idxs) - 1
+         db.TableDefs(tblname).Indexes.Append idxs(i)
+       Next
+
+       MsgBox "'" &amp; tblname &amp; "' successfully Packed!", MB_ICONEXCLAMATION
+     End If
+     Exit Sub
+
+   PackErr:
+     MsgBox Error$
+     Exit Sub
+
+   PackEnd:
+   End Sub
+
+</PRE>The following example code shows you how to call the above subroutine.
+First, you open the database the table is in, then you pass the database
+object and the name of the table to PACK to the subroutine. Be sure that
+there are not any open recordsets on the table you are trying to pack or
+you will get an error.
+<P>
+<PRE>   'To open file C:\SAMPLES\FOXTBL.DBF
+   Dim db As Database
+   Set db = OpenDatabase("c:\samples\foxtbl", False, False, "foxpro 2.5")
+   Call Pack_DBF(db, "foxtbl")
+   db.Close
+
+</PRE>NOTE: The above methods do not preserve formatting of numeric fields for
+our dBASE and FoxPro tables. To work around this limitation you should keep
+a template DBF file created from dBASE or FoxPro that contains the
+formatting you need, and use an INSERT INTO statement instead of the SELECT
+INTO statement shown above.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00<BR>
+KBCategory: kbprg kbcode<BR>
+KBSubCategory: APrgDataISAM<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 21, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

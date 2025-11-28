@@ -1,0 +1,244 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: WNetEnumResource Returns Different Info on Win95 and NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q152823">
+<META NAME="KBModify" CONTENT="1996/06/28">
+<META NAME="KBCreate" CONTENT="1996/06/25">
+<META NAME="Keywords" CONTENT="kbprg kbnetwork kbprb">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  When the WINNET example from the January 96 MSDN is built on Windows 95, and the sample is executed at the MS-DOS prompt from within Windows 95, the following error is displayed:     This program has performed an illegal operation and will be shutd...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QBWQ,QAUD,QAVZ,QDL9,QBWO,QBWN,QA7O,QA7N,QBQU,QAPF,QAAP,QAB4,QAJQ,QDIT V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: WNetEnumResource Returns Different Info on Win95 and NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 28, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q152823</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+<P>
+- Microsoft Win32 Software Development KIT (SDK) for Windows NT,
+<PRE>  version 3.5
+</PRE>- Microsoft Win32 Software Development KIT (SDK) for Windows 95,
+<PRE>  version 3.5
+</PRE> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When the WINNET example from the January 96 MSDN is built on Windows 95,
+and the sample is executed at the MS-DOS prompt from within Windows 95, the
+following error is displayed:
+<P>
+<PRE>   This program has performed an illegal operation and will be shutdown.
+   If the problem persists, contact the program vendor.
+
+</PRE>If the WINNET example is executed within the Visual C++ 4.0 debug
+environment, the following error is received:
+<P>
+<PRE>   Unhandled exception in winnet.exe: 0xC0000005 : Access Violation.
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+The WNetEnumResouce API returns different values on Win95 than on
+Windows NT.
+<P>
+The problem occurs when an enumeration starts at the root of the network.
+The first buffer of NETRESOURCE structures returned from WNetEnumResource
+is different. On Windows 95, the lpProvider field is set to the Network
+Provider name and the lpRemoteName is set to NULL. On NT, the lpProvider
+and lpRemoteName fields point to different strings containing the same
+values.
+<P>
+In the WINNET sample, when the EnumResource function tries to execute its
+example filter, the _strnicmp C Run-Time function causes an ACCESS
+VIOLATION because the lpRemoteName is NULL.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Checking the value of the lpRemoteName field and ensuring it is pointing to
+a valid address before allowing the filter to execute prevents the ACCESS
+VIOLATION error.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This behavior is by design.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The difference between the way the WNetEnumResource API works on NT and
+Windows 95 has only been observed when starting an enumeration at the root
+of the network. On Windows 95 platforms, it becomes necessary to check the
+value returned in the lpRemoteName for the first set of structures returned
+from WNetEnumResource.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   /* Compile options needed:
+     Be sure to include the mpr.lib library when linking.
+   */
+   #include &lt;windows.h&gt;
+   #include &lt;winnetwk.h&gt;
+   #include &lt;stdio.h&gt;
+
+   void main ( void )
+   {
+      NETRESOURCE resourcebuffer[5000];
+      HANDLE hEnum;
+      DWORD  netRet, dwEntriesToGet=0XFFFFFFFF;
+      DWORD  dwSizeResourcebuffer = sizeof( resourcebuffer);
+
+      //
+      // Enumerate starting at the root of the network
+      //
+      netRet = WNetOpenEnum( RESOURCE_GLOBALNET,
+                             RESOURCETYPE_DISK,
+                             (RESOURCEUSAGE_CONNECTABLE |
+    RESOUCEUSAGE_CONTAINER),
+                             (LPNETRESOURCE)NULL,
+                             &amp;hEnum);
+     if( netRet == NO_ERROR )
+     {
+        //
+        // The WNetOpenEnum was successful. Now get all the network
+   providers
+    for
+        // the network.
+        //
+        netRet = WNetEnumResource( hEnum,
+                                   (LPDWORD)&amp;dwEntriesToGet,
+                                   (LPVOID)resourcebuffer,
+                                   (LPDWORD)&amp;dwSizeResourcebuffer);
+        if( netRet == NO_ERROR )
+        {
+           //
+           // The resourcebuffer contains the network providers. Take a
+   look at
+           // the lpRemoteName field. ON win 95, this field will be NULL,
+   on NT
+           // the field will match the lpProvider field
+           //
+           DWORD i;
+           for( i = 0; i &lt; dwEntriesToGet; i++ )
+           {
+              if( resourcebuffer[i].lpRemoteName ) printf("Remote Name:
+   %s\n",
+                     resourcebuffer[i].lpRemoteName);
+              else printf("Remote Name: IS NULL\n");
+              printf( "Network Provider: %s\n\n",
+   resourcebuffer[i].lpProvider );
+           }
+        }
+        else printf("ERROR: WNetEnumResource API failed : %ld\n", netRet );
+    }
+    else printf("ERROR: WNetOpenEnum API Failed: %ld\n", netRet);
+
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.50<BR>
+KBCategory: kbprg kbnetwork kbprb<BR>
+KBSubcategory: kbnocat<BR>
+.END<BR>
+&lt;&gt;&lt;&gt;&lt;&gt;&lt;&gt;&lt;&gt;&lt;tegory:<BR>
+KBSubcategory:<BR>
+.END
+<P>
+
+Max Vaughn<BR>
+SAE, Microsoft Premier Developer Support
+<P>
+
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 28, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

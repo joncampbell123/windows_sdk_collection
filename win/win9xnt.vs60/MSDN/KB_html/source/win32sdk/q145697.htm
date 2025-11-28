@@ -1,0 +1,1122 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Manage Trusted Domains Programmatically in Windows NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q145697">
+<META NAME="KBModify" CONTENT="1997/06/25">
+<META NAME="KBCreate" CONTENT="1996/02/05">
+<META NAME="Keywords" CONTENT="BseSecurity codesam kbcode kbprg NtwkLmapi">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  The ability to manage domain trust in a Windows NT environment can be accomplished by using the  Windows NT User Manager for Domains  utility (usrmgr). By choosing Trust Relationships on the Policies menu, a user can manage both sides ( Trusted Dom...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QATQ,QA9A,QAK7,QBW3,QAWK,QAUD,QBWP,QBBI,QBVV,QAXB,QAI4,QAY5,QBG2,QAHD,QAI5 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Manage Trusted Domains Programmatically in Windows NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q145697</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) for Windows NT
+   versions 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The ability to manage domain trust in a Windows NT environment can be
+accomplished by using the "Windows NT User Manager for Domains" utility
+(usrmgr). By choosing Trust Relationships on the Policies menu, a user can
+manage both sides ("Trusted Domains" and "Permitted to trust this domain")
+of the domain trust relationship on a domain.
+<P>
+This article illustrates the programmatic manipulation of the "Trusted
+Domains" side of the domain trust relationship, at the domain controller
+level. This article does not address management of "Trusted Domains" at the
+workstation level, which is used for managing workstation domain
+membership.
+<P>
+To understand this article, you need to understand how the domain trust
+relationship affects the behavior of Windows NT. It is assumed that you
+have this understanding.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The management of interdomain trust accounts ("permitted to trust this
+domain") is be addressed by this article. For information about managing
+the "permitted to trust this domain" side of the domain trust relationship,
+please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q136867.htm">Q136867</A></B>
+   TITLE     : HOWTO: Manage Computer Accounts Programmatically in
+               Windows NT
+
+</PRE>You can manage trusted domains and associated passwords programmatically by
+using the Windows NT LSA (local security authority) API. Use the Net
+function call to obtain information necessary to manage trusted domains.
+<P>
+<P><h3>Considerations for Managing Trusted Domains</h3>
+ 
+
+<UL><LI>Trusted domain updates must take place on the primary domain controller
+   for the target domain.
+
+<LI>The trusted domain name should be all uppercase for consistency with
+   Windows NT account management utilities.
+
+<LI>The maximum domain name length is MAX_COMPUTERNAME_LENGTH (15).
+
+<LI>The maximum trusted domain password length is LM20_PWLEN (14).
+
+<LI>The password provided at trust-creation time is valid only until the
+   trust has become active on the domain. A new password is established
+   during trust relationship activation.
+
+<LI>The user who calls the LSA trust management functions must have
+   Administrator privilege on the target domain.
+
+<LI>The Windows NT LSA API and Net function calls are currently
+   implemented as Unicode only. The caller must ensure that strings
+   passed to these functions are in Unicode form.
+
+<LI>LsaSetTrustedDomainInformation does not verify the validity or
+   existence of the supplied domain Sid. The caller of these API is
+   responsible for ensuring that a valid Sid is provided to the API.
+   You can use NetUserModalsGet at info level 2 against the domain
+   controller for the trusted domain for this purpose.
+
+<LI>Do not set TrustedPosixOffsetInformation info level with
+   LsaSetTrustedDomainInformation(). This information is managed by
+   the LSA, so it should not be set.
+
+<LI>Do not set a domain to trust itself; the trusted domain name should
+   not match the domain name where the policy update takes place.
+<P>
+</UL><h3>List of APIs That Can Be Used to Manage Trusted Domains</h3>
+ 
+<P>
+NetGetDCName can be used to obtain the computer name of the primary domain
+controller associated with a domain name.
+<P>
+NetUserModalsGet at info level 2 can be used to obtain the Sid representing
+the trusted domain, in addition to the domain name of the specified
+computer. The target machine is a domain controller for the trusted domain.
+The resultant domain Sid is supplied to LSA API calls that require the
+Domain Sid of the trusted domain to manage.
+<P>
+NetServerGetInfo at info level 101 can be used to determine if the target
+of the policy object update is a domain controller or a workstation. This
+article does not address the workstation case, so this determination is
+necessary.
+<P>
+NetApiBufferFree is used to free buffers allocated by Net function calls
+that return information.
+<P>
+LsaOpenPolicy is used to open the policy object on the computer where the
+trusted domain update is taking place. The target computer is a primary
+domain controller.
+<P>
+LsaDeleteTrustedDomain is used to delete a trusted domain.
+<P>
+LsaQueryTrustedDomainInfo at info level TrustedPasswordInformation is used
+to determine if the trusted domain object already exists, and if so, what
+the current Password is.
+<P>
+LsaSetTrustedDomainInformation at info level TrustedDomainNameInformation
+is used to create the trusted domain object if the object does not yet
+exist.
+<P>
+LsaSetTrustedDomainInformation at info level TrustedPasswordInformation is
+used to set the new password associated with the trusted domain object. If
+the specified trust existed after the call to LsaQueryTrustedDomainInfo,
+set the OldPassword on the trusted domain object to the previous password
+obtained from the Query operation.
+<P>
+LsaFreeMemory should be used if memory was allocated by the LSA for the
+caller. An example of this is data provided by LsaQueryTrustedDomainInfo.
+<P>
+LsaCloseHandle is used to close an open policy handle when it is no longer
+needed.
+<P>
+<P><h3>Steps to Verify That the Trust Exists</h3>
+ 
+<P>
+Prior to creating a new trusted domain, it may be useful to verify that the
+"permitted to trust this domain" side of the trust relationship exists and
+is consistent with the new trusted domain. If the trust does not exist or
+is inconsistent, the user could be alerted to take action in order to
+complete the trust relationship.
+<P>
+The trust can be verified by attempting to establish a connection to the
+trusted domain and specifying a username, domain name, and password
+corresponding to the trust account and trusted domain password.
+The following steps should be used to verify the trust:
+
+<OL><P><LI>Obtain the domain controller computer name for the trusted domain by
+   calling NetGetDCName(). This domain name is also used as the domain name
+   associated with the trust account.
+
+<P><LI>Build a UNC path containing the trusted domain computer name and the
+   Interprocess communication share. An example UNC path is:
+<P>
+   \\WINBASE\IPC$.
+
+<P><LI>Build a user name consisting of the domain name, which is "permitted
+   to trust," with a "$" appended. An example user name is:
+<P>
+   MYDOMAIN$
+
+<P><LI>Call NetUseAdd() at info level 2 to specify the domain name, UNC path,
+   user name, and password associated with the trust.
+<P>
+</OL>If the trust is successfully verified, the connection attempt fails with
+ERROR_NOLOGON_INTERDOMAIN_TRUST_ACCOUNT. In this case, the supplied
+credentials were validated, but the account type does not allow a network
+style logon.
+<P>
+If NetUseAdd succeeds with NERR_Success, the specified trust account does
+not exist, because the specified account does not exist on the target
+computer, and default credentials were used to establish the connection.
+Use NetUseDel to delete the connection.
+<P>
+If NetUseAdd fails with ERROR_LOGON_FAILURE, the supplied password does not
+match the password on the trust account.
+<P>
+If NetUseAdd fails with ERROR_SESSION_CREDENTIAL_CONFLICT, a connection
+already exists to the specified domain controller, which uses credentials
+that differ from the credentials supplied with NetUseAdd. The existing
+connection must be deleted to verify the trust.
+<P>
+NOTE: This method of trust verification is advisory and may be specific to
+versions of Windows NT versions 3.1 through 4.0.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>/*++
+
+ This sample illustrates how to manage Windows NT trusted domains at the
+ domain controller level.
+
+ The first command line argument indicates the name of the new or existing
+ trusted domain to create or modify.
+
+ The second command line argument indicates the new password for the
+ trusted domain specified in the first argument.
+
+ The optional third argument indicates the domain name that is the target
+ of the trusted domain update operation. If this argument is not specified,
+ the update will occur on the local domain. Note that this sample will not
+ allow a trusted domain update to occur on a non-domain controller.
+
+ This sample requires header files found on the Windows NT 3.51 SDK CD-ROM
+ compact disc in the \Mstools\Security directory.
+
+ This sample works correctly compiled ANSI or Unicode. Note that Net
+ function calls are Unicode only, and Windows NT LSA API are Unicode
+ only.
+
+ The following import libraries are required:
+
+ Netapi32.lib
+ Advapi32.lib
+
+</PRE></OL>--*/
+<P>
+#ifndef UNICODE
+<PRE>#define UNICODE
+#define _UNICODE
+</PRE>#endif
+<P>
+<PRE>#include &lt;windows.h&gt;
+#include &lt;lm.h&gt;         // for NetXxx API
+#include "ntsecapi.h"
+// \mstools\samples\win32\winnt\security\include\ntsecapi.h
+
+#include &lt;stdio.h&gt;
+
+#define RTN_OK 0
+#define RTN_USAGE 1
+#define RTN_ERROR 13
+
+//
+// if you have the DDK, include Ntstatus.h
+//
+</PRE>#ifndef STATUS_SUCCESS
+<PRE>#define STATUS_SUCCESS                  ((NTSTATUS)0x00000000L)
+#define STATUS_OBJECT_NAME_NOT_FOUND    ((NTSTATUS)0xC0000034L)
+#define STATUS_INVALID_SID              ((NTSTATUS)0xC0000078L)
+</PRE>#endif
+<P>
+void
+InitLsaString(
+<PRE>    PLSA_UNICODE_STRING LsaString,
+    LPWSTR String
+    );
+
+</PRE>NTSTATUS
+OpenPolicy(
+<PRE>    LPWSTR ServerName,
+    DWORD DesiredAccess,
+    PLSA_HANDLE PolicyHandle
+    );
+
+</PRE>BOOL
+GetDomainSid(
+<PRE>    LPWSTR DomainName,  // domain name to acquire Sid of
+    PSID *pDomainSid    // points to allocated Sid on success
+    );
+
+</PRE>NTSTATUS
+SetTrustedDomainInfo(
+<PRE>    LSA_HANDLE PolicyHandle,
+    PSID DomainSid,             // Sid of domain to manipulate
+    LPWSTR TrustedDomainName,   // trusted domain name to add/update
+    LPWSTR Password             // new trust password for trusted domain
+    );
+
+</PRE>BOOL
+VerifyTrustRelationship(
+<PRE>    LPWSTR TargetDomainName,        // domain name to verify trust at
+    LPWSTR TrustAccountToVerify,    // trusted domain name to verify
+    LPWSTR Password,                // password associated with trust
+    LPBOOL bTrustVerified           // indicates if trust was verified
+    );
+
+</PRE>void
+DisplayNtStatus(
+<PRE>    LPSTR szAPI,    // ANSI string containing API name
+    NTSTATUS Status
+    );
+
+</PRE>void
+DisplayError(
+<PRE>    LPSTR szAPI,    // pointer to failed API name
+    DWORD dwLastError
+    );
+
+//
+// Unicode entry point and argv
+//
+</PRE>int
+__cdecl
+wmain(
+<PRE>    int argc,
+    wchar_t *argv[]
+    )
+</PRE>{
+<PRE>    BOOL bAllocTargetDomain;    // did you allocate memory for target?
+    LSA_HANDLE PolicyHandle;
+    LPWSTR TargetDomainName;    // target domain of policy update
+    LPWSTR DomainController;    // computer name where policy update
+    PSID DomainSid; // allocated Sid representing domain to trust
+    LPWSTR TrustedDomainName;
+    LPWSTR Password;
+    BOOL bTrustVerified;
+    NET_API_STATUS nas;
+    NTSTATUS Status;
+
+    if(argc &lt; 3) {
+        fprintf(stderr,
+            "Usage: %ls &lt;NewTrustedDomain&gt; &lt;Password&gt; [TargetDomain]\n",
+            argv[0]);
+        return RTN_USAGE;
+    }
+
+    TrustedDomainName = argv[1];    // existing or new TrustedDomain
+    Password = argv[2];             // new password for TrustedDomain
+
+    //
+    // if a TargetDomain was specified, point to that.
+    // if not, set TargetDomain to the current domain if a DC.
+    //
+    if(argc == 4 &amp;&amp; *argv[3] != L'\0') {
+        TargetDomainName = argv[3]; // domain to update trust at
+        bAllocTargetDomain = FALSE; // no memory allocated
+    }
+    else {
+        PSERVER_INFO_101 si101;
+        DWORD Type;
+        PUSER_MODALS_INFO_2 umi2;
+
+        //
+        // ensure that the local computer is a DC. This operation is only
+        // appropriate against a domain controller.
+        //
+        nas = NetServerGetInfo(NULL, 101, (LPBYTE *)&amp;si101);
+        if(nas != NERR_Success) {
+            DisplayError("NetServerGetInfo", nas);
+            return RTN_ERROR;
+        }
+
+        Type = si101-&gt;sv101_type;
+        NetApiBufferFree(si101);
+
+        if( !(Type &amp; SV_TYPE_DOMAIN_CTRL) &amp;&amp;
+            !(Type &amp; SV_TYPE_DOMAIN_BAKCTRL) ) {
+            printf("Error:  Specify a TargetDomain; this operation"
+                    " is only valid against a domain.\n");
+            return RTN_ERROR;
+        }
+
+        //
+        // obtain the local computer's domain name
+        //
+        nas = NetUserModalsGet(NULL, 2, (LPBYTE *)&amp;umi2);
+
+        if(nas != NERR_Success) {
+            DisplayError("NetUserModalsGet", nas);
+            return RTN_ERROR;
+        }
+
+        //
+        // copy the domain name to new storage
+        //
+        TargetDomainName = (LPWSTR)HeapAlloc(GetProcessHeap(), 0,
+            (lstrlenW(umi2-&gt;usrmod2_domain_name) + 1) * sizeof(WCHAR));
+
+        if(TargetDomainName != NULL) {
+            lstrcpyW(TargetDomainName, umi2-&gt;usrmod2_domain_name);
+            bAllocTargetDomain = TRUE; // we allocated memory
+        }
+
+        NetApiBufferFree(umi2); // free memory allocated by NetXxx
+
+        //
+        // if an error occurred allocating memory, exit
+        //
+        if(TargetDomainName == NULL) {
+            DisplayError("HeapAlloc", 0);
+            return RTN_ERROR;
+        }
+    }
+
+    //
+    // do not allow a Domain to trust itself
+    //
+    if(lstrcmpiW(TargetDomainName, TrustedDomainName) == 0) {
+        fprintf(stderr,"Error:  Domain %ls cannot trust itself.\n",
+            TargetDomainName);
+
+        return RTN_ERROR;
+    }
+
+    //
+    // ensure Password and TrustedDomainName are the correct length
+    //
+    if(lstrlenW(Password) &gt; LM20_PWLEN)
+        Password[LM20_PWLEN] = L'\0'; // truncate
+
+    if(lstrlenW(TrustedDomainName) &gt; MAX_COMPUTERNAME_LENGTH)
+        TrustedDomainName[MAX_COMPUTERNAME_LENGTH] = L'\0'; // truncate
+
+    //
+    // obtain the primary DC computer name from the specified
+    // TargetDomainName
+    //
+    nas = NetGetDCName(
+        NULL, TargetDomainName, (LPBYTE *)&amp;DomainController);
+
+    if(nas != NERR_Success) {
+        DisplayError("NetGetDCName", nas);
+        return RTN_ERROR;
+    }
+
+    //
+    // verify the trust relationship
+    //
+    if(!VerifyTrustRelationship(
+        TrustedDomainName,
+        TargetDomainName,   // trust account to verify
+        Password,
+        &amp;bTrustVerified
+        )) {
+        //
+        // an error occurred during trust relationship verification
+        //
+        DisplayError("VerifyTrustRelationship", GetLastError());
+    }
+    else {
+        //
+        // inform the user if the trust was not verified
+        //
+        if(!bTrustVerified) {
+            DWORD dwTrustVerifyFailReason = GetLastError();
+
+            //
+            // You could exit here, but this is optional. Reasons for
+            // trust verification failure could be non-existent
+            // "permitted to trust" on the verified domain (rc=1317),
+            // wrong password (rc=1326), etc
+            //
+            printf("Warning:  ");
+
+            switch(dwTrustVerifyFailReason) {
+                case ERROR_NO_SUCH_USER:
+                    printf("%ls not permitted-to-trust on %ls\n",
+                        TargetDomainName, TrustedDomainName);
+                    break;
+
+                case ERROR_LOGON_FAILURE:
+                    printf("Trust %ls has incorrect password on %ls\n",
+                        TrustedDomainName, TargetDomainName);
+                    break;
+
+                default:
+                    DisplayError("Trust was not verified.  Non-fatal",
+                        dwTrustVerifyFailReason);
+            } // switch
+        }
+    }
+
+    //
+    // fetch the DomainSid of the domain to trust
+    //
+    if(!GetDomainSid(TrustedDomainName, &amp;DomainSid)) {
+        DisplayError("GetDomainSid", GetLastError());
+        return RTN_ERROR;
+    }
+
+    //
+    // open the policy on the target domain
+    //
+    Status = OpenPolicy(
+                DomainController,
+                POLICY_CREATE_SECRET |  // for password set operation
+                POLICY_TRUST_ADMIN,     // for trust creation
+                &amp;PolicyHandle
+                );
+
+    if(Status != STATUS_SUCCESS) {
+        DisplayNtStatus("OpenPolicy", Status);
+        return RTN_ERROR;
+    }
+
+    //
+    // Update TrustedDomainInfo to reflect the specified trust.
+    //
+    Status = SetTrustedDomainInfo(
+        PolicyHandle,
+        DomainSid,
+        TrustedDomainName,
+        Password
+        );
+
+    if(Status != STATUS_SUCCESS) {
+        DisplayNtStatus("SetTrustedDomainInfo", Status);
+        return RTN_ERROR;
+    }
+
+    //
+    // if you allocated memory for TargetDomainName, free it
+    //
+    if(bAllocTargetDomain)
+        HeapFree(GetProcessHeap(), 0, TargetDomainName);
+
+    //
+    // free the Sid which was allocated for the TrustedDomain Sid
+    //
+    FreeSid(DomainSid);
+
+    //
+    // close the policy handle
+    //
+    LsaClose(PolicyHandle);
+
+    if(DomainController != NULL)
+        NetApiBufferFree(DomainController);
+
+    return RTN_OK;
+</PRE>}
+<P>
+void
+InitLsaString(
+<PRE>    PLSA_UNICODE_STRING LsaString,
+    LPWSTR String
+    )
+</PRE>{
+<PRE>    DWORD StringLength;
+
+    if(String == NULL) {
+        LsaString-&gt;Buffer = NULL;
+        LsaString-&gt;Length = 0;
+        LsaString-&gt;MaximumLength = 0;
+
+        return;
+    }
+
+    StringLength = lstrlenW(String);
+    LsaString-&gt;Buffer = String;
+    LsaString-&gt;Length = (USHORT) StringLength * sizeof(WCHAR);
+    LsaString-&gt;MaximumLength = (USHORT) (StringLength + 1) *
+        sizeof(WCHAR);
+}
+
+</PRE>NTSTATUS
+OpenPolicy(
+<PRE>    LPWSTR ServerName,
+    DWORD DesiredAccess,
+    PLSA_HANDLE PolicyHandle
+    )
+</PRE>{
+<PRE>    LSA_OBJECT_ATTRIBUTES ObjectAttributes;
+    LSA_UNICODE_STRING ServerString;
+    PLSA_UNICODE_STRING Server = NULL;
+
+    //
+    // Always initialize the object attributes to all zeroes
+    //
+    ZeroMemory(&amp;ObjectAttributes, sizeof(ObjectAttributes));
+
+    if(ServerName != NULL) {
+        //
+        // Make a LSA_UNICODE_STRING out of the LPWSTR passed in
+        //
+        InitLsaString(&amp;ServerString, ServerName);
+
+        Server = &amp;ServerString;
+    }
+
+    //
+    // Attempt to open the policy
+    //
+    return LsaOpenPolicy(
+                Server,
+                &amp;ObjectAttributes,
+                DesiredAccess,
+                PolicyHandle
+                );
+}
+
+/*++
+ This function retrieves the Sid representing the specified DomainName.
+
+ If the function succeeds, the return value is TRUE and pDomainSid will
+ point to the Sid representing the specified DomainName. The caller
+ should free the memory associated with this Sid with the Win32 API
+ FreeSid() when the Sid is no longer needed.
+
+ If the function fails, the return value is FALSE, and pDomainSid will
+ be set to NULL.
+
+</PRE>--*/
+<P>
+BOOL
+GetDomainSid(
+<PRE>    LPWSTR DomainName,  // domain name to acquire Sid of
+    PSID *pDomainSid    // points to allocated Sid on success
+    )
+</PRE>{
+<PRE>    NET_API_STATUS nas;
+    LPWSTR DomainController;
+    PUSER_MODALS_INFO_2 umi2 = NULL;
+    DWORD dwSidSize;
+    BOOL bSuccess = FALSE; // assume this function will fail
+
+    *pDomainSid = NULL; // invalidate pointer
+
+    //
+    // obtain the PDC computer name of the supplied domain name
+    //
+    nas = NetGetDCName(NULL, DomainName, (LPBYTE *)&amp;DomainController);
+    if(nas != NERR_Success) {
+        SetLastError(nas);
+        return FALSE;
+    }
+
+    __try {
+
+    //
+    // obtain the domain Sid from the PDC
+    // NOTE: this may fail if the credentials of the caller are not
+    // recognized or valid on the target computer. In this case, it
+    // is necessary to first establish a connection via NetUseAdd()
+    // at info-level 2 to the remote IPC$, specifying EMPTY
+    // credentials.
+    //
+    nas = NetUserModalsGet(DomainController, 2, (LPBYTE *)&amp;umi2);
+    if(nas != NERR_Success) __leave;
+
+    //
+    // if the Sid is valid, obtain the size of the Sid
+    //
+    if(!IsValidSid(umi2-&gt;usrmod2_domain_id)) __leave;
+    dwSidSize = GetLengthSid(umi2-&gt;usrmod2_domain_id);
+
+    //
+    // allocate storage and copy the Sid
+    //
+    *pDomainSid = (PSID)HeapAlloc(GetProcessHeap(), 0, dwSidSize);
+    if(*pDomainSid == NULL) __leave;
+
+    if(!CopySid(dwSidSize, *pDomainSid, umi2-&gt;usrmod2_domain_id))
+        __leave;
+
+    bSuccess = TRUE; // indicate success
+
+    } // try
+    __finally {
+
+    //
+    // free allocated memory
+    //
+    NetApiBufferFree(DomainController);
+
+    if(umi2 != NULL)
+        NetApiBufferFree(umi2);
+
+    if(!bSuccess) {
+        //
+        // if the function failed, free memory and indicate result code
+        //
+
+        if(*pDomainSid != NULL) {
+            FreeSid(*pDomainSid);
+            *pDomainSid = NULL;
+        }
+
+        if(nas != NERR_Success) {
+            SetLastError(nas);
+        }
+    }
+
+    }
+    return bSuccess;
+</PRE>}
+<P>
+<PRE>/*++
+ This function manipulates the trust associated with the supplied
+ DomainSid.
+
+ If the domain trust does not exist, it is created with the
+ specified password. In this case, the supplied PolicyHandle must
+ have been opened with POLICY_TRUST_ADMIN and POLICY_CREATE_SECRET
+ access to the policy object.
+
+ If the domain trust exists, the password is updated with the
+ password specified by the Password parameter. The trust OldPassword
+ is set to the previous password.
+
+ If DomainName and Password are NULL, the trusted domain specified by
+ DomainSid is deleted.
+
+</PRE>--*/
+<P>
+NTSTATUS
+SetTrustedDomainInfo(
+<PRE>    LSA_HANDLE PolicyHandle,
+    PSID DomainSid,             // Sid of domain to manipulate
+    LPWSTR TrustedDomainName,   // trusted domain name to add/update
+    LPWSTR Password             // new trust password for trusted domain
+    )
+</PRE>{
+<PRE>    PTRUSTED_PASSWORD_INFO tpi;
+    PTRUSTED_DOMAIN_NAME_INFO tdni;
+    LSA_UNICODE_STRING LsaPassword;
+    TRUSTED_PASSWORD_INFO Newtpi;
+    BOOL bTrustExists = TRUE; // assume trust exists
+    NTSTATUS Status;
+
+    //
+    // Make sure you were passed a valid Sid
+    //
+    if(DomainSid == NULL || !IsValidSid(DomainSid))
+        return STATUS_INVALID_SID;
+
+    //
+    // if TrustedDomainName and Password is NULL (or empty strings),
+    // delete the specified trust
+    //
+    if( (TrustedDomainName == NULL || *TrustedDomainName == L'\0') &amp;&amp;
+        (Password == NULL || *Password == L'\0') ) {
+        return LsaDeleteTrustedDomain(PolicyHandle, DomainSid);
+    }
+
+    //
+    // query the current password, which is used to update the
+    // OldPassword. If the trust doesn't exist, indicate this so that the
+    // trust will be created.
+    //
+    Status = LsaQueryTrustedDomainInfo(
+        PolicyHandle,
+        DomainSid,
+        TrustedPasswordInformation,
+        &amp;tpi);
+
+    if(Status != STATUS_SUCCESS) {
+        if(Status == STATUS_OBJECT_NAME_NOT_FOUND) {
+            bTrustExists = FALSE; // indicate trust does not exist
+        }
+        else {
+            DisplayNtStatus("LsaQueryTrustedDomainInfo", Status);
+            return Status;
+        }
+    }
+
+    InitLsaString(&amp;LsaPassword, Password);
+
+    //
+    // set the new password to the supplied password
+    //
+    Newtpi.Password = LsaPassword;
+
+    if(bTrustExists) {
+        //
+        // if the trust already existed, set OldPassword to the
+        // current password...
+        //
+        Newtpi.OldPassword = tpi-&gt;Password;
+    }
+    else {
+        LSA_UNICODE_STRING LsaDomainName;
+        DWORD cchDomainName; // number of chars in TrustedDomainName
+
+        //
+        // if the trust did not exist, set OldPassword to the
+        // supplied password...
+        //
+        Newtpi.OldPassword = LsaPassword;
+
+        InitLsaString(&amp;LsaDomainName, TrustedDomainName);
+
+        //
+        // ...convert TrustedDomainName to uppercase...
+        //
+        cchDomainName = LsaDomainName.Length / sizeof(WCHAR);
+        while(cchDomainName--) {
+            LsaDomainName.Buffer[cchDomainName] =
+             towupper(LsaDomainName.Buffer[cchDomainName]);
+        }
+
+        //
+        // ...create the trusted domain object
+        //
+        Status = LsaSetTrustedDomainInformation(
+            PolicyHandle,
+            DomainSid,
+            TrustedDomainNameInformation,
+            &amp;LsaDomainName
+            );
+
+        if(Status != STATUS_SUCCESS) return Status;
+    }
+
+    //
+    // update TrustedPasswordInformation for the specified trust
+    //
+    Status = LsaSetTrustedDomainInformation(
+        PolicyHandle,
+        DomainSid,
+        TrustedPasswordInformation,
+        &amp;Newtpi
+        );
+
+    //
+    // if a trust already existed, free the memory associated with
+    // the retrieved information
+    //
+    if(bTrustExists) LsaFreeMemory(tpi);
+
+    return Status;
+</PRE>}
+<P>
+<PRE>/*++
+
+ This function verifies that the "permitted to trust" side of the
+ trust relationship has been established and that the specified
+ password matches the "permitted to trust" password.
+
+ If the function fails, the return value is FALSE, and bTrustVerified
+ is undefined.
+
+ If the function succeeds, the trust verification succeeded, and
+ bTrustVerified is set to the result of the verification.
+
+ If bTrustVerified is TRUE, the trust relationship is verified.
+
+ If bTrustVerified is FALSE, the trust was not verified.  Call
+ GetLastError() to get extended error information.
+
+ ERROR_NO_SUCH_USER indicates that the "permitted to trust"
+ UF_INTERDOMAIN_TRUST_ACCOUNT does not exist on the specified domain.
+
+ ERROR_LOGON_FAILURE indicates that the supplied password does
+ not match the password in the "permitted to trust"
+ UF_INTERDOMAIN_TRUST_ACCOUNT.
+
+ NOTE: if a connection exists to the domain controller of the
+ TargetDomainName prior to calling this function, this function will
+ fail due to a credential conflict (WinError == 1219).
+
+</PRE>--*/
+<P>
+BOOL
+VerifyTrustRelationship(
+<PRE>    LPWSTR TargetDomainName,        // domain name to verify trust at
+    LPWSTR TrustAccountToVerify,    // trusted domain name to verify
+    LPWSTR Password,                // password associated with trust
+    LPBOOL bTrustVerified           // indicates if trust was verified
+    )
+</PRE>{
+<PRE>    NET_API_STATUS nas;
+    USE_INFO_2 ui2;
+    LPWSTR DomainController;
+    LPWSTR szIpc = L"\\IPC$";
+    LPWSTR RemoteResource = NULL;
+    LPWSTR UserName = NULL;
+    BOOL bSuccess = FALSE; // assume this function will fail
+
+    //
+    // fetch the computer name of the domain you try to connect to
+    //
+    nas = NetGetDCName(
+        NULL, TargetDomainName, (LPBYTE *)&amp;DomainController);
+    if(nas != NERR_Success) {
+        SetLastError(nas);
+        return FALSE;
+    }
+
+    __try {
+
+    //
+    // build the \\&lt;DCName&gt;\ipc$ as the remote resource
+    //
+    RemoteResource = (LPWSTR)HeapAlloc(GetProcessHeap(), 0,
+        (lstrlenW(DomainController) + lstrlenW(szIpc) + 1 ) *
+            sizeof(WCHAR)
+        );
+
+    if(RemoteResource == NULL) __leave;
+
+    if(lstrcpyW(RemoteResource, DomainController) == NULL) __leave;
+    if(lstrcatW(RemoteResource, szIpc) == NULL) __leave;
+
+    //
+    // build the user name as &lt;TrustAccountToVerify&gt;$
+    //
+    UserName = (LPWSTR)HeapAlloc(GetProcessHeap(), 0,
+        (lstrlenW(TrustAccountToVerify) + 1 + 1) * sizeof(WCHAR)
+        );
+
+    if(UserName == NULL) __leave;
+
+    if(lstrcpyW(UserName, TrustAccountToVerify) == NULL) __leave;
+    if(lstrcatW(UserName, L"$") == NULL) __leave;
+
+    ZeroMemory(&amp;ui2, sizeof(ui2));
+
+    ui2.ui2_local = NULL;
+    ui2.ui2_remote = RemoteResource;
+    ui2.ui2_asg_type = USE_IPC;
+    ui2.ui2_password = Password;
+    ui2.ui2_username = UserName;
+    ui2.ui2_domainname = TargetDomainName;
+
+    //
+    // Attempt to establish a connection to the target domain.
+    // If the result is ERROR_NOLOGON_INTERDOMAIN_TRUST_ACCOUNT,
+    // this illustrates the supplied Password matches an existing
+    // trust account because the credentials were validated but
+    // a logon is not allowed for this account type.
+    //
+    nas = NetUseAdd(NULL, 2, (LPBYTE)&amp;ui2, NULL);
+
+    if(nas == ERROR_NOLOGON_INTERDOMAIN_TRUST_ACCOUNT) {
+        *bTrustVerified = TRUE;     // indicate trust verified
+    }
+    else {
+        *bTrustVerified = FALSE;    // indicate trust not verified
+
+        //
+        // if the connection succeeded, the UF_INTERDOMAIN_TRUST_ACCOUNT
+        // does not exist, because the supplied credentials aren't
+        // recognized by the remote (default credentials are applied).
+        // Delete the connection and indicate the "permitted to trust"
+        // account is non-existent.
+        //
+        if(nas == NERR_Success) {
+            NetUseDel(NULL, RemoteResource, 0);
+            nas = ERROR_NO_SUCH_USER;
+        }
+    }
+
+    bSuccess = TRUE; // indicate this function succeeded
+
+    } // try
+    __finally {
+
+    //
+    // free allocated memory
+    //
+    NetApiBufferFree(DomainController);
+
+    if(RemoteResource != NULL) {
+        HeapFree(GetProcessHeap(), 0, RemoteResource);
+    }
+
+    if(UserName != NULL) {
+        HeapFree(GetProcessHeap(), 0, UserName);
+    }
+
+    //
+    // if you succeeded, but trust could not be verified, indicate why
+    //
+    if(bSuccess == TRUE &amp;&amp; *bTrustVerified == FALSE) {
+        SetLastError(nas);
+    }
+
+    }
+
+    return bSuccess;
+</PRE>}
+<P>
+void
+DisplayNtStatus(
+<PRE>    LPSTR szAPI,    // ANSI string containing API name
+    NTSTATUS Status
+    )
+</PRE>{
+<PRE>    //
+    // convert the NTSTATUS to Winerror and display the result
+    //
+    DisplayError(szAPI, LsaNtStatusToWinError(Status));
+</PRE>}
+<P>
+void
+DisplayError(
+<PRE>    LPSTR szAPI, // pointer to failed API name
+    DWORD dwLastError
+    )
+</PRE>{
+<PRE>    LPSTR MessageBuffer;
+    DWORD dwBufferLength;
+
+    fprintf(stderr,"%s error! (rc=%lu)\n", szAPI, dwLastError);
+
+    if(dwBufferLength=FormatMessageA(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER |
+        FORMAT_MESSAGE_FROM_SYSTEM,
+        NULL,
+        dwLastError,
+        GetUserDefaultLangID(),
+        (LPSTR) &amp;MessageBuffer,
+        0,
+        NULL
+        ))
+    {
+        DWORD dwBytesWritten;
+
+        //
+        // Output message string on stderr
+        //
+        WriteFile(
+            GetStdHandle(STD_ERROR_HANDLE),
+            MessageBuffer,
+            dwBufferLength,
+            &amp;dwBytesWritten,
+            NULL
+            );
+
+        //
+        // free the buffer allocated by the system
+        //
+        LocalFree(MessageBuffer);
+    }
+</PRE>}
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: lsa machine account server workstation trust<BR>
+Keywords            : BseSecurity codesam kbcode kbprg NtwkLmapi<BR>
+Version             : 3.51 4.0<BR>
+Platform            : NT WINDOWS<BR>
+Issue type          : kbhowto<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

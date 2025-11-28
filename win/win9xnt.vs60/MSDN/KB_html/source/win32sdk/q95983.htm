@@ -1,0 +1,266 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Establishing Advise Loop on Same topic!item!format! Name </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q95983 ">
+<META NAME="KBModify" CONTENT="1995/11/02">
+<META NAME="KBCreate" CONTENT="1993/03/03">
+<META NAME="Keywords" CONTENT="kbui">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  Sometimes more than one DDEML client application might establish an advise loop with a server on the same topic!item!format name set. This article discusses the complexities involved in such a transaction.  MORE INFORMATION  A client application se...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QARL,QAJQ,QBXS,QAYY,QA6A,QAH6,QDL9,QBWO,QBWN,QBVV,QAIJ,QAA7,QDNG,QAJH V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Establishing Advise Loop on Same topic!item!format! Name</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 2, 1995</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q95983 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Software Development Kit (SDK) versions 3.1
+
+<LI>Microsoft Win32 Application Programming Interface (API) included with:
+<P>
+<P><PRE>    - Microsoft Windows NT versions 3.5 and 3.51
+    - Microsoft Windows 95 version 4.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Sometimes more than one DDEML client application might establish an
+advise loop with a server on the same topic!item!format name set. This
+article discusses the complexities involved in such a transaction.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+A client application sends an XTYP_ADVSTART to DDEML when it needs
+periodic updates on a particular data item from a server, typically
+when that particular data item's value changes.
+<P>
+The server application calls DdePostAdvise whenever the value of the
+requested data item changes. This results in an XTYP_ADVREQ
+transaction being sent to the server's DDEML callback function, where
+the server returns a handle to the changed data.
+<P>
+The client then receives the updated data item during the XTYP_ADVDATA
+transaction in the case of a hot advise loop. In a warm advise loop,
+the XTYP_ADVDATA transaction that the client receives in its callback
+does not contain data; it has to specifically request data with an
+XTYP_REQUEST transaction.
+<P>
+When more than one client application requests an advise loop on the
+same topic!item!format name set, DDEML maintains a list of these
+client applications so that it knows that on one call to
+DdePostAdvise(), it should send the changed hData to all the
+requesting applications in its list.
+<P>
+The server's callback receives an XTYP_ADVREQ transaction as a result
+of DdePostAdvise() with the LOWORD (dwData1) containing a count of the
+number of ADVREQ transactions remaining to be processed on the same
+topic!item!format name set.
+<P>
+This count allows the server application to create its hData as
+HDATA_APPOWNED, whereby it could create a data handle just once and
+pass the same handle on to its other pending requests on the same
+topic!item!format name set. Finally, when the count is down to zero,
+DdeFreeDataHandle() can then be called on this hData.
+<P>
+Note that a server needs to call DdePostAdvise() only once regardless
+of how many pending advise requests it has on the same
+topic!item!format name set. This one call to DdePostAdvise() causes
+DDEML to send the appropriate number of XTYP_ADVREQ transactions to
+the server's callback.
+<P>
+All these can be easily illustrated using the Windows version 3.1 Software
+Development Kit (SDK) DDEML CLIENT and SERVER samples in this manner:
+
+<OL><P><LI>Start the SERVER application.
+
+<P><LI>a. Start the CLIENT application.
+   b. Establish a connection with the SERVER.
+   c. Start an advise loop on the item "Rand".
+
+<P><LI>a. Start another instance of the client application.
+   b. Establish a connection with the SERVER.
+   c. Start an advise loop on the item Rand.
+
+<P><LI>Bring up DDESPY.
+
+<P><LI>Go back to the SERVER and choose ChangeData from the Options menu and
+   watch both CLIENT applications update their data.
+<P>
+</OL>Results (from DDESPY main window):
+
+<OL><P><LI>Two XTYP_ADVREQs (because you have two pending ADVREQs on the same
+   test!Rand pair.
+
+<P><LI>Changed Rand data is then sent to the first CLIENT in the advise list.
+
+<P><LI>The first CLIENT in the advise list receives the data via XTYP_ADVDATA.
+
+<P><LI>Changed "Rand" data is sent to the second CLIENT in the advise list.
+
+<P><LI>The second CLIENT in the advise list receives its XTYP_ADVDATA.
+<P>
+</OL>One caveat to this scenario is when an advise loop is invoked with the
+XTYPF_ACKREQ flag set (that is, the client establishes an
+XTYP_ADVSTART transaction or'ed with the XTYPF_ACKREQ flag). In this
+case, the server does not send the next data item until an ACK is
+received from the client for the first data item. During a particular
+call to DdePostAdvise(), the server might not necessarily receive
+XTYP_ADVREQ in its callback for all active links, and the
+LOWORD(dwData1) might not necessarily reach 0 (zero). When the
+DDE_FACK from the client finally arrives, DDEML then sends the server
+an XTYP_ADVREQ with LOWORD(dwData1) set to CADV_LATEACK, identifying
+the late-arriving ACK appropriately.
+<P>
+Advise links of this kind (with XTYPF_ACKREQ flag set) are best suited
+to situations where the server sends information faster than a client
+can process it--setting the XTYPF_ACKREQ bit ensures that the server
+never outruns the client. However, setting this flag also sets a
+drawback in circumstances where data transitions may be lost. Thus, in
+Windows NT or in similar situations where server outrun is highly
+unlikely, it is recommended that the XTYPF_ACKREQ bit not be used to
+prevent such data transition loss.
+<P>
+Note that in this delayed ACK update scenario, the count received in
+the LOWORD (dwData1) may not be relied upon for creating APPOWNED data
+handles as discussed in the earlier paragraphs; where an hData is
+created once, and when the count is down to zero, DdeFreeDataHandle()
+is called on this hData.
+<P>
+This does not, however, imply that the efficiency provided by APPOWNED
+data handles may not be used at all. In this case, a server could
+create an APPOWNED data handle once--usually on the first XTYP_ADVREQ
+it receives--and associate that handle with a topic!item!format name
+set. It could then return this data handle for all subsequent requests
+it receives on this topic!item!format set. Each time data changes
+thereafter, the server should destroy the old data handle and not
+re-render the data [that is, call DdeCreateDataHandle()] until another
+request comes through.
+<P>
+This might be better explained as follows:
+<P>
+<PRE>      case XTYP_ADVREQ:
+           if (ThisIsForTheTopicItemFormatSpecified)
+           {
+               if (bFirstTimeRequested)
+                  {
+                      bFirstTimeRequested = FALSE;
+                      hData = DdeCreateDataHandle();
+                   }
+                return hData;
+            }
+            break;
+
+     // and then whenever data changes for this topic!item!format
+         if (hData)
+           {
+             DdeFreeDataHandle (hData);
+             bFirstTimeRequested = TRUE;
+            }
+         DdePostAdvise();         // specify topic!item!format here.
+                                  // This causes DDEML to send an
+</PRE></OL>XTYP_ADVREQ
+<PRE>                                  // which is handled above.
+
+</PRE>For Microsoft Windows version 3.1 DDEML, the only way for a server
+application to distinguish which client's advise request is currently
+being responded to is through the XTYP_ADVREQ's hConv parameter. The
+hConvPartner field of the CONVINFO structure may be used to
+distinguish between clients.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.10 3.50 3.51 4.00 95<BR>
+KBCategory: kbui<BR>
+KBSubcategory: UsrDde<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 2, 1995</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

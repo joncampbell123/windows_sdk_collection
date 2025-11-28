@@ -1,0 +1,258 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>HOWTO: Implement a Recursive RegDeleteKey for Windows NT </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q142491">
+<META NAME="KBModify" CONTENT="1997/11/21">
+<META NAME="KBCreate" CONTENT="1996/01/15">
+<META NAME="Keywords" CONTENT="BseRegistry kbcode">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  In Windows 95, the RegDeleteKey function not only deletes the particular key specified but also any subkey descendants. In contrast, the Windows NT version of this function deletes only the particular key specified and will not delete any key that ...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAEF,QAGC,QAGB,QBCT,QDKD,QBWP,QBBI,QAY5,QA5E,QASU,QBVV,QABG,QBV8,QA28,QAVX V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>HOWTO: Implement a Recursive RegDeleteKey for Windows NT</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  November 21, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q142491</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) on the following
+   platforms:
+   - Microsoft Windows NT, versions 3.5, 3.51, 4.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+In Windows 95, the RegDeleteKey function not only deletes the particular
+key specified but also any subkey descendants. In contrast, the Windows NT
+version of this function deletes only the particular key specified and will
+not delete any key that has subkey descendants.
+<P>
+To delete a key and all of its subkeys in Windows NT, a recursive delete
+function is implemented using RegEnumKeyEx and RegDeleteKey. This recursive
+delete function uses the following simple two-step algorithm:
+
+<OL><P><LI>Traverse down each subkey branch, one branch at a time, enumerating
+   keys at each subkey level, until the last subkey leaf is reached.
+
+<P><LI>Individually delete each subkey in reverse succession, one branch
+   at a time, until the specified key is deleted.
+<P>
+</OL><h2>MORE INFORMATION</h2>
+ 
+<P>
+Starting at the particular key specified, each key is traversed by using
+RegEnumKeyEx, which determines if there are any subkeys. If so, the
+subkey's name is passed to the recursive delete function in order to
+traverse to the next subkey. This process is repeated for all subkey
+descendants. When RegEnumKeyEx reports that there are no more subkeys (that
+is, ERROR_NO_MORE_ITEMS) for the current key, a subkey leaf has been
+reached.
+<P>
+Once the subkey leaf is deleted using RegDeleteKey, the recursive delete
+function re-examines the parent key for any remaining subkeys. If a subkey
+does exist, it is also traversed until a subkey leaf is reached and deleted
+allowing the recursive delete function to re-examine the parent key. The
+process is repeated for each subkey branch until no subkey branches remain.
+Then the particular key specified may itself be deleted.
+<P>
+A point to remember when enumerating and deleting subkeys is to always
+enumerate subkey index zero (that is, DWORD iSubkey = 0). Because keys are
+re-indexed after each key is deleted, the use of a non-zero subkey index
+would result in keys not being deleted. This in turn would result in the
+failure of the RegDeleteKey function when an attempt is made to delete the
+subkey's parent key.
+<P>
+<P><h3>Partial Deletions</h3>
+ 
+<P>
+Failure to fully delete the particular key specified can be the result of
+<PRE>'partial deletions' (the failure to delete all available subkeys). Although
+</PRE></OL>partial deletions can result from several situations, one possible cause is
+individual key protection.
+<P>
+To protect against partial deletions caused by protected keys, you should
+test each individual key to ensure that it is not protected from deletion.
+To test if the current user has deletion rights on all the keys to be
+deleted, you must traverse, enumerate, and open all subkeys with DELETE
+privilege requested:
+<P>
+<PRE>   RegOpenKeyEx(
+      hStartKey,pKeyName, 0,
+      KEY_ENUMERATE_SUB_KEYS | DELETE,
+      &amp;hKey ))
+
+</PRE>If, however, between the time of the delete privilege test and the actual
+attempt to delete, the key protection is altered, the recursive delete
+function will still fail.
+<P>
+Note that the DELETE privilege is not explicitly defined in the
+RegOpenKeyEx() documentation under the "samDesired" parameter. But most
+securable objects under Windows NT, including registry keys, have a set of
+standard access rights that correspond to operations specific to that type
+of object. And, DELETE is one of these standard access rights that applies
+to all registry keys, in addition to READ_CONTROL, RIGHT_DAC, and
+RIGHT_OWNER rights. So, using the DELETE constant in the RegOpenKeyEx()
+call above will work correctly.
+<P>
+To truly protect the registry against partial deletion, you need to follow
+a two-step process. First, prior to the deletion attempt, save the initial
+state of the registry path to be deleted. Then, to recover from a partial
+deletion, you could restore the registry to its former state using the
+information already saved. If partial deletions are acceptable, however,
+failure to delete a key could trigger the recursive delete function to fail
+or the key to be skipped.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   // The sample code makes no attempt to check or recover from partial
+   // deletions.
+   //
+   // A registry key that is opened by an application can be deleted
+   // without error by another application in both Windows 95 and
+   // Windows NT. This is by design.
+
+   DWORD RegDeleteKeyNT(HKEY hStartKey , LPTSTR pKeyName )
+   {
+      DWORD   dwRtn, dwSubKeyLength;
+      LPTSTR  pSubKey = NULL;
+      TCHAR   szSubKey[MAX_KEY_LENGTH]; // (256) this should be dynamic.
+      HKEY    hKey;
+
+      // Do not allow NULL or empty key name
+      if ( pKeyName &amp;&amp;  lstrlen(pKeyName))
+      {
+         if( (dwRtn=RegOpenKeyEx(hStartKey,pKeyName,
+            0, KEY_ENUMERATE_SUB_KEYS | DELETE, &amp;hKey )) == ERROR_SUCCESS)
+         {
+            while (dwRtn == ERROR_SUCCESS )
+            {
+               dwSubKeyLength = MAX_KEY_LENGTH;
+               dwRtn=RegEnumKeyEx(
+                              hKey,
+                              0,       // always index zero
+                              szSubKey,
+                              &amp;dwSubKeyLength,
+                              NULL,
+                              NULL,
+                              NULL,
+                              NULL
+                            );
+
+               if(dwRtn == ERROR_NO_MORE_ITEMS)
+               {
+                  dwRtn = RegDeleteKey(hStartKey, pKeyName);
+                  break;
+               }
+               else if(dwRtn == ERROR_SUCCESS)
+                  dwRtn=RegDeleteKeyNT(hKey, szSubKey);
+            }
+            RegCloseKey(hKey);
+            // Do not save return code because error
+            // has already occurred
+         }
+      }
+      else
+         dwRtn = ERROR_BADKEY;
+
+      return dwRtn;
+   }
+</PRE> 
+<PRE>Keywords          : BseRegistry kbcode
+Version           : WINNT:3.5,3.51,4.0;
+Platform          : NT WINDOWS
+Issue type        : kbhowto</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  November 21, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

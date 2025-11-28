@@ -1,0 +1,218 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: SELECT INTO or Trans Mgr Can Unexpectedly Update NULL Col </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q134820">
+<META NAME="KBModify" CONTENT="1997/03/18">
+<META NAME="KBCreate" CONTENT="1995/08/10">
+<META NAME="Keywords" CONTENT="SSrvObj_Man SSrvProg SSrvTrans">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  NULL column values may be updated when you use SQL Transfer Manager or the SELECT INTO statement to move data, due to a nullable user-defined data type having a future-only default binding at the source.  This is the expected behavior because the t...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QABA,QAYY,QABM,QACI,QA9N,QA2Q,QAY4,QAG2,QDNQ,QAP2,QBVV,QAKD,QAGU,QBWS,QBFY V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: SELECT INTO or Trans Mgr Can Unexpectedly Update NULL Col</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 18, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q134820</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+4.20 4.21
+WINDOWS
+kbprg kbcode
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 4.21
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+NULL column values may be updated when you use SQL Transfer Manager or the
+SELECT INTO statement to move data, due to a nullable user-defined data
+type having a future-only default binding at the source.
+<P>
+This is the expected behavior because the tables you are creating use the
+defaults as bound.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+When SQL Transfer Manager generates the creation script for the
+destination, it first creates the default data types, then any defaults
+that need to be bound to the user-defined data types; it then binds them to
+the data types and creates the tables.
+<P>
+SELECT INTO creates the new table from current settings which show the
+user-defined data type as having a default bound to it.
+<P>
+In the following scenario, the data movement causes the firing of the
+user-defined default, replacing NULL values with the default value:
+<P>
+<P><h3>Source</h3>
+ 
+
+<OL><P><LI>Create a user-defined data type; nullable.
+
+<P><LI>Create a table which uses the new data type, making the user-defined
+   data type column nullable also.
+
+<P><LI>Insert data into the table, make sure to add rows with NULL values for
+   the specified user-defined data type column.
+
+<P><LI>Create a default and bind it only to the user-defined data type, using
+   the future only option.
+
+<P><LI>Create a new table, similar to step 2, and compare the cdefault and
+   tdefault columns in syscolumns and systypes, respectively.
+<P>
+   The new table should contain a column binding and the original table
+   from step 2 should not. Accordingly, when you insert values into the
+   second table, you should be able to cause the default to fire, where
+   as it should never fire on the first table.
+<P>
+   To retrieve a list of user-defined data types that are in use and
+   have defaults bound to them but not to specific columns, the following
+   select statement may help:
+<P>
+<P><PRE>      select object_name(c.id), c.name, t.name
+<PRE></PRE>      from    syscolumns c, systypes t
+      where t.tdefault != c.cdefault and
+            t.usertype = c.usertype and
+            (c.cdefault = 0 or t.tdefault = 0)
+
+</PRE></OL><h3>Destination</h3>
+ 
+
+<OL><P><LI>Establish a new clean and empty database.
+<P>
+   Once both the source and destination are prepared, use SQL Transfer
+   Manager to login to both the source and destination. Do not select the
+   all objects option. Select the include dependencies, include drops, and
+   include data options. Transfer the table from source to destination.
+<P>
+   At the destination you will see that the user-defined data type was
+   created, then the default bound to it, and finally the table was
+   created. This can be verified in the script which SQL Transfer Manager
+   built.
+<P>
+   When the data is moved, the NULL data from the source invokes the
+   default, and the data changes to reflect the default value.
+<P>
+<P>
+</OL><h3>Work Around</h3>
+ 
+<P>
+In order to move data which falls into the 'future only' scenario
+without modifying the NULL values, you need to generate scripts from the
+SQL Object Manager. Modify the scripts so the defaults are not bound, then
+create the new objects at the destination. Use SQL Transfer Manager, but do
+not include drops to move the data.
+<P>
+By not including drops, you avoid the recreation of the objects which
+you have previously completed. Once the data is moved, bind the defaults
+accordingly.
+<P>
+For the SELECT INTO case, you need to identify the user-defined data type
+bindings and unbind them before you perform the command. Be sure you
+replace the bindings correctly after the SELECT INTO operation is complete.
+<P>
+You should place the database in single user mode while you complete
+the process so other data modifications that depend on the default are not
+inadvertently affected.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 4.20 4.21 bcp<BR>
+KBCategory: kbprog kbcode<BR>
+KBSubcategory: SSrvProg SSrvTrans SSrvObj_Man<BR>
+Keywords            : SSrvObj_Man SSrvProg SSrvTrans<BR>
+Version             : 4.20 4.21<BR>
+Platform            : WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 18, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

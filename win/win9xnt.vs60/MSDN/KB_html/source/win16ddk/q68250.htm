@@ -1,0 +1,273 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>SAMPLE: Capturing Global Interrupts in Enhanced Mode </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q68250 ">
+<META NAME="KBModify" CONTENT="1996/08/05">
+<META NAME="KBCreate" CONTENT="1991/01/11">
+<META NAME="Keywords" CONTENT="kbprg kbfile kbwebcontent">
+<META NAME="KBArea" CONTENT="Support; KB; win16ddk">
+<META NAME="Description" CONTENT="  A hardware interrupt in the 386 enhanced mode of the Microsoft Windows graphical environment is classified as either  global  or  owned.  A global interrupt is typically reflected into whichever virtual machine (VM) is currently running, while an o...">
+<META NAME="Product" CONTENT="Win16 DDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QADN,QAHC,QAHB,QDL9,QBWO,QBWN,QBWQ,QAC9,QAB5,QAPF,QDH9,QA7H,QANG,QAGI,QDIO V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>SAMPLE: Capturing Global Interrupts in Enhanced Mode</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 5, 1996</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q68250 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Windows Device Development Kit (DDK) for Windows versions
+   3.0 and 3.1
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+A hardware interrupt in the 386 enhanced mode of the Microsoft Windows
+graphical environment is classified as either "global" or "owned." A global
+interrupt is typically reflected into whichever virtual machine (VM) is
+currently running, while an owned interrupt is reflected into the VM that
+owns that interrupt. For example, the floppy disk drive interrupt is
+typically made global, because any VM should be able to use the floppy disk
+drive and receive interrupts from it. On the other hand, an application
+that exclusively handles communications with a nonstandard device would
+become confused if interrupts from the device were routed to some other VM.
+For this reason, these interrupts should be "owned."
+<P>
+In some circumstances, it may be advantageous to "capture" a global
+interrupt temporarily in one VM, effectively making the interrupt "owned."
+The text below discusses VFINTD.386, a sample virtual device (VxD) that
+does just that. With this VxD installed in a Windows system running in 386
+enhanced mode, an application can issue the appropriate function calls to
+reflect all interrupts from the floppy disk drive into the application's
+VM, regardless of which VM is currently running.
+<P>
+VFINTD is one of the sample applications provided with version 3.1 of
+the Microsoft Windows Device Driver Kit (DDK). VFINTD can also be
+found in the Microsoft Software Library.
+<P>
+Download VFINTD.EXE, a self-extracting file, from the Microsoft Software
+Library (MSL) on the following services:
+
+<UL><LI>Microsoft Download Service (MSDL)
+<P><PRE>      Dial (206) 936-6735 to connect to MSDL
+      Download <A href="http://support.microsoft.com/download/support/mslfiles/vfintd.exe">VFINTD.EXE</A> <I>(size: 31920 bytes)</I> 
+</PRE>
+<LI>Internet (anonymous FTP)
+<P><PRE>      ftp ftp.microsoft.com
+      Change to the \softlib\mslfiles directory
+      Get <A href="http://support.microsoft.com/download/support/mslfiles/vfintd.exe">VFINTD.EXE</A> <I>(size: 31920 bytes)</I> 
+</PRE><P>
+</UL><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Background</h3>
+ 
+<P>
+Standard hardware for an MS-DOS compatible computer includes a
+programmable interrupt controller (PIC). One register in the PIC is
+the interrupt mask register (IMR), which defines which hardware
+interrupts are currently enabled and which are disabled (or masked).
+The MS-DOS utility DEBUG can display the contents of the IMR. To
+demonstrate this, run DEBUG from the MS-DOS prompt. Then enter the
+following command to display the value of port 21 on your machine:
+<P>
+<PRE>   i21
+
+</PRE>Port 21 is the IMR for the hardware interrupts IRQ0 through IRQ7. The
+format of the IMR is that each bit (0-7) that is set corresponds to a
+disabled interrupt request (IRQ). Therefore, a typical IMR value might
+be 98h, which indicates that IRQ3, IRQ4, and IRQ7 are all masked, and
+that those interrupts are disabled:
+<P>
+<PRE>   Hexadecimal 98 = Binary 10011000 = IRQ3, IRQ4, and IRQ7 off
+
+</PRE>Note: A PC/AT compatible system has two hardware PICs, and thus, two
+IMRs, that correspond to the fifteen possible IRQs. (The second PIC is
+cascaded to IRQ2, which consumes one IRQ.) While this point is
+included here for completeness, is not necessary to understand the
+overall picture.
+<P>
+When an MS-DOS device driver or terminate-and-stay-resident program
+(TSR) installs an interrupt handler for a particular IRQ, the device
+driver or TSR hooks the interrupt vector and unmasks the corresponding
+bit in the IMR. When Windows is running, MS-DOS drivers and TSRs are
+normally shared by all virtual machines. Thus, if an interrupt occurs
+while an arbitrary VM is running, Windows is not required to perform a
+virtual machine task switch to access the interrupt handler, because
+the interrupt handler resides in the address space of each virtual
+machine.
+<P>
+Alternatively, if an interrupt handler for a previously masked IRQ is
+installed within a virtual machine, and an interrupt occurs while
+another virtual machine is executing, Windows must make a task switch
+so that the local interrupt handler is accessible and executable.
+<P>
+<P><h3>Windows Default Behavior</h3>
+ 
+<P>
+The VPICD VxD virtualizes the PICs when Windows is running in 386
+enhanced mode. When hardware is virtualized, each virtual machine has
+access to its own "virtual" PIC. This allows transparently sharing
+hardware among all virtual machines.
+<P>
+Unless some other mechanism processes an IRQ, the VPICD handles
+interrupts according to the following default behavior:
+<P>
+When Windows boots into 386 enhanced mode, VPICD examines the value of
+the IMRs in the system to determine which interrupts are masked. If an
+interrupt is not masked (is enabled), Windows must assume that a valid
+interrupt handler is already installed for this IRQ. These IRQs are
+then flagged as "global," so that Windows can avoid the overhead of a
+task switch to service them. The remaining IRQs, which are masked
+(disabled), are flagged as "local" or "owned." An interrupt for one of
+these IRQs will be reflected only into each virtual machine that
+unmasks the IRQ.
+<P>
+<P><h3>Changing the Default Behavior</h3>
+ 
+<P>
+It is possible to change the default behavior of interrupt handling
+(described above) by installing a VxD that virtualizes an IRQ with the
+VxD call VPICD_Virtualize_IRQ. This call replaces the VPICD default
+callback routines with routines supplied in the VxD. For example, the
+virtual communication device (VCD) virtualizes the communication
+interrupt so that it can control interrupts from communication devices
+regardless of the state of the IMR at Windows load time.
+<P>
+The VFINTD sample VxD also uses VPICD_Virtualize_IRQ to allow an
+application to "capture" the interrupts on IRQ6 (the floppy disk
+device), which is normally global. For example, a hard disk backup
+program that directly accesses the floppy disk controller hardware to
+improve performance would "lose" interrupts to other virtual machines
+unless it changed the global nature of IRQ6. VFINTD can be used in
+this case to capture the "focus" of the floppy disk device and the
+interrupts it generates.
+<P>
+<P><h3>Using VFINTD</h3>
+ 
+<P>
+There are two pieces of code to the VFINTD sample: the VxD and a
+sample MS-DOS application. All the files that are named VFINTD are
+part of the VxD. The MS-DOS application is called TSTFINT. The only
+purpose of the MS-DOS application is to capture floppy disk
+interrupts. The sample application does not release the focus capture,
+but the VxD provides this functionality.
+<P>
+To install the VxD in your machine, perform the following steps:
+
+<OL><P><LI>Exit from Windows.
+
+<P><LI>Modify the [386enh] section of your SYSTEM.INI file to include the
+   following line:
+<P>
+<P><PRE>      device=VFINTD.386
+</PRE>
+<P><LI>Copy the VFINTD.386 file into the directory where the Windows
+   system files are stored. By default, this is the C:\WINDOWS\SYSTEM
+   directory.
+
+<P><LI>Start Windows.
+<P>
+</OL>With the VxD installed, you can run the TSTFINT application in an
+MS-DOS window to capture interrupts from the floppy drive. TSTFINT
+displays the version number of the VxD to indicate that the
+application has successfully communicated with the VxD.
+<P>
+This sample has been provided to demonstrate how to virtualize a
+particular IRQ. It is a good place to start when developing another
+VxD to perform a similar function.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: 3.00 3.10 DDKVXD softlib VFINTD.EXE<BR>
+KBCategory: kbprg kbfile kbwebcontent<BR>
+KBSubcategory: DthreeVicpQuest<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 5, 1996</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

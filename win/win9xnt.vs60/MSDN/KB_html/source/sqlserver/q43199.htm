@@ -1,0 +1,228 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Concurrency and Consistency and SQL Server Alternatives </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q43199 ">
+<META NAME="KBModify" CONTENT="1997/04/25">
+<META NAME="KBCreate" CONTENT="1989/04/07">
+<META NAME="Keywords" CONTENT="kbother SSrvServer">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The following is an overview of the concurrency versus consistency problem and the alternatives available with the SQL Server.  The information on locking in the SQL Server is based on the methods described in the paper  Granularity of locks and de...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAXB,QBD2,QAC1,QAJQ,QAGU,QAA5,QBVV,QAKU,QDIX,QAHT,QABM,QDMW,QBG2,QBFN,QA5V V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Concurrency and Consistency and SQL Server Alternatives</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q43199 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The following is an overview of the concurrency versus consistency
+problem and the alternatives available with the SQL Server.
+<P>
+The information on locking in the SQL Server is based on the methods
+described in the paper "Granularity of locks and degrees of
+consistency in a shared data base" by J.N. Gray, G.R. Putzolo, and
+I.L. Traiger, in "Modeling in Data Base Management Systems," North
+Holland, 1976.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+There is a trade-off between sharing data and maintaining consistency
+when multiple users update the same data. The best solution is to only
+make changes that read and update in an atomic unit, rather than
+reading and updating in two separate steps. The best example is an
+account balance update transaction. If the transaction consists of
+reading the account balance, adding or subtracting some amount, and
+then writing it back, it will be necessary to lock the account between
+the read and the update in order to ensure that the update is not
+undone by another transaction.
+<P>
+If the transaction were constructed without a separate read (that is,
+UPDATE ACCOUNT SET BALANCE=BALANCE-AMOUNT WHERE ID=...), then no
+locking is required. To prohibit negative balances, use a trigger or
+add a condition to the WHERE clause that requires BALANCE to be
+greater than or equal to AMOUNT.
+<P>
+Some types of data, such as addresses, can just be replaced without
+regard for the previous value. The UPDATE command can be constructed
+to selectively alter only particular fields, thus avoiding the problem
+of overlaying the updates made to other fields by other transactions
+(which would occur if the entire row were replaced).
+<P>
+<P><h3>Reservation Application Example</h3>
+ 
+<P>
+In an application designed to control the scheduling of some resource
+(such as airline seats), it may be necessary to key in a lot of data
+once the desired resource is selected. If no special action is taken,
+the selected item will not be "reserved" until all of the information
+is keyed in. If another user happens to be trying to select the same
+item, one of them will "lose" and will have to key in the information
+again.
+<P>
+Using HOLDLOCK to place a SHARE lock on the selected item would
+eliminate the possibility of another user updating that item, but with
+many users competing for the same items, it is highly possible that
+multiple users would acquire SHARE locks on the same item, thus
+preventing any of them from updating it. The first user attempting to
+update the item would be blocked indefinitely. The second user
+attempting an update would cause a deadlock, and one of the two users
+would be terminated in order to break the deadlock. Acquiring an
+exclusive lock on the item while reading it would eliminate the
+deadlock, but would reduce concurrency, since other users could not
+even read the item to see whether or not it was allocated.
+<P>
+The solution in this case is to add an "allocated" flag to the item.
+When the user selects an item, the transaction should issue an update
+with a WHERE clause that includes the unique identifier of the item
+and a condition that the "allocated" flag not be set. If the update is
+successful, the user can be prompted for the rest of the information.
+If the update fails, some other user selected the item first, but
+nothing must be re-entered.
+<P>
+<P><h3>General Browse Problem</h3>
+ 
+<P>
+In the general browse problem, several users browse through and
+selectively update rows in a table. If locking is used, an entire page
+full of rows must be locked each time a user pages forward through the
+data. This greatly reduces concurrency because the users may not
+update any of the rows that have been reserved for them. HOLDLOCK
+would allow other users to read the rows, but not update them.
+<P>
+If locking is not used and if the updates depend on the previous value
+of the data, inconsistencies can result. Timestamping is a solution to
+this problem. Timestamp is a special data type that is automatically
+updated whenever a row is changed. Transactions can avoid updating
+rows that have changed since the last read by issuing the UPDATE with
+a WHERE clause that includes not only the unique identifier of the
+row, but also a timestamp comparison. If the timestamp is not the same
+as when the row was last read, the update fails. In this approach, the
+data entered as part of the update is usually lost, but the user
+interface could include the option to display the new values and ask
+the user whether or not the update should be applied.
+<P>
+<P><h3>Summarization Consistency Problem</h3>
+ 
+<P>
+Another problem that occurs when multiple transactions update the same
+data is the summarization inconsistency problem. If account balances
+are being updated while a summarization report is reading the
+database, the report may contain inconsistencies. This will only occur
+if updates are allowed against accounts that already have been
+summarized in addition to those that have yet to be processed. The
+solution is to use HOLDLOCK on the summarization transaction. HOLDLOCK
+causes SHARE locks to be held until commit time. The end result is
+that other transactions can update accounts that have not yet been
+read for the summarization report, but no updates are permitted
+against accounts that have already been processed.
+<P>
+Allowing the updates to process against accounts that have not yet
+been read is essentially the same as allowing those updates to run
+before running the summarization report, and then prohibiting all
+updates while it runs. The HOLDLOCK approach provides the same degree
+of consistency as locking the entire table, and it allows more
+concurrency.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Optimization and tuning<BR>
+Keywords            : kbother SSrvServer<BR>
+Version             : 4.2<BR>
+Platform            : OS/2<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

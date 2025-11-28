@@ -1,0 +1,216 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Spawn with _P_WAIT Returns Immediately on Win32s </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q125213">
+<META NAME="KBModify" CONTENT="1997/07/31">
+<META NAME="KBCreate" CONTENT="1995/01/22">
+<META NAME="Keywords" CONTENT="CRTIss W32s">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  If you call _spawnl() with _P_WAIT from a Win32-based application, then under Windows NT, the call returns after the spawned application has been terminated. But under Win32s, the call returns immediately, even though the spawned application is sti...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAUD,QAGI,QBWP,QA8T,QA8S,QBFY,QAGB,QAJH,QAIF,QA01,QALW,QDL9,QBWQ,QBWO,QBWN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Spawn with _P_WAIT Returns Immediately on Win32s</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 31, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q125213</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The C Run-time (CRT) included with:
+   - Microsoft Visual C++ 32-bit Edition, versions 1.0, 2.0, 2.1, 2.2, 4.0,
+<P><PRE>     4.1
+</PRE><LI>Microsoft Win32s, versions 1.30, 1.30a, 1.30c
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+If you call _spawnl() with _P_WAIT from a Win32-based application, then
+under Windows NT, the call returns after the spawned application has been
+terminated. But under Win32s, the call returns immediately, even though the
+spawned application is still running.
+<P>
+The return value from _spawnl() with _P_WAIT is zero if the spawned
+application is a 16-bit Windows-based application or 0x103 if the
+application is a Win32-based application.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+This is due to the design of the C Run-time and a limitation of Win32s.
+When the CRT does a _P_WAIT spawn, it calls CreateProcess() and checks for
+failure. Next, the CRT calls WaitForSingleObject() on the process handle.
+Under Windows NT, WaitForSingleObject() pauses the application until the
+new process terminates, and then returns TRUE. But under Win32s,
+WaitForSingleObject() returns TRUE immediately. Next, the CRT calls
+GetExitCodeProcess() to find the exit status. It is a limitation that
+GetExitCodeProcess() returns zero for 16-bit Windows-based application on
+both Windows NT and Win32s. The return value of 0x103 for Win32-based
+applications is incorrect because the application has not yet terminated.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+There is no way to perform the synchronous spawn with the spawn family
+of functions on Win32s. You can only perform an asynchronous spawn.
+<P>
+For an example of a synchronous spawn under Win32s using the Win32 API
+and the Universal Thunk, please see the following article in the Microsoft
+Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../win32sdk/q125212.htm">Q125212</A></B>
+   TITLE     : Performing a Synchronous Spawn Under Win32s
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+The following sample code can be used to demonstrate this behavior. The
+code spawns NOTEPAD.EXE.
+<P>
+NOTE: The path is hard-coded, so you may have to change it if your NOTEPAD
+is installed in a different directory. Under Windows NT, the message box is
+displayed after NOTEPAD is closed, whereas under Win32s, the message box is
+displayed before NOTEPAD is closed.
+<P>
+NOTEPAD is a 16-bit application under Win32s on Windows. To demonstrate the
+return value of 0x103 with a Win32-based application, substitute the path
+to FREECELL.EXE for the C:\\WINNT35\\SYSTEM32\\NOTEPAD.EXE in the _spawnl()
+call in the code below.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+<PRE>   /* Compile options needed: /MD /DWIN32 &lt;filename&gt;.c /link user32.lib
+   */
+
+   #include &lt;windows.h&gt;
+   #include &lt;process.h&gt;
+
+   void main( )
+   {
+      DWORD dwVersion;
+      int status;
+      char buf[80];
+
+      dwVersion = GetVersion();
+
+      if( !(dwVersion &amp; 0x80000000) )
+      {
+         // Windows NT: NOTEPAD must be closed before this call completes.
+
+         status = _spawnl( _P_WAIT, "c:\\winnt35\\system32\\notepad.exe",
+            "notepad.exe", "dummy", NULL );
+      }
+      else if( LOBYTE(LOWORD(dwVersion)) &lt; 4 )
+      {
+         // Win32s: This call completes before NOTEPAD is closed.
+
+         status = _spawnl( _P_WAIT, "c:\\windows\\notepad.exe",
+            "notepad.exe", "dummy", NULL );
+      }
+      else
+      {
+         // Windows 95: for future reference.
+      }
+
+      wsprintf( buf, "Return Value = 0x%x\n", status );
+      MessageBox( NULL, buf, "Test", MB_OK );
+   }
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: _spawnle _spawnlp _spawnlpe _spawnv _spawnve<BR>
+_spawnvp _spawnvpe win32sdk win32s<BR>
+Keywords          : CRTIss W32s<BR>
+Version           : 1.0 1.3 1.3a 1.3c 2.0 2.1 2.2 4.<BR>
+Platform          : NT WINDOWS<BR>
+Issue type        : kbprb<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 31, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

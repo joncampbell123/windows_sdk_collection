@@ -1,0 +1,225 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>Writing Your Own Standard __chkstk Routine </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q70173 ">
+<META NAME="KBModify" CONTENT="1997/07/17">
+<META NAME="KBCreate" CONTENT="1991/03/15">
+<META NAME="Keywords" CONTENT="kb16bitonly">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  It's possible to write your own stack checking routine.  First, you must allocate some space on the stack and set up the STKHQQ data area. In addition, you must create a near and far version for each memory model. This requires two functions, __aNc...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QA7R,QAR5,QDJF,QBFY,QAPF,QBV8,QALW,QABA,QABB,QAH4,QAA1,QAY5,QAM7,QAEF,QAC1 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>Writing Your Own Standard __chkstk Routine</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  July 17, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q70173 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+6.00 6.00a 7.00 | 6.00 6.00a | 1.00 1.50
+<PRE>MS-DOS          | OS/2       | WINDOWS
+</PRE>kbprg kbfasttip
+<P>
+ 
+The information in this article applies to:
+
+<UL><LI>The C Run-time (CRT), included with:
+<P>
+<P><PRE>    - Microsoft C for MS-DOS, versions 6.0, 6.0a, and 6.0ax
+    - Microsoft C for OS/2, versions 6.0, and 6.0a
+    - Microsoft C/C++ for MS-DOS, version 7.0
+    - Microsoft Visual C++ for Windows, versions 1.0 and 1.5
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+It's possible to write your own stack checking routine.
+<P>
+First, you must allocate some space on the stack and set up the STKHQQ
+data area. In addition, you must create a near and far version for
+each memory model. This requires two functions, __aNchkstk (near
+model) and __aFchkstk (far model), which should be included in every
+library if you want to override the default stack-checking routines.
+Finally, you must define the STKHQQ and __chkstk symbols in the
+default version for the memory model you are working with.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Below is an example of the replacement code for a small model version
+of the __chkstk routines. Notice that STKHQQ and __chkstk are defined
+in the near model version. The STACKSLOP constant is 256 in MS-DOS and
+512 under OS/2. To assemble the C 6.0 version define the symbol C600
+by adding /DC600 assembler option. You can then either replace these
+modules in the small or compact libraries, or link with the .OBJs and
+the /NOE LINK option.
+<P>
+<P><h3>Sample Code</h3>
+ 
+<P>
+;*****  __aNchkstk function  *****
+; Assembly options needed - MASM 6.0, 6.0a, 6.0b, and 6.1: /Zm /c /Cx
+<PRE>;                           MASM 5.1: /MX
+
+</PRE>.MODEL SMALL
+<P>
+IFDEF C600
+<PRE>        EXTRN  _end:word
+ELSE
+        EXTRN __end:word
+</PRE>ENDIF
+<P>
+include cmacros.inc
+include msdos.inc
+<P>
+.DATA
+<P>
+IFDEF C600
+<PRE>        PUBLIC STKHQQ
+        STKHQQ  dw     dataoffset  _end+STACKSLOP
+ELSE
+        PUBLIC _STKHQQ
+        _STKHQQ dw     dataoffset __end+STACKSLOP
+</PRE>ENDIF
+<P>
+.CODE
+<P>
+PUBLIC __chkstk
+PUBLIC __aNchkstk
+<P>
+__aNchkstk PROC
+__chkstk:
+<PRE>        pop   cx        ; grab the return address
+        sub   sp, ax
+        jmp   cx
+
+</PRE>__aNchkstk ENDP
+<P>
+END
+<P>
+;*****  __aFchkstk function  *****
+; Assembly options needed - MASM 6.0, 6.0a, 6.0b, and 6.1: /Zm /c /Cx
+<PRE>;                           MASM 5.1: /MX
+
+</PRE>.MODEL LARGE
+.DATA
+<P>
+IFDEF C600
+<PRE>        extrn STKHQQ:word
+ELSE
+        extrn _STKHQQ:word
+</PRE>ENDIF
+<P>
+.CODE _TEXT
+<P>
+PUBLIC __aFchkstk
+<P>
+__aFchkstk PROC
+<P>
+<PRE>        pop   cx        ; grab the return address
+        pop   dx        ; (and its segment)
+
+        sub   sp, ax
+
+        push  dx        ; push the return address
+        push  cx
+        ret             ; and go back to that address
+
+</PRE>__aFchkstk ENDP
+<P>
+END
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional reference words: kbinf 6.00 6.00a 7.00 7.00b 1.00 1.50 chkstk<BR>
+_chkstk<BR>
+KBCategory: kbprg kbfasttip<BR>
+KBSubcategory: CRTIss<BR>
+Keywords            : kb16bitonly<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  July 17, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

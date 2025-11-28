@@ -1,0 +1,545 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Nested Virtual Roots Can Lose Session State </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q173307">
+<META NAME="KBModify" CONTENT="1997/12/11">
+<META NAME="KBCreate" CONTENT="1997/08/29">
+<META NAME="Keywords" CONTENT="VIASP">
+<META NAME="KBArea" CONTENT="Support; KB; axsf">
+<META NAME="Description" CONTENT="  When browsing to a child virtual root that is nested within a parent virtual root, and then navigating to the parent virtual root session, variables appear to be lost.  The following table summarizes the behavior:                               Chil...">
+<META NAME="Product" CONTENT="Active Server Pages">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT="ActiveX ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDH9,QAJH,QDNQ,QAGI,QAFI,QBXB,QAYL,QATJ,QAAZ,QAJ8,QAVV,QBWA,QAFF,QBWS,QATA V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Nested Virtual Roots Can Lose Session State</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  December 11, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q173307</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Active Server Pages, versions 1.0, 1.0b
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+When browsing to a child virtual root that is nested within a parent
+virtual root, and then navigating to the parent virtual root session,
+variables appear to be lost.
+<P>
+The following table summarizes the behavior:
+<P>
+<PRE>                             Child 1 app state held  Child 2 app state held
+   Root app called first                    No                No
+   Root app called before Child 1 only      No                Yes
+   Root app called before Child 2 only      Yes               No
+   Root app called last                     Yes               Yes
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+NOTE: There is a registry entry, CheckForNestedVroots(Default = 1), that
+<PRE>      ASP uses to check for nested virtual roots so that if a new nested
+      virtual root is created while the system is running, the running
+      application sees  the new nested Global.asa file as soon as it is
+      saved. From this registry parameter you can infer that ASP is
+      designed to check for Global.asa files in subdirectories.
+
+      However, this behavior works in only one case: If all nested
+      applications start before the root application, ASP checks for
+      Global.asa files in all linked applications (both above and at the
+      same level of the calling application). On the other hand, if the
+      root application is called first or called before any nested
+      application, only the root application's session state (sessionid and
+      session variables) is maintained; it's like ASP does not check for
+      nested virtual roots.
+
+</PRE>Internet Service Manager allows users to set up directories and their
+subdirectories as virtual roots. This creates a situation where there are
+virtual roots with nested virtual roots, which themselves can contain
+Global.asa files with Application_OnStart and Session_OnStart subroutines.
+<P>
+Here is an example directory structure with each virtual directory
+containing a Global.asa:
+<P>
+<PRE>   C:\InetPub\wwwroot &lt;Home&gt;
+   Global.asa
+      C:\InetPub\wwwroot\Test2 (Nested)
+      Global.asa
+           C:\InetPub\wwwroot\Test2\Test3 (Nested)
+           Global.asa
+   C:\InetPub\wwwroot\Test4
+   Global.asa
+
+</PRE>Once the user browses to the root directory, which in a default
+installation is the wwwroot directory, the SessionID is created and does
+not change even when navigating to other nested virtual roots, but the
+Application-scoped variables continue to change each time the users browses
+a page in a different virtual root. This causes the Application variables
+to appear to be lost.
+<P>
+However, if the root directory is the last directory navigated to and has
+never been visited before, then each nested directory maintains its own
+SessionID and Application and Session scoped variables.
+<P>
+This behavior is caused by the fact that once the root &lt;home&gt; directory is
+browsed, IIS continues to send the same SessionCookie back to the browser,
+but if nested virtual roots are browsed prior to browsing the home root,
+SessionCookies are sent for each nested virtual root, thereby generating
+multiple SessionIDs for each nested virtual root. The first time the home
+root is browsed the SessionCookie is fixed thereafter.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Do not use nested virtual roots when designing Web projects. Instead use
+one virtual root for each Web project containing the Global.asa for that
+project.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+Microsoft is researching this problem and will post new information here in
+the Microsoft Knowledge Base as it becomes available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Steps to Reproduce Behavior</h3>
+ 
+
+<OL><P><LI>Configuration: In Microsoft Internet Service Manager, "Enable Default
+   Document" in the Directories tab needs to include "Default.asp."
+
+<P><LI>Using Windows Explorer create a directory named WWWTest2 under the
+   InetPub\wwwroot directory. Create a subdirectory under WWWTest2 called
+   WWWTest3. Then create a directory at the same level as WWWTest2 called
+   WWWTest4.
+
+<P><LI>Copy the following Global.asa file into the WWWRoot directory:
+<P>
+<P><PRE>      ---------------------
+      &lt;SCRIPT LANGUAGE=VBScript RUNAT=Server&gt;
+</PRE><P>
+<PRE>      Sub Application_OnStart
+        Application("MyTestApplication") = "WWWRoot: Welcome to _
+          Application Level Scope!"
+        Application("WWWRoot") = "Chickens Eat..."
+      Response.Write("Fire Application_OnStart for WWWRoot" &amp; "&lt;br&gt;")
+      End Sub
+
+      Sub Session_OnStart
+        Session("MyTestSession") = "WWWRoot: Welcome to session
+          level scope!"
+        Session("SessionID") = Session.SessionID
+        Session("WWWRoot") = "Chicken Food!"
+        Response.Write("Fire Session_OnStart for WWWRoot" &amp; "&lt;br&gt;")
+      End Sub
+
+      &lt;/SCRIPT&gt;
+     -------------------------
+
+</PRE><P><LI>Copy the following Default.asp file into the WWWRoot directory:
+<P>
+<P><PRE>      -----------------------------------
+      &lt;%@ LANGUAGE="VBSCRIPT" %&gt;
+      &lt;HTML&gt;
+      &lt;HEAD&gt;
+      &lt;META NAME="GENERATOR" Content="Microsoft Visual InterDev 1.0"&gt;
+      &lt;META HTTP-EQUIV="Content-Type" content="text/html;
+<PRE></PRE>         charset=iso-8859-1"&gt;
+      &lt;TITLE&gt;Test Nested Virtual Roots&lt;/TITLE&gt;
+      &lt;/HEAD&gt;
+      &lt;BODY&gt;
+
+      &lt;%
+      Response.Write("Common Variable Names:" &amp; "&lt;br&gt;")
+      Response.Write Application("MyTestApplication") &amp; "&lt;br&gt;"
+      Response.Write Session("MyTestSession") &amp; "&lt;br&gt;"
+      Response.Write "Session.SessionID = " &amp;
+        Session("SessionID") &amp; "&lt;br&gt;&lt;p&gt;"
+
+      Response.Write("Application Scoped Variables:" &amp; "&lt;br&gt;")
+      Response.Write "WWWRoot: " &amp; Application("WWWRoot") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest2: " &amp; Application("WWWTest2") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest3: " &amp; Application("WWWTest3") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest4: " &amp; Application("WWWTest4") &amp; "&lt;br&gt;&lt;p&gt;"
+
+      Response.Write("Session Scoped Variables:" &amp; "&lt;br&gt;")
+      Response.Write "WWWRoot: " &amp; Session("WWWRoot") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest2: " &amp; Session("WWWTest2") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest3: " &amp; Session("WWWTest3") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest4: " &amp; Session("WWWTest4") &amp; "&lt;br&gt;&lt;p&gt;"
+      %&gt;
+
+      &lt;BR&gt;
+      &lt;P&gt;
+
+      &lt;A
+      href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWTest2/&gt;_
+      Click here to go to WWWTest2&lt;/A&gt;&lt;BR&gt;
+      &lt;A
+      href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWTest3/&gt;_
+      Click here to go to WWWTest3&lt;/A&gt;&lt;BR&gt;
+      &lt;A
+      href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWTest4/&gt;_
+      Click here to go to WWWTest4&lt;/A&gt;&lt;BR&gt;
+
+      &lt;/BODY&gt;
+      &lt;/HTML&gt;
+      -------------------------
+
+</PRE><P><LI>Copy the following Global.asa file into the WWWTest2 directory:
+<P>
+<P><PRE>      ---------------------
+      &lt;SCRIPT LANGUAGE=VBScript RUNAT=Server&gt;
+</PRE><P>
+<PRE>      Sub Application_OnStart
+        Application("MyTestApplication") = "WWWTest2: Welcome to _
+          Application Level Scope!"
+        Application("WWWTest2") = "Dogs Eat..."
+      Response.Write("Fire Application_OnStart for WWWTest2" &amp; "&lt;br&gt;")
+      End Sub
+
+      Sub Session_OnStart
+        Session("MyTestSession") = "WWWTest2: Welcome to session_
+           level scope!"
+        Session("SessionID") = Session.SessionID
+        Session("WWWTest2") = "Dog Food!"
+        Response.Write("Fire Session_OnStart for WWWTest2" &amp; "&lt;br&gt;")
+      End Sub
+
+      &lt;/SCRIPT&gt;
+      -------------------------
+
+</PRE><P><LI>Copy the following Default.asp file into the WWWTest2 directory:
+<P>
+<P><PRE>       -----------------------------------
+      &lt;%@ LANGUAGE="VBSCRIPT" %&gt;
+      &lt;HTML&gt;
+      &lt;HEAD&gt;
+      &lt;META NAME="GENERATOR" Content="Microsoft Visual InterDev 1.0"&gt;
+      &lt;META HTTP-EQUIV="Content-Type" content="text/html;
+<PRE></PRE>         charset=iso-8859-1"&gt;
+      &lt;TITLE&gt;Test Nested Virtual Roots&lt;/TITLE&gt;
+      &lt;/HEAD&gt;
+      &lt;BODY&gt;
+
+      &lt;%
+      Response.Write("Common Variable Names:" &amp; "&lt;br&gt;")
+      Response.Write Application("MyTestApplication") &amp; "&lt;br&gt;"
+      Response.Write Session("MyTestSession") &amp; "&lt;br&gt;"
+      Response.Write "Session.SessionID = " &amp; Session("SessionID")
+        &amp; "&lt;br&gt;&lt;p&gt;"
+
+      Response.Write("Application Scoped Variables:" &amp; "&lt;br&gt;")
+      Response.Write "WWWRoot: " &amp; Application("WWWRoot") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest2: " &amp; Application("WWWTest2") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest3: " &amp; Application("WWWTest3") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest4: " &amp; Application("WWWTest4") &amp; "&lt;br&gt;&lt;p&gt;"
+
+      Response.Write("Session Scoped Variables:" &amp; "&lt;br&gt;")
+      Response.Write "WWWRoot: " &amp; Session("WWWRoot") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest2: " &amp; Session("WWWTest2") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest3: " &amp; Session("WWWTest3") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest4: " &amp; Session("WWWTest4") &amp; "&lt;br&gt;&lt;p&gt;"
+      %&gt;
+
+      &lt;BR&gt;
+      &lt;P&gt;
+
+      &lt;A
+      href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWRoot/&gt;_
+      Click here to go to WWWRoot&lt;/A&gt;&lt;BR&gt;
+      &lt;A
+      href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWTest3/&gt;_
+      Click here to go to WWWTest3&lt;/A&gt;&lt;BR&gt;
+      &lt;A
+      href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWTest4/&gt;_
+      Click here to go to WWWTest4&lt;/A&gt;&lt;BR&gt;
+
+      &lt;/BODY&gt;
+      &lt;/HTML&gt;
+      -------------------------
+
+</PRE><P><LI>Copy the following Global.asa file into the WWWTest3 directory:
+<P>
+<P><PRE>      ---------------------
+      &lt;SCRIPT LANGUAGE=VBScript RUNAT=Server&gt;
+</PRE><P>
+<PRE>      Sub Application_OnStart
+        Application("MyTestApplication") = "WWWTest3: Welcome to _
+          Application Level Scope!"
+        Application("WWWTest3") = "Cows Eat..."
+      Response.Write("Fire Application_OnStart for WWWTest3" &amp; "&lt;br&gt;")
+      End Sub
+
+      Sub Session_OnStart
+        Session("MyTestSession") = "WWWTest3: Welcome to session_
+          level scope!"
+        Session("SessionID") = Session.SessionID
+        Session("WWWTest3") = "Cow Food!"
+        Response.Write("Fire Session_OnStart for WWWTest3" &amp; "&lt;br&gt;")
+      End Sub
+
+      &lt;/SCRIPT&gt;
+      -------------------------
+
+</PRE><P><LI>Copy the following Default.asp file into the WWWTest3 directory:
+<P>
+<P><PRE>      -----------------------------------
+      &lt;%@ LANGUAGE="VBSCRIPT" %&gt;
+      &lt;HTML&gt;
+      &lt;HEAD&gt;
+      &lt;META NAME="GENERATOR" Content="Microsoft Visual InterDev 1.0"&gt;
+      &lt;META HTTP-EQUIV="Content-Type" content="text/html; _
+<PRE></PRE>         charset=iso-8859-1"&gt;
+      &lt;TITLE&gt;Test Nested Virtual Roots&lt;/TITLE&gt;
+      &lt;/HEAD&gt;
+      &lt;BODY&gt;
+
+      &lt;%
+      Response.Write("Common Variable Names:" &amp; "&lt;br&gt;")
+      Response.Write Application("MyTestApplication") &amp; "&lt;br&gt;"
+      Response.Write Session("MyTestSession") &amp; "&lt;br&gt;"
+      Response.Write "Session.SessionID = " &amp; Session("SessionID") &amp; "
+      &lt;br&gt;&lt;p&gt;"
+
+      Response.Write("Application Scoped Variables:" &amp; "&lt;br&gt;")
+      Response.Write "WWWRoot: " &amp; Application("WWWRoot") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest2: " &amp; Application("WWWTest2") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest3: " &amp; Application("WWWTest3") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest4: " &amp; Application("WWWTest4") &amp; "&lt;br&gt;&lt;p&gt;"
+
+      Response.Write("Session Scoped Variables:" &amp; "&lt;br&gt;")
+      Response.Write "WWWRoot: " &amp; Session("WWWRoot") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest2: " &amp; Session("WWWTest2") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest3: " &amp; Session("WWWTest3") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest4: " &amp; Session("WWWTest4") &amp; "&lt;br&gt;&lt;p&gt;"
+      %&gt;
+
+      &lt;BR&gt;
+      &lt;P&gt;
+
+      &lt;A
+      href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWRoot/&gt;_
+      Click here to go to WWWRoot&lt;/A&gt;&lt;BR&gt;
+      &lt;A href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWTest2/&gt;
+      Click_ here to go to WWWTest2&lt;/A&gt;&lt;BR&gt;
+      &lt;A
+      href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWTest4/&gt;
+      Click here to go to WWWTest4&lt;/A&gt;&lt;BR&gt;
+
+      &lt;/BODY&gt;
+      &lt;/HTML&gt;
+      -------------------------
+
+</PRE><P><LI>Copy the following Global.asa file into the WWWTest4 directory:
+<P>
+<P><PRE>      ---------------------
+      &lt;SCRIPT LANGUAGE=VBScript RUNAT=Server&gt;
+</PRE><P>
+<PRE>      Sub Application_OnStart
+        Application("MyTestApplication") = "WWWTest4: Welcome to _
+          Application Level Scope!"
+        Application("WWWTest4") = "Tony Drinks..."
+      Response.Write("Fire Application_OnStart for WWWTest4" &amp; "&lt;br&gt;")
+      End Sub
+
+      Sub Session_OnStart
+        Session("MyTestSession") = "WWWTest4: Welcome to session_
+           level scope!"
+        Session("SessionID") = Session.SessionID
+        Session("WWWTest4") = "Good Wine!"
+        Response.Write("Fire Session_OnStart for WWWTest4" &amp; "&lt;br&gt;")
+      End Sub
+
+      &lt;/SCRIPT&gt;
+      -------------------------
+
+ 10. Copy the following Default.asp file into the WWWTest4 directory:
+
+      -----------------------------------
+      &lt;%@ LANGUAGE="VBSCRIPT" %&gt;
+      &lt;HTML&gt;
+      &lt;HEAD&gt;
+      &lt;META NAME="GENERATOR" Content="Microsoft Visual InterDev 1.0"&gt;
+      &lt;META HTTP-EQUIV="Content-Type" content="text/html;_
+         charset=iso-8859-1"&gt;
+      &lt;TITLE&gt;Test Nested Virtual Roots&lt;/TITLE&gt;
+      &lt;/HEAD&gt;
+      &lt;BODY&gt;
+
+      &lt;%
+      Response.Write("Common Variable Names:" &amp; "&lt;br&gt;")
+      Response.Write Application("MyTestApplication") &amp; "&lt;br&gt;"
+      Response.Write Session("MyTestSession") &amp; "&lt;br&gt;"
+      Response.Write "Session.SessionID = " &amp; Session("SessionID") &amp;
+         "&lt;br&gt;&lt;p&gt;"
+
+      Response.Write("Application Scoped Variables:" &amp; "&lt;br&gt;")
+      Response.Write "WWWRoot: " &amp; Application("WWWRoot") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest2: " &amp; Application("WWWTest2") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest3: " &amp; Application("WWWTest3") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest4: " &amp; Application("WWWTest4") &amp; "&lt;br&gt;&lt;p&gt;"
+
+      Response.Write("Session Scoped Variables:" &amp; "&lt;br&gt;")
+      Response.Write "WWWRoot: " &amp; Session("WWWRoot") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest2: " &amp; Session("WWWTest2") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest3: " &amp; Session("WWWTest3") &amp; "&lt;br&gt;"
+      Response.Write "WWWTest4: " &amp; Session("WWWTest4") &amp; "&lt;br&gt;&lt;p&gt;"
+      %&gt;
+
+      &lt;BR&gt;
+      &lt;P&gt;
+
+      &lt;A
+      href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWRoot/&gt;
+      Click here to go to WWWRoot&lt;/A&gt;&lt;BR&gt;
+      &lt;A
+      href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWTest2/&gt;
+      Click here to go to WWWTest2&lt;/A&gt;&lt;BR&gt;
+      &lt;A
+      href=<b>http://&lt;%=Request.ServerVariables(</B>"SERVER_NAME")%&gt;/WWWTest3/&gt;
+      Click here to go to WWWTest3&lt;/A&gt;&lt;BR&gt;
+
+      &lt;/BODY&gt;
+      &lt;/HTML&gt;
+      -------------------------
+
+</PRE><P><LI>Open Internet Service Manager, right-click the WWWService and select
+   the Directories tab. Click the Add button and add WWWTest2, WWWTest3,
+   and WWWTest4 as virtual directories. Start and stop IIS server.
+
+<P><LI>Open Internet Explorer 3.02 and click Options on the View menu. Then
+   click Advanced and select "Warn before accepting cookies." Browse to
+   <B>http://&lt;servername&gt;/</B> WWWTest3. The Application and Session variables
+   should say "Cows Eat Cow Food!" (NOTE: If the error "800a01a8" Object
+   required: Response appears, Refresh the page.)
+<P>
+   Now click on WWWRoot2 and they should read "Dogs Eat Dog Food!" Next
+   click on WWWRoot4 and they should read "Tony Drinks Good Wine!"
+<P>
+   Finally, click on the WWWRoot and they should say "Chickens Eat Chicken
+   Food!" Since you navigated to the WWWRoot directory last, all session
+   and application variables will be in sync.
+
+<P><LI>Close and open Internet Explorer 3.02 again and browse to
+   <B>http://&lt;servername&gt;/WWWTest3.</B> Again the Application and Session
+   variables should read "Cows Eat Cow Food!" Now click the WWWRoot
+   directory and they read "Chickens Eat Chicken Food!" This is not too
+   surprising, but when you click WWWTest4 they read "Tony Drinks Chicken
+   Food!"
+<P>
+</OL>Notice that once the WWWRoot directory is browsed that cookies are no
+longer set, thereby freezing the session variables and resulting the
+appearance that session state has been lost, but application variables
+continue to change.
+<P>
+<P><h2>REFERENCES</h2>
+ 
+<P>
+For the latest Knowledge Base artices and other support information on
+Visual InterDev and Active Server Pages, see the following page on the
+Microsoft Technical Support site:
+<P>
+<PRE>   <B><A href="http://support.microsoft.com/support/vinterdev/">http://support.microsoft.com/support/vinterdev/</A></B>
+
+
+</PRE></OL> 
+<PRE>Keywords          : VIASP
+Technology        : kbInetDev
+Version           : WINDOWS NT:1.0,1.0b
+Platform          : NT WINDOWS
+Issue type        : kbprb</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  December 11, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

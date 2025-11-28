@@ -1,0 +1,587 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: How to Profile T-SQL Code in Stored Procedures and Triggers </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q172117">
+<META NAME="KBModify" CONTENT="1997/08/09">
+<META NAME="KBCreate" CONTENT="1997/07/29">
+<META NAME="Keywords" CONTENT="SSrvProg SSrvStProc SSrvTran_SQL kbcode kbprg kbusage">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  Profiling is used to tune code to make it more efficient or faster. Profiling is done by timing and counting the number of times a piece of code is executed, and recording the results so that the slow parts of the code can be identified. Then the c...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QDJ2,QBVV,QAVW,QATP,QAB9,QABA,QA4Q,QA2Q,QAXB,QAUD,QAH4,QBWS,QAMR,QAU3,QAS1 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: How to Profile T-SQL Code in Stored Procedures and Triggers</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  August 9, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q172117</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server, version 6.5
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Profiling is used to tune code to make it more efficient or faster.
+Profiling is done by timing and counting the number of times a piece of
+code is executed, and recording the results so that the slow parts of the
+code can be identified. Then the code can be rewritten to be faster and
+more efficient. Profiling Transact-SQL code in SQL Server is sometimes
+difficult. However, profiling can provide the following information, which
+is sometimes necessary:
+
+<UL><LI>The number of times a stored procedure or trigger is run.
+
+<LI>The amount of time (including maximum and minimum times) a stored
+   procedure or trigger takes to run.
+
+<LI>The amount of time (including maximum and minimum times) an individual
+   command in a stored procedure or trigger takes to run.
+<P>
+</UL>To provide some profiling capabilities, SQL Server provides the SET
+STATISTICS TIME and SET STATISTICS IO commands, as well as the following
+columns in the system table: sysprocesses, cpu, physical_io and last_batch,
+However, using these options may require changes to applications to handle
+the new results. This article provides methods you can use so that the
+client applications do not need to change; the stored procedures and
+triggers that the application uses are changed instead.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+This article defines some common methods to profile Transact-SQL code in
+SQL Server, if the following assumptions are true:
+
+<UL><LI>SQL Server is not compute-bound as defined in the following article in
+   the Microsoft Knowledge Base:
+<P>
+<P><PRE>      ARTICLE-ID: <B><A href="../sqlserver/q111405.htm">Q111405</A></B>
+<PRE></PRE>      TITLE     : INF: SQL Server and Windows NT Thread Scheduling
+
+</PRE><LI>All clients are processing rows efficiently and correctly, according to
+   the following article in the Microsoft Knowledge Base:
+<P>
+<P><PRE>      ARTICLE-ID: <B><A href="../sqlserver/q165951.htm">Q165951</A></B>
+<PRE></PRE>      TITLE     : INF: Result Processing for SQL Server
+
+</PRE></UL>Before proceeding, please note that profiling or debugging code does affect
+the amount of time the code takes to run.
+<P>
+The rest of this article is split into the following sections to make it
+more understandable:
+
+<OL><P><LI>Simple Transact-SQL Time Profiling
+</OL>2. Simple Table-Based Stored Procedure and Trigger Profiling
+3. Advanced Table-Based Stored Procedure and Trigger Profiling
+4. Sample Stored Procedure to Manage Advanced Table-Based Profiling
+5. Additional Profiling Considerations
+<P>
+<P><h3>PART 1: Simple Transact-SQL Time Profiling</h3>
+ 
+<P>
+To perform a basic time performance test of a query such as "SELECT * FROM
+authors", you can wrap it in the following code:
+<P>
+<PRE>   DECLARE @x datetime
+   SELECT @x = GetDate()
+   SELECT * FROM authors
+   SELECT DateDiff(millisecond, @x, GetDate())
+
+</PRE></OL>This method is very useful, but it does have some limitations. This method:
+
+<UL><LI>Requires that the client application handles the results set of the
+   second SELECT statement.
+
+<LI>Does not track the time over multiple runs of the query.
+
+<LI>Does not work well in stored procedures and triggers.
+<P>
+</UL>To resolve these limitations, you can use a profile table to hold results
+so that the average run time, as well as the number of times it was run,
+can be computed. Part 2 discusses this method below.
+<P>
+<P><h3>PART 2: Simple Table-Based Stored Procedure and Trigger Profiling</h3>
+ 
+<P>
+The following is an example stored procedure that is used as a basis in
+both Parts 2 and 3 of this article to display these methods:
+<P>
+<PRE>   CREATE PROCEDURE timeme AS
+   SELECT * FROM pubs..authors
+   RETURN
+   GO
+
+</PRE>To perform time performance tests of a stored procedure or trigger, a table
+with the following definition is required:
+<P>
+<PRE>   CREATE TABLE profile
+   (id int primary key,
+      trials int not null default 0,
+      trltime int not null default 0)
+   GO
+
+</PRE>The following code would be added to the stored procedure to record
+performance:
+<P>
+<PRE>   /* Add this code at the beginning of the stored procedure. */
+   DECLARE @x datetime
+   SELECT @x = GetDate()
+
+   /* Add this code at the end of the stored procedure. */
+   UPDATE profile SET trials = trials + 1, trltime = trltime +
+   DateDiff(MILLISECOND, @x, GetDate()) WHERE id = @@procid
+
+</PRE>The following is the modified stored procedure with the performance code
+added:
+<P>
+<PRE>   CREATE PROCEDURE timeme AS
+   DECLARE @x datetime
+   SELECT @x = GetDate()
+   SELECT * FROM pubs..authors
+   UPDATE profile SET trials = trials + 1, trltime = trltime +
+   DateDiff(MILLISECOND, @x, GetDate()) WHERE id = @@procid
+   RETURN
+   GO
+
+</PRE>Finally, the following is the execution of the stored procedure with the
+result of adding the stored procedure to the profile table as well as
+reporting the performance:
+<P>
+<PRE>   INSERT profile (id) VALUES (Object_ID('timeme'))
+   GO
+   EXEC timeme
+   GO
+   SELECT Object_Name(id), trltime / trials FROM profile
+   GO
+
+</PRE>This method is very useful but still has the limitation that profiling is
+not easily enabled and disabled. To resolve this limitation, the profile
+table needs to hold an enabled status, and the procedure needs to check if
+it should be profiled. Part 3 discusses this method below.
+<P>
+<P><h3>PART 3: Advanced Table-Based Stored Procedure and Trigger Profiling</h3>
+ 
+<P>
+The following is the updated profile table script for dynamic profiling:
+<P>
+<PRE>   CREATE TABLE profile
+   (id int primary key,
+      enabled int not null default 0,
+      trials int not null default 0,
+      trltime int not null default 0)
+   GO
+
+</PRE>The following is the updated stored procedure for dynamic profiling:
+<P>
+<PRE>   CREATE PROCEDURE timeme AS
+   DECLARE @debug int
+   SELECT @debug = enabled FROM profile WHERE id = @@procid
+   IF @debug = 1
+   BEGIN
+      DECLARE @ttime datetime
+      SELECT @ttime = GetDate()
+   END
+
+   SELECT * FROM pubs..authors
+
+   IF @debug = 1
+      UPDATE profile SET trials = trials + 1, trltime = trltime +
+      DateDiff(MILLISECOND, @ttime, GetDate())
+      WHERE id = @@procid
+   RETURN
+   GO
+
+</PRE>Finally, the following is the execution of the stored procedure with the
+result of adding the stored procedure to the profile table as well as
+reporting the performance:
+<P>
+<PRE>   INSERT profile (id) VALUES (Object_ID('timeme'))
+   GO
+
+   /* This run is not profiled because enabled is 1. */
+   EXEC timeme
+   GO
+   UPDATE profile SET enabled = 1 WHERE id = Object_ID('timeme')
+   GO
+   EXEC timeme
+   GO
+   SELECT Object_Name(id), trltime / trials FROM profile
+   GO
+
+</PRE><h3>PART 4: Sample Stored Procedure to Manage Advanced Table-Based Profiling</h3>
+ 
+<P>
+<PRE>   CREATE PROCEDURE resetprofile AS
+   /* Disables and effectively resets profiling data for all objects. */
+   DELETE profile
+   RETURN
+   GO
+
+   CREATE PROCEDURE setupprofile @name char(30) = NULL AS
+   /* Adds a stored procedure or trigger to profile table. */
+   IF @name IS NULL
+      PRINT 'usage: setupprofile &lt;procedure or trigger name&gt;'
+   ELSE
+      IF Object_ID(@name) IS NOT NULL
+         INSERT profile(id) VALUES (Object_ID(@name))
+      ELSE
+         PRINT 'Invalid object name'
+   RETURN
+   GO
+
+   CREATE PROCEDURE enableprofile @name char(30) = NULL as
+   /* Enables one or more stored procedures or triggers in the profile
+   table for profiling. */
+   IF @name IS NULL
+      UPDATE profile SET enabled = 1
+   ELSE
+      IF Object_ID(@name) IS NOT NULL
+         UPDATE profile SET enabled = 1 WHERE id = Object_ID(@name)
+      ELSE
+         PRINT 'Invalid object name'
+   RETURN
+   GO
+
+   CREATE PROCEDURE disableprofile @name char(30) = NULL AS
+   /* Disables one or more stored procedures or triggers in the profile
+   table for profiling. */
+   IF @name IS NULL
+      UPDATE profile SET enabled = 0
+   ELSE
+      IF Object_ID(@name) IS NOT NULL
+         UPDATE profile SET enabled = 0 WHERE id = Object_ID(@name)
+      ELSE
+         PRINT 'Invalid object name'
+   RETURN
+   GO
+
+   CREATE PROCEDURE reportprofile AS
+   /* Reports performance of enabled stored procedures and triggers. */
+   SELECT name = Object_Name(id),  'trial avg' = CASE WHEN trials &lt;&gt; 0 THEN
+   trltime / trials ELSE 0 END, trials FROM profile WHERE enabled = 1
+   RETURN
+   GO
+
+</PRE>So you can change the run code of Part 3 above to the following:
+<P>
+<PRE>   EXEC setupprofile 'timeme'
+   GO
+   /* This run is not profiled because enabled is 0. */
+   EXEC timeme
+   GO
+   EXEC enableprofile 'timeme'
+   GO
+   EXEC timeme
+   GO
+   EXEC reportprofile
+   GO
+
+</PRE><h3>PART 5: Additional Profiling Considerations</h3>
+ 
+<P>
+When performing Transact-SQL profiling with a table for results as
+described above, consider the following:
+
+<UL><LI>Because object ids in SQL Server are not unique across databases, it is
+   suggested for profiling in multiple databases to create the profiling
+   table in each database to profile from the same database.
+
+<LI>Creating the profile table so that there is only one row per page by
+   padding the table with char(250) columns will prevent concurrency
+   problems on the profile table. The following is an example of the padded
+   profile table:
+<P>
+<P><PRE>      CREATE TABLE profile
+      (id int primary key,
+<PRE></PRE>         enabled int not null default 0,
+         trials int not null default 0,
+         trltime int not null default 0,
+         fill1 char(250) not null default '',
+         fill2 char(250) not null default '',
+         fill3 char(250) not null default '',
+         fill4 char(250) not null default '')
+      GO
+
+</PRE><LI>To keep the profile table updates from altering performance as much as
+   possible, lock the table into memory by using either the DBCC PINTABLE
+   command or the sp_tableoption stored procedure with the pintable option.
+   This has the added advantage that the profile table updates are not
+   affected if the server is disk IO bound.
+
+<LI>If a stored procedure or trigger that is being profiled is run in
+   parallel by multiple clients, normal blocking may occur on the profile
+   table.
+
+<LI>If the stored procedures and triggers have multiple Return commands,
+   each one needs to perform the profiling check and possibly update the
+   profile table. If this is the case, the Goto command works well to
+   simplify the profiling code. The following is an example of a stored
+   procedure that has multiple Return commands:
+<P>
+<P><PRE>      CREATE PROCEDURE timeme AS
+      IF DB_Name() &lt;&gt; 'pubs'
+<PRE></PRE>         RETURN
+      SELECT * FROM authors
+      RETURN
+      GO
+
+   The following is the stored procedure with profiling code also handling
+   the Return commands:
+
+      CREATE PROCEDURE timeme AS
+      DECLARE @debug int
+      SELECT @debug = enabled FROM profile WHERE id = @@procid
+      IF @debug = 1
+      BEGIN
+         DECLARE @ttime datetime
+         SELECT @ttime = GetDate()
+      END
+
+      IF DB_Name() &lt;&gt; 'pubs'
+         --RETURN
+         GOTO ENDME
+
+      SELECT * FROM pubs..authors
+
+      ENDME:
+      IF @debug = 1
+         UPDATE profile SET trials = trials + 1, trltime = trltime +
+         DateDiff(MILLISECOND, @ttime, GetDate())
+         WHERE id = @@procid
+      RETURN
+      GO
+
+</PRE><LI>The conditional check "IF @debug" should not noticeably alter
+   performance, unless the profiled stored procedure or trigger does not
+   perform any physical disk IO.
+
+<LI>Profiling maximum and minimum trial timings can also be recorded by
+   making the following changes:
+<P>
+   Change the profile table by adding four columns:
+<P>
+<P><PRE>      CREATE TABLE profile
+      (id int primary key,
+<PRE></PRE>         enabled int not null default 0,
+         trials int not null default 0,
+         trltime int not null default 0,
+         tmin int not null default 1000000, -- minimum trial time
+         tmax int not null default 0,      -- maximum trial time
+         tmint int not null default 0,     -- trial number of minimum trial
+         tmaxt int not null default 0,     -- trial number of maximum trial
+         fill1 char(255) not null default '',
+         fill2 char(255) not null default '',
+         fill3 char(255) not null default '',
+         fill4 char(255) not null default '')
+      GO
+
+   The changes to the stored procedure are to get the minimum and maximum
+   trial times when checking if it should be profiled. Also, one of three
+   updates is run, based on if the current trial is the new minimum, new
+   maximum, or just another trial.
+
+      CREATE PROCEDURE timeme AS
+      DECLARE @debug int
+      DECLARE @min int
+      DECLARE @max int
+      SELECT @debug = enabled, @min = tmin, @max = tmax FROM profile WHERE
+      id = @@procid
+      IF @debug = 1
+      BEGIN
+         DECLARE @ttime datetime
+         DECLARE @itime int
+         SELECT @ttime = GetDate()
+      END
+
+      SELECT * FROM pubs..authors
+
+      IF @debug = 1
+      BEGIN
+         SELECT @itime = DateDiff(MILLISECOND, @ttime, GetDate())
+         SELECT @itime
+         IF @min &gt; @itime
+            UPDATE profile SET trials = trials + 1, trltime = trltime +
+            @itime, tmin = @itime, tmint = trials
+               WHERE id = @@procid
+         ELSE
+            IF  @max &lt; @itime
+               UPDATE profile SET trials = trials + 1, trltime = trltime +
+               @itime, tmax = @itime, tmaxt = trials
+                  WHERE id = @@procid
+            ELSE
+               UPDATE profile SET trials = trials + 1, trltime = trltime +
+               @itime  WHERE id = @@procid
+      END
+      RETURN
+      GO
+
+</PRE><LI>Profiling individual commands or sections of a stored procedure or
+   trigger can also be recorded by making the following changes:
+<P>
+   The change to the profile table is to add a trial counter and a trial
+   time column for each additional section or command that needs to be
+   profiled.
+<P>
+<P><PRE>      CREATE TABLE profile
+      (id int primary key,
+<PRE></PRE>         enabled int not null default 0,
+         trials int not null default 0,
+         trltime int not null default 0,
+         t1 int not null default 0,
+         t1time int not null default 0,
+         t2 int not null default 0,
+         t2time int not null default 0,
+         fill1 char(255) not null default '',
+         fill2 char(255) not null default '',
+         fill3 char(255) not null default '',
+         fill4 char(255) not null default '')
+      GO
+
+   The following is a sample stored procedure to use as a basis for this
+   method:
+
+      CREATE PROCEDURE timeme AS
+      SELECT * FROM pubs..authors
+      SELECT * FROM pubs..titleauthor
+      SELECT * FROM pubs..titles
+      RETURN
+      GO
+
+   Assume that you want to know the total time for the procedure, the first
+   two queries, and only the first query. The following stored procedure is
+   modified to profile this information:
+
+      CREATE PROCEDURE timeme AS
+      DECLARE @debug int
+      SELECT @debug = enabled FROM profile WHERE id = @@procid
+      IF @debug = 1
+      BEGIN
+         DECLARE @ttime datetime
+         DECLARE @t1time datetime
+         DECLARE @t2time datetime
+         DECLARE @t1 int
+         DECLARE @t2 int
+         SELECT @ttime = GetDate()
+      END
+
+      IF @debug = 1
+      BEGIN
+         SELECT @t1time = GetDate()
+         SELECT @t2time = GetDate()
+         SELECT * FROM pubs..authors
+         SELECT @t1 = DateDiff(MILLISECOND, @t1time, GetDate())
+      END
+
+      SELECT * FROM pubs..titleauthor
+      IF @debug = 1
+         SELECT @t2 = DateDiff(MILLISECOND, @t2time, GetDate())
+
+      SELECT * FROM pubs..titles
+
+      IF @debug = 1
+         UPDATE profile SET trials = trials + 1, trltime = trltime +
+         DateDiff(MILLISECOND, @ttime, GetDate()), t1time = t1time + @t1,
+         t1 = t1 + 1, t2time = t2time + @t2, t2 = t2 + 1
+         WHERE id = @@procid
+      RETURN
+      GO
+
+   Note that this method can also profile performance of extended stored
+   procedure calls as well as remote stored procedure calls.
+</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: tsql transql t-sql tran-sql rpc RPCs<BR>
+Keywords          : SSrvProg SSrvStProc SSrvTran_SQL kbcode kbprg kbusage<BR>
+Version           : 6.5<BR>
+Platform          : WINDOWS<BR>
+Issue type        : kbhowto kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  August 9, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

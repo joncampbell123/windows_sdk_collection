@@ -1,0 +1,235 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>FILE: MultiSoc : Illustrates Using Sockets in Multiple Threads </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q175668">
+<META NAME="KBModify" CONTENT="1997/10/29">
+<META NAME="KBCreate" CONTENT="1997/10/24">
+<META NAME="Keywords" CONTENT="MfcSockets MFCThreadIss MfcUI">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  This sample illustrates how to pass a socket connection between threads in an MFC application. The sample consists of two projects, the Server and the Client. The server creates a new thread for each connection to communicate with the client.  The ...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAD7,QAUQ,QAI5,QAH6,QBG2,QAH7,QAA1,QDI2,QARL,QAW6,QAPN,QAGK,QABI,QAY2,QAH4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>FILE: MultiSoc : Illustrates Using Sockets in Multiple Threads</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 29, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q175668</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+<P><PRE>    - Microsoft Visual C++, 32-bit Editions, versions 2.1, 2.2, 4.0,
+      4.1, 4.2, 5.0
+</UL></PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+This sample illustrates how to pass a socket connection between threads in
+an MFC application. The sample consists of two projects, the Server and the
+Client. The server creates a new thread for each connection to communicate
+with the client.
+<P>
+The following file(s) are available for download from the Microsoft
+Software Library:
+<P>
+<PRE> ~ <A href="http://support.microsoft.com/download/support/mslfiles/multisoc.exe">multisoc.exe</A> <I>(size: 76187 bytes)</I> 
+
+</PRE>For more information about downloading files from the Microsoft Software
+Library, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../zmiscellaneous/q119591.htm">Q119591</A></B>
+   TITLE     : How to Obtain Microsoft Support Files from Online Services
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+<P><h3>Server</h3>
+ 
+<P>
+The server illustrates using sockets in multiple threads in an MFC
+application. The server listens for connections. When a new connection is
+requested, the server accepts the connection and then creates the thread to
+handle the connection. When the server receives a message, it reverses the
+message and sends it back to the client.
+<P>
+In MFC when you have a new connection it is necessary to accept the
+connection in the thread that the listening socket is in. The Accept call
+requires that you pass in a CAsyncSocket object. MFC then sets up
+everything correctly so that the connection can be handle in the thread. If
+you want to handle this connection in a different thread, just passing the
+MFC object to the thread will not work correctly. To correctly set up
+everything for the connection to be handled in a different thread, the
+following steps are required:
+
+<OL><P><LI>Detach the socket handle from the CAsyncSocket object in the thread
+   where the connection was accepted.
+
+<P><LI>Pass the socket handle to the thread.
+
+<P><LI>In the thread, attach this handle to a CAsyncSocket derived object.
+<P>
+</OL>The Attach call in the thread sets up everything correctly for the socket
+notifications to be sent to the thread you want to handle the connection.
+<P>
+The following code from the Server project illustrates this:
+<P>
+OnAccept for the listening socket.
+<P>
+<PRE>   void CListensoc::OnAccept(int nErrorCode)
+   {
+      // New connection is being established
+
+      CSocket soc;
+
+      // Accept the connection using a temp CSocket object.
+      Accept(soc);
+
+      // Create a thread to handle the connection.
+      // The thread is created suspended so that we can
+      // set variables in CConnectThread before it starts executing.
+      CConnectThread* pThread =
+         (CConnectThread*)AfxBeginThread(
+            RUNTIME_CLASS(CConnectThread),
+            THREAD_PRIORITY_NORMAL,
+            0,
+            CREATE_SUSPENDED);
+   ...
+      // Pass the socket to the thread by passing the socket handle.
+      // You cannot pass a CSocket object across threads.
+      pThread-&gt;m_hSocket = soc.Detach();
+
+      // Now start the thread.
+      pThread-&gt;ResumeThread();
+
+      CAsyncSocket::OnAccept(nErrorCode);
+   }
+
+
+</PRE></OL>InitInstance of the thread.
+<P>
+<PRE>   BOOL CConnectThread::InitInstance()
+   {
+   ...
+      // Attach the socket handle to a CSocket object.
+      // This makes sure that the socket notifications are sent
+      // to this thread.
+      m_socket.Attach(m_hSocket);
+   ...
+   }
+
+</PRE>The above code makes sure that the socket is set up correctly in the
+secondary thread.
+<P>
+<P><h3>Client</h3>
+ 
+<P>
+The client accepts a host name to connect to. Once the connection is made,
+the client allows you to send messages to the server. The client then
+displays the message returned from the server.
+<P>
+The server listens on port 9000. The client tries to connect to this port
+on the specified host.
+<P>
+The projects were created with Visual C++ version 5.0. However the code in
+the samples should apply to the versions of MFC mentioned above.
+<P>
+(c) Microsoft Corporation 1997, All Rights Reserved. Contributions by
+Sridhar S Madhugiri, Microsoft Corporation
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: socket thread multithreaded<BR>
+Keywords          : MfcSockets MFCThreadIss MfcUI<BR>
+Version           : WINNT:2.1,2.2,4.0,4.1,4.2,5.0<BR>
+Platform          : winnt<BR>
+Issue type        : kbhowto kbfile<BR>
+Solution Type     : kbsample<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 29, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

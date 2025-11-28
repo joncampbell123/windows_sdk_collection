@@ -1,0 +1,214 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: BCP and NULL Values </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q98620 ">
+<META NAME="KBModify" CONTENT="1997/04/28">
+<META NAME="KBCreate" CONTENT="1993/05/10">
+<META NAME="Keywords" CONTENT="kbtool SSrvBCP SSrvWinNT">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  A number of questions often arise concerning the BCP utility and NULL values when working with fixed-length character data files.  This article addresses these questions.  MORE INFORMATION  There is an inherent problem with representing the value N...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAI4,QABM,QBW5,QAML,QAGX,QAEX,QA7O,QA7N,QA4Q,QAYY,QAKD,QABB,QBDM,QALQ,QAWN V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: BCP and NULL Values</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 28, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q98620 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+<P>
+<PRE>  - Microsoft SQL Server version 4.2 for OS/2
+  - Microsoft SQL Server version 4.2
+</PRE> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+A number of questions often arise concerning the BCP utility and NULL
+values when working with fixed-length character data files.  This
+article addresses these questions.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+There is an inherent problem with representing the value NULL,
+because there is no standard ASCII or character representation for
+NULL.
+<P>
+Consider the following cases, in which "SQL" represents the database
+server, and "FILE" represents the input or output BCP data file.
+<P>
+FIXED-LENGTH CHARACTER BCP, ANY FIELD EXCEPT THE LAST
+<P>
+<PRE>FILE     SQL
+----     ---
+
+spaces   -&gt; spaces (CHAR NULL col.)
+spaces   &lt;- CHAR NULL
+
+spaces   -&gt; 0 (INT NULL col.)
+spaces   &lt;- INT NULL
+
+</PRE>In the first case above, note that spaces in the input data file are
+loaded as spaces in the SQL table. Although spaces in the input data
+file may seem to intuitively represent NULL, the ASCII space (0x20) is
+also a legitimate character, with possible significance. Hence, they
+are loaded as such.
+<P>
+In the second case, you may wonder why CHAR NULL BCPs out as spaces.
+Again, this is because of the lack of a standard character
+representation for NULL. The string "NULL" couldn't be properly
+written to the output file, because this would be a valid string, and
+upon input be loaded as the string "NULL," not the value NULL. Also,
+because this is fixed-length BCP, the column width must be preserved,
+using spaces as the most practical character.
+<P>
+For the third case, note spaces in the input data file are loaded as
+0 in the SQL table. This is not because of BCP: remember, this is
+character-mode BCP of ASCII data into an INT column, which means the
+character data must be converted to INT. The server CONVERT function
+translates spaces to 0, which is proper behavior. Although it may
+seem intuitively that spaces should be translated to NULL, remember
+there is no standard representation for NULL, and hence no basis for
+expecting spaces to be converted to NULL.
+<P>
+In the fourth case, INT NULL BCPs out as spaces for reasons similar to
+the second case.
+<P>
+FIXED-LENGTH CHARACTER BCP, LAST FIELD IN FILE
+<P>
+<PRE>FILE     SQL
+----     ---
+
+spaces   -&gt; spaces (CHAR NULL col.)
+</PRE>nothing  &lt;- CHAR NULL
+nothing  -&gt; CHAR NULL
+<P>
+<PRE>spaces   -&gt; 0 (INT NULL col.)
+</PRE>nothing  &lt;- INT NULL
+nothing  -&gt; INT NULL
+<P>
+All six of the above cases assume an end-of-line terminator is used.
+<P>
+For the first and fourth above cases, note that spaces in the input
+data file are loaded as spaces and 0, respectively, for reasons
+previously discussed.
+<P>
+In the second and fifth above cases, note that NULL is BCPed out as
+nothing. That is, just an end-of-line terminator is placed in the
+output file immediately after the preceding field.
+<P>
+In the third and sixth above cases, note that it is possible to BCP in
+a NULL using fixed-length character BCP. This is because the involved
+field is the last, or rightmost one in the in data file. Why NULL is
+loaded in this case can best be seen by examining the only
+non-ambiguous way to BCP in NULL values. This is by using fields with
+explicit delimiters, not by using non-delimited fixed-length fields as
+in the above examples. With explicit delimiters, it becomes possible
+to place two adjacent delimiters in the input file, signifying "no
+data." Similarly, in the above case involving the last field of a
+fixed-length character BCP input data file, the presence of an
+explicit end-of-line terminator, or delimiter, makes it possible to
+distinguish this field as NULL.
+<P>
+The only non-ambiguous way to represent NULL in character-mode BCP is
+by using two adjacent delimiters in a character-delimited file.
+Manipulation of the source file to achieve this state is possible via
+several techniques. Alternatively, if 0 or spaces in the destination
+SQL column has no valid meaning for the particular database, you can
+change it to NULL via a bulk UPDATE statement following the BCP in.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: Windows NT<BR>
+Keywords            : kbtool SSrvBCP SSrvWinNT<BR>
+Version             : 4.2 | 4.2 | 4.2 4.2a<BR>
+Platform            : MS-DOS OS/2 WINDOWS<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 28, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

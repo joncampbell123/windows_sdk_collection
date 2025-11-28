@@ -1,0 +1,360 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INF: Programming DB-Library TSR with MS-DOS Extenders </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q75295 ">
+<META NAME="KBModify" CONTENT="1997/04/25">
+<META NAME="KBCreate" CONTENT="1991/08/18">
+<META NAME="Keywords" CONTENT="kbprg SSrvDB_Lib">
+<META NAME="KBArea" CONTENT="Support; KB; sqlserver">
+<META NAME="Description" CONTENT="  The MS-DOS DB-Library (DB-Lib) versions 1.1 and later use a terminate-and-stay-resident (TSR) utility to interface with the network. This utility, written to the OpenNet specification, is the connection between DB-Lib and whatever network the TSR i...">
+<META NAME="Product" CONTENT="SQL Server">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QADN,QAHC,QA6E,QAGI,QA28,QATJ,QA5W,QAHB,QALG,QAH4,QAUD,QA4Q,QA7R,QAY5,QAO3 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INF: Programming DB-Library TSR with MS-DOS Extenders</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  April 25, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q75295 </B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+<P><h3> </h3>
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft SQL Server version 4.2 for OS/2
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+The MS-DOS DB-Library (DB-Lib) versions 1.1 and later use a
+terminate-and-stay-resident (TSR) utility to interface with the
+network. This utility, written to the OpenNet specification, is the
+connection between DB-Lib and whatever network the TSR is coded to
+communicate with. Because this utility is a TSR, interrupts are
+required to allow code execution paths from DB-Lib to the TSR. When
+the MS-DOS Extenders are used in protected mode, the interrupt driver
+scheme in DB-Lib fails to correctly interface with the TSR in real
+mode. This document is designed to provide enough information to the
+DB-Lib application developer to correctly call the TSR from protected
+mode to real mode.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+The TSR consists of eight C routines managed by an assembly language
+interrupt manager. The eight routines are accessed via INT 62H, with
+AH containing the index to the requested function. The indexes are as
+follows:
+<P>
+<PRE>   0 - ConnectionObjectSize
+   1 - ConnectionOpen
+   2 - ConnectionRead
+   3 - ConnectionWrite
+   4 - ConnectionTransact
+   5 - ConnectionWriteOOB
+   6 - ConnectionClose
+   7 - ConnectionCheckForData
+
+</PRE>The interrupt manager in the TSR examines AH for the index. To verify
+that INT 62H is targeted to the TSR, the DX value must be -1 and the
+CX value must be -2. If any of these values are not correct, the TSR
+calls through the original INT 62H vector.
+<P>
+When the DB-Lib interrupt handler is called by the low-level db-lib
+routines that want to communicate with the TSR, a series of actions
+occur. The parameters for the TSR functions are pushed on the stack in
+the same order as listed below, without the INTRMAP but with the
+addition of the index value for example, in a call that ultimately
+would be processed by ConnectionTransact():
+<P>
+<PRE>   short API
+   ConnectionTransact(map,ConnectionObject,readbuffer,writebuffer,writeco
+   unt,readcount,readmax,TimeOut,neterrno)
+   void *ConnectionObject;
+   unsigned char *readbuffer;
+   unsigned char *writebuffer;
+   unsigned short writecount;
+   unsigned short readcount;
+   unsigned short readmax;
+   short TimeOut;
+   short *neterrno;
+
+</PRE>The following push sequence occurs:
+<P>
+<PRE>   push word (2 bytes: this is the index to the TSR function)
+   push far void pointer (4 bytes: ConnectionObject)
+   push far unsigned char pointer (4 bytes: readbuffer)
+   push far unsigned char pointer (4 bytes: writebuffer)
+   push word (2 bytes: writecount)
+   push word (2 bytes: readcount)
+   push word (2 bytes: readmax)
+   push word (2 bytes: TimeOut)
+   push short far pointer (4 bytes: neterrno)
+
+</PRE>Once in the interrupt handler, the above code pushes BP, SI, and DI to
+save local registers in the usual C function stack frame setup. The
+db-lib interrupt manager then examines the index to make sure it is in
+range, then sets CX and DX to the verification values -2 and -1,
+respectively. An INT 62H is then executed. This results in the flags
+register being pushed and CS:IP. The TSR now has control. The index
+value is verified, and the verification values in CX and DX are then
+checked. The TSR then pushes DS to preserve the application's data
+segment, then it loads the DGROUP segment for the TSR into DS. The TSR
+now calls through a jump table to the C routine requested. When the C
+routine receives control, the INTRMAP is pushed on the stack as shown
+in the prototypes. On return from the C routine to the interrupt
+manager in the TSR, the application's DS is popped from the stack and
+an IRET is executed.
+<P>
+The INTRMAP and TSR function declarations are listed below. Note that
+ALL pointers are far, and that the TSR is compiled in large model and
+expects only far pointers (after all, you cannot do an interprocess
+call and expect to use near pointers).
+<P>
+<PRE>   API defines to: cdecl far
+
+</PRE>The INTRMAP structure represents the state of the stack when the
+function receives control:
+<P>
+<PRE>/* This structure defines the extra bytes pushed on the stack by the
+</PRE>** series of calls to get from an application to the TSR entry point
+** for each C function. These bytes must be accounted for in order for
+** the function to correctly index into the stack to get its parameters.
+** Remember, this module is ALWAYS compiled in LARGE model, and all
+** pointers passed to it are FAR.
+<PRE>*/
+</PRE>typedef struct intrmap
+{
+<PRE>    int  intr_man_ds;           /* interrupt manager DS save
+*/
+    void far *intr_return;      /* interrupt return address
+*/
+    int  intr_flags;            /* flags
+*/
+    int  intr_call_si;          /* save of SI by interrupt caller
+*/
+    int  intr_call_di;          /* save of DI by interrupt caller
+*/
+    int  intr_call_bp;          /* save of BP by interrupt caller
+*/
+    void far *intr_call_ret;    /* return address of interrupt caller
+*/
+    int index;
+</PRE>} INTRMAP;
+<P>
+unsigned short API ConnectionRead(map,ConnectionObject,
+buffer,readsize,MaxSize,TimeOut,neterrno)
+INTRMAP map;
+<PRE>void *ConnectionObject;
+unsigned char  *buffer;         // 512 bytes long
+</PRE>unsigned short  readsize;
+unsigned short MaxSize;
+unsigned short TimeOut;
+unsigned short *neterrno;
+<P>
+short API
+ConnectionWrite(map,ConnectionObject,buffer,Writecount,neterrno)
+INTRMAP map;
+<PRE>void *ConnectionObject;
+unsigned char *buffer;          // 512 bytes long
+</PRE>short Writecount;
+short *neterrno;
+<P>
+short API
+ConnectionTransact(map,ConnectionObject,readbuffer,writebuffer,writeco
+unt,readcount,readmax,TimeOut,neterrno)
+INTRMAP map;
+<PRE>void *ConnectionObject;
+unsigned char *readbuffer;      // 512 bytes long
+unsigned char *writebuffer;     // 512 bytes long
+</PRE>unsigned short writecount;
+unsigned short readcount;
+unsigned short readmax;
+short TimeOut;
+short *neterrno;
+<P>
+short API ConnectionWriteOOB(map,ConnectionObject, buffer,
+OOBsize,neterrno)
+INTRMAP map;
+<PRE>void *ConnectionObject;
+unsigned char *buffer;          // OOBsize bytes long
+</PRE>short OOBsize;
+short *neterrno;
+<P>
+short API ConnectionOpen(map,ConnectionObject,ServerName,neterrno)
+INTRMAP map;
+<PRE>void *ConnectionObject;
+char *ServerName;       // null terminated string, variable length
+</PRE>short *neterrno;
+<P>
+short API ConnectionClose(map,ConnectionObject,neterrno)
+INTRMAP map;
+<PRE>void *ConnectionObject;
+</PRE>short *neterrno;
+<P>
+short API
+ConnectionCheckForData(map,ConnectionObject,bytesavail,neterrno)
+INTRMAP map;
+<PRE>void *ConnectionObject;
+long *bytesavail;          /* pointer to buffer for number of bytes
+</PRE>available */
+short *neterrno;
+<P>
+All return values are returned in AX.
+<P>
+For an MS-DOS Extender to operate with this TSR, several conditions
+must be met:
+
+<UL><LI>The buffers that are passed to the TSR MUST be in real mode and
+   all other pointers to buffers MUST be in real mode (such as the
+   connection object pointer buffer).
+
+<LI>The application can call the function ConnectionObjectSize() by
+   calling the routine interrupt_call(0) or can intercept the return
+   from that call when dbopen() initiates it and intercept the return
+   value to store it. The return value in AX is the size of the
+   connection object.
+
+<LI>The interrupt_call() routine is the db-lib interrupt manager
+   handler [0 is the index for the ConnectionObjectSize() routine]
+   and is an assembly routine with a C entry convention. To map the
+   connection object to real mode, you have to determine its size in
+   program start, then allocate a real mode buffer whenever a call
+   to any of these routines occurs [except ConnectionObjectSize()
+   itself] and copy that connection object to the real mode buffer.
+
+<LI>All other references by a pointer must be mapped to real mode.
+
+<LI>To correctly intercept the interrupt manager calls, the Extender
+   application should grab the INT 62H at the start of the program,
+   remapping that vector to another unused vector.
+
+<LI>The location the new vector points to MUST contain the string
+   "DBLIBRARY" after a jmp near instruction. This string in the TSR
+   code is used to determine the presence of the TSR. Inside the
+   TSR's entry point for the interrupt is the following code:
+<P>
+<PRE>       jmp     short start     ; jump around signature
+       db      'DBLIBRARY'     ; signature
+       start:
+           ...                     ; execution code
+
+</PRE></UL>If the above string is not present, on any call to dbopen() [or
+dbinit()], dbopen() will post an error that the TSR is not loaded.
+This occurs only if the application was substituting a new INT 62H
+vector for the DBNMPIPE.EXE vector. With the interrupt substitution
+completed, your application would receive control with the stack set
+up as shown on entry to the TSR's interrupt manager. It is the same
+register configuration as on entry to each TSR function, except that
+DS has not been pushed; therefore, to have the stack set up, remove
+the intr_man_ds function declaration from the INTRMAP structure.
+<P>
+Now the Extender routine has to map the buffers into real mode, using
+a buffer size as indicated for each function. Push these onto a real
+mode stack as indicated for the requested function. The index value
+can be examined from the stack to determine what the current stack
+configuration is. Then, switch to real mode and do the new INT,
+whatever that may be. Upon return to the Extender routine, the real
+mode buffers have to be remapped to protected mode, along with any
+other values set into pointer buffers (neterrno, and so on). Switch
+out of real mode and IRET to db-lib. Protected mode is now
+successfully integrated into real mode. Once in real mode in the TSR,
+the network redirector calls execute correctly, because the switch to
+real mode has already been accomplished.
+<P>
+Upon exit from the Extender program, the INT 62H vector MUST be
+restored to allow other applications to use the TSR and to allow
+ENDDBLIB.EXE to unload the TSR.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: dblib<BR>
+Keywords            : kbprg SSrvDB_Lib<BR>
+Version             : 4.2<BR>
+Platform            : OS/2<BR>
+Resolution Type     : kbcode<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  April 25, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

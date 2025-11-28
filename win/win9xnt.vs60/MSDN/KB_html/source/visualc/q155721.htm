@@ -1,0 +1,202 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>BUG: Access Violation in RFX_Date If CTime Not Initialized </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q155721">
+<META NAME="KBModify" CONTENT="1997/06/26">
+<META NAME="KBCreate" CONTENT="1996/09/05">
+<META NAME="Keywords" CONTENT="MfcDatabase vcbuglist420 vcbuglist500 kbbuglist">
+<META NAME="KBArea" CONTENT="Support; KB; visualc">
+<META NAME="Description" CONTENT="  An application may fail with an access violation while executing the RFX_Date() function. A message similar to the following appears:     Unhandled exception in My.exe (MFC42D.DLL):    0xC0000005: Access Violation.  CAUSE =====  The RFX_Date() func...">
+<META NAME="Product" CONTENT="Visual C++">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAGI,QBW7,QAI5,QA1S,QAYL,QAXB,QAUD,QBVV,QAKD,QBWG,QAIF,QDN9,QA5E,QAY5,QAO4 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>BUG: Access Violation in RFX_Date If CTime Not Initialized</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  June 26, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q155721</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>The Microsoft Foundation Classes (MFC) included with:
+   - Microsoft Visual C++, 32-bit Edition, versions 4.2, 5.0
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+An application may fail with an access violation while executing the
+RFX_Date() function. A message similar to the following appears:
+<P>
+<PRE>   Unhandled exception in My.exe (MFC42D.DLL):
+   0xC0000005: Access Violation.
+
+</PRE><h2>CAUSE</h2>
+ 
+<P>
+The RFX_Date() function in MFC 4.2 now requires initialization of CTime
+objects. Versions of MFC earlier than 4.2 do not have this requirement.
+AppWizard and ClassWizard do not initialize the CTime member variables for
+you.
+<P>
+Because CTime member variables are not initialized in the CRecordset
+constructor, an access violation can occur when RFX_Date() tries to use the
+uninitialized data.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Initialize the CTime member variables in the constructor of your CRecordset-
+derived class. The following is one way to initialize the CTime member
+variable:
+<P>
+<PRE>   m_myTime = CTime::GetCurrentTime();
+
+</PRE><h2>STATUS</h2>
+ 
+<P>
+Microsoft has confirmed this to be a bug in the Microsoft products listed
+at the beginning of this article. We are researching this bug and will post
+new information here in the Microsoft Knowledge Base as it becomes
+available.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+Here is one common scenario where you may see an access violation:
+<P>
+Call CRecordset::AddNew() on an empty recordset, set the value of the CTime
+member variable, and then call CRecordset::Update(). The insert to the
+database works; however, an access violation may occur before the call to
+Update() returns.
+<P>
+The following steps show how the access violation occurs:
+<P>
+After the insert to the database is complete, Update() attempts to reload
+the data for the previous record using the CRecordset::LoadFields()
+function. LoadFields() calls CRecordset::DoFieldExchange(), which calls the
+RFX_Date() function for the CTime field. The CFieldExchange::LoadField case
+within RFX_Date() calls CTime::GetYear():
+<P>
+<PRE>void AFXAPI RFX_Date(CFieldExchange* pFX, LPCTSTR szName, CTime&amp; value)
+</PRE>{
+<PRE>    ...
+    switch (pFX-&gt;m_nOperation)
+    {
+        ....
+        case CFieldExchange::LoadField:
+        {
+            ...
+            pts-&gt;year = (SWORD)value.GetYear();
+            ...
+        }
+    ...
+</PRE>}
+<P>
+The definition for GetYear() in AFX.INL dereferences the pointer returned
+from GetLocalTm(NULL):
+<P>
+_AFX_INLINE int CTime::GetYear() const
+<PRE>    { return (GetLocalTm(NULL)-&gt;tm_year) + 1900; }
+
+</PRE>GetLocalTm() returns the value from localtime(), which is a NULL pointer if
+the CTime value is a negative number. Because CTime has not been
+initialized, it may have a negative value. When GetYear() attempts to
+dereference this NULL pointer, the access violation occurs in AFX.INL at
+line 265.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: crash gpf exception<BR>
+Keywords            : MfcDatabase vcbuglist420 vcbuglist500 kbbuglist<BR>
+Technology          : kbMfc<BR>
+Version             : 4.2 5.0<BR>
+Platform            : NT Windows<BR>
+Issue type          : kbbug<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  June 26, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

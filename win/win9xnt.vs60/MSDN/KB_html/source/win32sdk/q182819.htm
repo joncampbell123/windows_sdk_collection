@@ -1,0 +1,245 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>PRB: Large Resources Cause Resource Corruption on Windows 95 </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q182819">
+<META NAME="KBModify" CONTENT="1998/03/20">
+<META NAME="KBCreate" CONTENT="1998/03/20">
+<META NAME="Keywords" CONTENT="UsrRes">
+<META NAME="KBArea" CONTENT="Support; KB; win32sdk">
+<META NAME="Description" CONTENT="  If you add a large resource (greater than or equal to 64K in size) to a Win32 module and you attempt to access any resource in the image from 16- bit code under Windows 95, the resource might get truncated. Since large sections of the Windows 95 us...">
+<META NAME="Product" CONTENT="Win32 SDK">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Security" CONTENT="PUBLIC ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QAIM,QAH4,QALG,QBWQ,QAIW,QDL9,QBWO,QBWN,QANY,QBVV,QAY2,QBW7,QAI5,QBWP,QAL3 V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>PRB: Large Resources Cause Resource Corruption on Windows 95</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  March 20, 1998</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q182819</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 Software Development Kit (SDK) on the following
+   platform:
+<P>
+   - Windows 95
+</UL> 
+<P>
+<P><h2>SYMPTOMS</h2>
+ 
+<P>
+If you add a large resource (greater than or equal to 64K in size) to a
+Win32 module and you attempt to access any resource in the image from 16-
+bit code under Windows 95, the resource might get truncated. Since large
+sections of the Windows 95 user interface manager (USER) are implemented in
+16-bit code for compatibility reasons, resource-loading functions such as
+LoadImage might fail or return corrupted resources. Your access to
+resources from 32-bit code are not affected.
+<P>
+<P><h2>CAUSE</h2>
+ 
+<P>
+When a 32-bit module is loaded into memory, Windows 95 creates a 16-bit
+version of the resources in the 32-bit module so that the resources can be
+accessed from 16-bit code. The "size" field of a 16-bit resource is only a
+16-bit integer. Consequently, resources larger than 64K require special
+treatment.
+<P>
+To accommodate large resources, the file format for 16-bit modules allows
+you to apply a file-wide scaling factor to resource sizes. This scaling
+factor is applied to the reported sizes of all resources.
+<P>
+For example, suppose a module contained three resources as follows:
+<P>
+<PRE>   Resource 1 = size     15 bytes
+   Resource 2 = size  65123 bytes
+   Resource 3 = size 191231 bytes
+
+</PRE>Since Resources 2 and 3 are larger than 64K, their sizes cannot be reported
+as a 16-bit integer. In the conversion of this resource table to a 16-bit
+resource table, Windows 95 selects a scaling factor of 4 (scaling factors
+must be a power of two) resulting in the following adjusted resource sizes:
+<P>
+<PRE>   Resource 1 =     15 bytes / 4 =     3 scaled bytes
+   Resource 2 =  65123 bytes / 4 = 16280 scaled bytes
+   Resource 3 = 191231 bytes / 4 = 47802 scaled bytes
+
+</PRE>where one scaled byte equals four real bytes. Notice that the scaled sizes
+are now all less than 65536 scaled bytes, and, therefore, can be reported
+as a 16-bit integer.
+<P>
+Also notice that due to truncation in the division, converting the number
+of scaled bytes back to the number of actual bytes results in some loss of
+data. For example, the size of Resource 1 is recorded as 3 scaled bytes,
+which is equal to 3 * 4 = 12 real bytes (three bytes less than its original
+size of 15 bytes). Consequently, if you attempt to access Resource 1 from
+16-bit code you will lose three bytes of data.
+<P>
+Observe that the original 32-bit resources are not damaged by the
+conversion process. The truncation occurs only to the 16-bit resources.
+Consequently, if the resources are accessed by 32-bit code, truncation does
+not occur. In particular, the 32-bit versions of FindResource,
+LockResource, and SizeofResource are not affected.
+<P>
+Since the 32-bit version of LoadString is implemented entirely in 32-bit
+code, LoadString is not affected by this problem.
+<P>
+<P><h2>RESOLUTION</h2>
+ 
+<P>
+Following are two methods of working around this problem.
+<P>
+<P><h3>Method 1</h3>
+ 
+<P>
+Since the original 32-bit resources are not damaged, use those resources
+instead of the 16-bit resources. For example, to avoid a truncated dialog
+box, replace:
+<P>
+<PRE>    DialogBox(hInstance, lpTemplate, hwndParent, DialogProc);
+
+</PRE>With:
+<P>
+<PRE>    // Error checking deleted for expository purposes.
+    HRSRC hrsrc = findresource(hinstance, lpTemplate, RT_DIALOG);
+    LPCDIALOGTEMPLATE lpDlgTemplate = LoadResource(hInstance, hrsrc);
+    DialogBoxIndirect(hInstance, lpDlgTemplate, hwndParent, DialogProc);
+
+</PRE><h3>Method 2</h3>
+ 
+<P>
+Artificially pad the resources so that the truncation performed by Windows
+95 does not result in the loss of significant data. This can be performed
+after-the-fact by the FixRes95 tool (see the MORE INFORMATION section of
+this article to see how to obtain this tool). Note that since FixRes95 uses
+the UpdateResource APIs to modify the 32-bit image, it requires Windows NT
+to run. (The requirement for Windows NT applies only to the conversion
+program itself and not to the image file being converted.)
+<P>
+The FixRes95 tool is a console application that works off of command line
+parameters. To use FixRes95, use the following command line:
+<P>
+<PRE>   fixres95 [-a] &lt;module name&gt;
+
+</PRE>The -a is optional and, if specified, will force all resources to be
+updated.
+<P>
+The &lt;module name&gt; is the path and file name of the module whose resources
+will be updated.
+<P>
+<P><h2>STATUS</h2>
+ 
+<P>
+This problem is only present in Windows 95.
+<P>
+<P><h2>MORE INFORMATION</h2>
+ 
+<P>
+You can use the FixRes95 tool to perform an after-the-fact artificial
+padding of the resources so that the truncation performed by Windows 95
+does not result in the loss of significant data. The following file is
+available for download from the Microsoft Software Library:
+<P>
+<PRE> ~ <A href="http://support.microsoft.com/download/support/mslfiles/fixres.exe">FixRes.exe</A> <I>(size: 30152 bytes)</I> 
+                 Release Date: Mar-20-1998
+
+</PRE>For more information about downloading files from the Microsoft Software
+Library, please see the following article in the Microsoft Knowledge Base:
+<P>
+<PRE>   ARTICLE-ID: <B><A href="../zmiscellaneous/q119591.htm">Q119591</A></B>
+   TITLE     : How to Obtain Microsoft Support Files from Online Services
+</PRE> 
+<PRE>Keywords          : UsrRes
+Version           : WIN95
+Platform          : Win95
+Issue type        : kbprb</PRE>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+================================================================================<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  March 20, 1998</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>

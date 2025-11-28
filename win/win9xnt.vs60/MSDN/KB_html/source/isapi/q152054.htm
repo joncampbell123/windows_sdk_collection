@@ -1,0 +1,432 @@
+
+
+<HTML>
+<HEAD>
+<TITLE>INFO: Tips for Debugging ISAPI DLLs </TITLE>
+
+<!--STYLE_BEGIN-->
+<style>@import url(../../msdn_ie4.css);</style>
+	<link disabled rel="stylesheet" href="../../msdn_ie3.css">
+<!--STYLE_END-->
+
+<META HTTP-EQUIV="CONTENT-Type" CONTENT="text/html; charset=us-ascii">
+<META NAME="ms.locale" CONTENT="EN-US">
+<META NAME="Category" CONTENT="Support; KB Article">
+<META NAME="KBID" CONTENT="Q152054">
+<META NAME="KBModify" CONTENT="1997/10/10">
+<META NAME="KBCreate" CONTENT="1996/06/03">
+<META NAME="Keywords" CONTENT="kbtshoot IISAPI kbnocat">
+<META NAME="KBArea" CONTENT="Support; KB; ISAPI">
+<META NAME="Description" CONTENT="  Writing an ISAPI extension or filter is no more difficult than writing any other DLL, but debugging the DLL can be a challenge. This article provides a few ideas for debugging an ISAPI DLL.  The following acronyms are used in this article:     ISAP...">
+<META NAME="Product" CONTENT="ISAPI">
+<META NAME="Platform" CONTENT="Windows">
+<META NAME="Technology" CONTENT=" ">
+<META NAME="Premium" CONTENT="support">
+
+<META NAME="nyms" CONTENT="QBWP,QBWS,QAGI,QAVZ,QA5V,QAH4,QACK,QDNN,QBVV,QAH6,QAY2,QAPF,QAOG,QABA,QAVX V02180118">
+</HEAD>
+
+<BODY BGCOLOR="#FFFFFF" LEFTMARGIN="0" RIGHTMARGIN="0" TOPMARGIN="0">
+
+
+<!--DOCBODY_START-->
+<BR>
+<CENTER>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" VALIGN="top" WIDTH="90%">
+	<TR>
+		<TD VALIGN="top">
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<H1>INFO: Tips for Debugging ISAPI DLLs</H1>
+			</FONT>
+			<FONT FACE="verdana,arial,helvetica" SIZE="1">
+			Last reviewed:  October 10, 1997</FONT><BR>
+			<FONT FACE="verdana,arial,helvetica" SIZE="2">
+			<B>Article ID: Q152054</B>
+			</FONT>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+	<FONT FACE="Verdana, Arial, Helvetica" SIZE=2>
+
+
+
+ 
+ 
+The information in this article applies to:
+
+<UL><LI>Microsoft Win32 SDK, version 4.0
+<LI>Microsoft Internet Information Server, versions 1.0, 2.0
+</UL> 
+<P>
+<P><h2>SUMMARY</h2>
+ 
+<P>
+Writing an ISAPI extension or filter is no more difficult than writing any
+other DLL, but debugging the DLL can be a challenge. This article provides
+a few ideas for debugging an ISAPI DLL.
+<P>
+The following acronyms are used in this article:
+<P>
+<PRE>   ISAPI  - Internet Server Application Programming Interface
+   WWW    - World Wide Web
+   IIS    - Internet Information Server
+   SDK    - Software Development Kit
+   DLL    - Dynamic Link Library
+   HTML   - Hypertext Markup Language
+
+</PRE>The following approaches are discussed:
+<P>
+<PRE>   - Turning off DLL caching
+   - Using OutputDebugString in an ISAPI DLL
+   - Using MessageBox
+   - Writing output to a log file
+   - Running IIS interactively
+   - Using an alternate heap for memory
+   - Using CGIWRAP to debug without a server
+
+</PRE><h2>MORE INFORMATION</h2>
+ 
+<P>
+ISAPI is a subset of the Win32 API. It allows WWW servers, such as
+Microsoft's IIS, to be extended in two ways: extensions and filters. In an
+ISAPI extension, a browser typically sends information entered in a form,
+and the extension returns a complete HTML page built programmatically. In
+an ISAPI filter, all browser data, both inbound and outbound, can be
+modified before or after the server processes it. Extension and filter DLLs
+must conform to a specification; there are specific functions that must be
+implemented in order for the DLL to work.
+<P>
+Microsoft's IIS supports ISAPI on Windows NT Advanced Server versions 3.51
+and 4.0. Microsoft's Peer Web Server supports ISAPI on Windows NT
+Workstation 4.0 and Windows 95. This article focuses on IIS for Windows NT
+Advanced Server, but many of the tips apply to all implementations of
+ISAPI, even Web servers other than Microsoft's.
+<P>
+<P><h3>Tips for ISAPI Development</h3>
+ 
+<P>
+IIS runs as a Windows NT service in the local system account, which is what
+makes debugging ISAPI DLLs difficult. Running as a service introduces
+issues that are new to many programmers:
+
+<UL><LI>The DLL runs in the local system context.
+
+<LI>There is no desktop.
+
+<LI>ISAPI extension procedures have an impersonated security context.
+
+<LI>ISAPI developers do not have access to the server source code so the
+   developers are extending an application they did not write.
+<P>
+</UL>The following tips are intended to aid in the development of ISAPI DLLs.
+<P>
+<P><h3>Turning Off DLL Caching</h3>
+ 
+<P>
+It is often desirable during development to force your ISAPI DLL to unload
+after each request, allowing you to replace it with a new version. IIS, by
+default, will hold the DLL in memory, keeping the DLL file in use. To
+modify this default cache setting, use the registry editor to change the
+following key:
+<P>
+<PRE>   HKEY_LOCAL_MACHINE
+    System
+     CurrentControlSet
+      Services
+       W3SVC
+        Parameters
+
+</PRE>Set CacheExtensions to 0 to disable caching, or set it to 1 to enable
+caching. When caching is turned off, extra loading and unloading makes
+ISAPI extensions dramatically slower, so use this option only for
+development.
+<P>
+Filter DLLs are always loaded when the IIS service is running, and there is
+no way to change filter loading behavior. You must stop the IIS service
+with the administration tool, copy your new version over the old, and then
+restart the WWW service. The administration tool can run on a remote
+development machine controlling the server over the network.
+<P>
+<P><h3>OutputDebugString</h3>
+ 
+<P>
+An easy technique to debug either an ISAPI filter or extension is to use
+OutputDebugString. This function is part of Win32 and it is a standard way
+to send a string to a debug monitor. Use DBMON, included as a sample in the
+Win32 SDK, to view debug strings. A fix is necessary to view ISAPI debug
+output with DBMON, because the DLL runs in the local system account while
+DBMON runs in the logged-in user account. Starting with the Win32 SDK for
+Windows NT 4 beta 2, DBMON creates a NULL DACL and passes the security
+attributes to both CreateEvent calls and the CreateFileMapping call. You
+can modify DBMON yourself if you do not have the current SDK. The code
+below shows how to make a NULL DACL:
+<P>
+<PRE>   SECURITY_ATTRIBUTES sa;    SECURITY_DESCRIPTOR sd;
+
+   sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+   sa.bInheritHandle = TRUE;
+   sa.lpSecurityDescriptor = &amp;sd;
+
+   if(!InitializeSecurityDescriptor(&amp;sd, SECURITY_DESCRIPTOR_REVISION))
+      return;   // Handle errors
+   if(!SetSecurityDescriptorDacl(&amp;sd, TRUE, (PACL)NULL, FALSE))
+      return;   // Handle errors
+
+   // You may now pass &amp;sa to CreateEvent and CreateFileMapping
+
+</PRE><h3>MessageBox</h3>
+ 
+<P>
+The Online Help for MessageBox in the Win32 SDK describes a number of
+rarely-used constants, including MB_SERVICE_NOTIFICATION and MB_TOPMOST. In
+the context of ISAPI, add both of these flags to your message boxes because
+without them, the message box call will fail. Your ISAPI DLL is running as
+a service so it does not have a desktop, and these flags tell the operating
+system to display the message on the logged-in user's desktop.
+<P>
+Please note that the value of MB_SERVICE_NOTIFICATION has changed on
+Windows NT 4.0 because of a conflict with Windows 95. When you specify
+MB_SERVICE_NOTIFICATION|MB_TOPMOST, your message will display properly on
+all versions of Windows NT and Windows 95.
+<P>
+Do not use MessageBox for anything but debugging. If you need to record
+error messages, use the Windows NT event log. See the Win32 sample
+"logging" for information on how to use the event log. Depending on the SDK
+version you have, the logging sample may be in the q_a subdirectory off the
+root of the SDK CD, or it may be with other samples in \mstools\samples.
+<P>
+<P><h3>Output to a Log File</h3>
+ 
+<P>
+An easy way to track the flow of an ISAPI extension or filter is to use a
+log file. You can use the normal Win32 file I/O functions such as
+CreateFile, ReadFile, WriteFile, and CloseHandle. Your DLL's current
+directory will be the system root (c:\winnt40\system32). Also, keep
+security in mind because the default security context for your DLL is the
+local system account. This applies even when impersonation is active. If
+you do not allow the local system to create files in the appropriate
+directory and do not specify a non-NULL security attribute, your CreateFile
+call will fail.
+<P>
+The ISAPI homefilt sample in the SDK provides one example of a file-logging
+mechanism.
+<P>
+<P><h3>Running IIS Interactively</h3>
+ 
+<P>
+A popular debugging option is to run IIS as a console application and use
+Visual C++ or another debugger for full source debugging. Information to do
+this is given in the SDK readme. Prior to Win32 SDK version 4 beta 2, the
+readme was included in the ActiveX SDK from
+<B><A href="http://www.microsoft.com/intdev">http://www.microsoft.com/intdev.</A></B> As of version 4 beta 2, ISAPI became part
+of the Win32 SDK. Examine the Win32 SDK readme for the procedure to run IIS
+as a console application.
+<P>
+Briefly, here are a few tips. IIS cannot run as a console application and a
+service at the same time. You will have to stop all three IIS services,
+WWW, FTP, and Gopher, before running IIS from a command prompt. Once IIS is
+running, you can use PVIEW (part of Visual C++) or TLIST (part of the NT
+resource kit) to get the process ID of INETINFO.EXE, and then use your
+debugger to attach to the running process.
+<P>
+Another approach is to supply the full command line, inetinfo.exe -e W3SVC,
+as described in the SDK readme, within the debug settings. For Visual C++,
+choose the Build menu, select Settings, then select the Debug tab. Type the
+full path name of "inetinfo.exe" as the Executable for Debug Session, and
+type "-e W3SVC" in Program Arguments. See Visual C++ 4.1 tech note TN063:
+Debugging Internet Extension DLLs, for details on using the Visual C++
+debugger.
+<P>
+Running IIS as a console application still is not exactly the same as
+running it as a service. For instance, authentication filters do not
+function properly in the console version of IIS. Instead of debugging IIS
+as a console application, it is possible to debug IIS running as a service.
+Attach a debugger to the INETINFO.EXE process, then use a browser and
+interact with your web site. When a debugger is attached to IIS, any
+occurrence of DebugBreak() will stop the service and put the debugger in
+full-source debugging mode. Each time you modify your DLL code, detach and
+restart the service using the Microsoft Internet Service Manager tool.
+<P>
+The main cost of running IIS interactively is the start-up time required.
+It takes a few seconds to start and stop your debugger and, during
+development, this may become unacceptable. Be sure to consider the other
+alternatives.
+<P>
+<P><h3>Using an Alternate Heap for Memory</h3>
+ 
+<P>
+An ISAPI DLL might share the process heap with the WWW service. ISAPI DLL
+memory overwrites may not show up until later, and they may appear to be a
+problem with IIS. When you suspect memory corruption problems, modify your
+DLL code to use an alternate heap by calling HeapCreate, then HeapAlloc and
+HeapFree for all memory allocations. If switching from the process heap to
+a new heap changes the behavior of a crash, you can conclude that your DLL
+is corrupting memory.
+<P>
+See the ISAPI sample CGIWRAP to isolate your extension DLL from the server.
+CGIWRAP is an executable and will have its own address space so even when
+your DLL corrupts memory, IIS will remain safe. Also, the CGIWRAP process
+is terminated after each request is complete. This technique makes your
+extension very slow but is a helpful interim solution until the corruption
+bug is finally fixed.
+<P>
+The Win32 family of VirtualAlloc functions allows you to allocate 64K
+blocks of memory and can modify the protection of a block of memory.
+It can be helpful to use the memory protection provided by these functions
+to diagnose memory overwrite bugs.
+<P>
+Finally, before your DLL is deployed in a production environment, check for
+memory leaks. For example, cut and paste the following code to track the
+number of bytes allocated. Call DumpBytesInUse() within your code to track
+the number of bytes currently allocated:
+<P>
+<PRE>   #define WIN32_LEAN_AND_MEAN
+   #include &lt;windows.h&gt;
+
+   #if 1    // change to #if 0 to turn off mem check
+
+   DWORD g_dwTotal;
+
+   //
+   // Call MemAlloc just like you would call HeapAlloc
+   //
+
+   LPVOID MemAlloc (HANDLE hHeap, DWORD dwFlags, DWORD dwSize)
+      {
+      LPVOID p;
+
+      p = HeapAlloc (hHeap, dwFlags, dwSize);
+      if (p)
+         g_dwTotal += dwSize;
+
+      return p;
+      }
+
+   BOOL MemFree (HANDLE hHeap, DWORD dwFlags, LPVOID p)
+      {
+      DWORD dwSize;
+      BOOL bReturn;
+
+      dwSize = HeapSize (hHeap, dwFlags, p);
+      bReturn = HeapFree (hHeap, dwFlags, p);
+
+      if (dwSize != 0xffffffff &amp;&amp; bReturn)
+         g_dwTotal -= dwSize;
+
+      return bReturn;
+      }
+
+   void DumpBytesInUse (void)
+      {
+      TCHAR szMsg[256];
+
+      wsprintf (szMsg, "Bytes in use: %u\r\n", g_dwTotal);
+      OutputDebugString (szMsg);
+      }
+
+   #else
+
+   #define MemAlloc HeapAlloc
+   #define MemFree HeapFree
+   #define DumpBytesInUse(x)
+
+   #endif
+
+</PRE><h3>Using CGIWRAP to Debug Without a Server</h3>
+ 
+<P>
+An effective way to conduct basic testing on an ISAPI DLL is to use the
+CGIWRAP sample. CGIWRAP is an executable that calls an ISAPI DLL. Although
+it is intended to allow an ISAPI DLL run as a CGI executable, CGIWRAP can
+be modified for use with a debugger.
+<P>
+There are two sources of input for an ISAPI DLL: HTTP header variables and
+HTTP data. An ISAPI DLL retrieves header variables from GetServerVariable
+and retrieves data from ReadClient. Similarly, a CGI executable gets its
+header variables from the environment (with getenv) and gets its data from
+standard input.
+<P>
+This means you can simulate a WWW server from the Command Line. Set
+environment variables to match what is given to your ISAPI DLL and pipe a
+file into CGIWRAP to simulate the inbound form data given to your DLL. When
+CGIWRAP runs, it will translate environment variables and the piped input
+into an ISAPI interface. Because you have the source to CGIWRAP, you can
+set breakpoints on every line of code involved.
+<P>
+You can also improve the utility of CGIWRAP by modifying the sample. Add
+your own Command Line options, including, perhaps, a "record" operation
+when no Command Line options are specified. A record operation automates
+the process of setting environment variables and piping standard input. The
+idea is to run CGIWRAP as a normal CGI application from your calling web
+page. CGIWRAP identifies that no Command Line parameters were sent, so it
+records the environment and saves it to a file. Then, from a debugger (on
+any machine), specify a Command Line option to CGIWRAP telling it to load
+its environment from the previously saved file. CGIWRAP doesn't do this
+now, but these changes are easy to make yourself.
+<P>
+Keep in mind that CGIWRAP is not exactly like IIS. For example, CGIWRAP
+does not run in the context of a local system. This can make a tremendous
+difference in the way your ISAPI DLL behaves. Fortunately, when your DLL
+works with CGIWRAP but not with IIS, you'll know the problem is very likely
+related to security.
+<P>
+
+	</FONT>
+	</TD>
+	</TR>
+</TABLE>
+<P>
+
+
+<!--DOCBODY_END-->
+
+<!--FOOTER_START-->
+<table cellpadding=5 border=0 width="90%">
+<tr>
+<td>
+	<HR WIDTH="90%">
+
+<BLOCKQUOTE>
+<FONT FACE="Verdana, Arial, Helvetica" SIZE="1">
+<SPAN STYLE="font-family:verdana,arial,helvetica; font-size:8pt">
+Additional query words: iis isapi cgiwrap ismoke debug www cgi activex<BR>
+cache<BR>
+Keywords          : kbtshoot IISAPI kbnocat<BR>
+Technology        : kbInetDev<BR>
+Version           : 3.51 4.0<BR>
+Platform          : NT WINDOWS<BR>
+Issue type        : kbinfo<BR>
+
+</SPAN>
+</FONT>
+<BR>
+<BR>
+THE INFORMATION PROVIDED IN THE MICROSOFT KNOWLEDGE BASE IS
+PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  MICROSOFT DISCLAIMS
+ALL WARRANTIES, EITHER EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  IN NO
+EVENT SHALL MICROSOFT CORPORATION OR ITS SUPPLIERS BE LIABLE FOR
+ANY DAMAGES WHATSOEVER INCLUDING DIRECT, INDIRECT, INCIDENTAL,
+CONSEQUENTIAL, LOSS OF BUSINESS PROFITS OR SPECIAL DAMAGES, EVEN IF
+MICROSOFT CORPORATION OR ITS SUPPLIERS HAVE BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.  SOME STATES DO NOT ALLOW THE EXCLUSION
+OR LIMITATION OF LIABILITY FOR CONSEQUENTIAL OR INCIDENTAL DAMAGES
+SO THE FOREGOING LIMITATION MAY NOT APPLY.
+</BLOCKQUOTE>
+<P>
+<center>
+	<FONT FACE="Verdana,Arial,Helvetica" SIZE="1">
+	Last reviewed:  October 10, 1997</FONT>
+	<BR>
+	<A href="../cpyright.htm" STYLE="font: bold 7pt Verdana,Arial,Helvetica">&copy; 1998 Microsoft Corporation. All rights reserved. Terms of Use.</A><BR>
+	
+</center>
+</td>
+</tr>
+</table>
+
+<!--FOOTER_END-->
+</FONT>
+</BODY>
+</HTML>
