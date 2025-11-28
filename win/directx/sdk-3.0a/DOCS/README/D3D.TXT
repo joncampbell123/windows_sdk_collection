@@ -1,0 +1,156 @@
+**********************
+***                ***
+***                ***
+*** Direct3D Notes ***
+***                ***
+***                ***
+**********************
+
+Last updated  September 5, 1996
+
+
+Notes on the software emulation drivers
+=======================================
+
+
+RAMP driver support
+===================
+Optional Z buffering.
+Color key and stippled transparency.
+Mono interpolated rasterization only.
+Point sampled perspective correct textures.
+Flat and Gouraud shade modes.
+
+Performance notes for the RAMP driver
+=====================================
+Texture mapping performance is heavily gated by the speed of memory.
+There are a number of ways of maximizing the cache performance of your
+textures.  The smaller the textures are, the better chance they have of being
+maintained in the secondary cache.  This is crucial for keeping performance
+high.  Also, changing the texture per primitive will thrash the cache.  Try
+and keep polygons grouped in order of the textures they use.
+
+When using Z buffering and texturing, rendering your scene from front to
+back will increase performance.  The textured Z buffered primitives
+pre-test the Z buffer on a scanline basis.  If a scanline is hidden by a
+previously rendered polygon it is trivially rejected.  If this is the case, Z
+buffering performance can exceed non-Z performance.
+
+The retained mode API automatically orders its scenes from front to back
+to facilitate this optimization.
+
+In it often a good idea to use the D3DTest program to verify performance
+results with different drivers, especially where hardware is involved.
+
+
+RGB driver
+==========
+
+There is now an MMX optimized version of the RGB driver.
+If you have an MMX capable PC the RGB software emulation will automatically
+be accelerated. There is an application included in the sdk\bin directory,
+mmxtog.exe which allows you to switch MMX acceleration off and on for the
+RGB driver.
+
+Release notes for D3D MMX driver
+
+Functionality
+-------------
+
+1. D3D's external interfaces unchanged, all examples and all apps that
+can use the RGB driver should be able to run with the RGB MMX driver.
+
+2. Only 16-bit color depths have been optimised.  There is a relatively
+minor (2X) improvement in 8-bit dithered RGB rendering.
+
+3. The following are yet-to-be-implemented: mip-mapping, 16-bit dithering.
+
+4. The Z-buffer is 16-bit, but is signed, so the farthest Z-value is 0x7fff,
+and the nearest is 0x8000.  This should not affect you unless you examine
+the Z-buffer directly.
+
+5. There are still some accuracy problems with the rendering: these are
+most clearly shown by the colored flashes that appear in the "twist"
+example.  We're working on this problem right now, and should have
+fixes soon.
+
+6. The driver only supports the PAL8 texture format.  D3D apps should detect
+this and create the texture appropriately.  This format is the same as
+the one supported by the ramp driver.
+
+Performance
+-----------
+
+1. Performance is much better when all surfaces are in systemmemory, this
+includes the rendering target and all textures.
+
+2. The current MMX RGB driver is not complete, and there are several
+major performance improvements that we plan to make.  Expect another
+improvement of about 10% in all benchmarks for the MMX RGB driver,
+though the more sophisticated the rendering operation, the bigger the
+improvement.  The biggest improvement should be in Z-buffered
+gouraud-shaded perspective-correct texture-mapping.  Perspective
+correction will be much faster in the next beta.
+
+3. Performance is better than that of ramp mode in most situations.
+There are some performance bottlenecks that we have yet to address.
+We suggest you run the "tunnel" example with the MMX driver to get a
+feel for the changed relative costs of rendering qualities: for
+example, the speed of gouraud shading is now much closer to that of
+flat-shading.  To get the best performance from the tunnel, do the
+following:
+
+Specular highlights     OFF
+Fog                     OFF
+Perspective Correction  OFF
+Gouraud shading         ON
+
+With these settings, you should be getting about 29Hz for the tunnel
+running in systemmemory fullscreen at 640x400x16.
+
+4. The existing ramp driver works best on textures that are 256x256.
+This restriction has been removed in the MMX driver: it supports all
+texture dimensions equally well. It is still important to keep the total
+texture size as small as possible to reduce memory bandwidth.  Note how
+fast the tiny checker texture runs in the tunnel.  The checker texture is
+only 64 bytes instead of 64k like most of the other textures in the SDK.
+256x2048 is a reasonable size for the texture in a game.
+
+
+
+
+
+
+Known Issues
+============
+When using RGB software rasterisation, D3DRMMATERIALMODE_FROMFRAME
+does not work correctly if the object is unlit.
+
+It is not currently possible to load textures from resources if the code
+resides in a dll.
+
+Background depth images do not double buffer correctly in the retained
+mode api (page flipping scenario).  Use IDirect3DRMViewport::ForceUpdate()
+to force the dirty region to be updated.
+
+The following issues is not made clear in the documentation:
+1) SetOrientation overrides any previous shear or scale applied to a
+frame.
+
+2) Texture Transparency.  If the retained mode API has to sample down
+the colors used in a texture in order to, for example, palettize it,
+the color you're using as the transparent color may get remapped to
+another close color and transparency will no longer work.  In order to
+stop this happening, pick a color to use for transparency that is not
+close to any other color in the texture.
+
+The Matrox Millenium driver does not render correctly fullscreen
+unless Clear is called at least once.  Since the Millenium does not
+support texture mapping, this will not affect the types of application
+which do not use Clear.  A workaround for this issue is to call Clear
+in your application once before entering the rendering loop.
+
+When using the Retained Mode method IDirect3DRM::LoadTexture, the texture
+is inverted when loaded from a BMP file. The simplest work around is to
+reverse the meshs texture coordinates or load from a PPM file.
+
