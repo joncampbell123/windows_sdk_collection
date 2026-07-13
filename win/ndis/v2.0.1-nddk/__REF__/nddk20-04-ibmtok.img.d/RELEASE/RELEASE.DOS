@@ -1,0 +1,224 @@
+
+ Introduction
+
+      This document discusses the major differences between a
+      DOS NDIS device driver and a OS/2 NDIS device driver.
+      This document is aimed at the developer and focues on
+      areas that require special attention specific to an
+      NDIS driver under DOS.  By providing a general overview
+      of those differences, hopefully some of the potential
+      pitfalls will be avoided.
+
+
+ Related Documents
+
+      Microsoft LAN Manager Programmer's Guide for NDIS
+
+      Microsoft LAN Manager Network Device Driver Guide
+
+      Microsoft Operating System/2 Device Driver Reference
+      Guide
+
+      IBM Disk Operating System Technical Reference Version
+      3.3
+
+
+ DOS vs. OS/2 Device Driver Models
+
+      The DOS device driver consists of, at a minimum, two
+      entry points: the Strategy procedure and the Interrupt
+      procedure.  Usually, it will also include an interrupt
+      service routine.  The Strategy and Interrupt procedures
+      are used when DOS calls the device driver.  The
+      interrupt routine is used to handle device dependent
+      interrupts.  The interrupt service routine is required
+      to save and restore any registers used, setup it's own
+      stack and return from interrupt with an IRET
+      instruction.  The DOS driver runs only in real mode.
+
+      The OS/2 device driver contains, at a minimum, only one
+      entry point: the Strategy procedure.  As in DOS, OS/2
+      will usually contain an interrupt service routine as
+      well.  The Strategy routine is used when OS/2 calls the
+      device driver.  The interrupt service routine is called
+      directly by OS/2 as a far procedure call to service
+      interrupts.  Because OS/2 saves the registers and
+      provides a stack, the interrupt service routine need do
+      little more then process the interrupt and, when
+      finished, return with a far RET instruction.  The
+      device driver can run in either real or protected mode;
+      OS/2 will call the device driver in the context and
+      mode of the calling thread.
+
+
+ Overview
+
+      The major differences between DOS and OS/2 device
+      drivers exist in the following areas:
+
+           Device Header
+           Initialization Request Packets
+           API calls vs. INT 21 traps
+           DevHlps vs. BIOS calls
+
+      Each of these areas, as they relate to DOS and OS/2
+      NDIS drivers, is discussed below.
+
+
+ Device Header
+
+      The DOS device header has the following format:
+
+      Pointer to next header        DWORD
+      Attribute                     WORD
+      Offset to strategy procedure  WORD
+      Offset to interrupt procedure WORD
+      Name/unit field               8 BYTES
+
+      The OS/2 device header has the following format:
+
+      Pointer to next header        DWORD
+      Device Attribute procedure    WORD
+      Offset to Strategy            WORD
+      Offset to IDC                 WORD
+      Name/unit field               8 BYTES
+      Reserved                      8 BYTES
+
+      Notice the device headers are very similar.  The OS/2
+      device header replaces the offset to the interrupt
+      procedure with the offset to the inter-device
+      communication point (IDC).  The OS/2 device header is 8
+      Bytes longer than the DOS device header because of the
+      Reserved field.  All other entries are the same.
+
+
+ Initialization Request Packets
+
+      The initialization packets vary slightly.  The DOS
+      initialization packet has the following format:
+
+           Request Header           13 BYTES
+           Data_1                   BYTE
+           Ending address of code   DWORD
+           Pointer INIT arguments   DWORD
+           Drive number             BYTE
+
+      The OS/2 initialization packet follows the following
+      format:
+
+           Request Header           13 BYTES
+           Data_1                   BYTE
+           Pointer_1                DWORD
+           Pointer to the INIT arguments DWORD
+           Drive  number            BYTE
+
+      Once again the packets are similar, but there are a few
+      differences that require discussion.  Pointer_1 on
+      entry is used by the OS/2 device driver as the device
+      helper (DevHlp) entry point and is not used on entry by
+      the DOS device driver.  For both DOS and OS/2, the
+      return value of Pointer_1 is used to indicate the end
+      of the resident part of the driver.  For OS/2,
+      Pointer_1 is split, one word for the offset to the end
+      of the code segment, one word for the offset to the end
+      of the data segment.  For the DOS device driver,
+      Pointer_1 is set to a codesegment:offset pointer that
+      represents the last memory location used by the driver.
+      Pointer_2 on entry for DOS and OS/2 points to the
+      arguments on the "Device=" line in the config.sys file.
+      On return Pointer_2 is used only by block devices and
+      should be set to 0.
+
+
+ API Calls vs. INT 21 traps
+
+
+      Several API calls can be used by the device driver
+      under OS/2 as well as DOS. The most common include:
+
+           Device Open
+           Device Close
+           Device Read
+           Device Write
+           Device IOCTL
+           Set Interrupt vector
+
+      The access to the API functions is vastly different
+      between the two operating systems.  OS/2 provides
+      linked libraries and direct calls.  DOS interfaces to
+      these functions via software interrupts (or traps).
+      Open will be examined as a general example.
+
+      For OPEN under DOS the software interrupt 21h is used
+      (see the DOS technical Reference under function
+      requests).
+
+           AH    = 3Dh
+           DS:DX = Pointer to the ASCII name
+           AL    = Open Mode
+           INT 21h
+
+      OPEN under OS/2 is a direct API call (see the Microsoft
+      Device Driver reference under DosOpen).
+
+           push DS
+           push Offset to name
+           push DS
+           push Offset to handle
+           push DS
+           push Offset to Action taken
+           push 0
+           push 0
+           push 1 - open flag
+           push C2h - open mode
+           push 0
+           push 0
+           call DOSOPEN
+
+      As is shown by the above example, the two requests vary
+      greatly.  Care should be exercised to avoid probems.
+
+
+ DevHlp VS. BIOS calls
+
+      To assist the device driver, several device driver
+      helper functions (DevHlp) exist under OS/2.  Similar
+      functions exist under DOS, but are somewhat more
+      involved.  Under OS/2 the common DevHlp items are:
+
+           EOI       - End Of Interrupt.
+           PhysToVirt- Convert physical address to virtual.
+           VirtToPhys- Convert virtual address to physical.
+           SetIRQ    - Set an interrupt vector to a specific
+                          interrupt handler.
+           UnSetIRQ  - Unset a specific interrupt vector.
+           AllocPhys - Allocate physical kernel memory
+           FreePhys  - Free memory allocated by AllocPhys
+           SetTimer  - Setup a timer tick handler.
+           ResetTimer- Unset a timer tick handler.
+
+      To perform an EOI under DOS, you send a non-specific
+      end of interrupt to I/O address 21.  To perform an EOI
+      under OS/2, you make a DevHlp EOI call (DevHlp_EOI)
+      that implements a specific EOI.
+
+      PhysToVirt and VirtToPhys unfortunately are not
+      provided under DOS.  However, it is quite simple to
+      write routines to replace them.
+
+      SetIRQ and UnsetIRQ are accomplished by a function
+      request using software interrupt 21h and a function
+      request code of 35h.  However, these trap functions do
+      not unmask the interrupt at the interrupt controller,
+      whereas, the equivalent OS/2 DevHlp function does.
+
+      AllocPhys under OS/2 does not have an equivalent
+      function trap under DOS.  Each driver must manage this
+      on a case by case basis.
+
+      To setup a timer interrupt handler under DOS, you hook
+      the timer interrupt vector using the software interrupt
+      21h while also saving the old interrupt vector.  To
+      release the timer, use the software interrupt 21h and
+      replace the hooked vector with the old vector.
+

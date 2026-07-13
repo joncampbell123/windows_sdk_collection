@@ -1,0 +1,182 @@
+;****************************************************************************;
+;*                                                                          *;
+;*      (C) Copyright 1988,1989 by 3Com Corporation                         *;
+;*                                                                          *;
+;*      This IBM Token Ring NDIS Driver source is the property of Microsoft *;
+;*      Corporation and is provided only as an example of an NDIS MAC       *;
+;*      driver for use with Microsoft's OS/2 LAN Manager, DOS LAN Manager,  *;
+;*      or LM/X products.                                                   *;
+;*                                                                          *;
+;****************************************************************************;
+
+;------ SEGDEF.MAC ----------------------------------------------------------;
+;                                                                            ;
+;       Macros defining segment names, classes, etc.                         ;
+;                                                                            ;
+;       The driver uses groups to separate discardable code and data         ;
+;       (needed only at driver INIT time) from the rest.  The LASTCODE and   ;
+;       LASTDATA segments contain the discardable code and data (which must  ;
+;       be last).  FIRSTDATA contains the device header (which must be       ;
+;       first).  CODE and DATA contain the rest.  By using groups we can     ;
+;       conform to the small model EXE environment of OS/2, but organize     ;
+;       the segments in the right order for discard.                         ;
+;                                                                            ;
+;       To allow the number of transmit queue entries to be configurable     ;
+;       they are placed in a separate segment QSPACE which is placed         ;
+;       just in front of the discardable data.  Depending on the number      ;
+;       of transmit queue entries desired, part of the QSPACE segment        ;
+;       and all of the LASTDATA segment will be discarded together.          ;
+;                                                                            ;
+;       Macros are defined to bracket all code and data generation, as in:   ;
+;                                                                            ;
+;       BEGIN_HEADER    BEGIN_QSPACE                                         ;
+;       .               .                                                    ;
+;       .               .                                                    ;
+;       END_HEADER      END_QSPACE                                           ;
+;                                                                            ;
+;       BEGIN_DATA      BEGIN_INIT_DATA                                      ;
+;       .               .                                                    ;
+;       .               .                                                    ;
+;       END_DATA        END_INIT_DATA                                        ;
+;                                                                            ;
+;       BEGIN_CODE      BEGIN_INIT_CODE                                      ;
+;       .               .                                                    ;
+;       .               .                                                    ;
+;       END_CODE        END_INIT_CODE                                        ;
+;                                                                            ;
+;       with the macros generating simplified segment directives.  These     ;
+;       inherit the attributes of the declarations supplied here.            ;
+;                                                                            ;
+;       Note that GROUPs are used to enforce a particular order of segments  ;
+;       within the code and data groups.  Note that whenever an offset       ;
+;       is taken, the group name should be specified explicitly to avoid     ;
+;       problems.  [Linking for OS/2 forces group-relative offsets but this  ;
+;       seems like a weird side-effect of conservative segment allocation    ;
+;       so assume group override is always necessary].                       ;
+;                                                                            ;
+;       09-21-88 Connery                                                     ;
+;       Original version.                                                    ;
+;                                                                            ;
+;       02-25-90 2.0a Connery                                                ;
+;       Added BEFORELAST and AFTERLAST segments for DOS.  These will         ;
+;       bracket the init code and data to allow us to move them out of       ;
+;       the way when allocating QSPACE.                                      ;
+;                                                                            ;
+;----------------------------------------------------------------------------;
+
+                .SEQ
+
+;------ Groups --------------------------------------------------------------;
+
+IFDEF DOS
+CGROUP          group   DEVICEHEADER,CODE,DATA,QSPACE,BEFORELAST,LASTCODE,LASTDATA,AFTERLAST
+DGROUP          equ     <CGROUP>
+ELSE
+DGROUP          group   DEVICEHEADER,DATA,QSPACE,LASTDATA
+CGROUP          group   CODE,LASTCODE
+ENDIF
+
+;------ Assumes -------------------------------------------------------------;
+
+ASSUMES         macro
+                assume  cs:CGROUP,ds:DGROUP,es:NOTHING,ss:NOTHING
+                endm
+
+;------ Segments ------------------------------------------------------------;
+
+DEVICEHEADER    segment word public 'DATA'
+DEVICEHEADER    ends
+
+CODE            segment dword public 'CODE'
+CODE            ends
+
+DATA            segment dword public 'DATA'
+DATA            ends
+
+IFDEF DOS
+
+QSPACE          segment dword public 'CODE'
+QSPACE          ends
+
+BEFORELAST      segment para public 'ICODE'
+BEFORELAST      ends
+
+LASTCODE        segment para public 'ICODE'
+LASTCODE        ends
+
+LASTDATA        segment para public 'IDATA'
+LASTDATA        ends
+
+AFTERLAST       segment para public 'IDATA'
+AFTERLAST       ends
+
+ELSE
+
+QSPACE          segment dword public 'DATA'
+QSPACE          ends
+
+LASTCODE        segment word public 'CODE'
+LASTCODE        ends
+
+LASTDATA        segment word public 'DATA'
+LASTDATA        ends
+
+ENDIF
+
+
+;------ Segment Begin/End Macros --------------------------------------------;
+
+BEGIN_HEADER    macro                   ;; device header segment definition
+DEVICEHEADER    segment
+                ASSUMES
+                endm
+
+END_HEADER      macro                   ;; device header segment ends
+DEVICEHEADER    ends
+                endm
+
+BEGIN_DATA      macro                   ;; data segment definition
+DATA            segment
+                ASSUMES
+                endm
+
+END_DATA        macro                   ;; data segment ends
+DATA            ends
+                endm
+
+BEGIN_INIT_DATA macro                   ;; discardable data segment definition
+LASTDATA        segment
+                ASSUMES
+                endm
+
+END_INIT_DATA   macro                   ;; discardable data segment ends
+LASTDATA        ends
+                endm
+
+BEGIN_CODE      macro                   ;; code segment definition
+CODE            segment
+                ASSUMES
+                endm
+
+END_CODE        macro                   ;; code segment ends
+CODE            ends
+                endm
+
+BEGIN_INIT_CODE macro                   ;; discardable code segment definition
+LASTCODE        segment
+                ASSUMES
+                endm
+
+END_INIT_CODE   macro                   ;; discardable code segment ends
+LASTCODE        ends
+                endm
+
+BEGIN_QSPACE    macro                   ;; queue space segment definition
+QSPACE          segment
+                ASSUMES
+                endm
+
+END_QSPACE      macro                   ;; queue space segment ends
+QSPACE          ends
+                endm
+

@@ -1,0 +1,537 @@
+           ------------------------------------------------------
+           Tuning DOS Netstations using the 3Com NetBIOS Protocol
+
+                                 %VER 1.1
+           ------------------------------------------------------
+
+
+Introduction
+============
+
+This document is intended to aid you in general tuning of 3+Open DOS
+netstations utilizing the 3Com NetBIOS Protocol (NBP).  This document
+covers tuning that may be done easily without intimate knowledge of
+network protocols or of the exact applications being used.
+
+The following chapters are included:
+
+    Relevant Parameters
+    Some General Guidelines for Setting Parameters
+    Trading Off Memory Versus Performance
+    Tuning Adapter Performance
+    Examples
+
+The first four chapters discuss various tuning issues.  The Examples
+chapter is somewhat independent of the others, and provides a number
+of specific tuning configurations.  If one of these configurations is
+satisfactory, you may skip the earlier material.
+
+
+Relevant Parameters
+===================
+
+CONFIG.SYS
+----------
+
+These parameters are stored in the CONFIG.SYS file in the root
+directory of the boot disk.  The descriptions, ranges, sizes, and
+defaults given here are for MS-DOS version 3.31.
+
+BUFFERS=n
+
+This command sets the number of local disk (sector) buffers allocated
+by MS-DOS.  These buffers are used to cache local directory and FAT
+information.  These buffers are also used as intermediate storage for
+local disk accesses of less than one sector in size.  Various
+application programs will suggest specific values for this parameter.
+However, you should note that these buffers are only used for local
+disk access and NOT network file access.  Therefore, if the
+application is being run using network files, the recommendations for
+the buffer parameter need not be followed.  The range of this
+parameter is 1 to 99 with a default value that is usually 2 or 3.
+Each buffer consumes approximately 528 bytes.
+
+FILES=n
+
+This command sets the number of file handles that may be open at the
+same time.  MS-DOS always opens 5 files for each application
+automatically.  If you are running applications which make specific
+suggestions for this parameter, you should always use the largest
+number suggested.  The range for this parameter is 5 to 255, with 8
+the usual default.  Each file handle consumes approximately 52 bytes.
+
+LASTDRIVE=l
+
+This command sets the last valid drive letter which MS-DOS and the
+redirector will accept.  This parameter represents the total number of
+local and network drives which may be accessed at the same time.  The
+range is A to Z with a usual default value of E.  Each drive consumes
+approximately 160 bytes (80 bytes in DOS and 80 bytes in the
+redirector).
+
+
+LANMAN.INI (REDIR)
+------------------
+
+These parameters are specified in the LANMAN.INI file on the redir
+line in a section used to start the netstation.  The descriptions,
+ranges, sizes, and defaults given here are for 3+Open version 1.0.
+
+/S:n
+
+This sets the number of sessions supported by the redirector, which is
+effectively the number of network servers which can used at the same time.
+The range is 1 to 32 with a default value of 4.  Each session consumes
+approximately 72 bytes of memory.
+
+/L:n
+
+This sets the number of links or net uses which may be active at the
+same time.  Each different network drive and print device uses a link.
+So for example, to use a network printer and 2 network drives, /L must
+be set to at least 3.  The range is 1 to 32 and the default value is
+8.  Each link consumes approximately 112 bytes of memory.
+
+/B:n
+
+This sets the number of buffers used for files open on network drives.
+At most one buffer is used per file open on a network drive.
+Performance may be improved by increasing this parameter if large
+numbers of network files are often in use at the same time.  The range
+is 1 to 15 and the default is 3.  These buffers are roughly equivalent
+for network files to the buffers specified by the BUFFERS command in
+CONFIG.SYS for local disks.
+
+/Z:n
+
+This sets the size in bytes of the buffers used for open files on
+network drives.  Generally, increasing this parameter will improve
+performance if the network files are accessed in a forward sequential
+fashion or in highly localized areas.  The range is 512 to 8192 and
+the default is 1024.
+
+/P1:n, /P2:n, /P3:n
+
+These set the size in bytes of the buffers used for network printers.
+P1 corresponds to the device LPT1: (and usually PRN:), P2 to LPT2: and
+P3 to LPT3:.  Generally, increasing this parameter will improve
+printing performance for that device.  The range is 80 to 10240 and
+the default is 128 bytes.
+
+PROTOCOL.INI (NBP)
+------------------
+
+These parameters are stored in the PROTOCOL.INI file in the NBP
+section.  This file is in the C:\3OPEN\DOSWKSTA\LANMAN\DRIVERS
+subdirectory.  The descriptions, ranges, and defaults are for NBP
+version 1.1.
+
+DEFAULTS=class
+
+This specifies that default values for a particular class of
+netstations should be set up.  This has the same effect as setting
+values for SESSIONS, COMMANDS, RXBUFSIZE, and other keywords.  The
+assignments take effect when the DEFAULTS line is parsed, so they will
+override any previous lines, and will in turn be overridden by any
+following.  There are four valid user classes: MIN-USER, LIGHT-USER,
+USER, POWER-USER.  For example:
+
+    defaults = power-user
+
+The defaults for each class are:
+
+                   +---------- Class ----------+
+                   MIN-   LIGHT-   USER   POWER-
+                   USER   USER            USER
+     -------------------------------------------
+     SESSIONS      2      4        6      16
+     COMMANDS      5      8        12     32
+     RXBUFSIZE     512    1488     1488   4464
+     MEMORY USED   20K    21K      23K    30K
+
+This parameter is optional.  USER is assumed.  The defaults for each
+class should be appropriate for most users, but you can set parameters
+individually if you wish.  MIN-USER is intended for environments where
+the amount of free memory after the network is loaded is all-
+important, even at the cost of significantly reduced performance and
+flexibility.  LIGHT-USER is a compromise between MIN-USER and USER--it
+has many of the limitations of MIN-USER but performance should be
+similar to USER.  Both MIN-USER and LIGHT-USER configurations disable
+386 code usage, since the 386 code consumes somewhat more memory than
+the 286 code.
+
+COMMANDS=n
+
+This specifies the maximum number of Network Control Blocks (NCBs)
+that may be outstanding to NBP at any given time.  An NCB is
+associated with each request the NetBIOS application (e.g., LAN
+Manager) makes to the NBP driver.  The default is 12.  The valid range
+is 0 to 255.  If set to zero, the default is assumed.  For example:
+
+    commands = 42
+
+This parameter may need to be increased if the message:
+
+    NET806: Net BIOS command limit exceeded
+
+is displayed by the redirector or if a NetBIOS application displays a
+similar message which implies that more network commands are needed.
+Each command consumes 52 bytes.
+
+SESSIONS=n
+
+This specifies the maximum number of simultaneous NetBIOS sessions
+that can be established with this station.  A session is a two-way
+conversation between one station and another.  LAN Manager establishes
+a single session for all network file system access from a netstation
+to a server.  Additional sessions may be used by other NetBIOS
+applications.  This parameter defaults to 6, which is usually
+sufficient for a netstation.  The valid range is 0 to 254.  If set to
+zero, the default is assumed.  For example:
+
+    sessions = 42
+
+This parameter may need to be increased if the message:
+
+    NET820: Net BIOS session limit exceeded
+
+is displayed by the redirector or if a NetBIOS application displays a
+similar message which implies that more network sessions are needed.
+Each session consumes 162 bytes.
+
+RXBUFSIZE=n
+
+This specifies the size in bytes of the receive packet buffer cache.
+The receive cache is used to hold packets that are received out of
+sequence or before a Receive request is posted.  The cache is also
+used to hold packets which are being transferred by multiple receive
+requests.  The default value is 1488.  The valid range is 512 to
+65440.  This parameter affects the performance of heavily loaded
+stations.  For example:
+
+    rxbufsize = 4242
+
+Since NBP will not use a packet size larger than the receive cache, it
+may be desirable to increase this parameter to 2008 or larger for
+token ring networks (2008 is the maximum allowed by the original IBM
+Token Ring Adapters after accounting for overhead).  The value of 4464
+is known to work well in 16 Mb token ring adapters.
+
+
+Some General Guidelines for Setting Parameters
+==============================================
+
+Setting SESSIONS and /S
+-----------------------
+
+The /S parameter in LANMAN.INI sets the number of session that will be
+supported by the redirector.  The redirector requires one session for
+each server that it will be linked to.  Network drives and printers
+both go over the same session to a single server.  Generally, /S
+should be set to the number of servers that will be accessed
+simultaneously.
+
+The SESSIONS parameter in the NBP section of PROTOCOL.INI determines
+the number of sessions that NBP will support.  Each session supported
+by the redirector requires a session in NBP so SESSIONS should be set
+greater than or equal to the /S parameter value.  Additional sessions
+may be necessary when running NetBIOS-aware applications.  These
+applications may set up additional sessions which will require
+increasing the SESSIONS parameter.  These sessions do not affect the
+/S parameter since they don't go through the redirector.
+
+Setting LASTDRIVE and /L
+------------------------
+
+The LASTDRIVE parameter in CONFIG.SYS determines the number of drive
+letters that will be allowed by MS-DOS.  Generally, A: and B: refer to
+floppy drives, with C: and possibly D:, E:, and even F: referencing
+local hard disk partitions.  The remaining letters can be used to
+reference network resources.  Thus, the LASTDRIVE parameter sets a
+limit on the number of network resources (other than printers) that
+can be in use at one time.
+
+The /L parameter in LANMAN.INI sets the number of links that will be
+allowed by the redirector to network resources (printers included).
+Thus, this parameter works together with LASTDRIVE to determine the
+number of network resources that can be accessed simultaneously.  /L
+should be set greater than or equal to /S, since accessing multiple
+network resources against a single server will require multiple links
+but only a single session.
+
+For example, if a PC has a single hard disk partition, C:, then
+setting LASTDRIVE=H would allow five network drive redirections (D:,
+E:, F:, G:, and H:) to be set up.  If only a single network printer
+will be used, then setting /L:6 would be consistent with the setting
+of LASTDRIVE.  Generally, LASTDRIVE should be set greater than or
+equal to the letter corresponding to the number of network drives
+implied by /L.
+
+
+Trading Off Memory Versus Performance
+=====================================
+
+Many of the parameters discussed simply need to be set to a large
+enough value to enable the desired application set to run, and
+increasing parameters beyond these values will not improve
+performance.  This is true of the FILES and LASTDRIVE parameters in
+CONFIG.SYS, the /S: and /L: redirector parameters in LANMAN.INI, and
+the COMMANDS and SESSIONS parameters for NBP in PROTOCOL.INI.
+
+Perhaps it is not surprising that the parameters that are the most
+sensitive for tuning performance are also very sensitive for tuning
+memory consumption.  These most sensitive parameters are the BUFFERS
+command in CONFIG.SYS, the /Z: and /B: redirector parameters and the
+RXBUFSIZE parameter in PROTOCOL.INI.
+
+Tuning BUFFERS
+--------------
+
+If most file access is not to the local disk drives, that is, to
+network files or RAM disk (a.k.a.  VDISK.SYS) or RAM-based disk cache,
+then the BUFFERS may be set very low without impacting netstation
+performance significantly.  However, if applications which make heavy
+use of large numbers of files on local disk drives (such as databases)
+are commonly used, then the BUFFERS parameter should be set to
+whatever is suggested by the application vendor.  Generally, setting
+this parameter above 18 or 20 will not result in any local hard disk
+performance improvement.
+
+Tuning RXBUFSIZE
+----------------
+
+In general, increasing RXBUFSIZE to at least the maximum framesize
+that the network adapter can handle (minus overhead) is more important
+than any other tuning parameters for large file data movement (such as
+program loads, files copies, etc.).  For Ethernet, this value is 1488
+bytes, and for most 4 Mb token ring cards this value is 2008 bytes.
+For 3Com TokenLink and the IBM 16/4 token ring adapters, the value of
+4464 bytes has been found to work very well.  Increasing the value
+past the maximum framesize can continue to improve performance,
+particularly with the faster media types (Ethernet and 16 Mb token
+ring).  In general, the point of diminishing returns for DOS clients
+is reached at around 4464 for all media types.
+
+Tuning /Z: and /B:
+------------------
+
+Increasing the value of /Z: can dramatically improve performance for
+applications that perform forward sequential or highly localized file
+access (such as compilers, editors, spreadsheets, etc.) in requests
+sized less than or equal to half the size of /Z:.  Since only one of
+these buffers is used per open file, the /B: parameter is tuned based
+on an assumption of the number of files commonly open simultaneously.
+Adjusting these parameters will not improve the performance of large
+file data movement.  Newer applications tend to perform file access in
+larger requests, reducing the performance payback of these parameters.
+In general, the point of diminishing returns is reached at 4096 for
+/Z.
+
+
+Tuning Adapter Performance
+==========================
+
+It is impossible to provide specific guidelines here for all of the
+possible adapters that might be used on a 3+Open server.  However, if
+the 3Com Etherlink II (3C503) adapter is being used with NBP,
+configuring it for shared memory will generally improve performance
+about 10-15% over I/O mapped operation.  Refer to the 3+Open System
+Guide or your network adapter documentation for further details.
+
+
+Examples
+========
+
+The following examples assume that most file access is over the
+network.  As such, the BUFFERS parameter in CONFIG.SYS will be set
+lower than may be necessary to optimize local hard disk access.  You
+may choose to set this parameter higher if you wish.
+
+Minimum User Example
+--------------------
+
+The minimum user is assumed to require the maximum available memory
+possible.  This configuration will only allow a single network server
+to be used for both file and print access.  It is also assumed that no
+other NetBIOS applications are used.
+
+This configuration, using Compaq DOS 3.31 on a 386 machine with a 3Com
+EtherLink II network adapter, leaves roughly 544,000 bytes (532K)
+available before any other device drivers or applications are loaded.
+Some variance from this amount will be noticed from machine to
+machine.
+
+This example assumes that the LANMAN.INI file contains the following
+section.
+
+start min-rdr
+        redir /s:1 /l:3 /z:512 /b:1 /p1:80 /p2:80 /p3:80
+
+The following files must be modified to contain the following
+information:
+
+    CONFIG.SYS    |       PROTOCOL.INI          |     AUTOEXEC.BAT
+                  |                             |
+         .        |           .                 |
+         .        |           .                 |         .
+         .        |           .                 |         .
+    BUFFERS = 1   |   [NBP]                     |         .
+    LASTDRIVE = H |      DEFAULTS = MIN-USER    |  NET START MIN-RDR
+    FILES = 8     |           .                 |         .
+         .        |           .                 |         .
+         .        |           .                 |         .
+         .        |                             |
+
+Light User Example
+------------------
+
+The light user is assumed to require a large amount of available
+memory.  This configuration assumes that there are at most 3 network
+servers used for both print and file access.  It is also assumed that
+the NETPOPUP and MESSENGER services are not used, and that no large or
+terminate and stay resident (TSR) NetBIOS applications are used.
+
+This configuration, using Compaq DOS 3.31 on a 386 machine with a 3Com
+EtherLink II network adapter, leaves roughly 537,000 bytes (525K)
+available before any other device drivers or applications are loaded.
+Some variance from this amount will be noticed from machine to
+machine.
+
+This examples assumes that the LANMAN.INI file contains the following
+section.
+
+start light-rdr
+        redir /s:3 /l:6 /z:2048 /b:2 /p2:80 /p3:80
+
+The following files must be modified to contain the following
+information:
+
+    CONFIG.SYS    |       PROTOCOL.INI          |     AUTOEXEC.BAT
+                  |                             |
+         .        |           .                 |
+         .        |           .                 |         .
+         .        |           .                 |         .
+    BUFFERS = 2   |   [NBP]                     |         .
+    LASTDRIVE = H |      DEFAULTS = LIGHT-USER  |  NET START LIGHT-RDR
+    FILES = 15    |           .                 |         .
+         .        |           .                 |         .
+         .        |           .                 |         .
+         .        |                             |
+
+Normal User Example
+-------------------
+
+The normal user is assumed to require a moderate amount of available
+memory.  This configuration assumes that there are at most 4 network
+servers used for both print and file access.  It is also assumed that
+the NETPOPUP and MESSENGER services, as well as large or terminate and
+stay resident (TSR) NetBIOS applications, may be used.
+
+This configuration, using Compaq DOS 3.31 on a 386 machine with a 3Com
+EtherLink II network adapter, leaves roughly 526,000 bytes (514K)
+available before any other device drivers or applications are loaded.
+Some variance from this amount will be noticed from machine to
+machine.
+
+This examples assumes that the LANMAN.INI file contains the following
+section.
+
+start normal-rdr
+        redir /s:4 /l:8 /z:4096
+
+The following files must be modified to contain the following
+information:
+
+    CONFIG.SYS    |       PROTOCOL.INI          |     AUTOEXEC.BAT
+                  |                             |
+         .        |           .                 |
+         .        |           .                 |         .
+         .        |           .                 |         .
+    BUFFERS = 3   |   [NBP]                     |         .
+    LASTDRIVE = J |      DEFAULTS = USER        |  NET START NORMAL-RDR
+    FILES = 20    |           .                 |         .
+         .        |           .                 |         .
+         .        |           .                 |         .
+
+Power User Example
+------------------
+
+The power user is assumed to regain available memory through some
+method of using memory outside the 640K window.  This configuration is
+the most flexible and will generally outperform the other
+configurations.  It assumes that there are at most 8 network servers
+used for both print and file access.  This configuration also assumes
+that the NETPOPUP and MESSENGER services may be used, and that large
+or terminate and stay resident (TSR) NetBIOS applications are used
+heavily.
+
+This configuration, using Compaq DOS 3.31 on a 386 machine with a 3Com
+EtherLink II network adapter, leaves roughly 510,000 bytes (498K)
+available before any other device drivers or applications are loaded.
+Some variance from this amount will be noticed from machine to
+machine.
+
+This examples assumes that the LANMAN.INI file contains the following
+section.
+
+start power-rdr
+        redir /s:8 /l:20 /z:4096 /b:4 /p1:256
+
+The following files must be modified to contain the following
+information:
+
+    CONFIG.SYS    |       PROTOCOL.INI          |     AUTOEXEC.BAT
+                  |                             |
+         .        |           .                 |
+         .        |           .                 |         .
+         .        |           .                 |         .
+    BUFFERS = 4   |   [NBP]                     |         .
+    LASTDRIVE = Z |      DEFAULTS = POWER-USER  |  NET START POWER-RDR
+    FILES = 20    |           .                 |         .
+         .        |           .                 |         .
+         .        |           .                 |         .
+
+
+Fine-tuning an Existing Example Configuration
+---------------------------------------------
+
+In this section an example configuration will be fine-tuned to meet a
+user's specific needs.
+
+Scenario
+
+A user has a 286-based netstation on Ethernet running applications
+that generally perform file access in large requests.  One of the
+applications needs at least 520K free in order to run.  Almost all of
+the file access is on network drives.  One of the application vendors
+states that the FILES parameter in CONFIG.SYS must be set to 20, and
+suggests BUFFERS be set to 20.  No significant NetBIOS applications
+will be used.
+
+Reviewing the "Relevant Parameters" and "Trading Off Memory Versus
+Performance" sections, the following can be established:
+
+1. The RXBUFSIZE parameter is the most important and should be set to
+   4464 if possible.
+   (This is due to the large file access requests.)
+
+2. The /Z: and /B: parameters are not important.
+   (This is due to the large file access requests.)
+
+3. The FILES parameter must be set to 20.
+   (As suggested by the application vendor.)
+
+4. The BUFFERS parameter is not important.
+   (Almost all of the file access is via the network.)
+
+Reviewing the example configurations, you can see that the Light User
+Example has about 525K left and assumes that no significant NetBIOS
+applications will be used.  The light user configuration can be
+fine-tuned by setting FILES = 20 in CONFIG.SYS and adding a RXBUFSIZE
+= 4464 line in PROTOCOL.INI after the DEFAULTS = LIGHT-USER line in
+the NBP section.  This leaves about 521K free and the best
+performance for large file data movement.  Load this configuration
+and check to make sure about 521K (approximately 534,000 bytes should
+be reported by CHKDSK) is left free.  At this point, additional fine
+tuning could be done, but it is best to leave a little "breathing"
+room of about 1K.

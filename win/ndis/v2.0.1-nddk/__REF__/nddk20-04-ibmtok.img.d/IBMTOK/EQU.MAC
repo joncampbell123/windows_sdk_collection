@@ -1,0 +1,259 @@
+;****************************************************************************;
+;*                                                                          *;
+;*      (C) Copyright 1988,1989 by 3Com Corporation                         *;
+;*                                                                          *;
+;*      This IBM Token Ring NDIS Driver source is the property of Microsoft *;
+;*      Corporation and is provided only as an example of an NDIS MAC       *;
+;*      driver for use with Microsoft's OS/2 LAN Manager, DOS LAN Manager,  *;
+;*      or LM/X products.                                                   *;
+;*                                                                          *;
+;****************************************************************************;
+
+;------ EQU.MAC -------------------------------------------------------------;
+;                                                                            ;
+;       constants used internally by the MAC layer.                          ;
+;                                                                            ;
+;       Limited History:                                                     ;
+;                                                                            ;
+;       1.0l - converted to the 1.0.1 NDIS Spec (Connery)                    ;
+;       1.0m - support for GDT transmit/transfer data (Connery)              ;
+;            - for DOS no stack to IndicationComplete/Confirmations (Smith)  ;
+;       1.0n - allow two copies of driver to be installed (Connery)          ;
+;       1.0o - minor performance improvement, by asking for the transmit     ;
+;              buffer ahead of time if we aren't busy.  must be specified    ;
+;              by defining the masm symbol PREFETCH. (Connery)               ;
+;       1.0p - replace DevHlp_EOI with direct 8259 manipulation (IF FASTEOI  ;
+;              is defined), add SNAP option, other performance (Connery)     ;
+;       1.0q - added some statistics (Connery)                               ;
+;       1.0r - fixed a bug which occured on certain adapters.  if the tx     ;
+;              ARB came in BEFORE or WITH the tx SRB then we might set the   ;
+;              SRBinuse flag erroneously, blocking submission of the next    ;
+;              SRB.  changed the logic to only clear the SRBinuse flag at    ;
+;              the end of the SRB handling logic, rather than clearing it    ;
+;              at the beginning and resetting it if this was a tx SRB        ;
+;              (Connery)                                                     ;
+;       1.0s - increased transmit queue to 8 entries, changed driver name    ;
+;              and PROTOCOL.INI parms to new conventions (Connery)           ;
+;       1.0t - fixed bug which was causing DLC to be reentered when          ;
+;              indications were off, refuse requests if adapter has died     ;
+;              and flush any on queues.  (Connery)                           ;
+;       1.0u - fixed bug in handling of Request Interrupt, which caused      ;
+;              DLC to be reentered when indications were off under certain   ;
+;              conditions.  (Connery)                                        ;
+;       1.0v - calculate receive buffer space correctly as remainder after   ;
+;              subtraction of transmit buffer space (not requested number    ;
+;              of receive buffers x size).  (Connery)                        ;
+;       1.0w - make transmit queue size configurable via MaxTranmits         ;
+;              keyword in PROTOCOL.INI.  (Connery)                           ;
+;       1.0x - conform to new NDIS spec by exposing the interrupt level      ;
+;              used in the MAC specific characteristics table and accepting  ;
+;              the options to use on Open Adapter as a parameter.  treat     ;
+;              PROTOCOL.INI assignments with no rhs (where one is needed)    ;
+;              as a NOP.  return HARDWARE_FAILURE instead of GENERAL_FAILURE ;
+;              on a failed request (specifically OpenAdapter to make the     ;
+;              error message returned at NetBind a little more clear).  Move ;
+;              the transmit qentry back to the free queue BEFORE calling     ;
+;              TransmitConfirm.  Change default PRODUCTID.  (Connery)        ;
+;       1.0aa- if interrupt 2 is in use under DOS then treat it as 2 for     ;
+;              compatibility with the IBM 3270 program.  under OS/2 we still ;
+;              have to translate it to 9.  (Connery)                         ;
+;       1.0ab- change maximum configurable MAXTRANSMITS to 50.  don't        ;
+;              reserve space for transmit queue entries under DOS to get     ;
+;              the file size down.  (Connery)                                ;
+;       1.0ad- fixed nested interrupt not switching stacks bug (Connery)     ;
+;       1.0ae- changed PROTMAN$ to /DEV/PROTMAN$ for compatiblity with       ;
+;              OS/2 v1.2 for some usoft hotsite.  (Connery)                  ;
+;       1.1a - 16/4 adapter support, including waiting longer for resets     ;
+;              to complete, larger packet size support, bigger SRAM,         ;
+;              etc.  Display keyword line from PROTOCOL.INI on error.        ;
+;              Return CONFIGURATION_FAILURE on open parm errors.  Cleanup    ;
+;              for NDK ship.  Move some adapter recognition logic from       ;
+;              Bind to Init.  Add EARLYRELEASE keyword.  (Connery)           ;
+;       1.1c - Disable the timer after reset so we don't have problems with  ;
+;              sitting in the debugger anymore.  (Connery)                   ;
+;       1.1d - Change the check for protocol version to allow it to work     ;
+;              with PM v2.0 (Connery)                                        ;
+;       2.0a - Performance tweaks.  Upgrade to NDIS 2.0.1.  ResetMAC support.;
+;              Leave permanent address set to ROM address.  Allow multiple   ;
+;              TransferData's.  Extra fields in tables.  Drop multiple       ;
+;              adapter support.  Add FASTGDT logic.  Do more initialization  ;
+;              statically.  Get init code out of Bind time, using init       ;
+;              code relocation trick.  Return new source-routing errors for  ;
+;              TransmitConfirmation.  Break statistics into two categories:  ;
+;              easy to keep (ANYSTATS) and harder (ALLSTATS). (Connery)      ;
+;       2.0b - Fixed FASTGDT check to zap AH before PhysToGDT call.          ;
+;       2.0c - Modified relocation code under DOS to copy INIT code out of   ;
+;              the way in the reverse direction to avoid overlap problems    ;
+;              if not enough transmit buffers were allocated.                ;
+;                                                                            ;
+;----------------------------------------------------------------------------;
+
+;------ MAC Interface Version Coded To --------------------------------------;
+
+MAJOR_MAC_VERSION       equ     2
+MINOR_MAC_VERSION       equ     0
+SUB_MAC_VERSION         equ     3
+
+;------ Conditional Compilation ---------------------------------------------;
+;
+; defining SNAP causes additional code to be generated to save parts of each
+; packet transmitted and received in a circular queue.
+;
+IFDEF DEV
+; SNAP          equ     1
+ENDIF
+;
+; defining PREFETCH increases the size of the driver slightly to fetch the
+; transmit buffer ahead of time if possible.  see XMIT.ASM for details.
+;
+PREFETCH        equ     1
+;
+; defining FASTEOI causes code to be generated to do the EOI by playing with
+; the PIC directly under OS/2 to speed things up.  See INTR.ASM for details.
+;
+IFDEF OS2
+FASTEOI         equ     1
+ENDIF
+;
+; defining FASTGDT causes code to be generated to do the PhysToGDT by
+; manipulating the segment descriptor directly to speed things up.
+;
+IFDEF OS2
+FASTGDT         equ     1
+ENDIF
+;
+; defining ANYSTATS causes the inclusion of the statistics code which has
+; minimal impact on performance.  these are typically the more useful
+; statistics anyway.
+;
+ANYSTATS        equ     1
+;
+; defining ALLSTATS causes the inclusion of additional code to maintain
+; the other statistics.  this should only be defined if ANYSTATS is also.
+;
+; ALLSTATS      equ     1
+
+;------ Configuration Parameters --------------------------------------------;
+;
+; maximums per adapter on the number of outstanding requests and transmits.
+; these must be at least 6.  MAX_TX_PENDING determines the maximum number
+; of transmit queue entries which can be configured through the PROTOCOL.INI
+; parameter MaxTransmits.  DEF_TX_PENDING is the number that will be configured
+; if no MaxTransmits parameter is specified.
+;
+MAX_TX_PENDING  equ     50
+DEF_TX_PENDING  equ     6
+MAX_RQ_PENDING  equ     6
+
+ADDRLEN         equ     6               ; number of bytes in MAC address
+;
+; primalt is either UNKNOWN, PRIMARY or ALTERNATE
+;
+UNKNOWN         equ     0               ; not yet determined
+PRIMARY         equ     1               ; PRIMARY Adapter (ports A20H-A23H)
+ALTERNATE       equ     2               ; ALTERNATE Adapter (ports A24H-A27H)
+;
+; various bits identifying the adapter
+;
+ADAPTER_A       equ     01h             ; set if a microchannel adapter
+ZERO_TOP_512    equ     02h             ; set if top 512 b SRAM need init
+ADDRESSED       equ     04h             ; address set in PROTOCOL.INI
+PAGEABLE        equ     08h             ; set if SRAM paging possible
+;
+; ram address method
+;
+RAM_AFTER_ROM   equ     01h             ; locate RAM after ROM (default)
+RAM_ADDRESSED   equ     02h             ; specific address given
+RAM_ALA_IBM     equ     03h             ; locate RAM like IBM does
+
+;------ Protocol Manager ----------------------------------------------------;
+;
+; protocol version number expected (BCD, major version in low byte)
+;
+PMGRVER_NEED    equ     0001h
+
+;------ Keyword Information -------------------------------------------------;
+;
+; each keyword recognized by this driver either has no rhs, requires a single
+; values integer rhs, or a single valued string rhs, or an unspecified rhs
+;
+RHS_NONE        equ     0
+RHS_INTEGER     equ     1
+RHS_STRING      equ     2
+RHS_ANYTHING    equ     3
+;
+; each keyword has an integer id it is known by
+;
+KEY_NOP         equ     9999            ; valid keyword but no right hand side
+KEY_DRIVERNAME  equ     1
+KEY_PRIMARY     equ     2
+KEY_ALTERNATE   equ     3
+KEY_RECVBUFS    equ     4
+KEY_RECVBUFLEN  equ     5
+KEY_XMITBUFS    equ     6
+KEY_XMITBUFLEN  equ     7
+KEY_RAM         equ     8
+KEY_PRODUCTID   equ     9
+KEY_NETADDR     equ     10
+KEY_TRANSMITS   equ     11
+KEY_EARLYRELEASE equ    12
+
+;------ States --------------------------------------------------------------;
+;
+; Each adapter starts out in EMBRYONIC state and moves to INITIALIZED once
+; the driver INIT has been done.  It moves to CLOSED once it has been bound
+; by the protocol manager.  It then moves to OPENNED when the OpenAdapter has
+; been done, but may return to CLOSED after a CloseAdapter or an Adapter
+; Check.  The state temporarily moves to PRERESET and then RESETTING during
+; a reset operation.
+;
+EMBRYONIC       equ     0
+INITIALIZED     equ     1
+CLOSED          equ     2
+OPENNED         equ     3
+REJECTSTATE     equ     4                       ; reject all requests below
+PRERESET        equ     4
+RESETTING       equ     5
+DECEASED        equ     0FFh
+
+;------ Statistics Related --------------------------------------------------;
+;
+; if a statistic is not maintained it is set to 0xFFFFFFFFh
+;
+NOT_MAINTAINED  equ     -1
+;
+; INIT_ANY and INIT_ALL are used to establish an initial value for statistics
+; categorized into ANYSTATS or ALLSTATS.  they are set to 0 if maintained, and
+; NOT_MAINTAINED if not.
+;
+IFDEF ANYSTATS
+INIT_ANY        equ     0
+ELSE
+INIT_ANY        equ     NOT_MAINTAINED
+ENDIF
+
+IFDEF ALLSTATS
+INIT_ALL        equ     0
+ELSE
+INIT_ALL        equ     NOT_MAINTAINED
+ENDIF
+
+;------ Some DOS or OS/2 dependent equates ----------------------------------;
+;
+; OSNAME is the name of the operating system (OS/2 or DOS)
+;
+IFNDEF DOS
+OSNAME          equ     <'OS/2'>
+ELSE
+OSNAME          equ     <'DOS'>
+ENDIF
+;
+; INT_BASE is the address for the level 0 interrupt vector
+; INT_BASE_ALT is the address for the level 8 interrupt vector (2nd PIC)
+;
+INT_BASE        equ     020h
+INT_BASE_ALT    equ     1C0h
+;
+; STACKSIZE is the DOS stacksize in bytes.  must be a multiple of 4.
+;
+STACKSIZE       equ     256

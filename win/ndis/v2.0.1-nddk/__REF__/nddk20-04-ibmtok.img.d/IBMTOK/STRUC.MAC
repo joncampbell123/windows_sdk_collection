@@ -1,0 +1,264 @@
+;****************************************************************************;
+;*                                                                          *;
+;*      (C) Copyright 1988,1989 by 3Com Corporation                         *;
+;*                                                                          *;
+;*      This IBM Token Ring NDIS Driver source is the property of Microsoft *;
+;*      Corporation and is provided only as an example of an NDIS MAC       *;
+;*      driver for use with Microsoft's OS/2 LAN Manager, DOS LAN Manager,  *;
+;*      or LM/X products.                                                   *;
+;*                                                                          *;
+;****************************************************************************;
+
+;------ STRUC.MAC -----------------------------------------------------------;
+;                                                                            ;
+;       data structures used internally by the MAC layer.                    ;
+;                                                                            ;
+;       09-21-88 Connery                                                     ;
+;       Original version.                                                    ;
+;                                                                            ;
+;       02-25-90 2.0a Connery                                                ;
+;       Dropped mac_inReceive (multiple TransferData now supported).         ;
+;       Updated to NDIS 2.0.1.  Added FASTGDT support structures.  Dropped   ;
+;       qblock structure.  Moved initialization structures into DATA.        ;
+;       Dropped q_depth.  Added InfSeg.                                      ;
+;                                                                            ;
+;----------------------------------------------------------------------------;
+
+;------ OS/2 Data Structures ------------------------------------------------;
+;
+; contents of a segment descriptor for OS/2
+;
+seg_descriptor  struc
+segd_lim15_0    dw      0               ; Bits 0-15 of size limit
+segd_base15_0   dw      0               ; Bits 0-15 of physical base
+segd_base23_16  db      0               ; Bits 16-23 of physical base
+segd_p_dpl_type db      0               ; P bit, DPL field, Type bits
+segd_gboa_lim   db      0               ; G, B, AVL bits, bits 16-19 of limit
+segd_base31_24  db      0               ; Bits 24-31 of Physical base
+seg_descriptor  ends
+;
+; results of an SGDT
+;
+sgdt_output     struc
+sgdt_limit      dw      0               ; Size of GDT table
+sgdt_base15_0   dw      0               ; Bits 0-15 of physical base
+sgdt_base23_16  db      0               ; Bits 16-23 of physical base
+                db      0               ; Not used
+sgdt_output     ends
+;
+; the selector that points to the writable GDT in OS/2
+;
+IFDEF FASTGDT
+OS2_GDT         equ     8
+ENDIF
+
+;------ InfoSeg -------------------------------------------------------------;
+;
+; structure of the global InfoSeg, at least what we use of it
+;
+InfSeg          struc
+is_elapsed      dd      0               ; seconds since january 1, 1970
+InfSeg          ends
+
+;------ Queue Entry ---------------------------------------------------------;
+;
+; both transmit and request queue entries share some common fields.  both use
+; the same queue structure, a doubly-linked list which points at the queue
+; header on both ends.
+;
+q_entry         struc
+q_next          dw      0
+q_prev          dw      0
+q_entry         ends
+
+QSTD            equ     SIZE q_entry
+
+;------ Transmit Queue Entry ------------------------------------------------;
+
+qt_entry        struc
+                db      QSTD dup (0)
+qt_bytes        dw      0
+qt_correlate    db      0
+                db      0
+qt_status       dw      0
+qt_handle       dw      0
+qt_protid       dw      0
+qt_blocks       dw      0
+qt_ibytes       dw      0
+qt_chain        db      MAX_CHAIN * CDSIZE dup (0)
+qt_ibuffer      db      MAX_IMMEDIATE dup (0)
+qt_entry        ends
+
+QT_SIZE         equ     SIZE qt_entry
+
+;------ Request Queue Entry -------------------------------------------------;
+
+qr_entry        struc
+                db      QSTD dup (0)
+qr_status       dw      0
+qr_opcode       dw      0
+qr_bufp         dd      0
+qr_word         dw      0
+qr_handle       dw      0
+qr_protid       dw      0
+qr_entry        ends
+
+QR_SIZE         equ     SIZE qr_entry
+
+;------ Queue Header --------------------------------------------------------;
+;
+; each queue has a header where we maintain the head and tail pointers.  these
+; are treated as next and prev pointers by the enqueue/dequeue routines.
+;
+qheader         struc
+q_head          dw      0
+q_tail          dw      0
+qheader         ends
+
+QH_SIZE         equ     SIZE qheader
+
+;------ Keyword Table -------------------------------------------------------;
+;
+; to allow general purpose processing of keywords each keyword recognized by
+; this driver will have a table entry as follows:
+;
+key_entry       struc
+key_name        dw      ?               ; offset of keyword in uppercase
+key_id          dw      ?               ; non-zero integer "name" of keyword
+key_rhs         dw      ?               ; right hand side type
+key_min         dw      ?               ; minimum value/string length
+key_max         dw      ?               ; maximum value/string length
+key_entry       ends
+
+;------ Parameter Structures ------------------------------------------------;
+;
+; the following structures define the parameters passed on calls to the MAC
+; to allow them to be accessed easily relative to BP.
+;
+; stdparms is the general purpose command block which defines the parameters
+; in the stack frame on all calls
+;
+stdparms        struc
+std_bp          dw      ?               ; old BP
+std_return      dd      ?               ; return address (far)
+std_ds          dw      ?               ; dataseg
+stdparms        ends
+
+STDSIZE         equ     SIZE stdparms
+STDRET          equ     2
+;
+; TransmitChain parameters
+;
+txparms         struc
+                db      STDSIZE dup (?)
+tx_bufdesc      dd      ?               ; pointer to buffer descriptor
+tx_handle       dw      ?               ; handle
+tx_protid       dw      ?               ; protocol's module id
+txparms         ends
+
+TXRET           equ     SIZE txparms - 6
+;
+; TransferData parameters
+;
+tdparms         struc
+                db      STDSIZE dup (?)
+td_bufdesc      dd      ?               ; pointer to buffer descriptor
+td_offset       dw      ?               ; offset into frame to start copy
+td_copied       dd      ?               ; pointer to bytescopied return value
+tdparms         ends
+
+TDRET           equ     SIZE tdparms - 6
+;
+; Request parameters
+;
+rqparms         struc
+                db      STDSIZE dup (?)
+rq_opcode       dw      ?               ; opcode of function requested
+rq_bufp         dd      ?               ; pointer to buffer or 0
+rq_word         dw      ?               ; word parameter or 0
+rq_handle       dw      ?               ; handle
+rq_protid       dw      ?               ; protocol's module id
+rqparms         ends
+
+RQRET           equ     SIZE rqparms - 6
+;
+; ReceiveRelease parameters
+;
+rrparms         struc
+                db      STDSIZE dup (?)
+rr_handle       dw      ?
+rrparms         ends
+
+RRRET           equ     SIZE rrparms - 6
+;
+; System parameters
+;
+syparms         struc
+                db      STDSIZE dup (?)
+sy_opcode       dw      ?               ; opcode of function requested
+sy_param3       dw      ?               ; word parameter or 0
+sy_param2       dd      ?               ; dword parameter or 0
+sy_param1       dd      ?               ; dword parameter or 0
+syparms         ends
+
+SYRET           equ     SIZE syparms - 6
+;
+; TransmitConfirm parameters
+;
+tcparms         struc
+                db      STDSIZE dup (?)
+tc_status       dw      ?               ; status of transmit
+tc_handle       dw      ?               ; request handle
+tc_macid        dw      ?               ; mac's module id
+tc_protid       dw      ?               ; protocol's module id
+tcparms         ends
+
+TCRET           equ     SIZE tcparms - 6
+;
+; ReceiveLookahead parameters
+;
+rlparms         struc
+                db      STDSIZE dup (?)
+rl_indicate     dd      ?               ; virtual address of indications flag
+rl_buffer       dd      ?               ; virtual address of lookahead data
+rl_bytesavail   dw      ?               ; bytes of lookahead in buffer
+rl_framesize    dw      ?               ; total size of frame
+rl_macid        dw      ?               ; mac's module id
+rlparms         ends
+
+RLRET           equ     SIZE rlparms - 6
+;
+; IndicationComplete parameters
+;
+icparms         struc
+                db      STDSIZE dup (?)
+ic_macid        dw      ?               ; mac's module id
+icparms         ends
+
+ICRET           equ     SIZE icparms - 6
+;
+; RequestConfirm parameters
+;
+rcparms         struc
+                db      STDSIZE dup (?)
+rc_opcode       dw      ?               ; request opcode
+rc_status       dw      ?               ; status of request
+rc_handle       dw      ?               ; request handle
+rc_macid        dw      ?               ; mac's module id
+rc_protid       dw      ?               ; protocol's module id
+rcparms         ends
+
+RCRET           equ     SIZE rcparms - 6
+;
+; Status parameters
+;
+stparms         struc
+                db      STDSIZE dup (?)
+st_opcode       dw      ?               ; opcode of status function
+st_indicate     dd      ?               ; virtual address of indicate flag
+st_word         dw      ?               ; word parameter or 0
+st_macid        dw      ?               ; mac's module id
+stparms         ends
+
+STRET           equ     SIZE stparms - 6
+

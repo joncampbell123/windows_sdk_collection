@@ -1,0 +1,429 @@
+;****************************************************************************;
+;*                                                                          *;
+;*      (C) Copyright 1988,1989 by 3Com Corporation                         *;
+;*                                                                          *;
+;*      This IBM Token Ring NDIS Driver source is the property of Microsoft *;
+;*      Corporation and is provided only as an example of an NDIS MAC       *;
+;*      driver for use with Microsoft's OS/2 LAN Manager, DOS LAN Manager,  *;
+;*      or LM/X products.                                                   *;
+;*                                                                          *;
+;****************************************************************************;
+
+;------ ADAPTER.MAC ---------------------------------------------------------;
+;                                                                            ;
+;       constants and structures which define the ports and memory control   ;
+;       blocks used to communicate with the IBM Token Ring adapters.         ;
+;                                                                            ;
+;       09-21-88 Connery                                                     ;
+;       Original version.                                                    ;
+;                                                                            ;
+;       03-17-89 Connery                                                     ;
+;       Various new defines for 16/4 adapter support, mostly in the ADIA     ;
+;       (AIP really) area, for determining maximum packet size, data rates   ;
+;       supported, early token release rates, etc.                           ;
+;                                                                            ;
+;       02-25-90 2.0a Connery                                                ;
+;       Added EOI_NOP, rename PIC commands.  Added FS byte codes and         ;
+;       selected retcodes.                                                   ;
+;                                                                            ;
+;----------------------------------------------------------------------------;
+
+;------ 802.5 MAC Header ----------------------------------------------------;
+
+AC              equ     0               ; Access Control Byte
+FC              equ     1               ; Frame Control Byte
+DA              equ     2               ; Destination Address
+SA              equ     8               ; Source Address
+
+;------ I/O Ports -----------------------------------------------------------;
+;
+; primary adapter i/o port addresses and offset to alternates
+;
+PSWITCHES       equ     0A20h           ; Primary DIP Switches
+PSWITCHES2      equ     0A22h           ; Secondary DIP Switches (/A only)
+PRESET          equ     0A21h           ; Adapter Reset Latch On
+PRELEASE        equ     0A22h           ; Adapter Reset Latch Off
+PINTRELEASE     equ     0A23h           ; Adapter Interrupt Release
+ALTOFFSET       equ     4               ; increment to alternate ports
+
+;------ Adapter Identification Area -----------------------------------------;
+
+ADIATRID        equ     1F30h           ; Token Ring Adapter Identifier
+ADIAADDR        equ     1F00h           ; Burned-In Station Address
+ADIARATE        equ     1FA2h           ; Data Rates Supported
+ADIAEARLY       equ     1FA4h           ; Early Token Release Rates
+ADIASRAM        equ     1FA6h           ; Shared Ram (F=use RRR[3,2])
+ADIAPAGE        equ     1FA8h           ; Page Size (F=No)
+ADIADHB4        equ     1FAAh           ; Maximum Frame size @4Mbps
+ADIADHB16       equ     1FACh           ; Maximum Frame size @16Mbps
+
+;------ Miscellaneous Constants ---------------------------------------------;
+
+TRID_SIZE       equ     8               ; bytes in Token Ring Adapter Identifier
+MASK_INTLEVEL   equ     0003h           ; AND with switches to get int level
+NEEDS_INIT      equ     0Bh             ; ADIASRAM value means init top 512 b
+INIT_16_MBPS    equ     01h             ; init_status bit set for 16Mbps
+OPEN_EARLYTOKEN equ     10h             ; open_options bit for early token release
+;
+; the adapter uses an extra 8 bytes for receive buffers and 6 bytes for transmit
+; buffers which should be considered overhead.  since the buffers must be a
+; multiple of 8 bytes in length, we just set the transmit overhead to 8.
+;
+RXBUF_OVERHEAD  equ     8
+TXBUF_OVERHEAD  equ     8
+;
+; the adapter uses between 1481 and 1504 bytes for overhead (ie. not transmit
+; or receive buffers).  we use an overestimate here that is a multiple of
+; 256 bytes just in case.
+;
+ADAPTER_OVERHEAD equ    1536
+
+;------- Attachment Control Areas -------------------------------------------;
+;
+; Address 'adjustment' constants for writing to the Attachment Control Area.
+;
+ACAOVER         equ     0000h   ; Overwrite mode
+ACARESET        equ     0020h   ; Reset mode (logical and)
+ACASET          equ     0040h   ; Set mode (logical or)
+
+;------ Interrupt Status Register - Processor -------------------------------;
+;
+; ISRP : Interrupt Status Register - Processor
+;
+ISRP            equ     1E08h   ; Address of ISRP Word
+ISRPH           equ     1E08h   ; Address of ISRP High
+ISRPL           equ     1E09h   ; Address of ISRP Low
+;
+; bits in ISRP High
+;
+ISRPHALT        equ     01h     ; Alternate adapter
+ISRPHINT        equ     02h     ; Shared interrupt flag "I interrupted"
+ISRPHACCESS     equ     04h     ; Access error interrupt
+ISRPHERROR      equ     08h     ; General error interrupt
+ISRPHTIMER      equ     10h     ; Timer interrupt
+ISRPHENABLE     equ     40h     ; Interrupt enable
+ISRPHNMI        equ     80h     ; NMI Interrupt Control (must be 1 on /A)
+;
+; bits in ISRP Low
+;
+ISRPLSSBRDY     equ     04h     ; SSB response ready
+ISRPLARBRDY     equ     08h     ; ARB command ready
+ISRPLASBFREE    equ     10h     ; ASB currently free
+ISRPLSRBACK     equ     20h     ; SRB request acknowledge
+ISRPLCHECK      equ     40h     ; Adapter Check
+;
+; ISRPMASK can be ANDed with the interrupt reason register (byte-swapped) to
+; mask off the reasons we don't care about
+;
+ISRPML1         equ     ISRPLCHECK + ISRPLSRBACK + ISRPLASBFREE + ISRPLARBRDY
+ISRPML2         equ     ISRPLSSBRDY
+ISRPMH          equ     ISRPHTIMER + ISRPHERROR + ISRPHACCESS
+
+ISRPMASK        equ     ((ISRPML1 + ISRPML2) * 256) + ISRPMH
+;
+; To make it easier to deal with the bits in the ISRP which define the
+; reason(s) for the interrupt we use the following definitions.
+;
+; Note that the bytes in ISRP are byte-swapped from the 80286 order.
+;
+ARB_REASON      equ     ISRPLARBRDY * 256
+SSB_REASON      equ     ISRPLSSBRDY * 256
+SRB_REASON      equ     ISRPLSRBACK * 256
+ASBFREE_REASON  equ     ISRPLASBFREE * 256
+TICK_REASON     equ     ISRPHTIMER
+CHECK_REASON    equ     ISRPLCHECK * 256
+
+;------ Interrupt Status Register - Adapter ---------------------------------;
+;
+; ISRA : Interrupt Status Register - Adapter
+;
+ISRA            equ     1E0Ah   ; Address of ISRA Word
+ISRAH           equ     1E0Ah   ; Address of ISRA High (read-only)
+ISRAL           equ     1E0Bh   ; Address of ISRA Low
+;
+; bits in ISRA Low which the PC can set to cause interrupts to the adapter
+;
+ISRALSSBFREE    equ     01h     ; SSB read/now available
+ISRALARBFREE    equ     02h     ; ARB read/now available
+ISRALFREEASB    equ     04h     ; Free ASB request
+ISRALFREESRB    equ     08h     ; Free SRB request
+ISRALASBRDY     equ     10h     ; Response ready in ASB
+ISRALSRBRDY     equ     20h     ; Command ready in SRB
+
+;------ Timer Control -------------------------------------------------------;
+;
+; TCR : Timer Control Register
+;
+TCR             equ     1E0Ch   ; Address of TCR Word
+TCRH            equ     1E0Ch   ; Address of TCR High
+;
+; bits in TCR High
+;
+TCRHINTERLOCK   equ     04h     ; Interlock (diagnostic use only)
+TCRHLOADED      equ     08h     ; Timer Count Non-Zero (may not be counting)
+TCRHOVERRUN     equ     10h     ; Timer Overrun Detected
+TCRHRUN         equ     20h     ; Timer Counting
+TCRHRELOAD      equ     40h     ; Reload Timer from TVRL after expiration
+TCRHENABLE      equ     80h     ; Timer Interrupts Enabled
+;
+; TVR : Timer Value Register
+;
+TVRL            equ     1E0Fh   ; Address of TVR Low
+
+;------ RAM Relocation Register ---------------------------------------------;
+;
+; RRR : Ram Relocation Register (determines Shared RAM address)
+;
+RRRH            equ     1E00h   ; Address of RRR High
+RRRL            equ     1E01h   ; Address of RRR Low
+
+RRRLSRAM_MASK   equ     0Ch     ; Mask for SRAM size bits
+RRRLSRAM_SHIFT  equ     02h     ; Shift Right to isolate SRAM size bits
+
+;------ Write Region Registers ----------------------------------------------;
+;
+; WRBR : Write Region Base Register
+; WWOR : Write Window Open Register
+; WWCR : Write Window Close Register
+;
+; these registers define the writable regions within the Shared Memory.  There
+; are two such regions--the Write Region and the Write Window.  The Write
+; Region extends from the Write Region Base to the end of Shared Memory.  The
+; Write Window extends from Write Window Open to Write Window Close.
+;
+WRBR            equ     1E02h
+WWOR            equ     1E04h
+WWCR            equ     1E06h
+
+;------ Shared RAM Page Register --------------------------------------------;
+;
+; only available on 16/4 Adapters.  paging only allowed at 16Mbps rate.
+;
+SRPR            equ     1E18h
+SRPRH           equ     1E18h
+SRPRL           equ     1E19h
+
+;------ SRB -----------------------------------------------------------------;
+;
+; generic SRB
+;
+srb_struc       struc
+srb_command     db      ?
+srb_correlate   db      ?
+srb_retcode     db      ?
+                db      ?
+srb_struc       ends
+;
+; Initialization Complete SRB
+;
+init_srb        struc
+                db      6 dup (?)
+init_bringup    dw      ?
+init_encodeaddr dw      ?
+init_leveladdr  dw      ?
+init_adaptaddr  dw      ?
+init_parmsaddr  dw      ?
+init_macaddr    dw      ?
+init_srb        ends
+
+init_status     equ     <srb_correlate>
+;
+; Open Adapter Request SRB
+;
+openr_srb       struc
+                db      8 dup (?)
+openr_options   dw      ?
+openr_nodeaddr  db      6 dup (?)
+openr_groupaddr db      4 dup (?)
+openr_functaddr db      4 dup (?)
+openr_rcvbufs   dw      ?
+openr_rcvbuflen dw      ?
+openr_xmtbuflen dw      ?
+openr_xmtbufs   db      ?
+                db      ?
+openr_zeroes    db      10 dup (?)
+openr_productid db      18 dup (?)
+openr_srb       ends
+;
+; Open Adapter Confirmation SRB
+;
+openc_srb       struc
+                db      6 dup (?)
+openc_errorcode dw      ?
+openc_asbaddr   dw      ?
+openc_srbaddr   dw      ?
+openc_arbaddr   dw      ?
+openc_ssbaddr   dw      ?
+openc_srb       ends
+;
+; Set Functional Address SRB
+;
+funct_srb       struc
+                db      6 dup (?)
+funct_address   db      4 dup (?)
+funct_srb       ends
+;
+; Set Group Address SRB
+;
+group_srb       struc
+                db      6 dup (?)
+group_address   db      4 dup (?)
+group_srb       ends
+;
+; Read Error Log SRB
+;
+log_srb         struc
+                db      6 dup (?)
+log_data        db      14 dup (?)
+log_srb         ends
+
+LOGSIZE         equ     SIZE log_data
+;
+; Transmit Direct Frame SRB
+;
+txsrb_struc     struc
+                db      4 dup (?)
+txsrb_stationid dw      ?
+txsrb_struc     ends
+;
+; Direct Interface Command Codes.  Those above 80h are initiated by the adapter
+; while those below are initiated by the device driver (though INITIALIZED is
+; actually a response to a reset initiated by the device driver).
+;
+DIR_INTERRUPT           equ     00h     ; Interrupt
+DIR_OPENADAPTER         equ     03h     ; Open Adapter
+DIR_CLOSEADAPTER        equ     04h     ; Close Adapter
+DIR_SETGROUP            equ     06h     ; Set Group Address
+DIR_SETFUNCTIONAL       equ     07h     ; Set Functional Address
+DIR_READLOG             equ     08h     ; Read Error Log
+DIR_TRANSMIT            equ     0Ah     ; Transmit Frame
+DIR_INITIALIZED         equ     80h     ; Initialization after reset completed
+DIR_DATARECEIVED        equ     81h     ; Data Received
+DIR_TRANSMITREQUEST     equ     82h     ; Transmit Data Request
+DIR_RINGSTATUS          equ     84h     ; Ring Status Change
+
+;------ SSB -----------------------------------------------------------------;
+;
+; generic SSB
+;
+ssb_struc       struc
+ssb_command     db      ?
+ssb_correlate   db      ?
+ssb_retcode     db      ?
+                db      ?
+ssb_struc       ends
+;
+; Transmit Completed SSB
+;
+txssb_struc     struc
+                db      4 dup (?)
+txssb_stationid dw      ?
+txssb_fstatus   db      ?
+txssb_struc     ends
+;
+; FS byte definitions
+;
+FS_RECOGNIZED   equ     088h            ; Address recognized
+FS_COPIED       equ     044h            ; Frame copied
+
+;------ ARB -----------------------------------------------------------------;
+;
+; generic ARB
+;
+arb_struc       struc
+arb_command     db      ?
+arb_correlate   db      ?
+arb_retcode     db      ?
+                db      ?
+arb_struc       ends
+;
+; Ring Status Change ARB
+;
+ring_arb        struc
+                db      6 dup (?)
+ring_rstatus    dw      ?
+ring_arb        ends
+;
+; Transmit Data Request ARB
+;
+txarb_struc     struc
+                db      4 dup (?)
+txarb_stationid dw      ?
+txarb_buffer    dw      ?
+txarb_struc     ends
+;
+; Received Data ARB
+;
+rxarb_struc     struc
+                db      4 dup (?)
+rxarb_stationid dw      ?
+rxarb_buffer    dw      ?
+rxarb_lanhdrlen db      ?
+rxarb_dlchdrlen db      ?
+rxarb_framelen  dw      ?
+rxarb_msgtype   db      ?
+rxarb_struc     ends
+
+;------ ASB -----------------------------------------------------------------;
+;
+; generic ASB
+;
+asb_struc       struc
+asb_command     db      ?
+asb_correlate   db      ?
+asb_retcode     db      ?
+                db      ?
+asb_struc       ends
+;
+; Transmit Data ASB
+;
+txasb_struc     struc
+                db      4 dup (?)
+txasb_stationid dw      ?
+txasb_framelen  dw      ?
+txasb_struc     ends
+;
+; Received Data ASB
+;
+rxasb_struc     struc
+                db      4 dup (?)
+rxasb_stationid dw      ?
+rxasb_buffer    dw      ?                       ; offset of first buffer
+rxasb_struc     ends
+
+;------ Receive Buffer Format -----------------------------------------------;
+;
+; a received frame will be parcelled out into one or more receive buffers,
+; each of which has the following structure before the data it contains
+;
+rxbuf_header    struc
+                db      2 dup (?)
+rxbuf_next      dw      ?                       ; offset of next buffer + 2
+                db      ?
+rxbuf_fstatus   db      ?                       ; frame status (last buffer)
+rxbuf_buflen    dw      ?                       ; length of data this buffer
+rxbuf_data      db      ?                       ; frame data
+rxbuf_header    ends
+
+;------ Return Codes --------------------------------------------------------;
+;
+; a select few return codes
+;
+ERR_OPEN_LOW    equ     30h                     ; range for open config errors
+ERR_OPEN_HIGH   equ     34h
+ERR_OPEN_NET    equ     07h                     ; network may not be connected
+ERR_CHECK_FS    equ     22h                     ; check transmit FS byte
+
+;------ Interrupt Matters ---------------------------------------------------;
+;
+; 8259A Programmable Interrupt Controller (PIC)
+;
+INT_1EOIR       equ     20h             ; end of interrupt register (master PIC)
+INT_1IMR        equ     21h             ; interrupt mask register (master PIC)
+INT_2EOIR       equ     0A0h            ; end of interrupt register (slave PIC)
+INT_2IMR        equ     0A1h            ; interrupt mask register (slave PIC)
+
+EOI_NONSPEC     equ     20h             ; non-specific end of interrupt command
+EOI_SPECIFIC    equ     60h             ; set specific priority command
+EOI_NOP         equ     40h             ; NOP to 8259 (used for fall-thru code)
+

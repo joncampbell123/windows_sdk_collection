@@ -1,0 +1,3080 @@
+;*****************************************************************************
+;*
+;*   File: ADDMC002.S - Script file to test the AddMulticastAddress primitive.
+;*
+;*   Description: Verify operation of AddMulticastAddress by adding many
+;*                mutlicast addresses.
+;*                Tests include:
+;*                   Add addresses until an error is returned.
+;*                   Check MC list and verify this is the correct number
+;*                   of multicast addresses.
+;*                   Attempt to add one more, expect INVALID_FUNCTION.
+;*                   Delete the addresses.
+;*
+;*   Date: 3/2/90
+;*
+;*   Pre-conditions: Adapter is closed.
+;*                   Slave computer is ready.
+;*
+;*   Post-conditions: Adapter is closed.
+;*
+;*****************************************************************************
+
+  -LOG 3 Starting AddMulticastAddress Tests
+
+*** Check the Service Specific Characteristics Table to see if the
+*** OpenAdapter command is supported by this MAC.
+  -LOG 3 Check if OpenAdapter is supported.
+  -CheckMacTable SC 41 m 08
+  -JFAIL GetSlave
+
+  -OpenAdapter,SUCCESS
+  -JPASS GetSlave
+
+   Quit script because state of MAC is uncertain.
+  -LOG 3 OpenAdapter failed.  Exiting test.
+  -JUMP abort
+
+*** Identify slave computer.
+:GetSlave
+   Need to be able to see slave's response.
+  -SetPacketFilter 1,SUCCESS
+  -JFAIL SlaveFail
+
+  -IDSLAVE,SUCCESS
+  -JPASS Add
+
+  -LOG 3 Unable to identify slave computer.  Exiting script.
+  -JUMP abort
+
+:SlaveFail
+  -LOG 3 Unable to set packet filter to 1 or identify slave.
+  -LOG 3 Exiting script.
+  -JUMP abort
+
+*** Add multicast addresses until failure.  Check that max number of
+*** addresses is the number test thinks it is.  Delete the addresses
+*** until failure.  Check that the current number of MC addresses is 0.
+:Add
+  -LOG 3 Check that Multicast Addresses are supported.
+
+  Check multicast bit.
+  -CheckMacTable SC 40 m 02
+  -JPASS AddMulticast
+
+  Check functional/group bit, if set, assume support for group 
+  through the use of multicast commands.
+  -CheckMacTable SC 40 m 04
+  -JFAIL NotSupported
+  
+:AddMulticast
+  -LOG 3 Adding Multicast Addresses.
+
+  Check for token ring
+  -CheckMacTable SC 2 e 38 30 32 2e 35
+  -JFAIL EtherMC
+
+  Add token ring Multicast Addresses.
+  -CheckMacTable MC 0 e 00 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 01,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 1.
+  -CheckMacTable MC 2 e 01 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 01 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 02,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 2.
+  -CheckMacTable MC 2 e 02 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 02 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 03,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 3.
+  -CheckMacTable MC 2 e 03 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 03 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 04,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 4.
+  -CheckMacTable MC 2 e 04 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 04 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 05,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 5.
+  -CheckMacTable MC 2 e 05 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 05 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 06,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 6.
+  -CheckMacTable MC 2 e 06 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 06 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 07,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 7.
+  -CheckMacTable MC 2 e 07 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 07 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 08,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 8.
+  -CheckMacTable MC 2 e 08 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 08 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 09,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 9.
+  -CheckMacTable MC 2 e 09 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 09 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 10,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 10.
+  -CheckMacTable MC 2 e 0a 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0a 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 11,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 11.
+  -CheckMacTable MC 2 e 0b 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0b 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 12,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 12.
+  -CheckMacTable MC 2 e 0c 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0c 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 13,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 13.
+  -CheckMacTable MC 2 e 0d 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0d 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 14,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 14.
+  -CheckMacTable MC 2 e 0e 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0e 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 15,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 15.
+  -CheckMacTable MC 2 e 0f 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0f 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 16,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 16.
+  -CheckMacTable MC 2 e 10 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 10 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 17,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 17.
+  -CheckMacTable MC 2 e 11 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 11 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 18,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 18.
+  -CheckMacTable MC 2 e 12 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 12 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 19,SUCCESS
+  -JFAIL AddFail 
+  -LOG 3 Added Multicast Address 19.
+  -CheckMacTable MC 2 e 13 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 13 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 20,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 20.
+  -CheckMacTable MC 2 e 14 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 14 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 21,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 21.
+  -CheckMacTable MC 2 e 15 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 15 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 22,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 22.
+  -CheckMacTable MC 2 e 16 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 16 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 23,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 23.
+  -CheckMacTable MC 2 e 17 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 17 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 24,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 24.
+  -CheckMacTable MC 2 e 18 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 18 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 25,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 25.
+  -CheckMacTable MC 2 e 19 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 19 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 26,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 26.
+  -CheckMacTable MC 2 e 1a 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1a 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 27,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 27.
+  -CheckMacTable MC 2 e 1b 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1b 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 28,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 28.
+  -CheckMacTable MC 2 e 1c 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1c 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 29,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 29.
+  -CheckMacTable MC 2 e 1d 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1d 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 30,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 30.
+  -CheckMacTable MC 2 e 1e 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1e 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 31,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 31.
+  -CheckMacTable MC 2 e 1f 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1f 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 32,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 32.
+  -CheckMacTable MC 2 e 20 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 20 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 33,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 33.
+  -CheckMacTable MC 2 e 21 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 21 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 34,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 34.
+  -CheckMacTable MC 2 e 22 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 22 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 35,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 35.
+  -CheckMacTable MC 2 e 23 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 23 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 36,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 36.
+  -CheckMacTable MC 2 e 24 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 10 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 37,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 37.
+  -CheckMacTable MC 2 e 25 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 25 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 38,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 38.
+  -CheckMacTable MC 2 e 26 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 26 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 39,SUCCESS
+  -JFAIL AddFail 
+  -LOG 3 Added Multicast Address 39.
+  -CheckMacTable MC 2 e 27 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 27 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 40,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 40.
+  -CheckMacTable MC 2 e 28 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 28 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 41,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 41.
+  -CheckMacTable MC 2 e 29 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 29 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 42,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 42.
+  -CheckMacTable MC 2 e 2a 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2a 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 43,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 43.
+  -CheckMacTable MC 2 e 2b 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2b 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 44,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 44.
+  -CheckMacTable MC 2 e 2c 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2c 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 45,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 45.
+  -CheckMacTable MC 2 e 2d 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2d 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 46,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 46.
+  -CheckMacTable MC 2 e 2e 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2e 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 47,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 47.
+  -CheckMacTable MC 2 e 2f 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2f 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 48,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 48.
+  -CheckMacTable MC 2 e 30 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 30 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 49,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 49.
+  -CheckMacTable MC 2 e 31 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 31 00
+  -JPASS AddPass
+  -AddMulticastAddress 80 00 00 00 00 50,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 50.
+  -CheckMacTable MC 2 e 32 00
+  -JFAIL AddFail2
+  -JUMP AddNoMax
+
+:EtherMC
+  Add ethernet Multicast Addresses.
+  -CheckMacTable MC 0 e 00 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 01,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 1.
+  -CheckMacTable MC 2 e 01 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 01 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 02,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 2.
+  -CheckMacTable MC 2 e 02 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 02 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 03,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 3.
+  -CheckMacTable MC 2 e 03 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 03 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 04,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 4.
+  -CheckMacTable MC 2 e 04 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 04 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 05,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 5.
+  -CheckMacTable MC 2 e 05 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 05 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 06,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 6.
+  -CheckMacTable MC 2 e 06 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 06 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 07,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 7.
+  -CheckMacTable MC 2 e 07 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 07 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 08,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 8.
+  -CheckMacTable MC 2 e 08 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 08 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 09,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 9.
+  -CheckMacTable MC 2 e 09 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 09 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 10,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 10.
+  -CheckMacTable MC 2 e 0a 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0a 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 11,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 11.
+  -CheckMacTable MC 2 e 0b 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0b 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 12,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 12.
+  -CheckMacTable MC 2 e 0c 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0c 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 13,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 13.
+  -CheckMacTable MC 2 e 0d 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0d 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 14,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 14.
+  -CheckMacTable MC 2 e 0e 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0e 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 15,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 15.
+  -CheckMacTable MC 2 e 0f 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 0f 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 16,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 16.
+  -CheckMacTable MC 2 e 10 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 10 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 17,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 17.
+  -CheckMacTable MC 2 e 11 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 11 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 18,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 18.
+  -CheckMacTable MC 2 e 12 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 12 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 19,SUCCESS
+  -JFAIL AddFail 
+  -LOG 3 Added Multicast Address 19.
+  -CheckMacTable MC 2 e 13 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 13 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 20,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 20.
+  -CheckMacTable MC 2 e 14 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 14 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 21,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 21.
+  -CheckMacTable MC 2 e 15 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 15 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 22,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 22.
+  -CheckMacTable MC 2 e 16 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 16 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 23,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 23.
+  -CheckMacTable MC 2 e 17 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 17 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 24,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 24.
+  -CheckMacTable MC 2 e 18 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 18 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 25,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 25.
+  -CheckMacTable MC 2 e 19 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 19 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 26,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 26.
+  -CheckMacTable MC 2 e 1a 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1a 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 27,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 27.
+  -CheckMacTable MC 2 e 1b 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1b 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 28,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 28.
+  -CheckMacTable MC 2 e 1c 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1c 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 29,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 29.
+  -CheckMacTable MC 2 e 1d 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1d 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 30,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 30.
+  -CheckMacTable MC 2 e 1e 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1e 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 31,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 31.
+  -CheckMacTable MC 2 e 1f 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 1f 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 32,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 32.
+  -CheckMacTable MC 2 e 20 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 20 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 33,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 33.
+  -CheckMacTable MC 2 e 21 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 21 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 34,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 34.
+  -CheckMacTable MC 2 e 22 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 22 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 35,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 35.
+  -CheckMacTable MC 2 e 23 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 23 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 36,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 36.
+  -CheckMacTable MC 2 e 24 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 10 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 37,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 37.
+  -CheckMacTable MC 2 e 25 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 25 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 38,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 38.
+  -CheckMacTable MC 2 e 26 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 26 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 39,SUCCESS
+  -JFAIL AddFail 
+  -LOG 3 Added Multicast Address 39.
+  -CheckMacTable MC 2 e 27 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 27 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 40,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 40.
+  -CheckMacTable MC 2 e 28 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 28 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 41,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 41.
+  -CheckMacTable MC 2 e 29 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 29 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 42,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 42.
+  -CheckMacTable MC 2 e 2a 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2a 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 43,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 43.
+  -CheckMacTable MC 2 e 2b 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2b 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 44,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 44.
+  -CheckMacTable MC 2 e 2c 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2c 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 45,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 45.
+  -CheckMacTable MC 2 e 2d 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2d 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 46,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 46.
+  -CheckMacTable MC 2 e 2e 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2e 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 47,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 47.
+  -CheckMacTable MC 2 e 2f 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 2f 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 48,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 48.
+  -CheckMacTable MC 2 e 30 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 30 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 49,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 49.
+  -CheckMacTable MC 2 e 31 00
+  -JFAIL AddFail2
+  -CheckMacTable MC 0 e 31 00
+  -JPASS AddPass
+  -AddMulticastAddress 01 00 00 00 00 50,SUCCESS
+  -JFAIL AddFail
+  -LOG 3 Added Multicast Address 50.
+  -CheckMacTable MC 2 e 32 00
+  -JFAIL AddFail2
+  -JUMP AddNoMax
+
+:AddFail
+  -LOG 3 Unable to add Multicast Address when maximum not reached.
+  -LOG 3 SQLKEY:ADDMC002.1 FAIL
+  -JUMP AddOneMore
+
+:AddFail2
+  -LOG 3 Multicast Address List does not indicate correct number of 
+  -LOG 3 currently added multicasts.
+  -LOG 3 SQLKEY:ADDMC002.1 FAIL
+  -JUMP AddOneMore
+
+*** We never reached maximum.
+:AddNoMax
+  -LOG 3 Could not add enough multicasts to reach maximum
+  -LOG 3 specified in Multicast Address List.
+  -LOG 3 SQLKEY:ADDMC002.1 PASS
+  -JUMP Receive
+
+:AddPass
+  -LOG 3 SQLKEY:ADDMC002.1 PASS
+
+
+*** Add one more Multicast Address and expect INVALID_FUNCTION.
+:AddOneMore
+  -LOG 3 Adding additional Multicast Address.
+
+  Check for token ring
+  -CheckMacTable SC 2 e 38 30 32 2e 35
+  -JFAIL EtherMC
+
+  Add token ring Multicast Address.
+  -AddMulticastAddress 80 00 00 00 00 51,INVALID_FUNCTION
+  -JFAIL AddMFail
+  -JUMP AddMPass
+
+:EtherMC
+  Add ethernet Multicast Address.
+  -AddMulticastAddress 01 00 00 00 00 51,INVALID_FUNCTION
+  -JFAIL AddMFail
+
+:AddMPass
+  -LOG 3 Adding extra Multicast Address returned INVALID_FUNCTION.
+  -LOG 3 SQLKEY:ADDMC002.2 PASS
+  -JUMP Receive
+
+:AddMFail
+  -LOG 3 Adding extra Multicast Address did not return INVALID_FUNCTION.
+  -LOG 3 SQLKEY:ADDMC002.2 FAIL
+  Check for token ring
+  -CheckMacTable SC 2 e 38 30 32 2e 35
+  -JFAIL EtherMC
+
+  Delete extra Multicast Address if added
+  -DelMulticastAddress 80 00 00 00 00 51
+  -JUMP Receive
+
+:EtherMC
+  Delete extra Multicast Address if added
+  -DelMulticastAddress 01 00 00 00 00 51
+
+*** Test that packets addressed to all the added multicast addresses 
+*** can be received correctly.
+:Receive
+  -LOG 3 Receiving to Multicast Addresses.
+
+  Check for token ring
+  -CheckMacTable SC 2 e 38 30 32 2e 35
+  -JFAIL EtherMC
+            
+  Tell slave to send to token ring Multicast Addresses.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 01,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 1.
+  -CheckMacTable MC 2 e 01 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 02,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 2.
+  -CheckMacTable MC 2 e 02 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 03,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 3.
+  -CheckMacTable MC 2 e 03 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 04,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 4.
+  -CheckMacTable MC 2 e 04 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 05,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 5.
+  -CheckMacTable MC 2 e 05 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 06,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 6.
+  -CheckMacTable MC 2 e 06 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 07,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 7.
+  -CheckMacTable MC 2 e 07 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 08,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 8.
+  -CheckMacTable MC 2 e 08 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 09,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 9.
+  -CheckMacTable MC 2 e 09 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 10,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 10.
+  -CheckMacTable MC 2 e 0a 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 11,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 11.
+  -CheckMacTable MC 2 e 0b 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 12,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 12.
+  -CheckMacTable MC 2 e 0c 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 13,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 13.
+  -CheckMacTable MC 2 e 0d 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 14,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 14.
+  -CheckMacTable MC 2 e 0e 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 15,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 15.
+  -CheckMacTable MC 2 e 0f 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 16,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 16.
+  -CheckMacTable MC 2 e 10 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 17,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 17.
+  -CheckMacTable MC 2 e 11 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 18,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 18.
+  -CheckMacTable MC 2 e 12 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 19,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 19.
+  -CheckMacTable MC 2 e 13 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 20,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 20.
+  -CheckMacTable MC 2 e 14 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 21,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 21.
+  -CheckMacTable MC 2 e 15 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 22,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 22.
+  -CheckMacTable MC 2 e 16 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 23,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 23.
+  -CheckMacTable MC 2 e 17 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 24,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 24.
+  -CheckMacTable MC 2 e 18 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 25,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 25.
+  -CheckMacTable MC 2 e 19 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 26,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 26.
+  -CheckMacTable MC 2 e 1a 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 27,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 27.
+  -CheckMacTable MC 2 e 1b 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 28,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 28.
+  -CheckMacTable MC 2 e 1c 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 29,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 29.
+  -CheckMacTable MC 2 e 1d 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 30,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 30.
+  -CheckMacTable MC 2 e 1e 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 31,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 31.
+  -CheckMacTable MC 2 e 1f 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 32,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 32.
+  -CheckMacTable MC 2 e 20 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 33,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 33.
+  -CheckMacTable MC 2 e 21 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 34,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 34.
+  -CheckMacTable MC 2 e 22 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 35,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 35.
+  -CheckMacTable MC 2 e 23 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 36,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 36.
+  -CheckMacTable MC 2 e 24 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 37,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 37.
+  -CheckMacTable MC 2 e 25 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 38,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 38.
+  -CheckMacTable MC 2 e 26 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 39,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 39.
+  -CheckMacTable MC 2 e 27 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 40,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 40.
+  -CheckMacTable MC 2 e 28 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 41,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 41.
+  -CheckMacTable MC 2 e 29 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 42,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 42.
+  -CheckMacTable MC 2 e 2a 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 43,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 43.
+  -CheckMacTable MC 2 e 2b 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 44,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 44.
+  -CheckMacTable MC 2 e 2c 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 45,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 45.
+  -CheckMacTable MC 2 e 2d 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 46,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 46.
+  -CheckMacTable MC 2 e 2e 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 47,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 47.
+  -CheckMacTable MC 2 e 2f 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 48,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 48.
+  -CheckMacTable MC 2 e 30 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 49,SUCCESS
+  -JFAIL RecFail                            
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 49.
+  -CheckMacTable MC 2 e 31 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 50,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 50.
+  -JUMP RecPass
+
+:EtherMC
+  Tell slave to send to ethernet Multicast Addresses.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 01,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 1.
+  -CheckMacTable MC 2 e 01 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 02,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 2.
+  -CheckMacTable MC 2 e 02 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 03,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 3.
+  -CheckMacTable MC 2 e 03 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 04,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 4.
+  -CheckMacTable MC 2 e 04 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 05,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 5.
+  -CheckMacTable MC 2 e 05 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 06,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 6.
+  -CheckMacTable MC 2 e 06 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 07,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 7.
+  -CheckMacTable MC 2 e 07 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 08,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 8.
+  -CheckMacTable MC 2 e 08 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 09,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 9.
+  -CheckMacTable MC 2 e 09 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 10,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 10.
+  -CheckMacTable MC 2 e 0a 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 11,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 11.
+  -CheckMacTable MC 2 e 0b 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 12,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 12.
+  -CheckMacTable MC 2 e 0c 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 13,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 13.
+  -CheckMacTable MC 2 e 0d 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 14,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 14.
+  -CheckMacTable MC 2 e 0e 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 15,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 15.
+  -CheckMacTable MC 2 e 0f 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 16,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 16.
+  -CheckMacTable MC 2 e 10 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 17,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 17.
+  -CheckMacTable MC 2 e 11 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 18,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 18.
+  -CheckMacTable MC 2 e 12 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 19,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 19.
+  -CheckMacTable MC 2 e 13 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 20,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 20.
+  -CheckMacTable MC 2 e 14 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 21,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 21.
+  -CheckMacTable MC 2 e 15 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 22,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 22.
+  -CheckMacTable MC 2 e 16 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 23,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 23.
+  -CheckMacTable MC 2 e 17 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 24,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 24.
+  -CheckMacTable MC 2 e 18 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 25,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 25.
+  -CheckMacTable MC 2 e 19 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 26,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 26.
+  -CheckMacTable MC 2 e 1a 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 27,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 27.
+  -CheckMacTable MC 2 e 1b 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 28,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 28.
+  -CheckMacTable MC 2 e 1c 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 29,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 29.
+  -CheckMacTable MC 2 e 1d 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 30,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 30.
+  -CheckMacTable MC 2 e 1e 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 31,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 31.
+  -CheckMacTable MC 2 e 1f 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 32,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 32.
+  -CheckMacTable MC 2 e 20 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 33,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 33.
+  -CheckMacTable MC 2 e 21 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 34,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 34.
+  -CheckMacTable MC 2 e 22 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 35,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 35.
+  -CheckMacTable MC 2 e 23 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 36,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 36.
+  -CheckMacTable MC 2 e 24 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 37,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 37.
+  -CheckMacTable MC 2 e 25 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 38,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 38.
+  -CheckMacTable MC 2 e 26 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 39,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 39.
+  -CheckMacTable MC 2 e 27 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 40,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 40.
+  -CheckMacTable MC 2 e 28 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 41,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 41.
+  -CheckMacTable MC 2 e 29 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 42,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 42.
+  -CheckMacTable MC 2 e 2a 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 43,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 43.
+  -CheckMacTable MC 2 e 2b 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 44,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 44.
+  -CheckMacTable MC 2 e 2c 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 45,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 45.
+  -CheckMacTable MC 2 e 2d 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 46,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 46.
+  -CheckMacTable MC 2 e 2e 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 47,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 47.
+  -CheckMacTable MC 2 e 2f 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 48,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 48.
+  -CheckMacTable MC 2 e 30 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 49,SUCCESS
+  -JFAIL RecFail                            
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 49.
+  -CheckMacTable MC 2 e 31 00
+  -JPASS RecPass
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 50,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 1,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet sent to Multicast Address 50.
+  -JUMP RecPass
+
+:RecFail
+  -LOG 3 Send to Multicast Address failed.  Exiting test.
+  -LOG 3 SQLKEY:ADDMC002.3 FAIL
+  -JUMP abort
+
+:RecFail2
+  -LOG 3 No indication received for multicast packet.  One expected.
+  -LOG 3 SQLKEY:ADDMC002.3 FAIL
+  -JUMP Delete
+
+:RecPass
+  -LOG 3 Reception was made to all added Multicast Addresses. 
+  -LOG 3 SQLKEY:ADDMC002.3 PASS
+
+
+*** Delete until driver says there are no more multicasts set and check
+*** that Multicast list shows 0 addresses.
+:Delete
+  -LOG 3 Deleting Multicast Addresses.
+
+  Check for token ring
+  -CheckMacTable SC 2 e 38 30 32 2e 35
+  -JFAIL EtherMC
+
+  Delete token ring Multicast Addresses.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 01,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 1.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 02,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 2.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 03,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 3.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 04,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 4.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 05,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 5.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 06,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 6.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 07,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 7.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 08,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 8.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 09,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 9.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 10,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 10.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 11,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 11.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 12,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 12.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 13,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 13.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 14,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 14.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 15,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 15.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 16,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 16.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 17,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 17.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 18,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 18.
+  -JFAIL DelFail
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 19,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 19.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 20,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 20.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 21,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 21.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 22,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 22.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 23,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 23.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 24,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 24.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 25,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 25.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 26,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 26.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 27,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 27.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 28,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 28.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 29,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 29.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 30,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 30.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 31,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 31.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 32,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 32.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 33,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 33.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 34,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 34.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 35,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 35.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 36,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 36.
+  -JFAIL DelFail
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 37,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 37.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 38,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 38.
+  -JFAIL DelFail
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 39,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 39.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 40,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 40.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 41,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 41.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 42,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 42.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 43,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 43.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 44,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 44.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 45,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 45.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 46,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 46.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 47,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 47.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 48,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 48.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 49,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 49.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 80 00 00 00 00 50,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 50.
+  -JUMP DelDone
+
+:EtherMC
+  Delete ethernet Multicast Addresses.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 01,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 1.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 02,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 2.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 03,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 3.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 04,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 4.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 05,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 5.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 06,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 6.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 07,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 7.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 08,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 8.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 09,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 9.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 10,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 10.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 11,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 11.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 12,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 12.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 13,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 13.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 14,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 14.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 15,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 15.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 16,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 16.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 17,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 17.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 18,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 18.
+  -JFAIL DelFail
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 19,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 19.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 20,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 20.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 21,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 21.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 22,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 22.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 23,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 23.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 24,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 24.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 25,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 25.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 26,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 26.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 27,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 27.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 28,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 28.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 29,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 29.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 30,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 30.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 31,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 31.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 32,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 32.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 33,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 33.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 34,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 34.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 35,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 35.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 36,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 36.
+  -JFAIL DelFail
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 37,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 37.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 38,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 38.
+  -JFAIL DelFail
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 39,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 39.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 40,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 40.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 41,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 41.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 42,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 42.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 43,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 43.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 44,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 44.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 45,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 45.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 46,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 46.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 47,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 47.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 48,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 48.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 49,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 49.
+  -CheckMacTable MC 2 e 00 00
+  -JPASS DelDone
+  -DelMulticastAddress 01 00 00 00 00 50,SUCCESS
+  -JFAIL DelFail
+  -LOG 3 Deleted Multicast Address 50.
+
+*** All addresses were deleted. 
+:DelDone
+  -LOG 3 Multicast Address List shows 0 addresses added, as expected.
+  -LOG 3 SQLKEY:ADDMC002.4 PASS
+  -JUMP Receive
+
+:DelFail
+  -LOG 3 Multicast Address List does not show 0 current addresses.
+  -LOG 3 SQLKEY:ADDMC002.4 FAIL
+
+*** Test that packets addressed to all the added multicast addresses 
+*** can NOT be received.
+:Receive
+  -LOG 3 Test Receiving to Deleted Multicast Addresses.
+
+  Check for token ring
+  -CheckMacTable SC 2 e 38 30 32 2e 35
+  -JFAIL EtherMC
+            
+  Tell slave to send to token ring Multicast Addresses.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 01,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 1.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 02,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 2.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 03,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 3.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 04,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 4.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 05,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 5.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 06,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 6.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 07,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 7.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 08,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 8.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 09,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 9.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 10,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 10.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 11,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 11.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 12,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 12.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 13,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 13.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 14,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 14.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 15,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 15.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 16,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 16.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 17,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 17.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 18,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 18.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 19,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 19.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 20,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 20.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 21,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 21.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 22,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 22.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 23,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 23.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 24,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 24.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 25,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 25.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 26,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 26.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 27,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 27.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 28,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 28.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 29,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 29.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 30,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 30.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 31,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 31.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 32,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 32.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 33,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 33.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 34,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 34.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 35,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 35.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 36,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 36.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 37,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 37.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 38,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 38.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 39,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 39.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 40,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 40.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 41,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 41.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 42,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 42.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 43,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 43.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 44,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 44.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 45,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 45.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 46,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 46.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 47,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 47.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 48,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 48.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 49,SUCCESS
+  -JFAIL RecFail                            
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 49.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 c0 00 80 00 00 50,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 50.
+  -JUMP RecPass
+
+:EtherMC
+  Tell slave to send to ethernet Multicast Addresses.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 01,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 1.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 02,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 2.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 03,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 3.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 04,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 4.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 05,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 5.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 06,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 6.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 07,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 7.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 08,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 8.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 09,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 9.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 10,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 10.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 11,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 11.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 12,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 12.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 13,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 13.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 14,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 14.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 15,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 15.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 16,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 16.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 17,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 17.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 18,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 18.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 19,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 19.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 20,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 20.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 21,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 21.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 22,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 22.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 23,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 23.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 24,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 24.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 25,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 25.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 26,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 26.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 27,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 27.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 28,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 28.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 29,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 29.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 30,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 30.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 31,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 31.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 32,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 32.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 33,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 33.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 34,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 34.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 35,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 35.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 36,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 36.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 37,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 37.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 38,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 38.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 39,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 39.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 40,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 40.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 41,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 41.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 42,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 42.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 43,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 43.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 44,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 44.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 45,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 45.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 46,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 46.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 47,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 47.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 48,SUCCESS
+  -JFAIL RecFail
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 48.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 49,SUCCESS
+  -JFAIL RecFail                            
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 49.
+  -CheckIntNum X
+  -MRECV 1 100 100 0 0 2 01 00 00 00 00 50,SUCCESS
+  -JFAIL RecFail                            
+  -WAIT 01
+  -CheckIntNum 0,SUCCESS
+  -JFAIL RecFail2
+  -LOG 3 Packet not received by Multicast Address 50.
+  -JUMP RecPass
+
+:RecFail
+  -LOG 3 Send to Multicast Address failed.  Exiting test.
+  -LOG 3 SQLKEY:ADDMC002.5 FAIL
+  -JUMP abort
+
+:RecFail2
+  -LOG 3 Indication received for multicast packet.  None expected.
+  -LOG 3 SQLKEY:ADDMC002.5 FAIL
+  -JUMP end
+
+:RecPass
+  -LOG 3 No reception was made to all deleted Multicast Addresses. 
+  -LOG 3 SQLKEY:ADDMC002.5 PASS
+  -JUMP end
+
+
+*** NOT_SUPPORTED error handler.
+:NotSupported
+   Specifically test for NOT_SUPPORTED before reporting that it is not
+   supported
+  -AddMulticastAddress 01 02 03 04 05 06,NOT_SUPPORTED
+  -JFAIL NotSupportedFail
+
+  -LOG 3 AddMulticastAddress is NOT_SUPPORTED for this MAC.
+  -LOG 3 SQLKEY:ADDMC002.6 PASS
+  -JUMP end
+
+:NotSupportedFail
+  -LOG 3 ERROR: Service Specific Characteristics Table indicates that
+  -LOG 3        AddMulticastAddress is not supported but AddMulticastAddress
+  -LOG 3        did not return NOT_SUPPORTED.
+  -LOG 3 SQLKEY:ADDMC002.6 FAIL
+  -JUMP end
+
+:abort
+  -LOG 3 Aborting ADDMC002 because state of MAC is uncertain.
+  -SCRIPT ABORT ABORT
+  -SetFailure
+  -JUMP end2
+
+:end
+  -LOG 3 Finished AddMulticastAddress Tests
+
+*** Check the Service Specific Characteristics Table to see if the
+*** CloseAdapter command is supported by this MAC.
+  -LOG 3 Check if CloseAdapter is supported.
+  -CheckMacTable SC 41 m 08
+  -JFAIL end2
+
+  -CloseAdapter,SUCCESS
+  -JPASS end2
+
+   Quit script because state of MAC is uncertain.
+  -LOG 3 CloseAdapter failed.  Exiting test.
+  -LOG 3 Aborting ADDMC002 because state of MAC is uncertain.
+  -SCRIPT ABORT ABORT
+
+:end2
+

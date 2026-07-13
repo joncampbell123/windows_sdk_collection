@@ -1,0 +1,1 @@
+-LOG 3 CloseAdapter tests aborted.

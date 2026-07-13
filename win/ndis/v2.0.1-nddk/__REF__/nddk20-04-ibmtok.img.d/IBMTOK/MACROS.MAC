@@ -1,0 +1,861 @@
+;****************************************************************************;
+;*                                                                          *;
+;*      (C) Copyright 1988,1989 by 3Com Corporation                         *;
+;*                                                                          *;
+;*      This IBM Token Ring NDIS Driver source is the property of Microsoft *;
+;*      Corporation and is provided only as an example of an NDIS MAC       *;
+;*      driver for use with Microsoft's OS/2 LAN Manager, DOS LAN Manager,  *;
+;*      or LM/X products.                                                   *;
+;*                                                                          *;
+;****************************************************************************;
+
+;------ MACROS.MAC ----------------------------------------------------------;
+;                                                                            ;
+;       Macros and equates used by the IBM Token Ring Adapter MAC Driver.    ;
+;                                                                            ;
+;       This file lifts liberally from Glenn Linderman's CPUDIFF.MAC for     ;
+;       various cpu-dependent macros.                                        ;
+;                                                                            ;
+;       MASM 5.1 is assumed.                                                 ;
+;                                                                            ;
+;       09-21-88 Connery                                                     ;
+;       Original version.                                                    ;
+;                                                                            ;
+;       03-17-89 Connery                                                     ;
+;       Merged COMMON.MAC and portions of CPUDIFF.MAC that are used in       ;
+;       this driver to reduce the number/size of include files to be         ;
+;       shipped with NDK.                                                    ;
+;                                                                            ;
+;       02-25-90 2.0a Connery                                                ;
+;       Added PUSHC macro.  Dropped OPTMOVE.  Changed DEXTRN, OS2XTRN and    ;
+;       DOSXTRN to take just one argument.  Added CLAIMB to enforce.         ;
+;       Dropped MENTRY, MEXTRN and MPUBLIC as part of getting rid of         ;
+;       multiple adapter support.  Dropped MREPEAT and RREPEAT.  Added       ;
+;       INITQ and FREEQ macros.  Added EMPTYQ?  macro.  Changed all queue    ;
+;       macros to take an optional queue name and produce better code.       ;
+;       Added fail label to DEQ, DEQHEAD and DEQONLY macros.  Dropped        ;
+;       ENTER_CR, EXIT_CR and SPOPF macros.  Added DJxx macros.  Renamed     ;
+;       LAXCS and LAXDS to L0CS and L0DS and added an optional argument.     ;
+;       To support dividing statistics into two groups, replaced INCSTAT     ;
+;       and ADDSTAT with INCANY, INCALL, ADDANY, ADDALL.                     ;
+;                                                                            ;
+;----------------------------------------------------------------------------;
+
+;------ Constants -----------------------------------------------------------;
+
+YES             equ     -1
+NO              equ     0
+
+CR              equ     0Dh
+LF              equ     0Ah
+
+;------ Far Pointer and word/double word layout -----------------------------;
+;
+; double word layout
+;
+doubleword      struc
+loword          dw      ?               ; low order word
+hiword          dw      ?               ; high order word
+doubleword      ends
+;
+; word layout
+;
+doublebyte      struc
+lobyte          db      ?               ; low order byte
+hibyte          db      ?               ; high order byte
+doublebyte      ends
+;
+; far pointer layout
+;
+farpointer      struc
+off             dw      0               ; offset
+segm            dw      0               ; segment or selector
+farpointer      ends
+
+;------ CPU Dependent Macros ------------------------------------------------;
+;
+; Selection of emitted code is done based on the symbols set up by the
+; INCLUDEr of this file, perhaps even from the MASM command line.
+; The symbols known are:
+;
+; o8086   -  if defined, code must run on an 8086
+; o80186  -  if defined, code must run on an 80186
+; o80286  -  if defined, code must run on an 80286
+; o80386  -  if defined, code must run on an 80386
+; oa      -  if defined, code must run on all of the above
+;
+; only8086  - if derived, the code need not run anywhere but an 8086
+; only80186 - if derived, the code need not run anywhere but an 80186
+; only80286 - if derived, the code need not run anywhere but an 80286
+; only80386 - if derived, the code need not run anywhere but an 80386
+;
+
+IF1                                     ; define macros only on pass 1
+
+ifdef oa
+   ifndef o8086
+      o8086 equ 1
+   endif
+   ifndef o80186
+      o80186 equ 1
+   endif
+   ifndef o80286
+      o80286 equ 1
+   endif
+   ifndef o80386
+      o80386 equ 1
+   endif
+else
+   ifdef o8086
+      ifdef o80186
+         ifdef o80286
+            ifdef o80386
+               oa equ 1
+            endif
+         endif
+      endif
+   endif
+endif
+
+ifndef oa
+
+   ifdef o8086
+      ifndef o80186
+         ifndef o80286
+            ifndef o80386
+               only8086 equ 1
+            endif
+         endif
+      endif
+   endif
+
+   ifdef o80186
+      ifndef o8086
+         ifndef o80286
+            ifndef o80386
+               only80186 equ 1
+            endif
+         endif
+      endif
+   endif
+
+   ifdef o80286
+      ifndef o80186
+         ifndef o8086
+            ifndef o80386
+               only80286 equ 1
+            endif
+         endif
+      endif
+   endif
+
+   ifdef o80386
+      ifndef o80186
+         ifndef o80286
+            ifndef o8086
+               only80386 equ 1
+            endif
+         endif
+      endif
+   endif
+
+endif
+
+ifndef o8086
+   processortype macro
+      .286 ; works for 80186, 80286 in real mode, 80386 in real mode
+   endm
+   priv_cpu macro
+      .286p
+   endm
+endif
+
+ifdef only80386
+   processortype macro
+      .386 ; works for 80386 only
+   endm
+   priv_cpu macro
+      .386p
+   endm
+endif
+
+ifndef processortype
+   processortype macro
+      .8086
+   endm
+   priv_cpu macro
+      .8086
+   endm
+endif
+
+nonpriv_cpu macro
+   processortype
+endm
+
+endif
+
+processortype
+
+IF1
+
+; The "enter <numlocals>,0" instruction on 80186, 80286, and 80386 processors
+; is less than optimal in both space and time measures.
+; It's ok for level <> 0, but doesn't exist on the 8086.
+; (also see enter and leave macros for 8086, below)
+
+senter macro numlocals, level
+   ifdef o8086
+      if level
+         .err     ;; I don't feel like coding this one.
+      else
+         push bp
+         mov bp, sp
+         if numlocals ne 0
+            sub sp, numlocals
+         endif
+      endif
+   else
+      if level eq 0
+         push bp
+         mov bp, sp
+         if numlocals ne 0
+            sub sp, numlocals
+         endif
+      else
+         enter numlocals, level
+      endif
+   endif
+endm
+
+; The following set of macros invisibly (except for code size) mask the
+; fact that certain instructions do not exist on the 8086.
+
+ifdef o8086
+
+; 8086's have no instructions for pushing or popping all the registers, like
+; the 80186, 80286, and 80386.  These macros will do it for any of the CPUs.
+; Note that even these instructions do not push or pop the segment registers.
+
+pusha macro
+   push ax
+   push cx
+   push dx
+   push bx
+   push sp
+   push bp
+   push si
+   push di
+endm
+
+popa macro
+   pop di
+   pop si
+   pop bp
+   pop ax    ;; ignore sp value
+   pop bx
+   pop dx
+   pop cx
+   pop ax
+endm
+
+; The 8086 has no enter or leave instructions.
+
+enter macro numlocals, level
+   senter <numlocals>, <level>
+endm
+
+leave macro
+   mov sp, bp
+   pop bp
+endm
+
+endif
+
+; The following supports pushing immediate values on the stack.  A temporary
+; register must be supplied to perform this on an 8086.
+
+pushc macro what, treg
+    ifdef o8086
+        mov treg, what
+        push treg
+    else
+        push what
+    endif
+endm
+
+; The following macro implements "near" conditional branches on 8086, 80186,
+; and 80286 processors.  You'd probably code it this way yourself, but using
+; this macro, you can get better time and space performance on the 80386.
+; Not for use with jmp, or jcxz, which have no negative condition equivalent.
+;
+; Educational section: turn /w2 on when running MASM to discover if you have
+; used the most optimal branch instructions.  Note that the default for 80386
+; processors in near jumps, so the use of short for condition branches is
+; recommended everywhere possible, and the use of this macro the rest of the
+; time.
+
+ifdef only80386
+   sj macro condition, destination
+      j&condition destination
+   endm
+else
+   sj macro condition, destination
+      sjhelper macro cond
+         local around
+         sj_jumpemitted = sj_jumpemitted + 1
+         j&&cond short around
+         jmp near ptr destination
+around:
+      endm
+      sj_jumpemitted = 0
+      irp tc,<e,g,le,l,ge,a,be,b,ae,o,c,z,s,p>
+         ifidni <condition>,<tc>
+            sjhelper <n&&tc>
+         else
+            ifidni <condition>,<n&&tc>
+               sjhelper <&&tc>
+            endif
+         endif
+      endm
+      ifidni <condition>,<pe>
+         sjhelper <po>
+      endif
+      ifidni <condition>,<po>
+         sjhelper <pe>
+      endif
+      .erre sj_jumpemitted eq 1
+      purge sjhelper
+   endm
+endif
+;
+; The following macro generates short conditional jumps unless DEV is
+; defined, in which case it calls SJ.
+;
+dj macro condition, destination
+    ifdef DEV
+        sj condition, destination
+    else
+        j&condition destination
+    endif
+endm
+;
+; ditto for short jumps unless DEV
+;
+djmp macro destination
+    ifdef DEV
+        jmp destination
+    else
+        jmp short destination
+    endif
+endm
+
+;------ Compile Time Macros -------------------------------------------------;
+;
+; CLAIM is used to make sure some compile time condition is true.  syntax:
+;
+;     CLAIM <expression>
+;
+; for example, "CLAIM <A_SIZE eq B_SIZE>".  If the claimed expression is not
+; TRUE, then an error message will be generated.
+;
+claim macro expression
+    if2
+        if not (expression)
+            %out Error: FALSE CLAIM: expression
+            .err
+        endif
+    endif
+endm
+;
+; CLAIMB is similar, just claims the expression is blank
+;
+claimb macro expression
+    ifnb <expression>
+        if2
+            %out Error: FALSE CLAIMB: expression
+            .err
+        endif
+    endif
+endm
+;
+; NEWPAGE starts a new page with a subtitle, BREAK is a synonym
+;
+newpage macro subtitle
+    subttl subtitle
+    page
+endm
+
+break macro subtitle
+    newpage subtitle
+endm
+
+;------ Development Macros --------------------------------------------------;
+;
+; DNOP generates a NOP if development (can be patched to INT 3)
+;
+dnop macro
+    ifdef DEV
+        nop
+    endif
+endm
+;
+; DINT3 generates an INT 3 if development
+;
+dint3 macro
+    ifdef DEV
+        int 3
+    endif
+endm
+;
+; BPOINT takes a label as an argument.  It enters that label, makes it
+; public and does an INT 3.  This can be used to flag something in the
+; debugger with some kind of descriptive label.
+;
+bpoint macro label
+    ifdef DEV
+        public label
+label:
+        int 3
+    endif
+endm
+;
+; DPUBLIC generates a public statement if development
+;
+dpublic macro name
+    ifdef DEV
+        public name
+    endif
+endm
+;
+; DEXTRN generates an extrn statement if development
+;
+dextrn macro what,xtra
+    ifdef DEV
+        extrn what
+    endif
+    claimb xtra
+endm
+;
+; DINC increments something if development
+;
+dinc macro what
+    ifdef DEV
+        inc what
+    endif
+endm
+;
+; DADD adds something if development
+;
+dadd macro what,by
+    ifdef DEV
+        add what,by
+    endif
+endm
+;
+; DCLI? generates an INT3 if interrupts are enabled during development
+;
+dcli? macro
+    local intsoff
+    ifdef DEV
+        pushf
+        pop ax
+        test ax,200h
+        jz intsoff
+        int 3
+intsoff:
+    endif
+endm
+
+;------ Shorthand Macros ----------------------------------------------------;
+;
+; various shorthands for calling the SJ macro:
+;
+;     SJx destination
+;
+; is equivalent to:
+;
+;     SJ x,destination
+;
+sje macro destination
+    sj e,destination
+endm
+sjne macro destination
+    sj ne,destination
+endm
+sjz macro destination
+    sj z,destination
+endm
+sjnz macro destination
+    sj nz,destination
+endm
+sjc macro destination
+    sj c,destination
+endm
+sjnc macro destination
+    sj nc,destination
+endm
+sjb macro destination
+    sj b,destination
+endm
+sja macro destination
+    sj a,destination
+endm
+sjae macro destination
+    sj ae,destination
+endm
+sjbe macro destination
+    sj be,destination
+endm
+;
+; various shorthands for calling the DJ macro:
+;
+;     DJx destination
+;
+; is equivalent to:
+;
+;     DJ x,destination
+;
+dje macro destination
+    dj e,destination
+endm
+djne macro destination
+    dj ne,destination
+endm
+djz macro destination
+    dj z,destination
+endm
+djnz macro destination
+    dj nz,destination
+endm
+djc macro destination
+    dj c,destination
+endm
+djnc macro destination
+    dj nc,destination
+endm
+djb macro destination
+    dj b,destination
+endm
+dja macro destination
+    dj a,destination
+endm
+djae macro destination
+    dj ae,destination
+endm
+djbe macro destination
+    dj be,destination
+endm
+;
+; PUSHR pushes a bunch of registers.  POPR pops a bunch of registers, but
+; in reverse order so we don't have to screw around reversing things.
+;
+pushr macro r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13
+    ifnb <r1>
+        push r1
+        pushr r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13
+    endif
+endm
+
+popr macro r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13
+    ifnb <r1>
+        popr r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13
+        pop r1
+    endif
+endm
+
+;------- Local Variable Macros ----------------------------------------------;
+;
+; DLOCAL and LOCALS are used to set up local variables on the stack.  DLOCAL
+; defines a symbol and LOCALS reserves space for all the symbols defined.
+; They must be used together or things won't reset properly.
+;
+bpoffset = 0
+
+dlocal macro name,size
+    ifb <size>
+        bytes = 2
+    elseifidni <size>,<byte>
+        bytes = 2
+    elseifidni <size>,<word>
+        bytes = 2
+    elseifidni <size>,<dword>
+        bytes = 4
+    else
+        bytes = size
+    endif
+    bpoffset = bpoffset - bytes
+    name = bpoffset
+endm
+
+locals macro
+    senter -bpoffset,0
+    bpoffset = 0
+endm
+
+;------ DOS, OS/2 Macros ----------------------------------------------------;
+
+os2publ macro name
+    ifndef DOS
+        public name
+    endif
+endm
+
+dospubl macro name
+    ifdef DOS
+        public name
+    endif
+endm
+
+os2xtrn macro what,xtra
+    ifndef DOS
+        extrn what
+    endif
+    claimb xtra
+endm
+
+dosxtrn macro what,xtra
+    ifdef DOS
+        extrn what
+    endif
+    claimb xtra
+endm
+
+;------ Selector Macros -----------------------------------------------------;
+;
+; L0CS loads AX with the ring 0 code selector in OS|2 and CS in DOS.  For use
+; during initialization when ring 0 pointers are needed in OS|2.  A different
+; register can also be supplied optionally.
+;
+l0cs macro reg
+    ifdef DOS
+        ifb <reg>
+            mov ax,cs
+        else
+            mov reg,cs
+        endif
+    else
+        ifb <reg>
+            mov ax,ds:SDevProtCS
+        else
+            mov reg,ds:SDevProtCS
+        endif
+    endif
+endm
+;
+; L0DS loads AX with the ring 0 data selector in OS|2 and DS in DOS.  For use
+; during initialization when ring 0 pointers are needed in OS|2.  A different
+; register can also be supplied optionally.
+;
+l0ds macro reg
+    ifdef DOS
+        ifb <reg>
+            mov ax,ds
+        else
+            mov reg,ds
+        endif
+    else
+        ifb <reg>
+            mov ax,ds:SDevProtDS
+        else
+            mov reg,ds:SDevProtDS
+        endif
+    endif
+endm
+
+;------ Inline Queueing Macros ----------------------------------------------;
+;
+; If not specified, assume the queue header is in DI.  They consider AX and
+; DI (if default) to be disposable.  They assume interrupts are disabled.
+;
+; Enqueue the qentry in SI on the tail of the queue.
+;
+enq macro q,treg
+    dcli?
+    ifb <q>                                     ;; okay but destroys DI
+        mov [si].q_next,di
+        xchg [di].q_prev,si
+        mov di,[di].q_prev
+        mov [di].q_prev,si
+        mov [si].q_next,di
+        mov si,di
+    elseifb <treg>                              ;; not so hot, destoys AX
+        mov ax, si
+        mov si, q.q_prev
+        mov [si].q_next, ax
+        mov q.q_prev, ax
+        xchg si, ax
+        mov [si].q_prev, ax
+        mov [si].q_next, offset DGROUP:q
+    else                                        ;; best--treg must be BX or DI
+        mov treg, q.q_prev
+        mov [treg].q_next, si
+        mov q.q_prev, si
+        mov [si].q_prev, treg
+        mov [si].q_next, offset DGROUP:q
+    endif
+endm
+;
+; Dequeue a qentry off the front of the queue to SI.  If no fail label is
+; specified then we assume the queue cannot be empty.
+;
+deq macro q, failto
+    dcli?
+    ifb <q>
+        mov si,[di].q_next
+        ifnb <failto>
+            cmp si,di
+            je failto
+        endif
+        mov si,[si].q_next
+        mov [si].q_prev,di
+        xchg [di].q_next,si
+    else
+        mov si,q.q_next
+        ifnb <failto>
+            cmp si,offset DGROUP:q
+            je failto
+        endif
+        mov si,[si].q_next
+        mov [si].q_prev,offset DGROUP:q
+        xchg q.q_next,si
+    endif
+endm
+;
+; ENQHEAD and DEQHEAD are similar to ENQ and DEQ except that they don't use
+; or maintain the tail or prev pointers.  The qentries are assumed to be in
+; no particular order (such as on a free queue).
+;
+; These destroy AX.  If no fail label supplied on DEQHEAD, it is assumed that
+; the queue cannot be empty.
+;
+enqhead macro q
+    dcli?
+    ifb <q>
+        mov ax,[di].q_head
+        mov [di].q_head,si
+        mov [si].q_next,ax
+    else
+        mov ax,q.q_head
+        mov q.q_head,si
+        mov [si].q_next,ax
+    endif
+endm
+
+deqhead macro q, failto
+    dcli?
+    ifb <q>
+        mov si,[di].q_head
+        ifnb <failto>
+            test si,si
+            jz failto
+        endif
+        mov ax,[si].q_next
+        mov [di].q_head,ax
+    else
+        mov si,q.q_head
+        ifnb <failto>
+            test si,si
+            jz failto
+        endif
+        mov ax,[si].q_next
+        mov q.q_head,ax
+    endif
+endm
+;
+; ENQONLY and DEQONLY are similar to ENQHEAD and DEQHEAD except that they
+; assume the queue will only contain one entry.
+;
+enqonly macro q
+    dcli?
+    ifb <q>
+        mov [di].q_head,si
+    else
+        mov q.q_head,si
+    endif
+endm
+
+deqonly macro q, failto
+    dcli?
+    ifb <q>
+        xor si,si
+        xchg si,[di].q_head
+    else
+        xor si,si
+        xchg si,q.q_head
+    endif
+    ifnb <failto>
+        test si,si
+        jz failto
+    endif
+endm
+;
+; A macro to declare an empty queue header in DATA space.
+;
+initq macro q
+    public q
+q   label word
+    dw offset DGROUP:q
+    dw offset DGROUP:q
+    claim <($-q) eq QH_SIZE>
+endm
+;
+; A macro to declare an empty singly-linked queue header in DATA space.
+;
+freeq macro q
+    public q
+q   label word
+    dw 0
+    dw 0
+    claim <($-q) eq QH_SIZE>
+endm
+;
+; A macro to check if a queue is empty.  Flags set for JZ on empty.
+;
+emptyq? macro q
+    if ((.type(q)) AND 0010h)                   ;; if register
+        cmp [q].q_next,q                        ;; empty if points to self
+    else
+        cmp q.q_next,offset DGROUP:q
+    endif
+endm
+
+;------ Statistics Macros ---------------------------------------------------;
+;
+; Statistics are divided into two groups.  ANYSTATS is set if the simplest
+; and most interesting statistics are to be kept.  ALLSTATS is set if the
+; more difficult and obscure statistics are to be kept.  The following
+; macros generate code to increment or add to a double-word statistics counter
+; or not as the case may be.
+;
+; if ALLSTATS is defined, ANYSTATS must be defined.
+;
+incany macro s
+    ifdef ANYSTATS
+ %      add status.&s.loword,1
+ %      adc status.&s.hiword,0
+    endif
+endm
+
+incall macro s
+    ifdef ALLSTATS
+ %      add status.&s.loword,1
+ %      adc status.&s.hiword,0
+    endif
+endm
+
+addany macro s,reg
+    ifdef ANYSTATS
+ %      add status.&s.loword,reg
+ %      adc status.&s.hiword,0
+    endif
+endm
+
+addall macro s,reg
+    ifdef ALLSTATS
+ %      add status.&s.loword,reg
+ %      adc status.&s.hiword,0
+    endif
+endm
+
+endif   ; if1
+

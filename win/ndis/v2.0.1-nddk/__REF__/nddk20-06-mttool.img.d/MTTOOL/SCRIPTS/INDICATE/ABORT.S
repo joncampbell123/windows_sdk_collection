@@ -1,0 +1,1 @@
+-LOG 3 Indication on/off test aborted
