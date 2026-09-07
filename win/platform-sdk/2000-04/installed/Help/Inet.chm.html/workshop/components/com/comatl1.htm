@@ -1,0 +1,489 @@
+
+<HTML>
+<HEAD>
+<title>Web Workshop - COM Techniques by Panther Software, Part 1</title>
+<meta NAME="MS.LOCALE" CONTENT="EN-US">
+
+<META NAME="Author" CONTENT="Microsoft Corporation">
+<SCRIPT LANGUAGE='JavaScript' src='../../../msdn-online/shared/js/browdata.js'></SCRIPT>
+<SCRIPT LANGUAGE='Javascript'><!--
+var oBD = new BrowserData();
+//--></SCRIPT>
+
+
+<SCRIPT LANGUAGE="JavaScript"><!--
+
+// if workshop and not vroot, assign "/workshop/" to sBucketRoot
+// rename sVRoot
+
+//var sBucketRoot = "/workshop/components/";
+
+//--></SCRIPT>
+<LINK REL="stylesheet" TYPE="text/css" href="../../../msdn-online/shared/css/ie4.css">
+
+<STYLE TYPE="text/css"><!--
+
+PRE.clsCode { font-size:110%; } 
+
+PRE.clsSyntax { font-size:100%; }  
+
+--></STYLE>
+
+<SCRIPT LANGUAGE="JScript"><!--
+
+function CommonLoad()
+{
+if ("function" == typeof(InitNavLinks)) InitNavLinks();
+if ("function" == typeof(CheckToTop)) CheckToTop();
+if ("function" == typeof(RemoveLastPipe)) RemoveLastPipe();
+}
+
+//--></SCRIPT>
+
+
+<script LANGUAGE="Javascript"><!--
+
+// -----------------------------------------------------------
+// window_load()
+// Container function for load.
+// -----------------------------------------------------------
+
+function window_load()
+{
+if (oBD.getsNavBar)
+{
+if ("function" == typeof(CommonLoad)) CommonLoad();
+}
+}
+window.onload = window_load;
+
+//--></script>
+
+</head>
+
+<body TOPMARGIN="0" LEFTMARGIN="0" MARGINWIDTH="0" MARGINHEIGHT="0" BGCOLOR="#FFFFFF" TEXT="#000000">
+
+
+<DIV CLASS="clsNavLinksDiv">
+<TABLE CELLPADDING="1" CELLSPACING="0" BORDER="0">
+<TR><TD COLSPAN="3">&nbsp;</TD></TR>
+<TR>
+<TD ROWSPAN="2"><A href="../../../workshop/components/default.htm"><IMG HEIGHT="32" WIDTH="31" VSPACE="5" BORDER="0" ALT="Click to return to the Component Development home page" src="../../../workshop/graphics/icons/components.gif"></A></TD><TD ROWSPAN="2" WIDTH="18">&nbsp;&nbsp;</TD>
+<TD VALIGN="top">
+<!-- No Show, Sync, Index buttons for CHM -->
+&nbsp;
+</TD></TR>
+<TR><TD>
+
+<TABLE ID="tblPrevNext" CELLPADDING="0" CELLSPACING="0" BORDER="0"><TR><TD WIDTH="17"><A href="comatl.htm"><IMG ID="imgPrev" CLASS="clsLeftMenu" HEIGHT="13" WIDTH="17" BORDER="0" TITLE="Introduction" src="../../../msdn-online/shared/graphics/icons/nl-prev-0.gif"></A></TD> 
+<TD NOWRAP><A ID="lnkPrevText" CLASS="clsLeftMenu" href="comatl.htm" TITLE="Introduction">Introduction</A> &nbsp; &nbsp; </TD> 
+<TD WIDTH="17"><A href="comatl2.htm"><IMG ID="imgNext" CLASS="clsLeftMenu" HEIGHT="13" WIDTH="17" BORDER="0" TITLE="Part 2: Creating Plug-ins" src="../../../msdn-online/shared/graphics/icons/nl-next-0.gif"></A></TD> 
+<TD NOWRAP><A ID="lnkNextText" CLASS="clsLeftMenu" href="comatl2.htm" TITLE="Part 2: Creating Plug-ins">Part 2: Creating Plug-ins</A> &nbsp; &nbsp; </TD> 
+</TR></TABLE>
+
+</TD></TR>
+</TABLE>
+</DIV>
+
+<DIV CLASS="clsBucketBranch"><A href="../../../workshop/default.htm" TARGET="_top">Web Workshop</A>&nbsp;&nbsp;|&nbsp;&nbsp;<A href="../../../workshop/c-frame.htm#/workshop/components/default.htm" TARGET="_top">Component Development</A></DIV>
+
+<div CLASS="clsDocBody">
+
+<!-- DOCUMENT CONTENT START -->
+
+<h1><a NAME="MAGIC" IDX_TYPE="task" IDX_CONCEPT="stopindex;">COM Techniques by Panther Software</a></h1>
+<hr SIZE="1">
+
+<P>Steve Robinson
+<br>Panther Software
+</P>
+<h2>Part 1: A Free-Threaded DCOM Server
+</h2>
+<P>The most popular COM threading model by far is the Single Threaded Apartment model.  In the Single Threaded Apartment model, COM serializes calls so that you don't have to worry about protecting data a COM object's internal data and state against concurrent access on multiple threads.
+  However, often times the Single Threaded Apartment model is not appropriate.  Suppose you have calls coming into your DCOM server that, if serialized, would bog down your application.  For example, suppose your DCOM server is used as a broker/gateway to a mainframe.  One request to the mainframe may take several minutes to process, while another request to the mainframe may take milliseconds to process.  In this scenario, serialized calls may not result in the optimal experience for the user.  A much better solution would be to allow for non-blocking calls into a free threaded DCOM server and protect shared data with critical sections.  This scenario would allow a pool of worker threads to process queue items.
+</P><P>Let's start by creating our DCOM server application.  The first step is to create a new ATL COM AppWizard that is an executable, as shown in the two screen shots below:
+</P><P><img src="comatl1.gif" WIDTH="350" HEIGHT="249" BORDER="0" ALT="Opening the ATL COM AppWizard">
+</P><P><b>Figure 1. Opening the ATL COM AppWizard</b>
+</P><P><img src="comatl2.gif" WIDTH="350" HEIGHT="282" BORDER="0" ALT="Selecting Executable">
+</P><P><b>Figure 2. Selecting Executable</b>
+
+</P><P>The Visual C++ project wizard creates a skeleton application for you.  The default for the application is Apartment Threaded model, which we will change to Free Thread by defining _ATL_FREE_THREADED in stdafx.h and commenting out the line that defines _ATL_APARTMENT_THREADED as shown below:</P>
+
+<pre class="clsCode">//#define _ATL_APARTMENT_THREADED
+#define _ATL_FREE_THREADED</b></pre>
+<P>This is the first step for allowing our COM instances to be free threaded.  The second step is actually adding a COM object to our application and marking it as multi-threaded.  Again, we can utilize the Visual C++ wizard.  On the menu, click Insert | New ATL Object, highlight Simple Object, and click the Next button as shown in the screen shot below:
+</P><P><img src="comatl3.gif" WIDTH="350" HEIGHT="220" BORDER="0" ALT="The ATL Object Wizard">
+</P><P><b>Figure 3. The ATL Object Wizard</b>
+</P><P>Add an object called <b>DCOMServerObj</b> by typing <b>DCOMServerObj</b> in the Short Name edit control as shown below, and click the Attributes tab.
+</P><P><img src="comatl4.gif" WIDTH="350" HEIGHT="233" BORDER="0" ALT="Adding an object">
+</P><P><b>Figure 4. Adding an object</b>
+</P><P>On the Attributes tab, select threading model Free. The wizard will add an interface to the project's IDL file (<b>DCOMServer.idl</b>), generate the <b>CDCOMServerObj</b> class declaration (<b>DCOMServerObj.h</b>), and generate the <b>CDCOMServerObj</b> class implementation file (<b>DCOMServerObj.cpp</b>).
+</P><P><img src="comatl5.gif" WIDTH="350" HEIGHT="236" BORDER="0" ALT="Selecting the threading model">
+ </P><P><b>Figure 5. Selecting the threading model</b>
+</P><P>Now it is time to add a couple methods to our immutable interface.  If you open up the <b>DCOMServer.idl</b> file, you will see the interface declared but no methods in the interface.  Click the ClassView tab in the lower left of the WorkSpace window, right-click the <b>IDCOMServerObj</b> tree item, and select Add Method to invoke the Add Method to Interface dialog box shown below.
+</P><P><img src="comatl6.gif" WIDTH="350" HEIGHT="248" BORDER="0" ALT="The Add Method to Interface dialog box">
+</P><P><b>Figure 6. The Add Method to Interface dialog box</b>
+</P><P>The first thing you will notice is that the Return Type entry is grayed out.  That is because all COM methods return HRESULTs.  Following this procedure, add two methods:</P>
+<ul>
+
+
+<li>Method 1
+
+<ol>
+
+<li>Method Name: RegisterCallBack 
+<li>Parameters:  [in] ICallBackObj* pICallBack 
+
+</ol>
+
+<li>Method 2
+
+<ol>
+
+<li>Method Name:  ProcessRequest 
+<li>Parameters:  [in] long lValue
+
+</ol>
+</ul>
+<P>When adding the methods, your typed input should look exactly like the input shown in the dialog boxes below:</P>
+<P><img src="comatl7.gif" WIDTH="350" HEIGHT="248" BORDER="0" ALT="Adding the first method">
+</P><P><b>Figure 7. Adding the first method</b>
+</P><P><img src="comatl8.gif" WIDTH="350" HEIGHT="248" BORDER="0" ALT="Adding the second method">
+</P><P><b>Figure 8. Adding the second method</b>
+<P>Listed below is the complete IDL generated by the wizard.</P>
+
+<pre class="clsCode">import &quot;oaidl.idl&quot;;
+import &quot;ocidl.idl&quot;;
+
+   [
+      object,
+      //This is interface ID.  
+      uuid(87E47B03-5003-11D2-9193-006008A4FB73),
+      dual,
+      helpstring(&quot;IDCOMServerObj Interface&quot;),
+      pointer_default(unique)
+   ]
+   interface IDCOMServerObj : IDispatch
+   {
+      [id(1), helpstring(&quot;method RegisterCallBack&quot;)] 
+      HRESULT RegisterCallBack([in]ICallBackObj* pICallBack);
+      
+      [id(2), helpstring(&quot;method ProcessRequest&quot;)] 
+      HRESULT ProcessRequest([in]long lValue);
+   };
+
+[
+   uuid(87E47AF6-5003-11D2-9193-006008A4FB73),
+   version(1.0),
+   helpstring(&quot;DCOMServer 1.0 Type Library&quot;)
+]
+library DCOMSERVERLib
+{
+   importlib(&quot;stdole32.tlb&quot;);
+   importlib(&quot;stdole2.tlb&quot;);
+
+   [
+      //This is your components CLSID
+      uuid(87E47B04-5003-11D2-9193-006008A4FB73),
+      helpstring(&quot;DCOMServerObj Class&quot;)
+   ]
+   coclass DCOMServerObj
+   {
+      [default] interface IDCOMServerObj;
+   };
+};</pre>
+</P><P>A quick perusal of the IDL code shows the interface and its methods.  It also has a library section that generates the type library, which programs such as Visual Basic® will use for early binding.  Within the library section is the coclass, which describes the supported interfaces in the component.
+</P><P>The first question you might be asking is how the IDL knows about the <b>ICallBackObj</b> interface declared in method 1.  The answer is simple enough: <b>ICallBackObj</b> is a predefined interface that we can use repeatedly for different COM servers that wish to support callbacks.  It is included in the GlobalIIncludes directory. We just provide the declaration of it in a manner similar manner to that for a C++ class.  That is, we add the following line to our IDL file, as shown below, so it is included for the <b>IDCOMServerObj</b> interface declaration:</P>
+
+<pre class="clsCode">#include &quot;..\GlobalIncludes\CallBackObj.idl&quot;</pre>
+<P>At this point, it is a good idea to rebuild the complete project to make sure everything compiles and links.
+</P><P>Our next step is to consider what the interface methods will do.  Method 1- - <b>RegisterCallBack([in]ICallBackObj* pICallBack)</b> -- is going to provide a mechanism to send results back to any client that desires to receive updates from the DCOM server.  That is why it is called <b>RegisterCallBack</b>.  Method 2 -- <b>ProcessRequest([in]long lValue)</b> -- is going to take a long value and place it on a queue for a worker thread.  The worker thread will look for entries on the queue, process the data, and send results back to the client.  
+</P><P>Accordingly, we need a central place to receive and store data as well as a central place that can find all registered callbacks.  Note that by storing data on a queue and then having a worker thread process items from the queue, we are effectively creating asynchronous DCOM.
+</P><P>The question becomes: If all instances of COM objects are independent, how do we create a central place to receive and store data, especially if we just say no to singletons?  The answer is easy.  While every instance is independent, they all share the same main COM server module.  Open up <b>stdafx.h</b>, and take a close look at the following snippet generated by the wizard:</P>
+
+<pre class="clsCode">//You may derive a class from CComModule and use it if you want
+//to override something, but do not change the name of _Module
+class CExeModule : public CComModule
+{
+public:
+   LONG Unlock();
+   DWORD dwThreadID;
+   HANDLE hEventShutdown;
+   void MonitorShutdown();
+   bool StartMonitor();
+   bool bActivity;
+};
+extern CExeModule _Module;</pre>
+</P><P>It is <b>CComModule</b> that implements a COM server module, allowing a client to access the module's components, and <b>CComModule</b> supports both DLL (in process) and EXE modules.  Hence, anything contained in this class is shared by all COM object instances.  
+</P><P>This is a much better solution than use of a singleton for shared data.  Creating a singleton forces all instances to share the same data.  <i>This solution provides you with the flexibility to share some data items through the use of a </i><i><b>CcomModule</b></i><i>-derived class, while allowing your COM instances to maintain their own distinct values.</i>
+</P><P>A complete look at the stdafx.h shipped with the article shows a <b>CExeModule</b> using class <b>CCommonDataManager</b> -- which, appropriately named, is shared by all COM instances because it is a member of <b>CExeModule</b>.</P>
+
+<pre class="clsCode">// stdafx.h : include file for standard system include files,
+//      or project specific include files that are used frequently,
+//      but are changed infrequently
+
+#if !defined
+  (AFX_STDAFX_H__87E47AF9_5003_11D2_9193_006008A4FB73__INCLUDED_)
+#define AFX_STDAFX_H__87E47AF9_5003_11D2_9193_006008A4FB73__INCLUDED_
+
+#if _MSC_VER &gt; 1000
+#pragma once
+#endif // _MSC_VER &gt; 1000
+
+#define STRICT
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0400
+#endif
+
+//#define _ATL_APARTMENT_THREADED
+#define _ATL_FREE_THREADED
+
+#include &lt;atlbase.h&gt;
+
+class CCommonDataManager;
+
+//You may derive a class from CComModule and use it if you want 
+//to override something, but do not change the name of _Module
+class CExeModule : public CComModule
+{
+public:
+
+   //3)  Add constructor, destructor and CommonDataManager
+   CExeModule();
+   virtual ~CExeModule();
+
+   CCommonDataManager* m_pCommonDataManager;
+
+   LONG Unlock();
+   DWORD dwThreadID;
+   HANDLE hEventShutdown;
+   void MonitorShutdown();
+   bool StartMonitor();
+   bool bActivity;
+};
+extern CExeModule _Module;
+#include &lt;atlcom.h&gt;
+
+//{{AFX_INSERT_LOCATION}}
+// Microsoft Visual C++ will insert additional declarations 
+// immediately before the previous line.
+
+#endif // !defined
+  (AFX_STDAFX_H__87E47AF9_5003_11D2_9193_006008A4FB73__INCLUDED)</pre>
+<P>Notice that we added a constructor and a virtual destructor to the class declaration.  The implementations of the constructor and destructor are in <b>DCOMServer.cpp</b> and are shown below:
+
+<pre class="clsCode">#include &quot;CommonDataManager.h&quot;
+//-------------------------------------------------------------------
+CExeModule::CExeModule()
+{
+   m_pCommonDataManager = new CCommonDataManager();
+}
+
+//-------------------------------------------------------------------
+CExeModule::~CExeModule()
+{
+   if(NULL != m_pCommonDataManager)
+   {
+      delete m_pCommonDataManager;
+      m_pCommonDataManager = NULL;
+   }
+}</pre>
+<P>Recall from above that <b>m_pCommonDataManager</b> is a public member of our <b>CExeModule</b>, and that <b>CExeModule</b> is derived from <b>CComModule</b>.  Therefore, any of the COM instances can make calls to <b>m_pCommonDataManager</b> through the <b>CExeModule</b> class by calling <b>_Module.m_pCommonDataManager-&gt;[public method of CCommonDataManager]</b>.
+</P><P><b>CCommonDataManager</b> has three public methods for our COM instances.  They are shown below, complete with their implementation:</P>
+
+<pre class="clsCode"> //-------------------------------------------------------------------
+bool CCommonDataManager::RegisterClientCallBack
+(
+   CDCOMServerObj* pDCOMServerObj,
+   ICallBackObj* pICallBackObj            //call back in client
+)
+{
+/*
+   We are passed an instance of a COM object that is owned by a client
+   along with a call back interface.  Let's add it to our array.
+*/
+
+   if(pDCOMServerObj == NULL || pICallBackObj == NULL)
+      return false;
+
+   bool bSuccess = false;
+
+   //The constructor of CDCOMServerArrayElement calls AddRef() 
+   //on the ICallBackObj interface
+   //when it uses the assignment operator to set a class member.
+   CDCOMServerArrayElement* pDCOMServerArrayElement 
+       = new CDCOMServerArrayElement(pDCOMServerObj, pICallBackObj);
+
+   if(pDCOMServerArrayElement == NULL)
+      return false;
+
+   ::EnterCriticalSection(&amp;m_CommonDataManagerCriticalSection);
+
+   m_DCOMServerArray.push_back(pDCOMServerArrayElement);
+
+   ::LeaveCriticalSection(&amp;m_CommonDataManagerCriticalSection);
+
+   return true;
+}</pre>
+<P><b>RegisterClientCallBack</b> takes the instance of the COM object and the <b>ICallBackObj</b>.  A <b>CDCOMServerArrayElement</b> is created, which increments the reference count on the <b>ICallBackObj</b>, since the <b>ICallBackObj</b> is kept in the array beyond the scope of this function.  Once the <b>CDCOMServerArrayElement</b> is created, it is added to the member array.
+</P>
+<pre class="clsCode">//-------------------------------------------------------------------
+void CCommonDataManager::DataManagerAddEntry
+(
+   long lValue,
+   CDCOMServerObj* pDCOMServerObj
+)
+{
+   //make sure thread is started.
+   //This is called only once since there is only one 
+   //instance of CCommonDataManager.
+   if(!m_bThreadStarted) 
+   {
+      m_bThreadStarted = m_pDataQueue-&gt;StartQueue();
+   }
+   
+   _ASSERTE(m_pDataQueue != NULL);
+
+   //add value to the queue passing the DCOMServerObj so we know
+   //to whom to send it back to
+   m_pDataQueue-&gt;AddEntry(lValue, pDCOMServerObj);
+}</pre>
+<P><b>DataManagerAddEntry</b> takes a value passed in and adds it to a queue.  The worker thread will eventually pick up items from the queue.
+</P>
+<pre class="clsCode">void UnregisterClientCallBacks(CDCOMServerObj* pDCOMServerObj); 
+
+//-------------------------------------------------------------------
+void CCommonDataManager::UnregisterClientCallBacks
+(
+   CDCOMServerObj* pDCOMServerObj
+)
+{
+/*
+   First tell the worker thread to remove all requests 
+   from this COM instance.
+*/
+   m_pDataQueue-&gt;RemoveRequestsForThisDCOMServerObj(pDCOMServerObj);
+
+/*
+   Next we need to find all call back interfaces registered to this 
+   client and release them by deleting the array element
+   (which calls Release() in its destructor).  The pDCOMServerObj  
+   can be in the array multiple times
+   so we need to check for all occurrences.
+*/
+
+   ::EnterCriticalSection(&amp;m_CommonDataManagerCriticalSection);
+   
+   CDCOMServerArrayElement* pDCOMServerArrayElement = NULL;
+
+   int iTotal = m_DCOMServerArray.size();
+
+   for(int i = 0; i &lt; iTotal; i++)
+   {
+      pDCOMServerArrayElement = m_DCOMServerArray.at(i);
+
+      if(pDCOMServerArrayElement &amp;&amp; 
+pDCOMServerArrayElement-&gt;m_pDCOMServerObj == pDCOMServerObj)
+      {
+         //delete and remove from array, 
+         //delete of pDCOMServerArrayElement
+         //calls Release of the ICallBackObj
+         delete pDCOMServerArrayElement;
+         pDCOMServerArrayElement = NULL;
+         m_DCOMServerArray.erase(&amp;m_DCOMServerArray.at(i));
+         i--;
+         iTotal--;
+      }
+   }
+
+   ::LeaveCriticalSection(&amp;m_CommonDataManagerCriticalSection);
+}</pre>
+<P><b>UnregisterClientCallBacks</b> takes the instance of the COM object that is about to be destroyed, removes it from the array, and calls release on the <b>ICallBackObj</b> object associated with it in the array.
+</P><P>Now it is time to examine <b>DCOMServerObj.h</b>.  We placed all the implementation of <b>DCOMServerObj.cpp</b> in <b>DCOMServerObj.h</b> to make it easier to follow.
+</P>
+<pre class="clsCode">#ifndef __DCOMSERVEROBJ_H_
+#define __DCOMSERVEROBJ_H_
+
+#include &quot;resource.h&quot;       // main symbols
+#include &quot;CommonDataManager.h&quot;
+
+// CDCOMServerObj
+class ATL_NO_VTABLE CDCOMServerObj : 
+   public CComObjectRootEx&lt;CComMultiThreadModel&gt;,
+   public CComCoClass&lt;CDCOMServerObj, &amp;CLSID_DCOMServerObj&gt;,
+   public IDispatchImpl&lt;IDCOMServerObj, &amp;IID_IDCOMServerObj, 
+         &amp;LIBID_DCOMSERVERLib&gt;
+{
+public:
+   CDCOMServerObj(){}
+   void FinalRelease()
+   {
+      _Module.m_pCommonDataManager-&gt;UnregisterClientCallBacks(this);
+   }
+
+DECLARE_REGISTRY_RESOURCEID(IDR_DCOMSERVEROBJ)
+DECLARE_PROTECT_FINAL_CONSTRUCT()
+
+BEGIN_COM_MAP(CDCOMServerObj)
+   COM_INTERFACE_ENTRY(IDCOMServerObj)
+   COM_INTERFACE_ENTRY(IDispatch)
+END_COM_MAP()
+
+public:
+
+STDMETHOD (RegisterCallBack) (ICallBackObj* pICallBack)
+{
+      if(NULL != pICallBack)
+   {
+         bool bSuccess = _Module.m_pCommonDataManager-&gt;
+           RegisterClientCallBack(this,
+            pICallBack);
+      if(bSuccess)
+         return S_OK;
+      else
+         return E_FAIL;
+   }
+   return E_INVALIDARG;
+}
+
+STDMETHOD (ProcessRequest) (long lValue)
+{
+   _Module.m_pCommonDataManager-&gt;DataManagerAddEntry(lValue, this);
+   return S_OK;
+}
+
+}; //end class declaration
+#endif //__DCOMSERVEROBJ_H_</pre>
+<P>The first method to examine is <b>RegisterCallBack</b>.  This method is called from the client, which is required to pass an instance of an <b>ICallBackObj</b>.  The instance of <b>ICallBackObj</b> and &quot;this&quot; is passed to <b>CCommonDataManager</b>, which puts the two into an array element and adds them to an array for maintaining knowledge of running COM instances and call backs that the client wishes to register.
+</P><P>The second method to review is <b>ProcessRequest</b>, which takes a long value.  The <b>CCommonDataManager</b> checks to ensure the worker thread is started, and adds the long value to a queue for the worker thread to process.  
+</P><P>When the worker thread finds long values on the queue, it calls another public method of <b>CCommonDataManager</b>: <b>SendDataToServer(long lValue)</b>. <b>CCommonDataManager</b> <b>::SendDataToServer</b> iterates through all the array elements and calls the <b>ICallBackObj::ReceiveDataFromServer</b>.  
+</P><P>The final method to examine in <b>DCOMServerObj.cpp</b> is <b>FinalRelease()</b>.  Since <b>CCommonDataManager</b> not only holds pointers to <b>CDCOMServerObjs</b> and COM instances of type <b>ICallBackObj</b>, when is it appropriate to remove the <b>CDCOMServerObj</b> from the array and Release the <b>ICallBackObj</b>?  Since <b>DCOMServerObj</b> does not suggest nor require the client to call a method to unregister, we use <b>CComObjectRootEx::FinalRelease</b>, which is called by the ATL framework when the object is being destroyed.  Consequently, since we know that the <b>CDCOMServerObj</b> is about to be destroyed, this is an appropriate time to remove associated array entries.
+<P>A complete review of the worker thread is left as an exercise to the reader.</P>
+<P></P>
+
+
+<!-- DOCUMENT CONTENT END -->
+
+</div>
+
+<DIV CLASS="clsFooter">
+<HR SIZE="1"><BR>
+<P ID="pBackTop"><A href="comatl1.htm#top" CLASS="clsBackTop"><IMG src="../../../msdn-online/shared/graphics/top.gif" WIDTH="18" HEIGHT="8" BORDER="0" ALT="Back to top">Back to top</A></P>
+<P><I>Did you find this material useful? Gripes? Compliments? Suggestions for other articles? <A TITLE="Go ahead. Make our day! Send us your thoughts." href="http://msdn.microsoft.com/siteguide/write-us.asp?author=microsoft+corporation&area=component+development" TARGET="_top">Write us!</A></I></P>
+<P>&copy; <A CLASS="clsIncCpyRt" href="http://msdn.microsoft.com/isapi/gomscom.asp?target=/misc/cpyright.htm" TARGET="_top">1999 Microsoft Corporation. All rights reserved. Terms of use</A>.</P>
+<P>&nbsp;</P>
+</DIV>
+
+<SCRIPT LANGUAGE="JavaScript"><!--
+
+function CheckToTop()
+{
+var eBody = document.body;
+if (eBody.scrollHeight > eBody.offsetHeight) pBackTop.style.display = 'block';
+}
+
+//--></SCRIPT>
+<SCRIPT LANGUAGE="JavaScript" src="../../../msdn-online/shared/js/navlinks.js"></SCRIPT>
+
+</body>
+</html>

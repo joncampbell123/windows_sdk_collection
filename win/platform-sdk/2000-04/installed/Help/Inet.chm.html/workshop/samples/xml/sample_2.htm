@@ -1,0 +1,478 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<HTML>
+<HEAD>
+<TITLE>Sample 2: Parsing a CDF file for specific tags</TITLE>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; CHARSET=iso-8859-1">
+<META NAME="AUTHOR" CONTENT="InetSDK">
+<META NAME="MS.LOCALE" CONTENT="EN-US">
+
+<!-- STYLE_START -->
+<LINK REL="stylesheet" href="../../../workshop/basicsdkie4.css" TYPE="text/css">
+<LINK REL="stylesheet" href="../../../workshop/advsdkie4.css" TYPE="text/css">
+<!-- STYLE_END -->
+</HEAD>
+<!--TOOLBAR_START-->
+<!--TOOLBAR_EXEMPT-->
+<!--TOOLBAR_END-->
+
+<BODY TOPMARGIN=0 LEFTMARGIN=0 BGPROPERTIES="FIXED" BGCOLOR="#FFFFFF" LINK="#000000" VLINK="#808080" ALINK="#000000">
+<A NAME="pagetop"></A><A NAME="Sample_2"></A>
+<BLOCKQUOTE class="body">
+<!-- CONTENTS_START -->
+<H1>Sample 2: Parsing a CDF File for Specific Tags<HR SIZE=1></H1>
+<!-- @ED a-carolk: add a description of the purpose of this page? -->
+<PRE CLASS="clsCode">//*******************************
+// XML OM test code
+//
+// *******************************
+
+#include &lt;windows.h&gt;
+#include &lt;windowsx.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;io.h&gt;
+#include &lt;urlmon.h&gt;
+#include &lt;hlink.h&gt;
+#include &lt;dispex.h&gt;
+#include "mshtml.h"
+#include "msxml.h"
+
+#define ASSERT(x)  if(!(x)) DebugBreak()
+#define CHECK_ERROR(cond, err) if (!(cond)) {pszErr=(err); goto done;}
+#define SAFERELEASE(p) if (p) {(p)-&gt;Release(); p = NULL;} else ;
+
+
+#define WALK_ELEMENT_COLLECTION(pCollection, pDispItem) \
+    {\
+        long length;\
+        \
+        if (SUCCEEDED(pCollection-&gt;get_length(&amp;length)) &amp;&amp; length &gt; 0)\
+        {\
+            VARIANT vIndex, vEmpty;\
+            vIndex.vt = VT_I4;\
+            vEmpty.vt = VT_EMPTY;\
+                                 \
+            for (long i=0; i&lt;length; i++)\
+            {\
+                vIndex.lVal = i;\
+                IDispatch *pDispItem = NULL;\
+                if (SUCCEEDED(pCollection-&gt;item(vIndex, vEmpty, &amp;pDispItem)))\
+                {
+
+#define END_WALK_ELEMENT_COLLECTION(pDispItem) \
+                    pDispItem-&gt;Release();\
+                }\
+            }\
+        }\
+    }
+
+
+void Indent(int indent)
+{
+    while (indent--&gt;0)
+    {
+        printf("   ");
+    }
+}
+
+void Output(int indent, const char *format, ...)
+{
+    va_list argptr;
+
+    va_start(argptr, format);
+
+    Indent(indent);
+
+     (void)vprintf(format, argptr);
+}
+
+void OutputLn(int indent, const char *format, ...)
+{
+    va_list argptr;
+
+    va_start(argptr, format);
+
+    printf("\n");
+
+    Indent(indent);
+
+    (void)vprintf(format, argptr);
+}
+
+//
+// Dump an element attribute member if present.
+//
+void DumpAttrib(IXMLElement *pElem, BSTR bstrAttribName)
+{
+    VARIANT vProp;
+    
+    VariantInit(&amp;vProp);
+
+    if (SUCCEEDED(pElem-&gt;getAttribute(bstrAttribName, &amp;vProp)))
+    {
+        if (vProp.vt == VT_BSTR)
+        {
+            printf(" %S=\"%S\"", bstrAttribName, vProp.bstrVal);
+        }
+        VariantClear(&amp;vProp);
+    }
+}
+
+//
+// Helper routine to quickly find out if this is a named element
+// currently only used to improve the format of the output.
+//
+BOOL IsNamedElement(IXMLElement *pElem)
+{
+    BSTR bstrName;
+
+    if (SUCCEEDED(pElem-&gt;get_tagName(&amp;bstrName)))
+    {
+        if (bstrName)
+        {
+            SysFreeString(bstrName);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+//
+// Returns TRUE if this element had children.
+//
+void DumpElement
+(
+    IXMLElement *pElem, // the XML element to dump
+    int indent          // indentation level
+)
+{
+    BSTR bstrTagName = NULL;
+    BSTR bstrContent = NULL;
+    IXMLElementCollection * pChildren;
+    //
+    // Note this nonsense with children and grandchildren is just so we get
+    // nicely formatted output!
+    //
+    BOOL fHadNamedChild = FALSE;
+
+    //
+    // Dump the name of the NODE.
+    //
+    pElem-&gt;get_tagName(&amp;bstrTagName);
+    if (bstrTagName) 
+    {       
+        //
+        // Special case the output of the special tags.
+        //
+        if (wcscmp(bstrTagName, L"XML") == 0)
+        {
+            Output(indent, "&lt;\?XML version=\"1.0\"\?&gt;\n");
+            SysFreeString(bstrTagName);
+            return;
+        }
+        else if (wcscmp(bstrTagName, L"DOCTYPE") == 0)
+        {
+            Output(indent,
+              "&lt;!DOCTYPE CHANNEL SYSTEM \"http://www.w3.org/Channel.dtd\"&gt;\n");
+            SysFreeString(bstrTagName);
+            return;
+        }
+        else
+        {
+            OutputLn(indent, "&lt;%S", bstrTagName);
+        }
+    }
+
+    //
+    // Dump the attributes if present.
+    //
+    DumpAttrib(pElem, L"VALUE");
+    DumpAttrib(pElem, L"HREF");
+    DumpAttrib(pElem, L"HOUR");
+    DumpAttrib(pElem, L"DAY");
+    DumpAttrib(pElem, L"IsClonable");
+    DumpAttrib(pElem, L"Type");
+
+    //
+    // Dump the text contents if present.
+    //
+    XMLELEM_TYPE xmlElemType;
+    if (SUCCEEDED(pElem-&gt;get_type((long *)&amp;xmlElemType)))
+    {
+        if (xmlElemType == XMLELEMTYPE_TEXT)
+        {
+            if (SUCCEEDED(pElem-&gt;get_text(&amp;bstrContent)))
+            {
+                if (bstrContent)
+                {
+                    printf("%S", bstrContent);
+                    SysFreeString(bstrContent);
+                }
+            }
+        }
+    }
+
+    //
+    // Find the children if they exist.
+    //
+    if (SUCCEEDED(pElem-&gt;get_children(&amp;pChildren)) &amp;&amp; pChildren)
+    {
+        //
+        // Close the tag if present but with "children present" closure 
+        // that is use &gt; instead of /&gt;.
+        //
+        if (bstrTagName) printf("&gt;");
+
+        WALK_ELEMENT_COLLECTION(pChildren, pDisp)
+        {
+            //
+            // pDisp will iterate over an IDispatch for each item in the collection.
+            //
+            IXMLElement * pChild;
+            if (SUCCEEDED(pDisp-&gt;QueryInterface(
+                                     IID_IXMLElement, (void **)&amp;pChild)))
+            {
+                if (IsNamedElement(pChild))
+                    fHadNamedChild = TRUE;
+
+                //
+                // Recursively dump children.
+                //
+                DumpElement(pChild, indent+1);
+
+                pChild-&gt;Release();
+            }
+        }
+        END_WALK_ELEMENT_COLLECTION(pDisp);
+        pChildren-&gt;Release();
+
+        //
+        // Display closing tag.
+        //
+        if (bstrTagName)
+        {
+            if (fHadNamedChild)
+            {
+                OutputLn(indent, "&lt;/%S&gt;", bstrTagName);
+            }
+            else
+            {
+                printf("&lt;/%S&gt;", bstrTagName);
+            }
+        }
+    }
+    else
+    {
+        //
+        // No children so terminate tag on same line.
+        //
+        if (bstrTagName) printf("/&gt;");
+    }
+
+    if (bstrTagName)
+        SysFreeString(bstrTagName);
+}
+
+int MyStrToOleStrN(LPOLESTR pwsz, int cchWideChar, LPCTSTR psz)
+{
+    int i;
+    i=MultiByteToWideChar(CP_ACP, 0, psz, -1, pwsz, cchWideChar);
+    if (!i)
+    {
+        //DBG_WARN("MyStrToOleStrN string too long; truncated");
+        pwsz[cchWideChar-1]=0;
+    }
+    else
+        ZeroMemory(pwsz+i, sizeof(OLECHAR)*(cchWideChar-i));
+
+    return i;
+}
+
+int _cdecl main (int argc, char **argv)
+{
+    PSTR pszErr = NULL;
+    IXMLDocument           *pDoc = NULL;
+    IStream                *pStm = NULL;
+    IPersistStreamInit     *pPSI = NULL;
+    IXMLElement            *pElem = NULL;
+    TCHAR                  buf[MAX_PATH];
+    TCHAR                  *pszURL;
+    WCHAR                  *pwszURL=NULL;
+    BSTR                   pBURL=NULL;
+
+    HRESULT hr;
+
+    //
+    // Check usage.
+    //
+    if (argc != 2)
+    {
+        fprintf (stderr, "Usage:   omtest2 URL\n");
+        fprintf (stderr, "Eg omtest2 c:\\nt\\private\\inet\\xml\\test\\channel.uni\n");
+        fprintf (stderr, "or omtest2 http://ohserv/users/julianj/channel.xml\n");
+        exit (1);
+    }
+
+    //
+    // HACK if passed in a file name, expand if it doesn't look like a URL.
+    //
+    if (CompareString(LOCALE_USER_DEFAULT, NORM_IGNORECASE, argv[1], 7, "http://", 7) == CSTR_EQUAL)
+    {
+        pszURL = argv[1];
+    }
+    else
+    {
+        pszURL = buf;
+        GetFullPathName(argv[1], MAX_PATH, pszURL, NULL);
+    }
+
+    hr = CoInitialize(NULL);
+    ASSERT(SUCCEEDED(hr));
+
+    //
+    // Create an empty XML document.
+    //
+    hr = CoCreateInstance(CLSID_XMLDocument, NULL, CLSCTX_INPROC_SERVER,
+                                IID_IXMLDocument, (void**)&amp;pDoc);
+
+    CHECK_ERROR (pDoc, "CoCreateInstance Failed");
+
+    //
+    // Synchronously create a stream on a URL.
+    //
+    //hr = URLOpenBlockingStream(0, pszURL, &amp;pStm, 0,0);    
+    //CHECK_ERROR(SUCCEEDED(hr) &amp;&amp; pStm, "Couldn't open stream on URL")
+    
+    //
+    // Get the IPersistStreamInit interface to the XML doc.
+    //
+    //hr = pDoc-&gt;QueryInterface(IID_IPersistStreamInit, (void **)&amp;pPSI);
+    //CHECK_ERROR(SUCCEEDED(hr), "QI for IPersistStreamInit failed");
+
+    //
+    // Init the XML doc from the stream.
+    //
+    //hr = pPSI-&gt;Load(pStm);
+    
+    pwszURL = (WCHAR *)LocalAlloc(LMEM_FIXED, ((sizeof(WCHAR))*(strlen(pszURL) + 2)));
+    CHECK_ERROR(pwszURL, "Mem Alloc Failure");
+
+    hr = MyStrToOleStrN(pwszURL, (strlen(pszURL) + 1), pszURL);
+    CHECK_ERROR(SUCCEEDED(hr), "Failed to convert to UNICODE");
+    pBURL = SysAllocString(pwszURL);
+    CHECK_ERROR(pBURL, "Mem Alloc Failure");
+    LocalFree(pwszURL);
+
+    hr = pDoc-&gt;put_URL(pBURL);
+    
+    if (SUCCEEDED(hr))
+    {
+        //
+        // Now walk the OM and look at interesting things.
+        //
+        hr = pDoc-&gt;get_root(&amp;pElem);
+        CHECK_ERROR(SUCCEEDED(hr), "Failed to get_root of XML object");
+
+        //
+        // Dump the top level meta nodes of the document.
+        //
+        BSTR bstrVal;
+        hr = pDoc-&gt;get_version(&amp;bstrVal);
+        if(FAILED(hr) || !bstrVal)
+        {
+            bstrVal = SysAllocString(L"1.0");
+        }
+        // 
+        Output(0, "&lt;\?XML version=\"%S\" ",bstrVal);
+        SysFreeString(bstrVal);
+        bstrVal = NULL;
+        
+        hr = pDoc-&gt;get_encoding(&amp;bstrVal);
+        if(SUCCEEDED(hr) &amp;&amp; bstrVal)
+        {
+            Output(0, "encoding=\"%S\" ",bstrVal);
+            SysFreeString(bstrVal);
+        }
+        Output(0, "\?&gt;\n");
+
+        //
+        // Look for doctype information.
+        //
+
+        // Disabled till DavidSch makes a fix
+        /*
+        bstrVal = NULL;
+        hr = pDoc-&gt;get_doctype(&amp;bstrVal);
+        if(SUCCEEDED(hr) &amp;&amp; bstrVal)
+        {   
+            Output(0, "&lt;!DOCTYPE %S&gt;",bstrVal); 
+            SysFreeString(bstrVal);
+
+        }
+        */
+        //
+        // Dump the root element and all children of the XML object.
+        //
+        
+        DumpElement(pElem, 0); // -1 to counteract nameless outer container
+    }
+    else
+    {
+        //
+        // Failed to parse stream, output error information.
+        //
+        IXMLError *pXMLError = NULL ;
+        XML_ERROR xmle;
+    
+        hr = pDoc-&gt;QueryInterface(IID_IXMLError, (void **)&amp;pXMLError);
+        CHECK_ERROR(SUCCEEDED(hr), "Couldn't get IXMLError");
+    
+        ASSERT(pXMLError);
+    
+        hr = pXMLError-&gt;GetErrorInfo(&amp;xmle);
+        SAFERELEASE(pXMLError);
+        CHECK_ERROR(SUCCEEDED(hr), "GetErrorInfo Failed");
+    
+        printf("%s: Error on line %d. Found %S while expecting %S\r\n",
+                argv[0],
+                xmle._nLine,
+                xmle._pszFound,
+                xmle._pszExpected);
+    
+        SysFreeString(xmle._pszFound);
+        SysFreeString(xmle._pszExpected);
+        SysFreeString(xmle._pchBuf);
+    }
+
+done: // Clean up.
+    //
+    // Release any used interfaces.
+    //
+    SAFERELEASE(pPSI);
+    SAFERELEASE(pStm);
+    SAFERELEASE(pElem);
+    SAFERELEASE(pDoc);
+    SysFreeString(pBURL);
+    if (pszErr)
+        fprintf (stderr, "%s, last error %d\n", pszErr, GetLastError());
+    return 0;
+}
+</PRE>
+<!-- @ judyn 10/15/97: This comment is in the above code. What does it mean? It doesn't make sense.
+
+// Close the tag if present but with "children present" closure 
+        // that is use > instead of>.
+
+Also, should we delete or change this comment, in the above code?
+
+// Disabled till DavidSch makes a fix
+--><!-- ************************************************************-->
+<!-- CONTENTS_END -->
+
+<!-- START_PAGE_FOOTER -->
+<BR><BR><BR>
+&copy; <A CLASS="clsIncCpyRt" href="http://msdn.microsoft.com/isapi/gomscom.asp?target=/misc/cpyright.htm" TARGET="_top">1999 Microsoft Corporation. All rights reserved. Terms of use</A>.
+<!-- END_PAGE_FOOTER -->
+</BLOCKQUOTE>
+</BODY>
+</HTML>

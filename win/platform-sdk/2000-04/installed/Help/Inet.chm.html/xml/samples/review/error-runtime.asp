@@ -1,0 +1,13 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<!-- saved from url=(0048)http://xql/docs/samples/review/error-runtime.asp -->
+<HTML><HEAD>
+<META content="text/html; charset=windows-1252" http-equiv=Content-Type>
+<META content="MSHTML 5.00.2013.2500" name=GENERATOR>
+<!--TOOLBAR_START-->
+<!--TOOLBAR_EXEMPT-->
+<!--TOOLBAR_END-->
+</HEAD>
+
+<BODY><FONT face=Verdana size=2><FONT size=4>XSL Runtime Error</FONT>
+<P><B>Expected token 'NAME' found '@'. 
+story/review/rating/@--&gt;@&lt;--stars</B></P></FONT></BODY></HTML>

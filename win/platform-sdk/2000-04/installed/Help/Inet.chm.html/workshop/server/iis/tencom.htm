@@ -1,0 +1,667 @@
+
+<HTML>
+<HEAD>
+<TITLE>Web Workshop - Server Performance and Scalability Killers</TITLE>
+<META NAME="MS.LOCALE" CONTENT="EN-US">
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=iso-8859-1">
+<META NAME="Author" CONTENT="George V. Reilly">
+<SCRIPT LANGUAGE='JavaScript' src='../../../msdn-online/shared/js/browdata.js'></SCRIPT>
+<SCRIPT LANGUAGE='Javascript'><!--
+var oBD = new BrowserData();
+//--></SCRIPT>
+
+
+<SCRIPT LANGUAGE="JavaScript"><!--
+
+// if workshop and not vroot, assign "/workshop/" to sBucketRoot
+// rename sVRoot
+
+//var sBucketRoot = "/workshop/server/";
+
+//--></SCRIPT>
+<LINK REL="stylesheet" TYPE="text/css" href="../../../msdn-online/shared/css/ie4.css">
+
+<STYLE TYPE="text/css"><!--
+
+PRE.clsCode { font-size:110%; } 
+
+PRE.clsSyntax { font-size:100%; }  
+
+--></STYLE>
+
+<SCRIPT LANGUAGE="JScript"><!--
+
+function CommonLoad()
+{
+if ("function" == typeof(InitNavLinks)) InitNavLinks();
+if ("function" == typeof(CheckToTop)) CheckToTop();
+if ("function" == typeof(RemoveLastPipe)) RemoveLastPipe();
+}
+
+//--></SCRIPT>
+
+
+<SCRIPT LANGUAGE="Javascript"><!--
+
+// -----------------------------------------------------------
+// window_load()
+// Container function for load.
+// -----------------------------------------------------------
+
+function window_load()
+{
+if (oBD.getsNavBar)
+{
+if ("function" == typeof(CommonLoad)) CommonLoad();
+}
+}
+window.onload = window_load;
+
+//--></SCRIPT>
+
+</HEAD>
+
+<BODY TOPMARGIN="0" LEFTMARGIN="0" MARGINHEIGHT="0" MARGINWIDTH="0" BGCOLOR="#FFFFFF">
+
+
+<DIV CLASS="clsNavLinksDiv">
+<TABLE CELLPADDING="1" CELLSPACING="0" BORDER="0">
+<TR><TD COLSPAN="3">&nbsp;</TD></TR>
+<TR>
+<TD ROWSPAN="2"><A href="../../../workshop/server/default.htm"><IMG HEIGHT="32" WIDTH="31" VSPACE="5" BORDER="0" ALT="Click to return to the Server Technologies home page" src="../../../workshop/graphics/icons/server.gif"></A></TD><TD ROWSPAN="2" WIDTH="18">&nbsp;&nbsp;</TD>
+<TD VALIGN="top">
+<!-- No Show, Sync, Index buttons for CHM -->
+&nbsp;
+</TD></TR>
+<TR><TD>
+
+<TABLE ID="tblPrevNext" CELLPADDING="0" CELLSPACING="0" BORDER="0"><TR></TR></TABLE>
+
+</TD></TR>
+</TABLE>
+</DIV>
+
+<DIV CLASS="clsBucketBranch"><A href="../../../workshop/default.htm" TARGET="_top">Web Workshop</A>&nbsp;&nbsp;|&nbsp;&nbsp;<A href="../../../workshop/c-frame.htm#/workshop/server/default.htm" TARGET="_top">Server Technologies</A></DIV>
+
+<DIV CLASS="clsDocBody">
+
+<!-- DOCUMENT CONTENT START -->
+
+<H1><A NAME="DEBUG" IDX_TYPE="sbngen" IDX_CONCEPT="stopindex;IIS, performance and scalability killers; Server applications, performance and scalability killers">Server Performance and Scalability Killers<hr class="clsTitle"></A></H1>
+<H6>
+<A name="top2" idx_type="task" idx_concept="IIS, improving 
+the performance and scalability of your server
+application"></A>
+</H6>
+<P>
+George V. Reilly
+<BR>
+Microsoft Corporation
+</P>
+<P>
+February 22, 1999
+</P>
+<P>
+<B>Contents</B>
+<BR>
+<A href="tencom.htm#intro">Introduction</A>
+<BR>
+<A href="tencom.htm#servervs">Server vs. Desktop Applications</A>
+<BR>
+<A href="tencom.htm#experience">IIS Flexibility and Performance</A>
+<BR>
+<A href="tencom.htm#tencommandments">The Ten Commandments of Killing
+Server Performance</A>
+<BR>
+<A href="tencom.htm#conc">Conclusion</A>
+</P>
+<A name="intro"></A>
+<H2>
+Introduction
+</H2>
+<P>
+Server performance is an issue that many writers of desktop
+applications now need to address. One unexpected
+consequence of the success of Component Object Model (COM)
+and componentware is that application servers like Active
+Server Pages (ASP) &#151; an extension of Microsoft
+Internet Information Server (IIS) &#151; end up hosting
+code that was never written with server environments in
+mind. There are important differences between desktop and
+server environments that can have huge, unappreciated
+effects on performance.
+</P>
+<A name="servervs"></A>
+<H2>
+Server vs. Desktop Applications
+</H2>
+<P>
+The factors that affect the performance of desktop
+applications are well known. Long instruction paths mean
+slower code, the cardinal sin of performance. Heavy
+resource usage means fatter applications that leave fewer
+resources for other applications in the system. Slow
+startup times infuriate users. Large working sets bog down
+machines with high page-fault rates, leaving them slow and
+unresponsive. Server applications are also subject to these
+influences, as well as others that I examine below:
+</P>
+<UL>
+<LI>
+<B>Server applications typically deal with dozens, if not
+hundreds, of clients simultaneously.</B> A desktop
+application is considered snappy if it can respond to the
+user in under one-tenth of a second. If an operation
+takes the full 100 milliseconds, the application can
+perform only ten operations per second. Most server
+applications are expected to provide much better
+throughput than ten requests/second. High-latency
+networks (latency = message transmission time) lengthen
+response times, leaving even less time for a server to
+satisfy requests.
+</LI>
+<LI>
+<B>Server applications often deal with huge datasets.</B>
+Inefficient algorithms, especially those with quadratic
+(or worse) running times, will not scale to millions of
+items.
+</LI>
+<LI>
+<B>Server machines are more powerful than desktop
+machines.</B> They have more memory, bigger disks, faster
+CPUs, and often multiple processors. But more is expected
+of them; desktop machines spend much of their time idling
+with only sporadic bursts of activity, while server
+machines are under constant load. Server machines are
+expensive and they are expected to perform well.
+</LI>
+<LI>
+<B>Server applications are expected to have uptimes
+measured in months.</B> Performance must not degrade over
+time due to resource leaks or the build-up of <I>
+cruft</I> (data structures and statistics that need to be
+periodically pruned).
+</LI>
+<LI>
+<B>A multithreaded architecture is a requirement for most
+server applications.</B> A single-threaded server that
+takes one request at a time, and then spends most of its
+time blocking on I/O, will have unacceptable performance.
+A pool of threads can work on several requests
+simultaneously, making use of otherwise idle processor
+cycles. Indeed, to fully exploit multiprocessor systems,
+server applications must be multithreaded. Unfortunately,
+multithreaded applications are harder to write, harder to
+debug, and harder to make perform well, especially on
+multiprocessor systems. The thing that makes it
+worthwhile is that when you get it right, your
+performance will far exceed that of an equivalent
+single-threaded application. 
+<P>
+Single-threaded applications are relatively
+straightforward to understand: exactly one thing is
+happening at a time in the program. In a multithreaded
+application, concurrent activity leads to complex
+interactions, with hard-to-predict effects. In
+addition, these interactions, buggy or not, are often
+hard to reproduce. Desktop applications rarely have
+more than one thread, and even when they do, these
+threads are used for discrete background tasks, such as
+printing.
+</P>
+</LI>
+</UL>
+<P>
+<A href="tencom.htm#top" class="clsBackTop"><IMG src= 
+"/msdn-online/shared/graphics/top.gif" width="18" height=
+"8" border="0" alt="Back to top">Back to top</A>
+</P>
+<A name="experience"></A>
+<H2>
+IIS Flexibility and Performance
+</H2>
+<P>
+Internet Information Server is an application server. In
+many ways it is like a virtual operating system, because
+many ASP and ISAPI applications execute in our process
+space.
+</P>
+<P>
+IIS uses an I/O thread pool to process all incoming
+requests. Requests for static files (.htm, .jpg, etc.) are
+satisfied immediately, while requests for dynamic content
+are dispatched to the appropriate ISAPI extension DLL. The
+Active Server Pages extension uses a worker thread pool to
+execute ASP pages. Because ASP is COM-based, all sorts of
+components end up executing in our process. This is a mixed
+blessing. It's wonderful for developers, because it allows
+easy reuse of components, makes ASP marvelously flexible,
+and has made ASP and IIS a big success. However, this
+flexibility has caused us performance problems. Many of
+these components were written for the desktop, and many of
+the components created specifically for ASP were written by
+people who don't fully understand what it takes to write a
+high-performance server component.
+</P>
+<P>
+The same is often true for ISAPI extensions and filters;
+the components interact badly with other components and
+they interact badly with different instances of themselves.
+</P>
+<P>
+All of the following apply to IIS; most of them apply to
+other kinds of server applications too.
+</P>
+<P>
+<A name="TenCommandments"></A>
+</P>
+<H2>
+The Ten Commandments of Killing Server Performance
+</H2>
+<P>
+Following each of these "commandments" will effectively
+hamper the performance and scalability of your code. <B>In
+other words, these commandments should be broken whenever
+possible!</B> I explain why and how to break them in order
+to improve performance and scalability.
+</P>
+<H4>
+1. Thou shalt allocate and free lots of objects.
+</H4>
+<P>
+You should avoid excessive allocation, because memory
+allocation can be costly. Freeing blocks of memory can be
+even more costly, as most allocators attempt to coalesce
+adjacent blocks of freed memory into larger blocks. Until
+the release of Windows NT&#174; 4.0 service pack 4, the
+system heap often performed badly in multithreaded
+processes. The heap was protected by a single <A href= 
+"#locks" title="Links to global lock section">global
+lock</A> and scaled negatively on multiprocessor systems.
+</P>
+<H4>
+2. Thou shalt not think about processor cache.
+</H4>
+<P>
+Most people know that hard page faults caused by the
+virtual memory subsystem are expensive and best avoided,
+but still believe that all other memory access patterns are
+equally good. This has not been true since the 80486 was
+introduced. Modern CPUs have become so much faster than RAM
+that they need at least two levels of memory cache. On
+Pentium-class machines, the fast L1 cache holds 8 KB of
+data and 8 KB of instructions, while the slower L2 cache
+holds several hundred KB of mixed code and data. A
+reference to a memory location found in the L1 cache costs
+one cycle, references to the L2 cache cost four to seven
+cycles, while references to main memory cost dozens of
+processor cycles. The latter figure will soon exceed 100
+cycles. In many ways, the caches are like a small, fast,
+virtual memory system.
+</P>
+<P>
+The fundamental unit of memory as far as the caches are
+concerned is not a byte, but a cache line. Pentium cache
+lines are 32 bytes wide, Alpha cache lines are 64 bytes
+wide. This means that there are only 512 slots for code and
+data in the L1 cache. If data that is used together
+(temporal locality) is not stored together (spatial
+locality), it can lead to poor performance. Arrays have
+excellent spatial locality, while linked lists and other
+pointer-based data structures tend to have poor locality.
+</P>
+<P>
+Packing data into the same cache line usually helps
+performance, but it can also hurt performance on
+multiprocessor systems. The memory subsystem works hard to
+keep the caches coherent between processors. If a read-only
+datum, used by all of the processors, shares a cache line
+with a datum that is being updated frequently by one of the
+processors, the caches will spend a lot of time updating
+their copy of the cache line. This high-speed game of
+Ping-Pong is often referred to as "cache sloshing." If the
+read-only data were in a different cache line, this
+sloshing could be avoided.
+</P>
+<P>
+Optimizing code for space is more effective than optimizing
+for speed. Smaller code fits in fewer pages, leading to a
+smaller working set and fewer page faults, and it fits in
+fewer cache lines. However, certain core functions should
+be optimized for speed. Use a profiler to identify these
+functions.
+</P>
+<H4>
+3. Thou shalt never cache frequently used data.
+</H4>
+<P>
+Software caching can be used by all kinds of applications.
+When a calculation is expensive, you store a copy of the
+result. This is the classic space-time tradeoff: Sacrifice
+some memory to save some time. If done well, it can be
+extremely effective.
+</P>
+<P>
+You must cache judiciously. If you cache the wrong data,
+you're wasting memory. If you cache too much, you'll have
+less memory for other operations. If you cache too little,
+the cache will be ineffective because you'll have to
+recalculate the data missed by the cache. If you cache
+time-sensitive data for too long, it will become stale.
+Servers generally care more about speed than space, so they
+cache more aggressively than desktop systems. Be sure to
+invalidate and flush unused cache entries periodically;
+otherwise you'll have working set problems.
+</P>
+<H4>
+4. Thou shalt create lots of threads. The more, the
+merrier.
+</H4>
+<P>
+Tuning the number of threads active in a server is
+critical. If the threads are I/O-bound, they'll spend much
+of their time blocking, waiting for I/O to complete &#151;
+and a blocked thread is a thread that's not doing useful
+work. Adding additional threads can increase throughput,
+but adding too many threads will decrease server
+performance, because context swapping will become a
+significant overhead. The rate of context switches should
+be kept low for three reasons: context switches are pure
+overhead and contribute nothing useful to the application's
+work; context switches use up valuable cycles; and worst of
+all, context switches leave the processor's caches full of
+stale data, which is expensive to replace.
+</P>
+<P>
+Much depends upon your threading architecture. One thread
+per client is almost never appropriate, as it does not
+scale well to large numbers of clients. Context switching
+becomes intolerable and Windows NT runs out of resources. A
+thread pool model, where a pool of worker threads consumes
+a queue of requests, works better. In the future, you will
+no longer need to write your own thread pool, because
+Windows 2000 provides suitable APIs, such as <B>
+QueueUserWorkItem</B>.
+</P>
+<A name="locks"></A> 
+<H4>
+5. Thou shalt use global locks for data structures.
+</H4>
+<P>
+The easiest way to make data thread-safe is to surround it
+with one big lock. For simplicity, make everything use the
+same lock. There's a problem with this approach: <I>
+serialization</I>. Every thread that needs to manipulate
+the data is going to have to wait in line to acquire the
+lock. If a thread is blocked on a lock, it's not doing
+useful work. When the server is under light load, this is
+seldom a problem, because only one thread is likely to want
+the lock at a time. Under heavy load, a high-contention
+lock can become a huge problem.
+</P>
+<P>
+Consider an accident on a multilane freeway, where all the
+traffic has been diverted into one lane. If traffic is
+light, the diversion will have a negligible effect on the
+rate of traffic flow. When traffic is heavy, the traffic
+jam will stretch for miles as the cars slowly merge into
+the single lane.
+</P>
+<P>
+Several techniques can reduce lock contention.
+</P>
+<UL>
+<LI>
+<B>Don't be overprotective, that is, don't lock data when
+you don't have to.</B> Hold locks for just as long as you
+need them, and no longer. It is important not to hold
+locks unnecessarily around large sections of code or in
+frequently executed sections of code.
+</LI>
+<LI>
+<B>Partition your data so that it's protected by a set of
+disjoint locks.</B> For example, a symbol table could be
+partitioned on the first letter of the identifiers, so
+that modifying the value of a symbol whose name starts
+with <I>Q</I> does not interfere with reading the value
+of a symbol whose name starts with <I>H</I>.
+</LI>
+<LI>
+<B>Use the Interlocked family of APIs</B>
+(<B>InterlockedIncrement</B>, <B>
+InterlockedCompareExchangePointer</B>, etc.) to
+atomically modify data without acquiring a lock.
+</LI>
+<LI>
+<B>Use multi-reader/single-writer locks when the data
+isn't modified often.</B> You'll get better concurrency,
+though the lock operations will be more expensive and you
+may risk starving writers.
+</LI>
+<LI>
+<B>Use spincounts on critical sections.</B> See the <B>
+SetCriticalSectionSpinCount</B> API introduced in the
+Windows NT 4.0 service pack 3.
+</LI>
+<LI>
+<B>Use TryEnterCriticalSection and do some other useful
+work if you can't acquire the lock.</B>
+</LI>
+</UL>
+<P>
+High contention leads to serialization, which leads to low
+CPU utilization, which encourages users to add more
+threads, which makes matters even worse.
+</P>
+<H4>
+6. Thou shalt not pay attention to multiprocessor machines.
+</H4>
+<P>
+It can be a nasty surprise to find that your code performs
+worse on a multiprocessor system than it does on a
+uniprocessor system. The natural expectation is that it
+will perform <I>N</I> times better on an <I>N</I>-way
+system. The reason for the poor performance is contention:
+lock contention, bus contention, and/or cache line
+contention. The processors are fighting over the ownership
+of shared resources instead of doing productive work.
+</P>
+<P>
+If you're at all serious about writing multithreaded
+applications, you should be stress-testing and
+performance-testing your application on multiprocessor
+boxes. Uniprocessor systems provide a coarse-grained
+illusion of concurrency by time-slicing the execution of
+threads. Multiprocessor boxes have true concurrency, and
+race conditions and contentions are far more likely to
+arise.
+</P>
+<H4>
+7. Thou shalt use blocking calls all the time; they are
+fun.
+</H4>
+<P>
+Synchronous blocking calls to perform I/O are appropriate
+for most desktop applications, but they're a poor way to
+exploit the CPU(s) on a server. I/O takes millions of
+cycles to complete; cycles that could be put to good use.
+You can achieve significantly higher rates of client
+request and I/O throughput by using asynchronous I/O, at a
+cost of additional complexity.
+</P>
+<P>
+If you have blocking calls or I/O operations that can take
+a long time, you should think about how many resources you
+want to commit. Do you want all the threads to be used, or
+only a limited set? In general, it is better to use a
+limited set of threads. Build a small thread pool and a
+queue, and use the queue to schedule work for the threads
+to complete the blocking calls. This will enable your
+application to leave other threads available to pick up and
+process new, non-blocking requests.
+</P>
+<H4>
+8. Thou shalt not measure.
+</H4>
+<BLOCKQUOTE>
+<P>
+<I>When you can measure what you are speaking about, and
+express it in numbers, you know something about it; but
+when you cannot express it in numbers, your knowledge is
+of a meager and unsatisfactory kind; it may be the
+beginning of knowledge, but you have scarcely in your
+thoughts advanced to the state of science.</I>
+</P>
+<P align="RIGHT">
+- <I><A href= 
+"http://www-groups.dcs.st-and.ac.uk/history/mathematicians/thomson.html">
+Lord Kelvin (William Thomson)</A></I> <IMG src= 
+"/msdn-online/shared/graphics/leave-ms.gif" width="33"
+height="11" border="0" alt="Non-MS link">
+</P>
+</BLOCKQUOTE>
+<P>
+Without measurements, you do not understand your
+application's performance. You are groping blindly, making
+half-informed guesses. You have not identified your
+performance problems and you cannot begin to make any
+improvements or do capacity planning.
+</P>
+<P>
+Measurement encompasses black-box measurement and
+profiling. <I>Black-box measurement</I> means gathering the
+numbers exposed by performance counters (memory usage,
+context switches, CPU utilization, etc.) and external
+testing tools (throughput, response times, etc.). To <I>
+profile</I> your code, you compile an instrumented version
+of your code and run it through various scenarios,
+gathering statistics on execution time and procedure call
+frequency.
+</P>
+<P>
+Measurement is of little use if it is not complemented by
+analysis. Measurement will tell you that you have problems
+and it may even help you isolate where those problems are,
+but it won't tell you <I>why</I> you have problems. Analyze
+the problems so that you can determine how to fix them
+properly. Address the underlying problems and not just the
+symptoms.
+</P>
+<P>
+When you make your changes, measure again. You need to
+learn if your changes were effective. The changes may
+unmask other performance problems, and the cycle of
+measure-analyze-fix-measure will begin anew. You must also
+measure regularly to catch performance regressions.
+</P>
+<H4>
+9. Thou shalt use single-client, single-request testing.
+</H4>
+<P>
+A common mistake for people writing ASP and ISAPI
+applications is to test their applications by using a
+single browser. When they deploy their applications on the
+Internet, they discover that they cannot cope with high
+loads and that they have miserable throughput and response
+times.
+</P>
+<P>
+Testing with a browser is necessary, but not sufficient. If
+the server does not respond quickly enough, you know you
+have a problem. But even if it is snappy when you're using
+a single browser, you don't know how well it copes with
+load. What happens if a dozen clients are making requests
+simultaneously? Or a hundred? What sort of throughput can
+your application sustain? What sort of response time does
+it provide? What are these numbers like when your
+application is under light load? Medium load? Heavy load?
+How well does your application scale if you run it on a
+multiprocessor machine? Stress testing your application is
+essential to shake out bugs and it's essential to discover
+performance problems.
+</P>
+<P>
+Similar considerations about load testing apply to all
+server applications.
+</P>
+<H4>
+10. Thou shalt not use real-world scenarios.
+</H4>
+<P>
+It's easy to fall into the trap of tuning your application
+for a few specific, artificial scenarios (such as
+benchmarks). It's important to pick a broad spectrum of
+scenarios that correspond to real-world usage and optimize
+for a broad range of operations. If you don't find these
+scenarios, your users and reviewers certainly will, and
+they'll pan you for it.
+</P>
+<P>
+<A href="tencom.htm#top" class="clsBackTop"><IMG src= 
+"/msdn-online/shared/graphics/top.gif" width="18" height=
+"8" border="0" alt="Back to top">Back to top</A>
+</P>
+<A name="conc"></A> 
+<H2>
+Conclusion
+</H2>
+<P>
+We've learned a few things about killing server performance
+and scalability since we started developing IIS. Writing
+high-performance server applications is not easy. In
+addition to the traditional performance issues that arise
+when writing desktop applications, you must pay special
+attention to memory allocations, cache lines, caching data,
+thread proliferation, locking strategies, multiprocessor
+machines, blocking calls, measurement and analysis,
+multiclient testing, and real-world scenarios. These issues
+will make you or break you.
+</P>
+<P>
+Good luck!
+</P>
+<P>
+<I>George V. Reilly</I> works on the IIS development team,
+where he is responsible for the performance of IIS and ASP.
+He has been doing his best to write tight code since he
+discovered the BBC Micro in his native Dublin, Ireland in
+1982. In retrospect, he has a hard time believing that he
+found enough time to co-write <A href= 
+"http://george.reilly.org/begatlcom.html" title="Links to 
+http://george.reilly.org/BegAtlCom.html">Beginning ATL COM
+Programming</A> <IMG src= 
+"/msdn-online/shared/graphics/leave-ms.gif" width="33"
+height="11" border="0" alt="Non-MS link">, Wrox Press,
+1998.
+</P>
+<P>
+<I>This article was inspired by my colleague Murali R.
+Krishnan's list of Top Ten Killers of Server
+Performance.</I>
+</P>  
+
+<!-- DOCUMENT CONTENT END -->
+
+</DIV>
+
+<DIV CLASS="clsFooter">
+<HR SIZE="1"><BR>
+<P ID="pBackTop"><A href="tencom.htm#top" CLASS="clsBackTop"><IMG src="../../../msdn-online/shared/graphics/top.gif" WIDTH="18" HEIGHT="8" BORDER="0" ALT="Back to top">Back to top</A></P>
+<P><I>Did you find this material useful? Gripes? Compliments? Suggestions for other articles? <A TITLE="Go ahead. Make our day! Send us your thoughts." href="http://msdn.microsoft.com/siteguide/write-us.asp?author=george+v%2e+reilly&area=server+technologies" TARGET="_top">Write us!</A></I></P>
+<P>&copy; <A CLASS="clsIncCpyRt" href="http://msdn.microsoft.com/isapi/gomscom.asp?target=/misc/cpyright.htm" TARGET="_top">1999 Microsoft Corporation. All rights reserved. Terms of use</A>.</P>
+<P>&nbsp;</P>
+</DIV>
+
+<SCRIPT LANGUAGE="JavaScript"><!--
+
+function CheckToTop()
+{
+var eBody = document.body;
+if (eBody.scrollHeight > eBody.offsetHeight) pBackTop.style.display = 'block';
+}
+
+//--></SCRIPT>
+<SCRIPT LANGUAGE="JavaScript" src="../../../msdn-online/shared/js/navlinks.js"></SCRIPT>
+
+</BODY>
+</HTML>

@@ -1,0 +1,190 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+
+<html>
+
+<head>
+
+<title>The COLE 64 Bit Pointer Porting Tool</title>
+
+</head>
+
+<body bgcolor="#FFFFFF">
+
+<h1 align="center">Cole, a Win64 Porting Tool</h1>
+
+<p> 
+
+Cole (named after Cole Porter) is a program under continuous
+development to help you change your programs so that they compile
+under both the ILP32 data model and the P64 data model.  In the ILP32
+data model, all Integers, Longs, and Pointers (ILP) are 32 bits long.
+In P64, all pointers are 64 bit quantities.  If your code assumes that
+a pointer is 32 bits long, it will break under P64, and if your code
+assumes pointers are 64 bits longs, your code will break under ILP32.
+
+To have your code work properly under both models, you must use
+abstract types, defined via the typedef mechanism, to define integral
+values that are meant to hold or refer to pointers as integrals.
+These typedefs isolate the particular representation of pointers
+allowing your code to work independently of pointer size.  
+
+<p> In summary, the Win64 Abstract Type System as enforced by Cole,
+has the following rules: </p>
+
+<ul>
+    <li> Int is 32 bits </li>
+    <li> Long is 32 bits </li>
+    <li> __int64 is 64 bits </li>
+    <li> The bit precision of pointers is not specified, but the
+        integral type INT_PTR and UINT_PTR is guaranteed to have
+        the same bit precision as pointers. The only allowed cast
+        to and from pointers and integral values is via the
+        abstract integral type {U}INT_PTR. </li>
+    <li> LONG_PTR, ULONG_PTR, and DWORD_PTR are additional integral types
+        that have the same bit precision as pointers. </li>
+    <li> You cannot cast constants other than 0 to pointer types.  </li>
+</ul>
+
+<p> When Cole finds a type violation, it suggests a possible
+remediation.  For example, when Cole discovers that an integral
+variable, say "long i", needs to have pointer-precision size, because
+of statement "i = (long) pfoo", Cole will suggest that "pfoo" be cast
+to "LONG_PTR" and that "i" be declared to have type "LONG_PTR".  In
+addition, the error message will give the precise source address where
+"i" is declared, and an error message will occur for the declaration
+site, as well.  Cole performs limited interprocedural type propagation so that 
+as much can be remediated in one use of Cole as possible.
+</p>
+
+
+<p> Cole reports violations of its type rules, and all suspicious
+coding idioms.  Cole detects and reports </p>
+
+<ul>
+    <li> Casts of pointers into or from integral values of other
+        than type {U}INT_PTR (LONG_PTR, etc), regardless of the underlying
+        TYPEDEF implementation of {U}INT_PTR. The check for cast
+        errors examines the source and target types for type
+        safety. For example, pointers-to-ints that are cast to
+        pointers-to-pointers-to-chars will be flagged.
+    <li> Assignments of incompatible integral types. For example,
+        assigning INT_PTR to UNSIGNED LONG or to UNSIGNED LONG
+        LONG. </li>
+    <li> Bindings of actual parameters to formal parameters with
+        incompatible integral types. </li>
+    <li> Return statements where the type of the value being
+        returned is incompatible with the declared type of the
+        function. </li>
+    <li> Casts of constant values other than 0 to a pointer
+        value.  </li>
+    <li> Comparisons of PTR_INT values with constants other than
+        0 (this error is customizable). </li>
+<!--    <li> Program fragments that appear to use embedded constants
+        that represent pointer sizes (or derivations thereof)
+        where they should be using SIZEOF operations. </li>-->
+    <li> When the result of pointer subtraction, which has a pointer-sized 
+       integral type, is cast to 32 bit quantities (which could be an 
+       error on a P64 platform). </li>
+    <li> Assignments of unaligned addresses (addresses of fields of structs which have 
+      a packing size of 1) to pointers that are not qualified as unaligned. Such assignments and
+      subsequent pointer dereferences could cause alignment faults. </li>
+    <li> Suspicious implicit casts of unsigned 32 bit quantities to unsigned
+      64 bit quantities.
+      In particular, it will flag constructs of the form "ULLFOO = ULLFOO & 
+      ~(ULBAR - 1)." </li>
+    <li> Incorrect use of format directives in printing pointer types. 
+    Cole knows all members of the  printf family of functions.  You can
+    inform Cole of your own printing routines by specifying them in
+    a file pointed to by the environment variable ColePrintfList. </li>
+    <li> Non-macro creation of (HANDLE) 0xFFFFFFFF and (HANDLE)(-1) 
+    and suggest replacement with INVALID_HANDLE_VALUE. </li>
+    <li> The presence of unsigned integers in an otherwise signed arithmetic expression, e.g. 
+<pre>
+          int a,b;
+          unsigned int c = 10;
+
+      a = -20;
+      b = a/c;
+</pre>
+      Here c causes a to be cast as unsigned and the result of the division is an unexpected
+      large positive integer instead of -2.
+ <li> Incorrect padding and pointer size assumptions. When a pointer to a structure
+    is cast to a pointer to a BYTE and an integer is added to it w/o the use of the offsetof macro,
+    there could be an implicit assumption of 32 bit padding or 32/64 bit pointers inside the structure.
+    This address calculation will be incorrect on 64 bit platforms.
+ <li> Explicit truncating casts. e.g., (int) of an int64 value.  (Because
+   this, like all errors, gets its own error class, it can be selectively
+   turned off it too noisy. It can help a lot when doing code reviews.)
+ <li> Incorrect calls to memset where the filler byte parameter is
+   interchanged with the buffer size parameter.
+ <li> Casts from x_PTR abstract types to non x_PTR abstract types and
+    vice-versa </li>
+</ul>
+
+</p>
+
+<p> Until the halting problem becomes decidable, Cole is unable
+to catch type violations due to union types. That is, using union
+types, a value can be written as, say, a pointer type, but read
+as ULONG, which may or may not read enough bytes depending on
+whether the underlying platform is ILP32 or P64.
+</p>
+
+<h3>Environment Variables</h3>
+Cole is controlled by three environment variables, all of which have
+reasonable default values.
+
+<ul>
+<li> <b>ColePrintfList,</b> name of the file containing the user defined
+  printf wrappers and the zero based index of the format string argument.
+<li> <b>ColeErrorFilename,</b> name of the file that receives the error
+   logs in the Visual C++ error reporting format.
+<li> <b> ColeLogFileName, </b> name of the a log file where Cole
+  keeps the list of obj files generated and the directories where
+  they are located. Cole appends to this filee each time it is invoked,
+  hence you need to manually delete the log file before new Cole runs.
+</ul>
+
+
+<h3> Cole Status </h3>
+
+<p>
+We make no guarantees of Cole's performance on Alpha specific
+programs.  The Alpha C++ front end extends C++ in ways that Cole has
+not yet been taught about.
+
+<h3> Reading the Output </h3>
+
+<p>Cole displays type errors using a three-frame Html window.
+The left frame lists, as a tree, the files that Cole has examined,
+the middle frame lists the errors in a given file, and the right
+frame display code, with errors highlighted in red. </p>
+
+<p> For those type errors that require changing the source code
+far away from the type error (for example, when a variable or
+type declaration should change), hyperlinks on the type error
+take you to the declarations that must be changed. Declarations
+that must be changed hyperlink (one of) the cast(s) that force it
+to be changed. Tooltips explain the error for all highlighted
+items. </p>
+
+<p> Errors are categorized, and you can turn on and off error
+    reporting by category. The options &quot;button&quot; on
+    the Cole banner will yield check boxes for each class of error.
+    As error categories are enabled/disabled,
+    a count of the number of issues remaining is updated.
+    Due to unforseen limitations in the implementation of JavaScript,
+    the realtime updating of error categories can take considerable
+    time (30 seconds for all the files in Word, for example, on a
+    Xeon processor). </p>
+
+<p> It readily becomes apparent that Cole would be even more
+powerful if it could peer into macro definitions. The C/C++ front
+end we use assigns all constituent elements of a macro the same
+source position information, namely, the invocation site of a
+macro. When macro invocations are highlighted, it means the error
+is either in its definition, or in its arguments.
+</p>
+
+</body>
+</html>
