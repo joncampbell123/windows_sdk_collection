@@ -1,0 +1,153 @@
+/***
+*handler.cxx - defines C++ setHandler routine
+*
+*       Copyright (c) 1990-1995, Microsoft Corporation.  All rights reserved.
+*
+*Purpose:
+*       Defines C++ setHandler routine.
+*
+*******************************************************************************/
+
+#include <stddef.h>
+#include <internal.h>
+#include <cruntime.h>
+#include <mtdll.h>
+#include <process.h>
+#include <new.h>
+#include <dbgint.h>
+
+#define _ASSERT_OK
+#include <assert.h>
+
+#ifndef DLL_FOR_WIN32S
+
+/* pointer to old-style C++ new handler */
+_PNH _pnhHeap;
+
+#endif  /* DLL_FOR_WIN32S */
+
+/***
+*_PNH _set_new_handler(_PNH pnh) - set the new handler
+*
+*Purpose:
+*       _set_new_handler is different from the ANSI C++ working standard definition
+*       of set_new_handler.  Therefore it has a leading underscore in its name.
+*
+*Entry:
+*       Pointer to the new handler to be installed.
+*
+*       WARNING: This function is OBSOLETE. Use set_new_handler instead.
+*
+*Return:
+*       Previous new handler
+*
+*******************************************************************************/
+_PNH _set_new_handler(
+        _PNH pnh
+        )
+{
+        _PNH pnhOld;
+
+        /* lock the heap */
+        _mlock(_HEAP_LOCK);
+
+        pnhOld = _pnhHeap;
+        _pnhHeap = pnh;
+
+        /* unlock the heap */
+        _munlock(_HEAP_LOCK);
+
+        return(pnhOld);
+}
+
+
+/***
+*_PNH _query_new_handler(void) - query value of new handler
+*
+*Purpose:
+*       Obtain current new handler value.
+*
+*Entry:
+*       None
+*
+*       WARNING: This function is OBSOLETE. Use _query_new_ansi_handler instead.
+*
+*Return:
+*       Currently installed new handler
+*
+*******************************************************************************/
+_PNH _query_new_handler (
+        void
+        )
+{
+        return _pnhHeap;
+}
+
+
+/***
+*new_handler set_new_handler - set the ANSI C++ new handler
+*
+*Purpose:
+*       Set the ANSI C++ per-thread new handler.
+*
+*Entry:
+*       Pointer to the new handler to be installed.
+*
+*       WARNING: set_new_handler is a stub function that is provided to
+*       allow compilation of the Standard Template Library (STL).
+*
+*       Do NOT use it to register a new handler. Use _set_new_handler instead.
+*
+*       However, it can be called to remove the current handler:
+*
+*           set_new_handler(NULL); // calls _set_new_handler(NULL)
+*
+*Return:
+*       Previous ANSI C++ new handler
+*
+*******************************************************************************/
+new_handler __cdecl set_new_handler (
+        new_handler new_p
+        )
+{
+        // cannot use stub to register a new handler
+        assert(new_p == 0);
+
+        // remove current handler
+        _set_new_handler(0);
+
+        return 0;
+}
+
+
+/***
+*int _callnewh - call the appropriate new handler
+*
+*Purpose:
+*       Call the appropriate new handler.
+*
+*Entry:
+*       None
+*
+*Return:
+*       1 for success
+*       0 for failure
+*       may throw bad_alloc
+*
+*******************************************************************************/
+extern "C" int _callnewh(size_t size)
+{
+        {
+            /* lock the heap */
+            _mlock(_HEAP_LOCK);
+
+             if ( _pnhHeap == NULL || (*_pnhHeap)(size) == 0 )
+             {
+                _munlock(_HEAP_LOCK);
+                return 0;
+             }
+            _munlock(_HEAP_LOCK);
+        }
+        return 1;
+}
+
