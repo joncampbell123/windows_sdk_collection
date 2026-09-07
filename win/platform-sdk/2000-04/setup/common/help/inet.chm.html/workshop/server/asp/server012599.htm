@@ -1,0 +1,346 @@
+<html><head>
+<title>Web Workshop - : Virtual Directories</title>
+<meta NAME="MS.LOCALE" CONTENT="EN-US">
+
+<META NAME="Author" CONTENT="servin">
+<SCRIPT LANGUAGE='JavaScript' src='../../../msdn-online/shared/js/browdata.js'></SCRIPT>
+<SCRIPT LANGUAGE='Javascript'><!--
+var oBD = new BrowserData();
+//--></SCRIPT>
+
+
+<SCRIPT LANGUAGE="JavaScript"><!--
+
+// if workshop and not vroot, assign "/workshop/" to sBucketRoot
+// rename sVRoot
+
+//var sBucketRoot = "/workshop/server/";
+
+//--></SCRIPT>
+<LINK REL="stylesheet" TYPE="text/css" href="../../../msdn-online/shared/css/ie4.css">
+
+<STYLE TYPE="text/css"><!--
+
+PRE.clsCode { font-size:110%; } 
+
+PRE.clsSyntax { font-size:100%; }  
+
+--></STYLE>
+
+<SCRIPT LANGUAGE="JScript"><!--
+
+function CommonLoad()
+{
+if ("function" == typeof(InitNavLinks)) InitNavLinks();
+if ("function" == typeof(CheckToTop)) CheckToTop();
+if ("function" == typeof(RemoveLastPipe)) RemoveLastPipe();
+}
+
+//--></SCRIPT>
+
+
+<script LANGUAGE="Javascript"><!--
+
+// -----------------------------------------------------------
+// window_load()
+// Container function for load.
+// -----------------------------------------------------------
+
+function window_load()
+{
+if (oBD.getsNavBar)
+{
+if ("function" == typeof(CommonLoad)) CommonLoad();
+}
+}
+window.onload = window_load;
+
+//--></script>
+
+</head>
+
+<body TOPMARGIN="0" LEFTMARGIN="0" MARGINWIDTH="0" MARGINHEIGHT="0" BGCOLOR="#FFFFFF" TEXT="#000000">
+
+
+<DIV CLASS="clsNavLinksDiv">
+<TABLE CELLPADDING="1" CELLSPACING="0" BORDER="0">
+<TR><TD COLSPAN="3">&nbsp;</TD></TR>
+<TR>
+<TD ROWSPAN="2"><A href="../../../workshop/server/default.htm"><IMG HEIGHT="32" WIDTH="31" VSPACE="5" BORDER="0" ALT="Click to return to the Server Technologies home page" src="../../../workshop/graphics/icons/server.gif"></A></TD><TD ROWSPAN="2" WIDTH="18">&nbsp;&nbsp;</TD>
+<TD VALIGN="top">
+<!-- No Show, Sync, Index buttons for CHM -->
+&nbsp;
+</TD></TR>
+<TR><TD>
+
+<TABLE ID="tblPrevNext" CELLPADDING="0" CELLSPACING="0" BORDER="0"><TR></TR></TABLE>
+
+</TD></TR>
+</TABLE>
+</DIV>
+
+<DIV CLASS="clsBucketBranch"><A href="../../../workshop/default.htm" TARGET="_top">Web Workshop</A>&nbsp;&nbsp;|&nbsp;&nbsp;<A href="../../../workshop/c-frame.htm#/workshop/server/default.htm" TARGET="_top">Server Technologies</A></DIV>
+
+<div CLASS="clsDocBody">
+
+<!-- DOCUMENT CONTENT START -->
+
+<h1><a NAME="top" IDX_TYPE="sbngen" IDX_CONCEPT="stopindex; Virtual directories, creating (Part 1)">Create a Virtual Directory Automatically with ADSI, ASP, and a Couple of Magic Tricks</a></h1>
+<hr SIZE="1">
+<P>Tom Moran
+<br>Jeff Sandquist
+<br>Microsoft Corporation
+</P><P>January 25, 1999</P>
+
+<P>
+
+</P>
+<P><i>The following article was originally published in the Site Builder Network Magazine  &quot;Servin' It Up&quot; column (now MSDN Online Voices <a href="http://msdn.microsoft.com/voices/server.asp" TARGET="_top">&quot;Servin' It Up&quot;</a> column).</i>
+
+<P>How are those New Year's resolutions going?  Go ahead: Burn one, and throw that patch away.  Pull the shirt off the handlebars, and fold up that Total Gym 2000.  Admit it  -- your <i>500 Easy Meals under 50 Calories</i> recipe book is propping up your monitor so your neck doesn't hurt so badly after a 12-hour stint of Age of Empires.  But don't give up on that resolution about becoming a star ASP programmer. 
+</P>
+<P>
+This month, Jeff Sandquist, a friend and coworker, is helping with this article.  Jeff comes from Developer Support, and he's originally from Canada, so this is technically my first effort toward a truly international column.  We would like to introduce you to Active Directory Service Interfaces (ADSI), and to do that, we have a small project in mind that will take this month and next month to complete.
+</P>
+<h2>The Scenario
+</h2>
+<P>
+You are responsible for a production Web server.  You want to enable a certain group of users, probably administrators, to automatically create a virtual directory for a particular developer, and at the same time, to set the appropriate permissions.  You don't have FrontPage Server Extensions installed on the server, so you can't use Visual InterDev® to create the applications.  Besides, you don't want to have to respond personally to everyone and fire up Visual InterDev whenever someone makes a request for a new app.  ADSI and Active Server Pages (ASP) technology, plus a little  DOS, will come to the rescue.  
+</P>
+<h2>The Application
+</h2>
+<P>
+We will validate the user as a member of a privileged group.  Then we will prepare a form that populates a list box with the usernames of everyone in another user group.  The form will allow you to pick a user, and pick privileges for that user's new virtual directory.  This is basically what we'll cover this month.  Next month, we'll take the data from the form and create the directory with all appropriate permissions.  You can see that this application could easily be modified to allow just about anyone to automatically request and create a virtual directory -- a real time-saver for a busy administrator
+</P>
+
+
+<h2>Agenda
+</h2>
+<ul>
+<li> Use Windows NT LAN Manager (NTLM) to authenticate the user</li>
+<li> Use ADSI to verify user as a member of a specific Windows NT group -- in this case, Web administrators</li>
+<li> Use ADSI to list members of a specific group</li>
+</ul>
+<P>We have created two groups on our Windows NT Server. To run the example, you'll need to do the same -- or you can use existing groups on your server and change their names in the code:
+</P>
+<ul>
+<li> Web administrators, who can create virtual directories</li> 
+<li> Intranet developers, the folks who do the real work</li>
+</ul>
+
+<h2>Caveats
+</h2>
+<P>
+You can't use Personal Web Server on Windows 98 to do this. It requires Windows NT Server and Internet Information Server (IIS) 4.0.
+</P>
+
+
+<h2>On to the Application
+</h2>
+<P>First, we'll need to force authentication on the Web page.  We do this by changing the HTTP headers to force authorization.  Copy the following code into an ASP file. 
+</P>
+
+<pre class="clsCode">&lt;%@ Language=VBScript %&gt;
+&lt;% Option Explicit %&gt;
+
+&lt;%
+' Force authentication
+If Request.ServerVariables(&quot;LOGON_USER&quot;) = &quot;&quot; Then
+   Response.Status = &quot;401 Authorization Required&quot;
+   Response.End
+End If
+%&gt;
+</pre>
+<P>
+Next, we'll declare some variables, since all good ASP programmers use <b>option explicit</b>,  and we'll dynamically build both the machine object and the current user's Active Directory Services (ADS) path.  The machine object is used for only one purpose: to get the namespace.  Why is the namespace important?  It is the key to accessing all group collection -- and we'll use it quite a bit further down in the code.  The user's ADS path is used to validate that person as a member of a specific group.  
+</P>
+
+<P>Insert the following just below your last bit of code. </P>
+
+<pre class="clsCode">&lt;HTML&gt;
+&lt;HEAD&gt;
+&lt;META NAME=&quot;GENERATOR&quot; Content=&quot;Microsoft Visual Studio 6.0&quot;&gt;
+&lt;TITLE&gt;Web Administrator&lt;/TITLE&gt;
+&lt;/HEAD&gt;
+&lt;BODY&gt;
+
+&lt;%
+Dim strServerName     'NT local machine name
+Dim strGroup          'NT group name
+Dim strMachineObject  'ADSI machine object path
+Dim strUserADsPath    'ADSI user ads path
+Dim objMachine        'ADSI machine object
+Dim strNameSpace      'ADSI namespace
+Dim objMember         'ADSI member object
+Dim objGroup          'ADSI group object
+Dim strADSPath        'ADS path
+Dim bolAuthenticated  'Authentication flag
+Dim strMember         'NT user name for group member
+
+' Build MachineObject
+strServerName = Request.ServerVariables(&quot;SERVER_NAME&quot;)
+strMachineObject = &quot;WinNT://&quot; &amp; strServerName
+</pre>
+
+<P>Note that we have to change the slashes returned from logon to match the ADS convention.   
+</P>
+
+<pre class="clsCode">' Build Current User's UserAdsPath 
+strUserAdsPath = &quot;WinNT://&quot; &amp; Request.ServerVariables(&quot;LOGON_USER&quot;)
+strUserAdsPath = Replace(strUserAdsPath, &quot;\&quot;, &quot;/&quot;)
+</pre>
+
+<P>Next, we get the namespace (always setting our objects to nothing when we're done with them, of course).  We do this dynamically, so the code can easily move from our server to yours.  
+</P>
+
+<pre class="clsCode">' Get NameSpace from Machine Object
+Set objMachine = GetObject(strMachineObject)
+strNameSpace = objMachine.Parent
+Set objMachine = Nothing
+
+' Build Name Space for Group Object
+strGroup = &quot;Web Administrators&quot;
+strNameSpace = strNameSpace &amp; &quot;/&quot; &amp; strServername
+</pre>
+
+<P>Now that we have the namespace, we need to ensure that the authenticated user is a member of the Web Administrators group.  If so, we set the bolAuthenticated flag to true. 
+</P>
+
+<pre class="clsCode">' Iterate through the Web Administrators group and ensure 
+' that the user visiting this page is a member
+Set objGroup = GetObject(strNameSpace &amp; &quot;/&quot; &amp; strGroup)
+
+For Each objMember in objGroup.Members
+   If objMember.ADsPath = strUserAdsPath then
+      bolAuthenticated = &quot;True&quot;
+      Exit for
+   End If
+Next
+
+Set objGroup = Nothing
+</pre>
+
+<P>First, we'll make sure that the user has been authenticated as part of the Web Administrators group by checking the auth flag.  Next, we will dynamically build a list of folks for the Web administrator to choose from by retrieving the members of the Intranet Developers group.  We retrieve the value of each group member's AdsPath and change it to a domain\user format.  These are the folks who will get permission (next month) for the new virtual directory.  We'll also give administrators the option of turning on script permissions, and allow them to submit the form.  Additional functionality would be to set write permissions, allowing Visual InterDev to deploy with the deployment explorer.   
+</P>
+
+<pre class="clsCode">If bolAuthenticated then 
+%&gt;
+
+&lt;CENTER&gt;
+
+&lt;FORM ACTION=&quot;http://sand1/ServinSecure/CreateDirectory.asp&quot; 
+  METHOD=&quot;POST&quot;&gt;
+
+   &lt;TABLE WIDTH=600 BORDER=0 CELLSPACING=1 CELLPADDING=1&gt;
+      &lt;TR&gt;
+         &lt;TD ALIGN=&quot;RIGHT&quot; NOWRAP&gt;
+           Virtual Directory To Create&lt;/TD&gt;
+         &lt;TD ALIGN=&quot;LEFT&quot; NOWRAP&gt;
+           &lt;INPUT type=&quot;text&quot; 
+           id=textVirtualDirectory 
+           name=textVirtualDirectory&gt;&lt;/TD&gt;
+      &lt;/TR&gt;
+      &lt;TR&gt;
+         &lt;TD ALIGN=&quot;RIGHT&quot; NOWRAP&gt;Developer&lt;/TD&gt;
+         &lt;TD ALIGN=&quot;LEFT&quot; NOWRAP&gt;
+           &lt;SELECT size=1 id=selectOwner name=selectOwner&gt;
+
+&lt;%
+
+strGroup = &quot;Intranet Developers&quot;
+
+' Iterate through the Users group and get a list of people
+' who are a member of that group.
+Set objGroup = GetObject(strNameSpace&amp; &quot;/&quot; &amp; strGroup)
+
+For Each objMember in objGroup.Members
+   strMember = Replace(objMember.ADsPath, &quot;/&quot;, &quot;\&quot;)
+   strMember = Mid(strMember, 9, Len(strMember))
+   Response.Write &quot;&lt;OPTION VALUE=&quot; &amp; strMember &amp; &quot;&gt;&quot;
+   Response.Write strMember
+   Response.Write &quot;&lt;/OPTION&gt;&quot;
+Next
+Set objGroup = Nothing
+%&gt;
+            &lt;/SELECT&gt;
+         &lt;/TD&gt;
+      &lt;/TR&gt;
+      &lt;TR&gt;
+         &lt;TD ALIGN=&quot;RIGHT&quot; NOWRAP&gt;
+           Turn on Script Permissions&lt;/TD&gt;
+         &lt;TD ALIGN=&quot;LEFT&quot; NOWRAP&gt;
+           &lt;INPUT type=&quot;checkbox&quot; id=checkboxScript 
+             name=checkboxScript&gt;&lt;/TD&gt;
+      &lt;/TR&gt;
+      &lt;TR&gt;
+         &lt;TD ALIGN=&quot;RIGHT&quot; NOWRAP&gt;
+           &lt;INPUT type=&quot;reset&quot; value=&quot;Reset&quot; 
+           id=reset1 name=reset1&gt;&lt;/TD&gt;
+         &lt;TD ALIGN=&quot;LEFT&quot; NOWRAP&gt;
+           &lt;INPUT type=&quot;submit&quot; value=&quot;Submit&quot; 
+           id=submit1 name=submit1&gt;&lt;/TD&gt;
+      &lt;/TR&gt;
+   &lt;/TABLE&gt;
+
+&lt;/FORM&gt;
+
+&lt;/CENTER&gt;
+</pre>
+
+<P>And if those users failed authentication as members of Web administrators, we say goodbye with the following code: 
+</P>
+
+<pre class="clsCode">&lt;%
+Else
+%&gt;
+   &lt;P&gt;I am sorry you do not have access to this page.  
+   Please contact the Web site administrators 
+   for more information&lt;/P&gt;
+&lt;%
+End If
+%&gt;
+
+&lt;/BODY&gt;
+&lt;/HTML&gt;
+</pre>
+
+<h3>Gettin' Jiggy with It</h3><P>
+<P>
+If you want a really great sample that does just about everything, check out your Windows NT Option Pack. It has the complete source for Internet Service Manager (HTML). 
+</P>
+<P>
+&quot;So where does that DOS part come in?&quot; you ask.  You'll have to wait until next month, when we show you how to use this form, ADSI, and some magic tricks to actually create the directory under IIS and assign the appropriate permissions.
+</P>
+
+<P>Until then,</P>
+
+<P>Tom and Jeff
+</P>
+<P><i><b>Tom Moran</b> is a program manager with Microsoft Developer Support and spends a lot of time hanging out with the MSDN Online Web Workshop folks.</i></P>
+<P><i><b>Jeff Sandquist</b> (one of Microsoft's finest Canucks) is a member of Developer Support's Active Server Pages Escalation Team and Commander in Chief of the Visual InterDev  <a href="http://msdn.microsoft.com/isapi/gosupport.asp?target=/support/supportnet/supportpartners/mvps/brochuregeneral.asp" TARGET="_top">MVP</a><img src="../../../msdn-online/shared/graphics/leave-site.gif" WIDTH="17" HEIGHT="11" BORDER="0" ALT="Non-MSDN Online link"> program.</i></P>
+
+<!-- DOCUMENT CONTENT END -->
+
+</div>
+
+<DIV CLASS="clsFooter">
+<HR SIZE="1"><BR>
+<P ID="pBackTop"><A href="server012599.htm#top" CLASS="clsBackTop"><IMG src="../../../msdn-online/shared/graphics/top.gif" WIDTH="18" HEIGHT="8" BORDER="0" ALT="Back to top">Back to top</A></P>
+<P><I>Did you find this material useful? Gripes? Compliments? Suggestions for other articles? <A TITLE="Go ahead. Make our day! Send us your thoughts." href="http://msdn.microsoft.com/siteguide/write-us.asp?author=servin&area=server+technologies" TARGET="_top">Write us!</A></I></P>
+<P>&copy; <A CLASS="clsIncCpyRt" href="http://msdn.microsoft.com/isapi/gomscom.asp?target=/misc/cpyright.htm" TARGET="_top">1999 Microsoft Corporation. All rights reserved. Terms of use</A>.</P>
+<P>&nbsp;</P>
+</DIV>
+
+<SCRIPT LANGUAGE="JavaScript"><!--
+
+function CheckToTop()
+{
+var eBody = document.body;
+if (eBody.scrollHeight > eBody.offsetHeight) pBackTop.style.display = 'block';
+}
+
+//--></SCRIPT>
+<SCRIPT LANGUAGE="JavaScript" src="../../../msdn-online/shared/js/navlinks.js"></SCRIPT>
+
+</body>
+</html>

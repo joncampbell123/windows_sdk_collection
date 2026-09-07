@@ -1,0 +1,324 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<xml:namespace ns="urn:schemas-microsoft-com:vml" prefix="v"/>
+<object id="VMLRender" codebase="vgx.dll" classid="CLSID:10072CEC-8CC1-11D1-986E-00A0C955B42E"></object>
+<style>
+v\:* { behavior: url(#VMLRender); }
+</style>
+</head>
+
+<body style="font-family: verdana">
+<OBJECT ID="Stock" WIDTH=0 HEIGHT=0 style="position: absolute; top: 0; left: 0"
+ CLASSID="CLSID:333C7BC4-460F-11D0-BC04-0080C7055A83">
+<PARAM NAME="TextQualifier" VALUE='!'>
+<PARAM NAME="FieldDelim" VALUE="|">
+<PARAM NAME="DataURL" VALUE="stockdata.txt">
+<PARAM NAME="UseHeader" VALUE="True">
+</object>
+<h2>VML and Databinding</h2>
+
+<input style="left: 10" type=button value="Graph" onclick="testMyCorp();">
+
+
+<script>
+
+function getQuoteRangeForDates(quoteName, startDate, endDate) {
+  rs = Stock.recordset;  
+  return rs;
+}
+
+
+function createLineWithDOM(p, color, width,  fx, fy, tx, ty) {
+  var l, d, i;
+  
+  l = document.createElement("v:line");
+  l.strokeweight = width+"pt";
+  l.strokecolor = color;
+  l.from = fx + "px, " + fy + "px";
+  l.to = tx + "px, " + ty + "px";
+  p.insertBefore(l, null);
+
+}
+
+function testMyCorp() {
+  buildGraph(document.body, "MyCorp", "10/1/1998", "10/31/1998" );
+}
+
+
+function scalePoint(p, tMin, tMax, MaxHeight, MarginTop, MaxHeight11) {
+
+  // do conversions
+  p -= tMin;
+  // divide by max - min
+  p /= (tMax - tMin);
+  // multiply by max scale
+  p *= MaxHeight;
+  // add margin
+  p += MarginTop;
+  // invert
+  p = (MaxHeight11) - p;
+
+  return p;
+}
+
+
+function buildGraph(insertParent, quote, startDate, endDate) {
+  var rs, count, i, ly;
+  var tMax, tMin, cMax, cMin, pDiv;
+  var MarginLeft, MarginTop;
+
+  var increment, vIncrement;
+  var MaxWidth = 440;
+  var MaxHeight = 310;
+  var MaxHeight11 = MaxHeight * 1.1;
+  var MaxWidth11 = MaxWidth * 1.1;
+  var DateSpace = 50;
+  var TitleText;
+  var Intraday = false;
+  var Debug=false;
+
+  pDiv = document.createElement("DIV");
+  pDiv.id = "Graph1";
+  pDiv.style.width = MaxWidth11;
+  MarginLeft = MaxWidth * 0.05;
+  pDiv.style.height = MaxHeight11;
+  MarginTop = MaxHeight * 0.05;
+  pDiv.style.border = "1px black solid";
+  pDiv.style.position = "absolute";
+  pDiv.style.top = 100;
+  pDiv.style.left = 10;
+  insertParent.insertBefore(pDiv, null);
+
+  if (startDate == endDate) {
+    rs = getIntradayQuoteRange(quote, startDate);
+    TitleText = "Intraday Graph for ";
+    Intraday = true;
+  } else {
+    rs = getQuoteRangeForDates(quote, startDate, endDate); 
+    TitleText = "Price History for ";
+    Intraday = false;
+  }
+  count = rs.recordcount;
+  if (count == 0) 
+    return;
+  rs.moveFirst();
+  tMax = -1;
+  tMin = 100000;
+
+// create graph title
+  var s, t;
+  s = document.createElement("span");
+  t = document.createTextNode(TitleText + rs.fields("symbol").value);
+  s.style.fontFamily = "verdana";
+  s.style.fontSize = 20;
+  s.style.fontWeight = "bold";
+  s.insertBefore(t, null);
+  s.style.position = "absolute";
+  pDiv.insertBefore(s, null);
+
+  // get min/max for scaling calculation
+  for (i=0; i<count; i++) {
+    if (Intraday) {
+      cMax = rs.fields("quoteclose").value;
+      tMax = Math.max(cMax, tMax);
+      cMin = rs.fields("quoteclose").value;
+      tMin = Math.min(cMin, tMin);
+    } else {
+      cMax = rs.fields("quotehigh").value;
+      tMax = Math.max(cMax, tMax);
+      cMin = rs.fields("quotelow").value;
+      tMin = Math.min(cMin, tMin);
+    }
+    rs.movenext();
+  }
+
+  // adjust min/max for buffer
+  tMax = tMax + (tMax * 0.1);
+  tMin = tMin - (tMin * 0.1);
+
+  increment = MaxWidth / count;
+  vIncrement = 10;
+
+  // create vertical scale
+  var sMX = (MaxWidth11) - 10;
+
+  var lowPrice = tMin;
+  var highPrice = tMax;
+  var pIncrement = (highPrice - lowPrice) / 10;
+
+  for (i=lowPrice; i<=highPrice; i+=pIncrement) {
+     tl = i;
+     tl = scalePoint(tl, tMin, tMax, MaxHeight, MarginTop, MaxHeight11);
+
+     createLineWithDOM(pDiv, "black", 1, MaxWidth11, tl , sMX, tl);
+
+     value = Math.round(i*100);
+     value = value / 100;
+     value = toMoney(value, 2);
+
+     d = document.createElement("DIV");
+     d.style.position = "absolute";
+     d.style.top = tl - 5;
+     d.style.left = (MaxWidth * 1.1) + 5;
+     d.style.fontFamily = "Verdana";
+     d.style.fontSize = 14;
+     d.style.fontWeight = "bold";
+     t = document.createTextNode(value);
+     d.insertBefore(t, null);
+     pDiv.insertBefore(d, null);
+     
+
+  }
+
+  // draw high low bars, as well as horizontal scale and date gradations
+  rs.moveFirst();
+  var lastLeft = -1000;
+  var tempDate;
+  var tm, td, ty;
+  var dateString;
+  var strokeWidth;
+
+  for (i=0; i<count; i++) {
+    if (!Intraday) {
+      // get high/low points from bo
+      tl = rs.fields("quotelow").value;
+      th = rs.fields("quotehigh").value;
+
+      // scale them to fit in the graph
+      tl = scalePoint(tl, tMin, tMax, MaxHeight, MarginTop, MaxHeight11);
+
+      th = scalePoint(th, tMin, tMax, MaxHeight, MarginTop, MaxHeight11);
+
+      createLineWithDOM(pDiv, "blue", 1, i*increment+MarginLeft, tl, i*increment + MarginLeft, th);
+    }
+
+    // if there is enough space to print the date, do it, else skip to the next line
+    currLeft = i*increment+MarginLeft;
+    strokewidth = 1;
+    if ((lastLeft + DateSpace) < currLeft) {
+       strokewidth = 2;
+       d = document.createElement("DIV");
+       d.style.position = "absolute";
+       d.style.top = MaxHeight11+10;
+       d.style.left = i*increment+MarginLeft;
+       d.style.fontFamily = "Verdana";
+       d.style.fontSize = 8;
+       tempDate = new Date(rs.fields("quotedate").value);
+       if (Intraday) {
+         var hours, minutes, seconds, ap;
+         var intHours, intMinutes, intSeconds;
+         var today;
+         today = tempDate;
+
+         intHours = today.getHours();
+         intMinutes = today.getMinutes();
+
+         if (intHours == 0) {
+           hours = "12:";
+           ap = "Midnight";
+         } else if (intHours < 12) { 
+           hours = intHours+":";
+           ap = "A.M.";
+         } else if (intHours == 12) {
+           hours = "12:";
+           ap = "Noon";
+         } else {
+           intHours = intHours - 12
+           hours = intHours + ":";
+           ap = "P.M.";
+         }
+
+         if (intMinutes < 10) {
+           minutes = "0"+intMinutes+":";
+         } else {
+           minutes = intMinutes+":";
+         }
+
+         dateString = hours+minutes+ap;
+        
+       } else {
+          tm = (tempDate.getMonth())+1
+          td = tempDate.getDate();
+          ty = tempDate.getYear();
+          dateString = tm+"http://msdn.microsoft.com/isapi/gomscom.asp?TARGET="/"+td+"http://msdn.microsoft.com/isapi/gomscom.asp?TARGET="/"+ty;
+       }
+       t = document.createTextNode(dateString);
+       d.insertBefore(t, null);
+       pDiv.insertBefore(d, null);
+       lastLeft = i*increment+MarginLeft;
+     }
+
+    // draw date lines
+    createLineWithDOM(pDiv, "black", strokewidth,  i*increment+MarginLeft, (MaxHeight * 1.1) - 1, i*increment + MarginLeft, (MaxHeight * 1.1) - 10);
+
+    if (Debug) {
+      alert("Drawing high/low line for " + rs.fields("quotedate").value);
+      //for (k=0; k<100000; k++) {}
+    }
+
+    rs.movenext();
+  }
+
+  // draw running close line
+
+  rs.moveFirst();
+  var ly = rs.fields("quoteclose").value;
+  rs.movenext();
+  for (i=1; i<count; i++) {
+    ly = scalePoint(ly, tMin, tMax, MaxHeight, MarginTop, MaxHeight11);
+
+    lc = rs.fields("quoteclose").value;
+
+    lc = scalePoint(lc, tMin, tMax, MaxHeight, MarginTop, MaxHeight11);
+
+    createLineWithDOM(pDiv, "red", 1,  (i-1)*increment + MarginLeft, ly, i*increment + MarginLeft, lc);
+    ly = rs.fields("quoteclose").value;
+    if (Debug) {
+      alert("Drawing close line for " + rs.fields("quotedate").value);
+      //for (k=0; k<100000; k++) {}
+    }
+    rs.movenext();
+  }
+
+  // hack - redraw last line
+  createLineWithDOM(pDiv, "red", 1, (i-1)*increment + MarginLeft, lc, i*increment + MarginLeft, lc);
+}
+
+function toMoney(value, decimalPlaces) {
+  var moneyString;
+  var decimal, c, i, currPlaces;
+
+  moneyString = "$"+value;
+
+  decimal = -1;
+  for (i=moneyString.length - 1; i>=0; i--) {
+    c = moneyString.charAt(i);
+    if (c == ".") {
+      decimal = i;
+    }
+  }
+
+  if (decimal == -1) {
+    decimalString = ".";
+    for (i=0; i<decimalPlaces; i++) {
+      decimalString += "0";
+    }
+    moneyString = moneyString + decimalString;
+  } else {
+    currPlaces = moneyString.length - decimal - 1;
+    if (currPlaces <= decimalPlaces) {
+      for (i=0; i< decimalPlaces - currPlaces; i++) {
+        moneyString += "0";
+      }
+    }
+  }
+  return moneyString;
+}
+
+</script>
+
+</body>
+
+</html>

@@ -1,0 +1,1209 @@
+
+<html>
+<head>
+<title>Web Workshop - Improving the Performance of Data Access Components with IIS 4.0</title>
+<meta NAME="MS.LOCALE" CONTENT="EN-US">
+
+<META NAME="Author" CONTENT="aLeland Ahlbeck">
+<SCRIPT LANGUAGE='JavaScript' src='../../../msdn-online/shared/js/browdata.js'></SCRIPT>
+<SCRIPT LANGUAGE='Javascript'><!--
+var oBD = new BrowserData();
+//--></SCRIPT>
+
+
+<SCRIPT LANGUAGE="JavaScript"><!--
+
+// if workshop and not vroot, assign "/workshop/" to sBucketRoot
+// rename sVRoot
+
+//var sBucketRoot = "/workshop/server/";
+
+//--></SCRIPT>
+<LINK REL="stylesheet" TYPE="text/css" href="../../../msdn-online/shared/css/ie4.css">
+
+<STYLE TYPE="text/css"><!--
+
+PRE.clsCode { font-size:110%; } 
+
+PRE.clsSyntax { font-size:100%; }  
+
+--></STYLE>
+
+<SCRIPT LANGUAGE="JScript"><!--
+
+function CommonLoad()
+{
+if ("function" == typeof(InitNavLinks)) InitNavLinks();
+if ("function" == typeof(CheckToTop)) CheckToTop();
+if ("function" == typeof(RemoveLastPipe)) RemoveLastPipe();
+}
+
+//--></SCRIPT>
+
+
+<script LANGUAGE="Javascript"><!--
+
+// -----------------------------------------------------------
+// window_load()
+// Container function for load.
+// -----------------------------------------------------------
+
+function window_load()
+{
+if (oBD.getsNavBar)
+{
+if ("function" == typeof(CommonLoad)) CommonLoad();
+}
+}
+window.onload = window_load;
+
+//--></script>
+
+<script LANGUAGE="Javascript">
+<!--
+var MarkMenu = "sbsi";
+//-->
+</script>
+
+
+</head>
+
+<body TOPMARGIN="0" LEFTMARGIN="0" MARGINWIDTH="0" MARGINHEIGHT="0" BGCOLOR="#FFFFFF" TEXT="#000000">
+
+
+<DIV CLASS="clsNavLinksDiv">
+<TABLE CELLPADDING="1" CELLSPACING="0" BORDER="0">
+<TR><TD COLSPAN="3">&nbsp;</TD></TR>
+<TR>
+<TD ROWSPAN="2"><A href="../../../workshop/server/default.htm"><IMG HEIGHT="32" WIDTH="31" VSPACE="5" BORDER="0" ALT="Click to return to the Server Technologies home page" src="../../../workshop/graphics/icons/server.gif"></A></TD><TD ROWSPAN="2" WIDTH="18">&nbsp;&nbsp;</TD>
+<TD VALIGN="top">
+<!-- No Show, Sync, Index buttons for CHM -->
+&nbsp;
+</TD></TR>
+<TR><TD>
+
+<TABLE ID="tblPrevNext" CELLPADDING="0" CELLSPACING="0" BORDER="0"><TR></TR></TABLE>
+
+</TD></TR>
+</TABLE>
+</DIV>
+
+<DIV CLASS="clsBucketBranch"><A href="../../../workshop/default.htm" TARGET="_top">Web Workshop</A>&nbsp;&nbsp;|&nbsp;&nbsp;<A href="../../../workshop/c-frame.htm#/workshop/server/default.htm" TARGET="_top">Server Technologies</A></DIV>
+
+<div CLASS="clsDocBody">
+
+<!-- DOCUMENT CONTENT START -->
+
+<h1><a NAME="TITLE" IDX_CONCEPT="stopindex;Improving the performance of Data Access Components with IIS 4.0">Improving the Performance of Data Access Components with IIS 4.0</a></h1>
+<hr SIZE="1">
+
+
+   <H6><A NAME="top2" IDX_TYPE="sbngen" IDX_CONCEPT="Components, Data Access: performance of;IIS 4.0: improving performance of Data Access Components"></A></H6>
+
+<!-- Insert Author and Date here -->
+<P>Leland Ahlbeck
+<br>Software Design Engineer/Test
+<br>Microsoft Corporation
+<P>March 12, 1998
+</P><P>
+<!-- Insert Article here -->
+
+</P><P> <b>Contents</b>
+<br><a href="daciisperf.htm#topic1">Introduction</a>
+<br> <a href="daciisperf.htm#topic2">Threading Support</a>
+<br><a href="daciisperf.htm#topic3">Connection Pooling </a>
+<br> <a href="daciisperf.htm#topic4">Connection Pooling and Dead ODBC Connections</a>
+<br><a href="daciisperf.htm#topic5">Cursor Considerations </a>
+<br><a href="daciisperf.htm#topic6">Network Issues</a>
+</P><P></P>
+<h2><a NAME="topic1"></a>Introduction
+</h2>
+<P>This paper addresses issues that can affect speed in an Internet Information Server (IIS) 4.0 environment when returning data to a Web client.  It assumes that you are familiar with administering your server. The discussion focuses on Microsoft products, but some of the issues raised may pertain to other OLE-DB data providers or open database connectivity (ODBC) drivers.  This paper emphasizes Microsoft SQL Server, because we (the Database API Performance group) have done most of our performance testing with it.
+</P><P></P>
+<h3>Terminology
+</h3>
+<P><b>Data provider</b> -- A data provider is a source for OLE-DB data.  For example, the Sample data provider that ships with the OLE-DB software development kit and the SQL Server data provider (which is not yet released), are both OLE-DB data providers.  Another example of a data provider is the Microsoft OLE-DB data provider for ODBC data sources.
+</P><P><b>Consumer</b> -- A consumer is a user of a data provider.  For example, ActiveX&#153; Data Objects (ADO) is a consumer of OLE-DB data sources.
+</P><P><b>OLE-DB data provider for ODBC data sources</b> -- This data provider is effectively a translation layer between OLE-DB and ODBC.  It allows OLE-DB consumers, such as ADO, to communicate with ODBC data sources.
+</P><P><b>Middle tier</b> -- The middle tier is the group of components that run on the Web server.  Usually this includes your server software and any components that are used to service Web pages.
+</P><P></P>
+<h3>How Data Flows from the Database to the Middle Tier
+</h3>
+<P>Typically, when a request for data on a Web page is serviced by the Web server, many data components are involved.  Keep in mind that all processing is being done on the middle tier, where the end user's computer simply makes the request and receives the results. Processing the request for data consists of these steps:
+</P><ol>
+
+<li>   The Active Server Pages (ASP) or Internet Server Application Programming Interface (ISAPI) DLL makes the call to the OLE-DB data provider.
+<li>   The OLE-DB data provider services the request and performs the query on the database; or, in the case of the OLE-DB data provider for ODBC data sources, a call is made to ODBC.
+<li>   The server then processes the request for data and returns the data to the data provider.
+<li>   The data provider returns the data to the requesting software.  This could be either an ASP or an ISAPI DLL.
+<li>   The data is then formulated in Web-page format and presented to the user.
+
+</ol>
+<P> <a href="daciisperf.htm#top" CLASS="clsBackTop"><img src="../../../msdn-online/shared/graphics/top.gif" WIDTH="18" HEIGHT="8" BORDER="0" ALT="Top">Back to top</a>
+</P>
+<h2><a NAME="topic2"></a>Threading Support
+</h2>
+<P><i>Threading</i> is the technology that enables the middle tier running on the Web server to communicate to other components in one or multiple threads.  The threading model chosen can greatly affect performance.  For example, if you have the option of communicating through one thread or multiple threads to the server hosting our data, you can provide support for multiple customers simultaneously by using multiple threads.
+</P><P></P>
+<h3>Threading Models Defined
+</h3>
+<P>There are multiple threading models supported; the three we will discuss are:</P>
+<ul>
+
+
+<li> Apartment threading
+<li> Free threading
+<li> Objects marked as both
+
+</ul>
+<P>The default threading model set up by the installation process is the apartment model; this is to accommodate the Microsoft Access database engine by default, because that database engine is limited to apartment threading.
+</P>
+<ul>
+
+
+<li> In the case of the apartment threading, only one thread from each object communicates with the back-end server, but the Web server can support multiple objects being entered simultaneously by different threads.  This is set as the default value for the threading model, because of compatibility with other Microsoft products.  This is the only threading model supported by the Microsoft Access database engine.
+<li> For free-threaded objects, there are no restrictions on the number of threads that can access an object. Therefore, multiple threads can access the same object that makes calls to the database, as opposed to having multiple copies of the object making calls to the database.
+<li> Objects marked as both can be accessed as either apartment- or free-threaded.  This will offer the most flexibility for your Web server but may not be supported by all back ends.
+
+</ul>
+<P>Different components of the system can have different threading models.  In the case of IIS 4.0, the component that we are concerned with to improve database performance is the threading model applied to and supported by the data access components.  This could be either an ISAPI DLL or the ADO data access component.  In either case, you should use the most efficient threading model supported by the OLE-DB data provider you are using, with the exception of an ADO application running with SQL Server.  If you are getting your data from either the OLE-DB data provider for Microsoft Access databases or the Microsoft Access ODBC database driver via the OLE-DB data provider for ODBC data sources, you should use the apartment-threading model.
+</P>
+<h3>Free-Threading and ADO Objects
+</h3>
+<P>By default, all ADO objects are marked in the registry as apartment-threading model. If caching of ADO objects off the Application or Session object is required, you must mark the affected object as free-threaded.  To mark the ADO objects as free-threaded in the registry, you'll need to regedit the adofre15.reg file. Here's how to do this:
+</P><ol>
+
+<li>   Locate the ADOFre15.reg file.  If you accepted the defaults for program file location when installing IIS, the ADOFre15.reg file will be in c: \Program files\Common files\System\ADO.
+<li>   Make the directory containing the file your current directory and issue the <b>RegEdit ADOFre15.reg</b><i> </i>command<i>.</i>
+<li>   You will need to restart your server before the change will take effect.
+
+</ol>
+<P>If you determine you need to switch the ADO threading model back to apartment threading, follow the above instructions, but RegEdit the ADOApt15.reg file.
+</P><P>Note that sharing an ADO Connection object across multiple threads will not necessarily increase performance, and could potentially be slower. If the provider supports connection pooling (as does the SQL Server ODBC 3.5 driver), this is a more efficient mechanism.  Also, when leaving a cached connection open between operations, it could possibly be dropped or the link to the server could be broken.
+</P><P></P>
+<P> <a href="daciisperf.htm#top" CLASS="clsBackTop"><img src="../../../msdn-online/shared/graphics/top.gif" WIDTH="18" HEIGHT="8" BORDER="0" ALT="Top">Back to top</a>
+</P>
+<h2><a NAME="topic3"></a>Connection Pooling
+</h2>
+<P>When enabled, connection pooling sets up a pool of connections to service database connection requests.  Connection pooling allows a middle tier, like IIS, to hold onto the open connections and hand them out to the Web clients making requests from the database.  By not closing a connection to the database and holding it for future use, the time required to validate and provide the next connection to the back-end server is reduced.  By default, connection pooling is set to <b>on</b> in IIS 4.0 and to <b>off</b> in IIS 3.0; to improve performance we recommend that you enabled connection pooling for IIS 3.0.
+</P><P>When connection pooling is enabled, a request for a connection comes to the driver manager and the connection request is handled through one of three avenues:
+</P><ul>
+
+
+<li> If there are no connections in the pool, a new connection is created and passed to the user.
+<li> If there are available connections in the pool and the connection properties (User Id, Password, and so forth) requested by the client match the connection properties of the pooled connection, the client will be given the open connection in the pool.
+<li> If there are connections available but the connection properties do not match, a new connection will be created for the client with the appropriate properties.
+
+</ul>
+<P>When using connection pooling with SQL Server or any database system that limits user logons to a specified number, keep in mind that each user connection uses up one of the licensed logons.  Depending on your situation, this could be beneficial.  The driver manager will hold onto the connection, possibly preventing another user from logging onto the server.  On the other hand, with connection pooling enabled, you may have <i>n</i> user connections in the pool servicing <i>n plus users</i>.
+</P><P></P>
+<h3>Enabling Connection Pooling
+</h3>
+<P></P><h4>IIS version 3.0  </h4>
+<ol>
+
+<li>   Click Start and then click Run. On the command line, type <b>RegEdit</b> and click OK.
+<li>   In the left pane of the Registry Editor, open the following tree (the backslashes indicate subsequent subdirectories):
+<br>HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\ W3SVC\ASP\Parameters.
+<li>   Double-click StartConnectionPool in the right pane. This opens an Edit String dialog. Change the <b>0</b> (the value for Off) to <b>1</b> (the value for On).
+<li>   Click OK to save changes.
+
+</ol><h4>IIS version 4.0</h4>
+<P>ODBC 3.5 enables connection pooling at two levels: the database driver and the driver manager. This means that IIS 4.0 automatically supports connection pooling at the driver manager level and enables connection pooling for Microsoft SQL Server. Additionally, if you want your ODBC driver to participate in connection pooling, set the driver's <i>CPTimeout</i> value in the Windows NT® registry. For more information about setting this value, see the ODBC documentation and on the Microsoft ODBC Web site at  <a href="http://msdn.microsoft.com/isapi/gomscom.asp?target=/odbc/" TARGET="_top">http://www.microsoft.com/odbc/</a> <img src="../../../msdn-online/shared/graphics/leave-site.gif" WIDTH="17" HEIGHT="11" BORDER="0" ALT="Non-MSDN Online link">.  The benefit of this structure for IIS 4.0 is the ability to have connection pooling enabled for some ODBC drivers and disabled for others.
+</P><P></P><h4>Enabling connection pooling from your application</h4>
+<P>You can enable connection pooling from your application by making a call to the ODBC API.  To enable connection pooling, make a call to <b>SQLSetEnvAttr</b>, passing a value for the type of connection pool you wish to enable.  For more information on the parameters that can be passed to enable connection pooling, see the ODBC documentation and on the Microsoft ODBC Web site at  <a href="http://msdn.microsoft.com/isapi/gomscom.asp?target=/odbc/" TARGET="_top">http://www.microsoft.com/odbc/</a> <img src="../../../msdn-online/shared/graphics/leave-site.gif" WIDTH="17" HEIGHT="11" BORDER="0" ALT="Non-MSDN Online link">.
+
+</P><P></P>
+<h3>Connection Pooling and SQL Server Temporary Stored Procedure
+</h3>
+<P>Creating stored procedures to process prepared statements with connection pooling enabled can be a dangerous situation.  Before getting into the dangers of connection pooling and temporary stored procedures, we must first understand when temporary stored procedures are created -- and more importantly -- deleted.
+</P><P>Creating temporary stored procedures for prepared SQL statements is an option that is configurable from the ODBC Data Source Administrator.  The default for this setting is <b>On</b> for the SQL Server 2.65 and 3.5 drivers.  This means that when a SQL statement is prepared, a temporary stored procedure is created and compiled. When the prepared command is called by <b>ICommand.Execute</b> or through one of the ADO methods, the temporary stored procedure is executed, saving the overhead of parsing and compiling the SQL statement.  This feature can improve the performance of your application if it is used properly.  If your SQL statement is going to be executed more than two times or contains parameters and will be called multiple times, the statement should be prepared.  Keep in mind that there is a price to be  paid up front to prepare a SQL statement and that preparation is lost once you disconnect from the database.
+</P><P>When connection pooling is enabled, the issue of when temporary stored procedures should be deleted is raised.  With the SQL Server 2.65 driver, they will be released when the connection is released. With the SQL Server 3.5 driver, you have an option of deleting them either when the connection is released, or as appropriate while connected.
+</P><P>The danger with temporary stored procedures and connection pooling is this: If you are using the default setting, you run the risk of running out of room in TempDB where temporary stored procedures are created and stored.  When connection pooling is enabled, a connection is made to the database, but when the client is done with it and releases it, the connection goes back into the pool.  When the connection goes back into the pool, the connection is not released and the stored procedures are not deleted from the TempDB.  You effectively end up with temporary stored procedures in TempDB that are no longer associated with a client and will never be called again.
+</P><P>Thus, when running the SQL Server 2.65 driver, it may be advisable to disable the creation of stored procedures on preparation when running with connection pooling.  With the SQL Server 3.5 driver, the option to create temporary stored procedures should be disabled or set to <b>disconnect and as appropriate</b> when running connection pooling.  Setting this option to <b>disconnect and as appropriate </b>means that the ODBC SQL Server driver will drop the connection when the OLE-DB ICommand object that created the temporary stored procedure is released. If your client code is ADO, the stored procedure would be released when the <b>ADODB.Recordset</b> and command object are closed.
+</P><P>If you are using ODBC 3.0 and a Data Source Name (DSN)-less connection, or a file DSN to connect to your server you can set the additional connection properties supported by your driver.  For a listing of keywords supported by your driver, consult the driver-specific documentation.  The following ADO connection example details how to connect to a SQL Server database with out using a DSN.  In addition to specifying the server, user ID, and password, it also specifies the default database.
+</P><P></P>
+<pre CLASS="clsCode">
+Dim cn As ADODB.Connection
+Set cn = New ADODB.Connection
+cn.ConnectionString =&quot;DRIVER=SQL Server;
+SERVER=DAPIPERF03;UID=sa;PWD=;DATABASE=ssNSTL&quot;
+cn.Open
+</pre>
+<P></P>
+<h3>Monitoring Connection Pooling
+</h3>
+<P>With ODBC 3.5, you can monitor connection pooling using the Windows NT Performance Monitor (PerfMon.exe).  Using Performance Monitor, we can watch connection pooling working.  The driver manager will keep statistics on connection pooling, which can then be viewed through  Performance Monitor.  For Performance Monitor to track changes in connection pooling, some additions need to be made to the system registry on the IIS server.
+</P><P></P><h4>Registry entries for monitoring connection pooling </h4>
+<P>When you make changes to the registry, it is extremely important to back up the registry first.  To do this, use the backup facilities provided in the registry editor.
+</P><P><a href="connpool.zip"><img src="../../../msdn-online/shared/graphics/icodownl.gif" WIDTH="16" HEIGHT="20" BORDER="0" ALT="Download"> Download the files to track connection pooling (zipped, 1K)</a>.
+</P><P></P> 
+<ol>
+
+<li>   Download the zipped files (above) and copy them to your Windows NT system directory.
+<li>   In the Windows NT system directory, run the following command: <b>RegEdit CPMon.reg</b><i>.  </i>This step adds the necessary keys to the registry to track the connection pooling performance counters.
+<li>   In the Windows NT system directory, run <b>lodctr odbcperf.ini</b>. This step loads the information about the performance counters that we can view with Performance Monitor.
+<li>   Restart you server.
+
+</ol><h4>Connection pooling counters and what they mean </h4>
+<P>After restarting your server, start Performance Monitor (PerfMon.exe).  Then go to the Add Counter dialog box, where you'll have an entry for ODBC Connection Pooling in the Process list box.  You will now have six new keys that can be monitored by Performance Monitor.  The distinction between hard and soft connections/disconnections is used in the naming convention of the keys.  Consider <i>hard actions</i> those actions taken by the connection pooling process.  <i>Soft actions</i> are actions taken by the application utilizing connection pooling.
+</P><P>The counter that should show the most activity is the ODBC Soft Connection Counter.  This shows you the number of connections that are satisfied by the connection pool.  In this case, a live connection is coming from the pool rather than having to make a connection to the database.
+</P><P></P>
+<table WIDTH="95%" BORDER="0" CELLPADDING="5" CELLSPACING="2">
+<tr ALIGN="LEFT" VALIGN="MIDDLE" BGCOLOR="#A6CAF0">
+
+<td><font FACE="ARIAL" SIZE="2"><b>Counter </b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>Description</b></font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">ODBC Hard Connection Counter per Second</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">This is the number of actual connections per second that are made to the server.  When you first put your environment under heavy load, this counter will go up very quickly.  After a few seconds it will drop to zero. This is the normal behavior when connection pooling is working.  Once the connections to the server have been established, they will be used and placed in the pool for re-use. </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">ODBC Hard Disconnect Counter per Second</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Displays the number of hard disconnects per second issued to the server.  These are actual connections to the server that are being released by connection pooling.
+</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">ODBC Soft Connection Counter per Second</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">This counter shows far more activity than the Hard Connections per Second counter.  It shows the number of connections made to the database from open connections that were in the pool.  Depending on the load on your server, it would not be uncommon for this to show 40 to 60 soft connections per second.  </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">ODBC Soft Disconnection Counter per Second</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Displays the number of disconnects per second issued by the applications.  When the application releases or disconnects, the connection is placed back in the pool. </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">ODBC Current Active Connection Counter</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">This is the number of connections in the pool that are currently in use.  With the version of ODBC that shipped with IIS 4.0, this counter is not working.  Consult  <a href="http://msdn.microsoft.com/isapi/gomscom.asp?target=/odbc/" TARGET="_top">http://www.microsoft.com/odbc/</a> <img src="../../../msdn-online/shared/graphics/leave-site.gif" WIDTH="17" HEIGHT="11" BORDER="0" ALT="Non-MSDN Online link"> for updates to the ODBC driver manager.  </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">ODBC Current Free Connection Counter</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Displays the current number of free connections available in the pool.  These are live connections available for use.
+</font>
+</td>
+</tr>
+
+</table>
+<P></P><h4>Other performance counters </h4>
+<P>These performance counters that can also help you evaluate system performance. The following table details performance counters of interest, what object they are based on, and a description of why they are interesting.
+</P><P>
+</P><P></P>
+<table WIDTH="95%" BORDER="0" CELLPADDING="5" CELLSPACING="2">
+<tr ALIGN="LEFT" VALIGN="MIDDLE" BGCOLOR="#A6CAF0">
+
+<td><font FACE="ARIAL" SIZE="2"><b>Object</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>Counter </b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>Description</b></font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">SQL Server</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Max Users</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">This is the maximum number of users that have concurrently connected to the SQL Server. </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">SQL Server </font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Current Users</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">This is the number of current users connected to the SQL Server.  This number should be very close to the maximum number of Hard Connections per Second from the Connection Pooling object. </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">SQL Server </font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Cache I/O hits </font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">This is the percentage of data being read from the SQL Server Cache as opposed to being read from disk.  The higher the number the better; it is much faster to pull data from the cache. </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Processor</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Processor utilization</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">This performance key will show you the percentage of utilization on the server.  </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">IIS</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Currently executing requests per second </font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">This is the total number of executing requests per second. </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">IIS</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Currently queued requests </font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">This is the number of requests that are waiting to be serviced by your server. </font>
+</td>
+</tr>
+
+</table>
+<P> <a href="daciisperf.htm#top" CLASS="clsBackTop"><img src="../../../msdn-online/shared/graphics/top.gif" WIDTH="18" HEIGHT="8" BORDER="0" ALT="Top">Back to top</a></P>
+
+<h2><a NAME="topic4"></a>Connection Pooling and Dead ODBC Connections
+</h2>
+<P>When a connection becomes severed from the database, it potentially can prevent all applications that are requesting connections from the pool from making a connection to the database.  If a dead connection is  handed to an application as a working connection, the application would then fail and the dead connection would be placed back into the connection pool.  Once this dead connection was back in the pool, the driver manager would keep handing it to other applications requesting a connection.
+</P><P>In an effort to fix this problem, ODBC released a fix to the driver manager that uses a SQL Server-specific driver attribute to detect a dead connection at disconnect time.  If the connection was determined to be dead, the connection would be destroyed rather than being placed back into the pool.  This fixed the problem of dead connections.
+</P><P>This correction to ODBC revealed another problem with multithreading applications that use ODBC.  When the server crashes and no longer responds to the connection requests, all the connections are deleted out of the pool and the multithreading application will then attempt to make new connections to the server (which is dead and not responding).  The multithreaded application will try to make new connections to the server. While the first connection is waiting to time out, many other  connections are made by the application, and eventually the ODBC client is swamped by connection requests.  To fix this, the driver manager can attempt to detect dead server. To detect dead servers, the driver manager will retry the connection to a server only once.  If the retry is successful, the connection is handed to the application requesting the connection.  If the connection attempt fails, the connection is returned to the connection pool to block future connection attempts.
+</P><P></P>
+<h3>Dead Server Detection in Detail
+</h3>
+<P>There are two ways the driver manager can determine if the server is dead.  One technique involves checking the read-only connection attribute SQL_ATTR_CONNECTION_DEAD to determine if the server is working prior to returning the real connection to the connection pool.  The second involves checking a number of ODBC status codes that contain information about network failure. These are used to determine if the problem was related to network failure or other problems.
+</P><P>The following events are used by the driver manager to determine if the server is not responding.  The process is based on a flag and a reconnect time.  The reconnect time is representative of the amount of time we will wait prior to attempting the reconnection to the server.
+</P><ol>
+
+<li>   The first time a connection is determined to be dead, it is placed back in the pool, and marked as dead and that a retry has not been attempted.  The time that a reconnect should be attempted is noted on the connection before it is placed back into the pool.
+<li>   When the driver manger retrieves a connection from the pool that has been marked as dead and the reconnect time has not yet been reached, it is immediately returned to the pool and returns an error to the application.  This blocks other applications from trying to make the connection to the server. In this case, an error is returned to any requesting application.
+<li>   If the connection is marked as dead and the reconnect time has been reached, it is immediately returned to the pool to prevent other applications from trying to make a connection to the server.  The connection to the server is then retried.  If the connection is successful, the dead connection is removed from the pool and the pool functions as normal.  If the connection to the server fails, the retry time is reset on the dead connection in the pool.
+
+</ol>
+<h3>Controlling Dead Server Detection
+</h3>
+<P>A new registry setting has been added to control the retry time-out. This registry key will enable you to alter the default value of 60 seconds to whatever you like.  It is in the registry under HKEY_LOCAL_MACHINE\SOFTWARE\ODBC\ODBCINST.INI\ODBC Connection Pooling\Retry Wait.  The key is of data type <b>REG_SZ</b> and is the time-out in seconds.
+</P><P>This setting can also be controlled from your application by making a call to the <b>ODBCSetTryWaitValue </b>ODBC function.  The function takes a DWORD as an argument and returns TRUE  if successful.
+</P><P>Following is Visual Basic® for Applications (VBA) code sample that demonstrates setting the <b>ODBCSetTryWaitValue</b>.  In this example the value is being set to <b>30</b> for a 30-second time-out on a dead connection:
+</P>
+
+<!-- <P><b>Example 1</b>-->
+
+<P></P>
+<pre CLASS="clsCode">Declare Function ODBCSetTryWaitValue Lib &quot;ODBC32.dll&quot; (ByVal dwTimeOut As Integer) As Boolean
+Sub SetServerWait()
+    Dim fRetValue As Boolean
+    fRetValue = ODBCSetTryWaitValue(30)
+End Sub
+</pre>
+
+<P>This was added to the Service Pack 1 release, which is available on the Microsoft ODBC Web site at  <a href="http://msdn.microsoft.com/isapi/gomscom.asp?target=/odbc/" TARGET="_top">http://www.microsoft.com/odbc/</a> <img src="../../../msdn-online/shared/graphics/leave-site.gif" WIDTH="17" HEIGHT="11" BORDER="0" ALT="Non-MSDN Online link">.
+</P><P>
+</P><P> <a href="daciisperf.htm#top" CLASS="clsBackTop"><img src="../../../msdn-online/shared/graphics/top.gif" WIDTH="18" HEIGHT="8" BORDER="0" ALT="Top">Back to top</a></P>
+
+<h2><a NAME="topic5"></a>Cursor Considerations
+</h2>
+<P>When programming your application, consider the type of cursor you are requesting from the server.  In the case of Microsoft SQL Server, you can choose the type of cursor you open; each cursor carries specific functionality, benefits, and limitations.  If your application is returning data from the server in a forward-only manner, the most efficient cursor to use will be Default Result Set. The Default Result Set in SQL Server translates to a Forward-only/Read-only cursor, but is a special case -- all the results from the query are pushed from the server to the workstation without any further requests from the workstation.  There are some limitations associated with this cursor; see the SQL Server documentation for a more complete description of this cursor type.  Coding your application so it opens only a Dynamic, Keyset, or Static cursor when needed to update or delete records will improve the overall performance of the application.  Special consideration should be given to cases where you are planning to use a dynamic cursor; from a performance standpoint, this is by far the most expensive cursor you can request.  In many cases, a Keyset cursor could be implemented and would provide adequate functionality and optimum performance.
+<P></P>
+<h3>Cursor Summary
+</h3>
+<P>To get optimal performance from your application, you need to select the appropriate cursor for your needs.  Each cursor contains a specific set of functionality, so choosing your cursor carefully will ensure you are not paying a performance price for functionality you do not need.  The following table describes the different types of cursors available from SQL Server and other ODBC data source back-end servers.  For specific information on what cursors are supported by your back-end server, consult your server documentation.
+</P><P></P>
+<table WIDTH="95%" BORDER="0" CELLPADDING="5" CELLSPACING="2">
+<tr ALIGN="LEFT" VALIGN="MIDDLE" BGCOLOR="#A6CAF0">
+
+<td><font FACE="ARIAL" SIZE="2"><b>Cursor Type </b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>Description</b></font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Default Result Set
+<br>(SQL Server-specific)</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">This special Forward-only/Read-only cursor is available only with Microsoft SQL Server.  When the server is in this mode, it does not wait for the client to request the data to provide it.  Once the cursor has been opened, the server loads the wire with data; the only overhead is pulling the data off the wire. </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Forward-only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Forward-only cursor movement can only be made one row at a time in a forward direction (from the top to the bottom of the result set).
+</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Keyset </font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Keyset cursor membership is fixed, but the data is up-to-date with the underlying database.  In other words, new rows added by users will not appear in the recordset but updates to the records will become visible.  All types of movement are supported.  For your cursor creation to be successful, you will need an index build on your table. </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Dynamic</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Data is up-to-date at all times.  All types of movement are supported.  Depending on the provider, bookmarks may be supported.  </font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Static </font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">This cursor effectively provides a snapshot of the data, but depending on the provider may also enable the user to see and perform inserts and updates to the recordset.  Inserts and updates from other users will not be dynamically added to the result set.  All types of movement are supported, but providers may or may not support bookmarks. </font>
+</td>
+</tr>
+
+</table>
+<h3>Setting Cursors
+</h3>
+<P>The following table lists the settings required for different clients to achieve the specified server-side cursor type.  The following information was tested against SQL Server. If you are using another database server, you may need to verify what cursor types are supported by the server.
+</P><P></P>
+<table WIDTH="95%" BORDER="0" CELLPADDING="5" CELLSPACING="2">
+<tr ALIGN="LEFT" VALIGN="MIDDLE" BGCOLOR="#A6CAF0">
+
+<td><font FACE="ARIAL" SIZE="2"><b>Cursor Type</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>ADO</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>OLE-DB Provider for ODBC</b></font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Default Result Set*</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">No action required. </font>
+</td>
+<P></P>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Set properties:
+<br>None</font>
+<P></P>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Forward-Only/Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Set the cursor location property on the connection object to <b>adUseServer</b> and the cursor type to <b>adOpenForwardOnly</b> on the execute. </font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Set properties:
+<br>-DBPROP_OTHERINSERT  = VARIANT_FALSE
+<br>-DBPROP_OTHERUPDATEDELETE = VARIANT_FALSE
+<br>-DBPROP_OWNINSERT = VARIANT_FALSE
+<br>-DBPROP_OWNUPDATEDELETE = VARIANT_FALSE</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Dynamic</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Set the cursor location property on the connection object to <b>adUseServer</b> and the cursor type to <b>adOpenDynamic</b> on the execute. </font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Set properties:
+<br>-DBPROP_OTHERINSERT  = VARIANT_TRUE
+<br>-DBPROP_OTHERUPDATEDELETE  = VARIANT_TRUE
+<br>-DBPROP_OWNINSERT = VARIANT_TRUE
+<br>-DBPROP_OWNUPDATEDELETE = VARIANT_TRUE</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Keyset</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Set the cursor location property on the connection object to <b>adUseServer</b> and the cursor type to <b>adOpenKeyset</b> on the execute.
+</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Set properties:
+<br>-DBPROP_OTHERINSERT  = VARIANT_FALSE
+<br>-DBPROP_OTHERUPDATEDELETE = VARIANT_TRUE
+<br>-DBPROP_OWNINSERT = VARIANT_TRUE
+<br>-DBPROP_OWNUPDATEDELETE = VARIANT_TRUE</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Static </font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Set the cursor location property on the connection object to <b>adUseServer</b> and the cursor type to <b>adOpenKeyset</b> on the execute.
+</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Set properties:
+<br>-DBPROP_OTHERINSERT  = VARIANT_FALSE
+<br>-DBPROP_OTHERUPDATEDELETE = VARIANT_FALSE
+<br>-DBPROP_OWNINSERT = VARIANT_TRUE
+<br>-DBPROP_OWNUPDATEDELETE = VARIANT_TRUE</font>
+</td>
+</tr>
+
+</table>*When setting the cursor to Default Result Set, you need to be aware that rowset size has an effect on the cursor you set.  To get the Default Result Set, you need to have the rowset size set to one prior to executing the SQL statement.  For efficiency when returning data, set the rowset size to a higher value after executing the SQL statement.  If you are making your call from ADO, you do not need to be concerned with this setting, because the OLE-DB provider for ODBC will take care of making the appropriate settings for you.
+<P>The following code sample demonstrates how to open a Default Result Set cursor using ADO:
+</P><P></P>
+<pre CLASS="clsCode">
+Dim cn As ADODB.Connection
+Dim rs As ADODB.Recordset
+cn.Open
+Set rs = New ADODB.Recordset
+rs.Open &quot;SELECT * FROM Lots_O_Rows&quot;,cn
+</pre>
+<P>The following code sample shows how to request a Dynamic cursor from SQL Server.  Note the setting for <b>rs.CacheSize</b>; this controls the ODBC rowset size.
+</P><P></P>
+<pre CLASS="clsCode">Dim cn As ADODB.Connection
+Dim rs As ADODB.Recordset
+cn.Open
+Set rs = New ADODB.Recordset
+rs.CacheSize = 100
+rs.Open &quot;SELECT * FROM Lots_O_Rows&quot;, cn, adOpenDynamic, adLockBatchOptimistic
+</pre>
+<P></P>
+<h3>Cursors and Supported Properties
+</h3>
+<P>The following table lists the properties the cursor will exhibit, providing the concurrency is set to <b>adLockBatchOptimistic</b> and the table the cursor is open against contains an index.  To test if a property is available for the cursor, select or call the <b>rs.Supports</b> function.  For more information on the <b>Supports</b> function or the properties listed below, see the ADO documentation.
+</P><P></P>
+<table WIDTH="95%" BORDER="0" CELLPADDING="5" CELLSPACING="2">
+<tr ALIGN="LEFT" VALIGN="MIDDLE" BGCOLOR="#A6CAF0">
+
+<td><font FACE="ARIAL" SIZE="2"><b>Supports Option </b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>adOpen<br>ForwardOnly</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>AdOpenDynamic</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>AdOpenKeyset</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>adOpenStatic</b></font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>adAddNew</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>adApproxPosition</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">False</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">False</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">False</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">False</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>adBookmark</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">False</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">False</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>adDelete</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>adHoldRecords</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">False</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">False</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>adMovePrevious</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">False</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>adResync</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">False</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">False</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>adUpdate</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>adUpdateBatch</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">True</font>
+</td>
+</tr>
+
+</table>
+<P>On a table with an index, opened with <b>adLockBatchOptimistic</b>, the following <b>CursorTypes</b> are applicable as indicated per property:
+</P><P>
+</P><P></P>
+<table WIDTH="95%" BORDER="0" CELLPADDING="5" CELLSPACING="2">
+<tr ALIGN="LEFT" VALIGN="MIDDLE" BGCOLOR="#A6CAF0">
+
+<td><font FACE="ARIAL" SIZE="2"><b>Method</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>adOpen<br>ForwardOnly</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>AdOpenDynamic</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>AdOpenKeyset</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>adOpenStatic</b></font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>AbsolutePage</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Not Applicable</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Not Applicable</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Write-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Write-Only</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>AbsolutePosition</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Not Applicable</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Not Applicable</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Write-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Write-Only</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>ActiveConnection</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>BOF</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Bookmark</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Not Applicable</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Not Applicable</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>CacheSize</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>CursorType</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>EditMode</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>EOF</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Filter</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>LockType</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>MaxRecords</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>PageCount</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Not Applicable</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Not Applicable</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>PageSize</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>RecordCount</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Not Applicable</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Not Applicable</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Source</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read/Write</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Status</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Read-Only</font>
+</td>
+</tr>
+
+</table>
+<P>On a table with an index that is opened with concurrency option set to <b>adLockBatchOptimistic</b>, the following <b>CursorTypes</b> are applicable as indicated per method:
+</P><P></P>
+<table WIDTH="95%" BORDER="0" CELLPADDING="5" CELLSPACING="2">
+<tr ALIGN="LEFT" VALIGN="MIDDLE" BGCOLOR="#A6CAF0">
+
+<td><font FACE="ARIAL" SIZE="2"><b>Method</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>adOpen<br>ForwardOnly</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>AdOpenDynamic</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>AdOpenKeyset</b></font>
+</td>
+
+<td><font FACE="ARIAL" SIZE="2"><b>adOpenStatic</b></font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>AddNew</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>CancelUpdate</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>CancelBatch</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Clone</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">No</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">No</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Close</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Delete</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>GetRows</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Move</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>MoveFirst</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>MoveLast</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">No</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">No</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>MovePrevious</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">No</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Open</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Requery</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Resync</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">No</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">No</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Supports</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>Update</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+<tr ALIGN="LEFT" VALIGN="TOP">
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2"><b>UpdateBatch</b></font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+<td BGCOLOR="#EEEEEE" ALIGN="LEFT"><font FACE="ARIAL" SIZE="2">Yes</font>
+</td>
+</tr>
+
+</table>
+<P></P><h4>Additional notes</h4>
+<ol>
+
+<li>   While you can request batch updating with a Forward-only and Dynamic cursor, you cannot update more than one row at a time. Users should use Keyset or Static cursors with batch updating.  If you are using SQL Server as your back-end server, the only cursor type that will do true batch updating is Keyset.
+<li>   <b>IRowsetScroll</b> is not implemented in the OLE-DB provider for ODBC drivers; thus the <b>AbsolutePosition</b> and <b>AbsolutePage</b> properties are write-only. Furthermore, these properties require bookmarks and are not supported by SQL Server when requesting a dynamic cursor.
+
+</ol>
+<h3>Query Based Update (QBU) Cursors
+</h3>
+<P>A QBU cursor is a hybrid cursor, that supports updates via query-based operations.  Consequently, you can request a Forward-only/Read-only QBU cursor from the OLE-DB data provider.  This cursor really gives you a Forward-only/Read-only cursor that supports updates to the result set, but you will not be able to see the updates unless you close and reopen your rowset.  OLE-DB is really taking your update to the rowset and formulating a SQL statement, creating a new command object, and executing the SQL statement against your database.  The problem with this technique is that when the OLE-DB code formulates the SQL statement, it may use all the column values it has to formulate the &quot;where&quot; clause of the statement, depending on your database design and the version of the ODBC driver you are running.
+</P><P>If your application is doing just a few updates to the database, it may be advisable to use a  Forward-only/Read-only QBU cursor.  This would be more efficient than using a Dynamic cursor  that would support your updates to the database directly.  This cursor type's biggest limitation is that you will not be able to see your updates to the database until you close and reopen your recordset.  To determine if this is more efficient for your situation, it's advisable to run the application both ways with a timer.
+</P><P></P>
+<h3>Scrolling Backwards
+</h3>
+<P>This is an area where performance is greatly improved with ODBC 3.5 drivers and version 1.5 of the OLE-DB provider for ODBC data sources. Unfortunately, we have not seen big improvements across all cursor types.  Static cursors have shown the most improvement in the area of scrolling backward.  The implementation of bookmark technology underneath the <b>ODBC SQLScrollFetch interface</b> has made these performance improvements possible.  The OLE-DB provider for ODBC drivers makes calls to <b>SQLScrollFetch</b> using bookmarks to fetch backwards.  If you are connecting to SQL Server and need to scroll backwards, your best choice of cursors would be to use Keyset.
+</P><P> <a href="daciisperf.htm#top" CLASS="clsBackTop"><img src="../../../msdn-online/shared/graphics/top.gif" WIDTH="18" HEIGHT="8" BORDER="0" ALT="Top">Back to top</a></P>
+
+<h2><a NAME="topic6"></a>Network Issues
+</h2>
+<P></P>
+<h3>SQL Server Network Libraries
+</h3>
+<P>When the SQL Server ODBC driver is installed on a machine, usually the only network library installed is Named Pipes; for performance reasons you should install additional libraries.  The most direct way to get the additional network libraries is to install the SQL Server client utilities on the machine.  This will install the additional network libraries.  After being installed, the libraries are available through the ODBC Data Source Administrator.  The network library that we have found to have the best performance is TCP/IP.
+</P><P></P>
+<h3>Configuring Network Libraries
+</h3>
+<P>Each DSN can be configured to work with a different network library.  When you set up the DSN, you can choose the network library that you want the DSN to use.  By default, the SQL Server DSN will be configured to use Named Pipes.  To specify a network library other than the default, see the SQL Server 2.65 driver network library that is listed on the DSN configuration screen.  Enter the DLL name of the network library you wish to use.  The process for the SQL Server 3.5 driver is simpler: On the second screen of the DSN Wizard, click  the Client Configuration button.  Choose the Network Library tab from the SQL Server Client Configuration Utility Screen. From this screen, you are presented with a list box of the network libraries that are currently installed on the machine.  Be sure you have set up your SQL Server to support the network library you choose.  Once you set a library for one connection, it will become the default for all subsequent connections, as well as any DSN-less connections that your application may use.
+</P><P>Another point on network libraries: After configuring the client and server machines to use a network library other than Named Pipes, you should not remove the Named Pipe support on the server.  This protocol is used by the SQL Server Enterprise manager to communicate with the server.  Removing this protocol will prevent the SQL Server Enterprise manager from communicating with your server.
+</P><P></P>
+<h3>Networking Bandwidth and Protocols
+</h3>
+<P>Many larger corporate networks are running multiple protocols to accommodate different generations of network expansion.  Some consideration should be given to the interaction of these protocols.  For example, some servers running Internetwork Packet Exchange (IPX) will continually announce themselves with a broadcast message.  This broadcast message leads to additional network traffic that may adversely affect system performance.
+</P><P>TCP/IP currently provides the best performance; however, multiple network protocols are necessary for some corporate environments, and eliminating other protocols and running just TCP/IP may not be practical. With this in mind, it may be possible to isolate the Web server and database server from the other protocols by not routing them to the portion of the site containing the IIS components. This effectively creates a somewhat isolated network environment for your Web-based applications.  Eliminating this additional network traffic may have a positive effect on overall performance.
+
+</P><P>
+</P><P></P><P>
+</P><P></P>
+
+
+
+
+
+
+
+<!-- DOCUMENT CONTENT END -->
+
+</div>
+
+<DIV CLASS="clsFooter">
+<HR SIZE="1"><BR>
+<P ID="pBackTop"><A href="daciisperf.htm#top" CLASS="clsBackTop"><IMG src="../../../msdn-online/shared/graphics/top.gif" WIDTH="18" HEIGHT="8" BORDER="0" ALT="Back to top">Back to top</A></P>
+<P><I>Did you find this material useful? Gripes? Compliments? Suggestions for other articles? <A TITLE="Go ahead. Make our day! Send us your thoughts." href="http://msdn.microsoft.com/siteguide/write-us.asp?author=aleland+ahlbeck&area=server+technologies" TARGET="_top">Write us!</A></I></P>
+<P>&copy; <A CLASS="clsIncCpyRt" href="http://msdn.microsoft.com/isapi/gomscom.asp?target=/misc/cpyright.htm" TARGET="_top">1999 Microsoft Corporation. All rights reserved. Terms of use</A>.</P>
+<P>&nbsp;</P>
+</DIV>
+
+<SCRIPT LANGUAGE="JavaScript"><!--
+
+function CheckToTop()
+{
+var eBody = document.body;
+if (eBody.scrollHeight > eBody.offsetHeight) pBackTop.style.display = 'block';
+}
+
+//--></SCRIPT>
+<SCRIPT LANGUAGE="JavaScript" src="../../../msdn-online/shared/js/navlinks.js"></SCRIPT>
+
+</body>
+</html>

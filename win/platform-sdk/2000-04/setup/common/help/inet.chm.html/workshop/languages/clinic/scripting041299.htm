@@ -1,0 +1,277 @@
+
+<HTML>
+<HEAD>
+<TITLE>Web Workshop - Remote Scripting</TITLE>
+<META NAME="MS.LOCALE" CONTENT="en-us">
+
+<META NAME="Author" CONTENT="Andrew Clinick">
+<SCRIPT LANGUAGE='JavaScript' src='../../../msdn-online/shared/js/browdata.js'></SCRIPT>
+<SCRIPT LANGUAGE='Javascript'><!--
+var oBD = new BrowserData();
+//--></SCRIPT>
+
+
+<SCRIPT LANGUAGE="JavaScript"><!--
+
+// if workshop and not vroot, assign "/workshop/" to sBucketRoot
+// rename sVRoot
+
+//var sBucketRoot = "/workshop/languages/";
+
+//--></SCRIPT>
+<LINK REL="stylesheet" TYPE="text/css" href="../../../msdn-online/shared/css/ie4.css">
+
+<STYLE TYPE="text/css"><!--
+
+PRE.clsCode { font-size:110%; } 
+
+PRE.clsSyntax { font-size:100%; }  
+
+--></STYLE>
+
+<SCRIPT LANGUAGE="JScript"><!--
+
+function CommonLoad()
+{
+if ("function" == typeof(InitNavLinks)) InitNavLinks();
+if ("function" == typeof(CheckToTop)) CheckToTop();
+if ("function" == typeof(RemoveLastPipe)) RemoveLastPipe();
+}
+
+//--></SCRIPT>
+
+
+<script LANGUAGE="javascript"><!--
+
+// -----------------------------------------------------------
+// window_load()
+// Container function for load.
+// -----------------------------------------------------------
+
+function window_load()
+{
+if (oBD.getsNavBar)
+{
+if ("function" == typeof(CommonLoad)) CommonLoad();
+}
+}
+window.onload = window_load;
+
+//--></SCRIPT>
+
+</HEAD>
+
+<BODY TOPMARGIN="0" LEFTMARGIN="0" MARGINWIDTH="0" MARGINHEIGHT="0" BGCOLOR="#FFFFFF" TEXT="#000000">
+
+
+<DIV CLASS="clsDocBody">
+
+
+
+<H1><A NAME="top" IDX_CONCEPT="stopindex; Scripting, remote">Remote Scripting</A></H1>
+<HR SIZE="1">
+<P>Andrew Clinick
+<BR>Program Manager
+<BR>Microsoft Corporation</P>
+<P>April 12, 1999</P>
+<p><i>The following article was originally published in the MSDN Online Voices <A href="http://msdn.microsoft.com/voices/scripting.asp">Scripting Clinic</a> column.</i></P>
+<P>How many of you wish that you weren't constrained by having to refresh your whole page in order to communicate with your Web server?  I know it really limits how I design my forms on a Web page.  As a Microsoft&reg; Windows&reg; programmer, I expect to be able to have complete control over the user interface of my application, and as a result want to control when I update the screen.  This presents a quandary for many application developers when considering moving to HTML for their user interface.  To help with that decision, we developed a technology called Remote Scripting.  In essence, Remote Scripting allows you to call server-side Active Server Pages (ASP) scripts without having to refresh the page. In this installment of "Scripting Clinic," I'll cover how Remote Scripting works, how you can use it in your Web application, and where it's going in the future.</P>
+
+<H2>How Does It Work?</H2>
+
+
+<P>Before explaining how Remote Scripting works, I figured that a quick recap on how normal HTML pages work would be in order.  Typically, a Web page communicates back to the server when the user hits the submit button on a form.  When you click on submit, the browser takes the values of the form fields, builds up an HTTP request, and then sends it to the server.  The server gets the information, does what it needs to do -- querying a database, for example -- and then returns data, usually in the form of HTML.  This works well on the Internet, because HTTP is a connectionless protocol, and anything that minimizes the load on the network and/or the server is a good thing. </P>
+
+<P>Remote Scripting builds on this mechanism; it uses HTTP requests to the server over port 80, which is helpful for firewall negotiation. But, rather than relying on the user clicking on a submit button, Remote Scripting provides a mechanism to call code on the server, just as you would call a client-side function.  It does this by using three components:
+</P>
+
+<OL>
+<LI>Client-side Microsoft JScript&reg;</LI>
+<LI>Client-side Java Applet</LI>
+<LI>Server-side JScript</LI>
+
+</OL>
+
+<P>A Remote Scripting-enabled Web page adds a script block to the page and calls the function <b>RSEnableRemoteScripting</b>.  This function interrogates which browser you are running (did I mention that this runs in Microsoft Internet Explorer and Netscape Navigator?) and loads a Java applet onto the page.  The Java applet is the key to Remote Scripting on the client.  All the applet does is provide a mechanism of communicating, via HTTP, to the server.  Every remote script call results in a request being sent via the applet to your server.</P>
+
+<P>When the server ASP file receives the request, it looks as if it has come from a traditional form submit, so you don't have to change the way that you program your ASP pages too much.  The key difference is that you are calling a specific function on the ASP page, rather than the entire page.  Additionally, you are not writing out HTML back to the client, since you are just returning a value from a function.  When the value is returned from the function, Remote Scripting wraps up the result in some XML and sends it back to the client.  (I'll talk get to some of the details later).
+</P>
+<P>When the applet receives a response from the server, it creates a script object from the XML and fills in the properties with the results. The key property is <b>return_value</b>, which contains the return result of the function called on the server.  Depending on how you call the server function, Remote Scripting will either block execution of the script code until the result comes back (synchronous call) or return immediately and call you back on a function when the data is returned (asynchronous call).  The ability to call asynchronously allows considerable flexibility in your UI design, and has the added advantage of not locking up your user's browser during the function call.  The downside is that asynchronous programming requires a little more effort than plain old synchronous programming.
+</P>
+
+
+<IMG src="/voices/graphics/scripting0499-1.gif" WIDTH="499" HEIGHT="261">
+
+
+<H2> Putting Remote Scripting to Work</H2>
+
+<P>
+Before I go into more detail about Remote Scripting, I thought a quick example would help out.  For the example, I'm going to try to fix one of my pet peeves about Web pages. I hate it when I fill in a long form, hit the submit button, and the same page comes back informing me that I incorrectly filled in the information on a particular field.  Why didn't it check that <i>before</i> I hit the submit button?
+</P>
+
+<P>My example is a flight-booking page (I hope the folks at Microsoft Expedia&#0153; will still speak to me after this).  The form needs to know your departure and destination airports, the date you want to travel, the number of people traveling, and other details. In the first example, the page has a simple form with five text boxes.  When you enter data in the departure airport field and move on to the next text field, a call is made to the server to validate the airport. Since this is just a demo, my ASP code checks only for London airports.  If the airport name entered is London, then it returns data providing the names for all the London airports.  Anything other than London is assumed to be correct so you won't get any additional information unless you type in London.</P>
+
+<P><img src="../../../msdn-online/shared/graphics/icodownl.gif" BORDER="0" ALT="Download" WIDTH="16" HEIGHT="16"> Download the <A href="http://msdn.microsoft.com/voices/flightform.zip">sample flight-booking form</A> here (zipped, 1.99 KB).</P>
+
+<P>On the client, some fairly simple script is called on the <A href="../../../workshop/author/dhtml/reference/events/onblur.htm"><b>onblur</b></A> event of the airport text box:
+</P>
+
+<PRE class="clsCode">
+&lt;script language=&quot;JScript&quot; src=&quot;../_scriptlibrary/rs.htm&quot;&gt;&lt;/script&gt;
+&lt;script language=&quot;JScript&quot;&gt;
+RSEnableRemoteScripting(&quot;../_ScriptLibrary&quot;);
+&lt;/script&gt;
+&lt;script language="JScript"&gt;
+function txtDepart_onblur()
+{
+ var objTest
+ /*  Call the validateAirport Method on airport.asp
+  When it's done call me back on airportCallBack */
+ objTest = RSExecute(&quot;airport.asp&quot;,&quot;validateAirport&quot;,txtDepart.value)
+
+ // Check to see if we have an error
+ if (objTest.return_value != true) 
+ {
+  // Display the error in the div
+  alert(objReturn.return_value);
+ }
+}
+&lt;/script&gt;
+</PRE>
+<P>
+The first two script blocks enable the page to use Remote Scripting.  The first block includes the JScript code required to run Remote Scripting on the client.  The second calls the <b>RSEnableRemoteScripting</b> function to enable Remote Scripting.</P>
+
+<P>When the <b>txtDepart </b>text box loses focus, a call to the server is made via the <b>RSExecute</b> function. (It has never been clear to me why the event is named <b>onblur</b> -- surely <b>onlosefocus</b> would make more sense?  I guess it's one of the mysteries of the Web.) <b>RSExecute</b> is the "magic" that translates a client-side call to the server.  It takes the URL of the ASP page (airport.asp), the name of the method you want to call (<b>validateAirport</b>), and the arguments for the method (txtDepart.value and "Departure Airport").  Optionally, you can provide a callback function -- but for the first example, I've kept the call synchronous for simplicity.</P>
+
+<P>When the <b>validateAirport</b> method has completed, it returns back an object with information about the call and the return value.  The script just takes the return value and calls the <b>alert</b> methodwith the error message.  It's certainly not pretty, but it's simple and it does work on Internet Explorer 3.0 and above and Navigator 3.0 and above.</P>
+
+<P>Here's the code I run on the server:</P>
+
+<PRE class="clsCode">&lt;%@ LANGUAGE=VBSCRIPT %&gt;
+&lt;% 
+' Define my Airport class
+Class clsAirport
+  public function validateAirport(strAirport)
+ if lcase(strAirport) = &quot;london&quot; then
+  validateAirport = &quot;Which London airport?" &amp; vbCRLF
+validateAirport = validateAirport &amp; "Heathrow (LHR)" &amp; vbCRLF
+validateAirport = validateAirport &amp; "Gatwick (LGW)" &amp; vbCRLF
+validateAirport = validateAirport &amp; "Stansted (LST)" &amp; vbCRLF
+ else
+  validateAirport = true
+ end if
+  end function
+end class
+
+set public_description = new clsAirport
+
+' Call RSDispatch to use the public_description object and make its methods available for Remote Scripting Calls
+RSDispatch %&gt;
+&lt;!--#INCLUDE FILE=&quot;../_scriptlibrary/rs.asp&quot;--&gt;
+</PRE>
+<P>
+The key to Remote Scripting on the server is the creation of the <A href="../../../workshop/components/scriptlet/howto/pubdesc.htm"><b>public_description</b></A> object. Any methods that are exposed by this object can be called from a Web page.  This provides you with a mechanism to selectively expose functionality from your ASP page.  Any functions that are not part of the <b>public_description</b> object will remain private and won't be callable via Remote Scripting.</P>
+
+<P>Those of you who have used Remote Scripting in the past will notice that -- rather than relying on JScript on the server -- I'm using Microsoft Visual Basic&reg; Scripting Edition (VBScript).  Previously, this wasn't possible, because VBScript couldn't create objects internally. With the release of version 5.0, though, VBScript now has classes built into the language.  Since it wasn't possible to use VBScript when Remote Scripting 1.0 was written, I had to make a few changes to the Remote Scripting code on the server (actually, about two lines of code). Remote Scripting version 1.0a makes it possible to use VBScript. You can download this version from <A href="http://msdn.microsoft.com/scripting/default.htm?/scripting/remotescripting/">http://msdn.microsoft.com/scripting/remotescripting/</A> <IMG src="../../../msdn-online/shared/graphics/leave-site.gif" WIDTH="17" HEIGHT="11" BORDER="0" ALT="Non-MSDN Online link">. If you're happy using JScript on the server, you can stay with Remote Scripting 1.0.</P>
+
+<h2>Asynchronous Calling</h2>
+<P>
+The first script example gave you an idea of what Remote Scripting can do, but it didn't help much with the usability of your Web page.  When the user moves off the destination airport text box, the browser freezes up until the call is finished -- and even when it finishes, the alert dialog is hardly elegant.  In the next code sample, the method call will take advantage of the asynchronous calling ability of Remote Scripting and return the information in a more intuitive manner.</P>
+
+<P>To take advantage of the asynchronous calling ability, you need to provide a function that will be called back when the remote script call is complete and pass the name of that function as an argument to the <b>RSExecute</b> call.  </P>
+
+<P>To illustrate this, I've built on the first example and tried to make the user experience smoother.  When you moved from the departure airport text box to arrival airport text box in the first example, there would be a considerable time lag (depending on your connection speed) before the browser would respond -- and if you had entered an incorrect airport, you got an ugly alert dialog.  Using an asynchronous call will prevent the browser lock-up, because the browser UI will return immediately after the call is made. Thus, the user can keep typing while Remote Scripting waits for the function to return.  When the function returns, the callback function is called and it checks to see whether the airport is valid. If it isn't, a <b>&lt;DIV&gt;</b> element named error info is filled with the return information.</P>
+
+<P>Lets take a look at the client code (the server code didn't change):<P>
+
+<PRE class="clsCode">function txtDepart_onblur()
+{
+var varTest
+varTest = RSExecute(&quot;airport.asp&quot;,&quot;validateAirport&quot;,txtDepart.value,&quot;Departure Airport&quot;,airportCallBack,&quot;divDepartError&quot;)
+ }
+
+function txtGoing_onblur()
+{
+ var varGoingTest
+ varGoingTest = RSExecute(&quot;airport.asp&quot;,&quot;validateAirport&quot;,txtGoing.value,&quot;Arrival Airport&quot;,airportCallBack,&quot;divGoingError&quot;)
+}
+
+function airportCallBack(objReturn) 
+{
+ // Check to see if we have an error
+ if (objReturn.return_value != true) 
+ {
+  // Display the error in the div
+  window[objReturn.context].innerHTML = objReturn.return_value;
+ }
+ else
+ {
+  // It worked so set the innerHTML to be nothing 
+  window[objReturn.context].innerHTML = &quot;&quot;;
+ }
+}
+</PRE>
+<P>
+The code is pretty similar to the first example, except that the <b>RSExecute</b> call contains two more arguments: the callback function and the name of the <b>&lt;DIV&gt;</b> to be used for displaying any errors.  The last argument takes advantage of the context feature in Remote Scripting.  All the context argument does is allow information to be passed from the calling function through to the callback function.  Remote Scripting takes whatever is in the context argument and sets the context property on the returned object.  In this example, context is used to provide the name of the <b>&lt;DIV&gt;</b> that the error details should be written into.  My code is not scalable for a larger form, but hopefully it gives you an idea of what you could do.</P>
+
+<h2>Returning ASP Objects</h2>
+<P>
+Another functionality that Remote Scripting provides is the ability to return an object created on the server and call it on the client.  For example, you could create a <b>Customer</b> object on the server and use its methods on the client.  The key difference is that when you call a method on the object, the code is run on the server rather than on the client, which makes for some pretty interesting capabilities.  It also allows you to code in a more traditional manner without having to call out to <b>RSExecute</b> all the time.</P>
+
+<P>To help illustrate the use of objects, I've updated the airport application to use airport.asp as an object, rather than just call functions on the page.  Luckily, to use an ASP page as an object you don't need to change anything on the ASP code, since it already has a <b>public_description</b> object. You do, though, need to change the way that you call the page.</P>
+
+<P>To create an object from an ASP page, Remote Scripting provides a function, cunningly named <b>RSGetASPObject </b>(one of our better-named functions, I think).  This function takes just one argument, the URL of the ASP.  When called, the function makes a synchronous call to the server and returns a proxy object based on the <b>public_description</b> object of the ASP page.  Your script code on the HTML page can then call methods on this proxy object just as if it were a client-side object.  When the object receives a method call, it simply redirects the call, via the Java proxy applet, back to the server.</P>
+
+<IMG src="/voices/graphics/scripting0499-2.gif" WIDTH="492" HEIGHT="317">
+
+<P>Let's take a look at the client-side code for using the ASP page as an object:</P>
+
+<PRE class="clsCode"> var aspObject;
+ 
+ function window_onload() {
+  aspObject = RSGetASPObject(&quot;airport.asp&quot;)
+ }
+
+ function txtDepart_onblur()
+ {
+  var varTest
+  varTest = aspObject.validateAirport(txtDepart.value,&quot;Departure Airport&quot;,airportCallBack,&quot;divDepartError&quot;)
+ }
+</PRE>
+<P>
+The code really isn't that different from the last example, but the <b>RSExecute</b> calls have been replaced by method calls on the <b>aspObject</b> object.   The <b>validateAirport</b> method still provides asynchronous calls and context just like <b>RSExecute</b>.</P>
+
+<P>The obvious question is, Should I use <b>RSExecute</b> or <b>getASPObject</b>?  The answer depends on your programming style.  If you've bought into objects big time, then treating the ASP as an object will appeal to you -- and it does make programming a little easier.  It also has the added advantage of providing an easy way to combine VBScript objects on the server with JScript on the client.  If objects aren't your thing, then <b>RSExecute</b> should do everything you want.</P>
+
+<h2>Summary</h2>
+<P>
+I hope this article has given you insight into what Remote Scripting can do for your Web development.  It really helps to take the HTML user experience a step ahead of the traditional submit/refresh model that is out there today.  You can now call server functionality when you want to, rather than being limited by the original HTTP design.  </P>
+<P>Obviously, to use Remote Scripting to its fullest you need to have a Web client that supports HTML 4.0 and the DOM (Internet Explorer 4.0 and 5, and to some extent Navigator 4.5), but that doesn't mean you can't use it on older clients.  Remote Scripting works on pretty much any browser that supports ECMAScript and a scriptable Virtual Machine for Java.  With some intelligent script on the server, you could send back HTML 3.2 to older clients or HTML 4.0 to newer clients.  You can find more information on Remote Scripting on <A href="http://msdn.microsoft.com/scripting/default.htm">http://msdn.microsoft.com/scripting/default.htm</A> <IMG src="../../../msdn-online/shared/graphics/leave-site.gif" WIDTH="17" HEIGHT="11" BORDER="0" ALT="Non-MSDN Online link">, and also on our <A href="news://msnews.microsoft.com/microsoft.public.scripting.remote">newsgroups</A> <IMG src="../../../msdn-online/shared/graphics/leave-site.gif" WIDTH="17" HEIGHT="11" BORDER="0" ALT="Non-SBN link">.  I look forward to hearing how you're getting on with Remote Scripting. </P>
+
+
+<P><I><B>Andrew Clinick</B> is a Program Manager in the Microsoft Script Technology group, so chances are, if there's script involved, he's probably had something to do with it. He spends most of his spare time trying to get decent rugby coverage on U.S. television and explaining cricket to his new American colleagues. </I>
+</P>
+<!-- ARTICLE FOOTER END -->
+</DIV>
+
+<DIV CLASS="clsFooter">
+<HR SIZE="1"><BR>
+<P ID="pBackTop"><A href="scripting041299.htm#top" CLASS="clsBackTop"><IMG src="../../../msdn-online/shared/graphics/top.gif" WIDTH="18" HEIGHT="8" BORDER="0" ALT="Back to top">Back to top</A></P>
+<P><I>Did you find this material useful? Gripes? Compliments? Suggestions for other articles? <A TITLE="Go ahead. Make our day! Send us your thoughts." href="http://msdn.microsoft.com/siteguide/write-us.asp?author=andrew+clinick&area=languages+%26amp%3b+development+tools" TARGET="_top">Write us!</A></I></P>
+<P>&copy; <A CLASS="clsIncCpyRt" href="http://msdn.microsoft.com/isapi/gomscom.asp?target=/misc/cpyright.htm" TARGET="_top">1999 Microsoft Corporation. All rights reserved. Terms of use</A>.</P>
+<P>&nbsp;</P>
+</DIV>
+
+<SCRIPT LANGUAGE="JavaScript"><!--
+
+function CheckToTop()
+{
+var eBody = document.body;
+if (eBody.scrollHeight > eBody.offsetHeight) pBackTop.style.display = 'block';
+}
+
+//--></SCRIPT>
+
+
+</BODY>
+</HTML>

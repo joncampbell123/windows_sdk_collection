@@ -1,0 +1,206 @@
+<html>
+<head>
+<title>Microsoft Platform SDK - MIDL for Win64
+</title>
+<style type="text/css">
+<!--
+.sidenav {
+  color:#ffffff;
+  text-decoration:none;
+}
+a:hover {
+  color:#cc0000;
+}
+-->
+</style>
+</head>
+<body bgcolor="#ffffff" text="#000000" link="#0000ff" vlink="#800080" alink="#cc0000" TOPMARGIN=0>
+<!-- Begin datestamp table -->
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tr valign="top" align="right">
+<td width="100%">
+<font face="Verdana, Arial, Helvetica" size="2" color="#666666">
+March 1999
+</font>
+</td>
+</tr>
+</table>
+<!-- End datestamp table -->
+<!-- Start Full-Bleed Header Graphics with Standard Top Navigation-->
+<!-- Start Main Content Cell -->
+<h1>Designing 64-bit-Compatible Interfaces
+</h1>
+<p>
+This document discusses data-type compatibility issues for porting from Win32 to Win 64, including:
+<ul type=disc>
+<li>
+Adding new data types or methods
+<br>
+<br>
+<li>
+Changing old data types
+<br>
+<br>
+<li>
+Using Remote Procedure Calls (RPC)
+<br>
+<br>
+<li>
+Avoiding polymorphism
+</li>
+</ul>
+<p>
+Porting from the 32-bit Windows platform to the 64-bit Windows platform should not, by itself, create any problems for 
+distributed applications, whether they use Remote Procedure Calls (RPC) directly or through DCOM. The RPC programming 
+model specifies well-defined data sizes and integral types that are the same size on each end of the connection. Also, 
+in the LLP64 abstract data model developed for 64-bit Windows, only the pointers expand to 64 bits and all other integral 
+data types remain 32 bits. Because pointers are local to each side of the client/server connection and are usually 
+transmitted as null or non-null markers, the marshaling engine can handle different pointer sizes on either end of a 
+connection transparently.
+</p>
+<p>
+However, backward compatibility issues are possible whenever you add new data types or methods to an interface, change old data types, or use data types inappropriately. The following topics discuss how to avoid these situations whenever possible and
+ how to design robust workarounds when avoidance is impossible.
+</p>
+<p>
+If you are not already familiar with the new data types, working environment, and application programming interface (API) changes for 64-bit Windows, read the article 
+<A href="getready.html"><em>Getting Ready for 64-bit Windows</em></a> by
+David Beaver and On Lee. Familiarity with the concepts presented in that article is assumed in the following discussion.
+</p>
+<h2>Changing an Existing Interface
+</h2>
+<p>
+Whenever possible, implement a new interface for your application rather than making changes to an existing one. If you 
+cannot avoid changing an existing interface, use new data types in new methods only. Introducing a new data type or 
+modifying an existing type is the most common source of incompatibility problems. The RPC run-time model assumes that 
+the receiving party knows about the types of data that it receives, so data is put onto the wire without a generic data 
+description. When the recipient expects a different data type than what the sender has put out on the wire, the stub 
+raises an exception (or transmission fails in some other, less graceful, manner).
+</p>
+<p>
+An RPC interface is defined by its universally unique identifier (UUID) and its major and minor version numbers. When you change an existing interface you should add the new methods at the end of the interface and change the minor version number. If 
+you add methods anywhere at the end, or make any other changes to the interface, you will also need to change the major version number.
+</p>
+<p>
+Realistically, there are times when you cannot change even the minor version number because a new client would not be able to communicate with an old server and it isn't possible to update the server. The RPC run time raises an exception, RPC_S_PROCN
+UM_OUT_OF_RANGE, when (and only when) a client calls a method beyond the ones specified for its interface with the server. The workaround is to leave the version numbers unchanged and write your client code to handle this exception gracefully, by the
+ client degrading its performance, or by whatever other means appropriate for your application.
+</p>
+<p>
+There is a similar workaround for one special case of changing a data type in an existing method. If you have a union whose branches are pointers, and that does not have a default branch for unrecognized types, you can add a new branch that uses the 
+new data type. This will not change the size of the data structure. When your client talks to a new server, it can use the new data type. However, when your client talks to an old server, the run time will raise the exception RPC_S_INVALID_TAG. Again, 
+you will need to write your client code to handle this exception appropriately.
+</p>
+<p>
+A DCOM interface is identified by its globally unique identifier (GUID). In DCOM, interfaces are considered immutable 
+and you can only make changes by creating a new interface that inherits from the old one. These rules insure that 
+clients and servers remain compatible.
+</p>
+<h2>Don't Cheat, Don't Hide
+</h2>
+<p>
+Sending a data structure as an undifferentiated block of bytes. Leveraging performance by using a side effect from a 
+method to channel additional data across the wire. Attempting to disguise a handle by passing it as a DWORD or a ULONG. 
+These are ways that programmers may deliberately or inadvertently hide information from or "cheat" the RPC marshaling 
+engine. Hiding and cheating are almost guaranteed to introduce compatibility problems even before you port your application 
+to 64-bit Windows.
+</p>
+<p>
+Instead of sending a server context as a DWORD in a standard remote procedure call, use a context handle to provide an opaque handle to a server context that is held on behalf of a client. Contexts are identified by GUIDs defined by the RPC run time 
+when a server creates a context handle for a client. No pointer is used over the wire and the operation is completely transparent across 32-/64-bit boundaries.
+For more information on using context handles, see the
+<a href="http://msdn.microsoft.com/isapi/msdnlib.idc?theURL=/library/sdkdoc/rpc/ov-handl_1ak3.htm">
+<em>Context Handles</em></a> in the RPC section of
+the Microsoft Platform SDK documentation (located in the Platform SDK, MSDN Library
+Online or on the MSDN Library CD.) (Access to the MSDN Library Online requires an MSDN Online
+Membership, which is free, but requires a short one-time registration process.)
+</p>
+<p>
+DCOM interfaces can't use context handles because COM provides its own context management. Instead of creating a context 
+handle, you can pass an interface pointer to the COM object. Then, call the methods directly through the interface 
+pointer, or place the pointer inside other calls. To release the server object, the client calls the interface's 
+<b>Release( )
+</b> method through the interface pointer. For more information on using interface pointers, see the article 
+<a href="http://msdn.microsoft.com/isapi/msdnlib.idc?theURL=/library/sdkdoc/com/com_37w3.htm">
+<em>Interface Pointers and Interfaces</em>
+</a> in the COM section of the Microsoft Platform SDK documentation.
+</p>
+<p>
+Again, there may be times when you cannot change the original design of the code that you are porting. If there is no way 
+to avoid sending a pointer across the wire as a DWORD, you will have to implement some form of server-side mapping between 
+DWORDs and pointers. One way to do this is to change the pointers in the client-side application to legitimate 64-bit 
+pointer types, such as ULONG_PTR or DWORD_PTR. Then use the Microsoft Interface Definition Language (MIDL) call_as 
+attribute to put the pointers on the wire as DWORDs. The client-side wrapper need only pass the arguments along. The 
+server-side wrapper will handle the mapping between both types. In a similar fashion you can use either the transmit_as 
+attribute or the represent_as attribute to convert your data to a backward-compatible format for wire representation.
+</p>
+<p>
+If backward wire compatibility is not an issue, or if the handle is not used for remote calls and you know beyond a 
+doubt that remoting between 32-bit and 64-bit processes will never happen, you can redefine the cheating argument as a 
+ULONG64. If necessary for API compatibility, you can modify the 32-bit application to pass a DWORD to the user. 
+Alternatively, you can build separate stubs, from separate IDL files, for each platform, using a DWORD on the 32-bit 
+platform and a ULONG64 on the 64-bit platform.
+</p>
+<h2>Avoiding Polymorphism
+</h2>
+<p>
+The set of Win64&trade; data types includes two polymorphic types: INT_PTR and LONG_PTR. On 32-bit platforms, the INT_PTR 
+maps to int and the LONG_PTR maps to long. On 64-bit platforms, both types map to the __int64 intrinsic type. The MIDL 
+compiler supports these types for remote procedure calls, but there is an inherent limitation that you must keep in mind 
+when using them in a distributed environment.  Comment your code accordingly.
+</p>
+<p>
+Regardless of the platform size, the wire size of these polymorphic types is always 32 bits. When unmarshaling onto a 
+64-bit platform, the run-time sign extends signed values and assigns zero to the high-order bytes for an unsigned value. 
+When putting a 64-bit value on the wire, the run time truncates the high-order bytes. Thus, only the low-order 32 bits 
+are usable.
+</p>
+<p>
+Use the polymorphic types only when necessary for porting. For new interfaces, use the MIDL intrinsic integral types __int32 and __int64, or a pointer type or context handle, whichever is most appropriate for the kind of data being transferred.
+</p>
+<p>
+On the 64-bit compiler, MIDL supports a new polymorphic intrinsic, __int3264. Again, this type was developed to support porting efforts, in this case to support the UINT_PTR types transparently. (Another intrinsic, __long3264, will support the ULONG_
+PTR type.) Do not use __int3264 directly; use the INT_PTR type when you need a polymorphic type for porting reasons.
+</p>
+<h2>Using New Data Types in Your IDL File
+</h2>
+<p>
+The set of Windows header files includes Basetsd.h, which defines the new data type definitions needed for writing 
+applications that will run on both 32-bit and 64-bit platforms. To use these data types in your interfaces, import 
+Basetsd.h into your IDL file. Do not #include the file or you will end up with multiple definitions at program compile time.
+</p>
+<p>
+Alternatively, you can include or import the Basetsd.idl file, provided in the \include directory of the Platform SDK, 
+into your IDL file.
+</p>
+<p>
+For more information on adding system header files to your IDL file, see 
+<a href="http://msdn.microsoft.com/isapi/msdnlib.idc?theURL=/library/sdkdoc/midl/ov-iface_5ws3.htm">
+  <em>Importing Files and Type Libraries</em> 
+</a> and 
+<a href="http://msdn.microsoft.com/isapi/msdnlib.idc?theURL=/library/sdkdoc/midl/ov-iface_87cj.htm">
+  <em>Importing System Header Files</em> 
+</a> in the MIDL Programmers Guide in the Microsoft Platform SDK documentation.
+</p>
+<h2>Testing Your Application for 64-bit Windows
+</h2>
+<p>
+The Microsoft&#174; Platform SDK, and the Windows 2000 operating system itself,
+include several features that make it easier for you to develop Win32 applications
+that will port easily to Win64 platforms. Most of these, such as
+the new data types defined in Basetsd.h, are described in
+<A href="getready.html">Getting Ready for 64-bit Windows</a>.
+</p>
+<p>
+The 64-bit toolkit that ships with the Platform SDK includes a 64-bit MIDL compiler, Midl.exe,
+for generating native 64-bit stubs, as well as 32-bit stubs. Use the /env win64 switch to
+generate 64-bit stubs only. The default is to generate dual stubs that run on both platforms.
+</p>
+<p class=indent>
+<B>
+<b>Note:
+</b>
+</B>&nbsp;&nbsp;&nbsp;The 64-bit MIDL supports the /Oicf and /Os optimization modes only.
+</p>
+</body>
+</html>
